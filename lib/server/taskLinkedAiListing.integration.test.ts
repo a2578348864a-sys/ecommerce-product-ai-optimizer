@@ -168,11 +168,11 @@ function validAiClient(): TaskLinkedAiListingClient {
   return async () => ({
     title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
     bullets: [
-      "The straw lid with push-open mechanism keeps this Water Bottle easy to use.",
-      "Easy cleaning matches the dishwasher-safe removable parts option for this Water Bottle.",
-      "Available construction with the Stainless Steel of this Water Bottle.",
+      "The straw lid with push-open mechanism is a feature of this Water Bottle.",
+      "The dishwasher-safe removable parts option is included for this Water Bottle.",
+      "Stainless Steel is the material of this Water Bottle.",
     ],
-    description: "The Owala bottle with stainless steel and 24 oz for easy use. The straw lid with push-open mechanism keeps this Water Bottle easy to use.",
+    description: "The Owala bottle has stainless steel and 24 oz. The straw lid with push-open mechanism is a feature of this Water Bottle.",
     backendSearchTerms: ["vacuum flask", "leakproof tumbler", "carry water bottle"],
     usedFactIds: ["functional_feature", "care", "material"],
     humanReviewRequired: true,
@@ -424,7 +424,7 @@ describe("Quality.2 adversarial AI outputs", () => {
     const result = await generateWithAi("sandbox-q2-r1-2-regress", async () => ({
       title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
       bullets: [
-        "The straw lid with push-open mechanism keeps this Water Bottle easy to use.",
+        "The straw lid with push-open mechanism is a feature of this Water Bottle.",
         "Easy cleaning with the dishwasher-safe removable parts option for this Water Bottle.",
         "Available with the Stainless Steel option for this Water Bottle.",
       ],
@@ -441,7 +441,7 @@ describe("Quality.2 adversarial AI outputs", () => {
     const result = await generateWithAi("sandbox-q2-r1-4-regress", async () => ({
       title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
       bullets: [
-        "The straw lid with push-open mechanism keeps this Water Bottle easy to use.",
+        "The straw lid with push-open mechanism is a feature of this Water Bottle.",
         "Easy cleaning with the dishwasher-safe removable parts option for this Water Bottle.",
         "Available with the Stainless Steel option for this Water Bottle.",
       ],
@@ -460,7 +460,7 @@ describe("Quality.2 adversarial AI outputs", () => {
     const result = await generateWithAi("sandbox-q2-r1-6-regress", async () => ({
       title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
       bullets: [
-        "The straw lid with push-open mechanism keeps this Water Bottle easy to use.",
+        "The straw lid with push-open mechanism is a feature of this Water Bottle.",
         "Easy cleaning with the dishwasher-safe removable parts option for this Water Bottle.",
         "Available with the Stainless Steel option for this Water Bottle.",
       ],
@@ -490,7 +490,7 @@ describe("Quality.2 adversarial AI outputs", () => {
     const result = await generateWithAi("sandbox-q2-r1-6-prov", async () => ({
       title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
       bullets: [
-        "The straw lid with push-open mechanism keeps this Water Bottle easy to use.",
+        "The straw lid with push-open mechanism is a feature of this Water Bottle.",
         "Easy cleaning with the dishwasher-safe removable parts option for this Water Bottle.",
         "Available with the Stainless Steel option for this Water Bottle.",
       ],
@@ -513,7 +513,7 @@ describe("Quality.2 adversarial AI outputs", () => {
     const result = await generateWithAi("sandbox-q2-r1-6f-brief", async () => ({
       title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
       bullets: [
-        "The straw lid with push-open mechanism keeps this Water Bottle easy to use.",
+        "The straw lid with push-open mechanism is a feature of this Water Bottle.",
         "Easy cleaning with the dishwasher-safe removable parts option for this Water Bottle.",
         "Available with the Stainless Steel option for this Water Bottle.",
       ],
@@ -558,7 +558,7 @@ describe("R6 运行时 Listing Skill 接入（行为）", () => {
     setTaskLinkedAiListingClientForTests(async () => ({
       title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
       bullets: [
-        "The straw lid with push-open mechanism keeps this Water Bottle easy to use.",
+        "The straw lid with push-open mechanism is a feature of this Water Bottle.",
         "Easy cleaning with the dishwasher-safe removable parts option for this Water Bottle.",
         "Available with the Stainless Steel option for this Water Bottle.",
       ],
@@ -668,10 +668,10 @@ describe("ListingPlan.v2 绑定（AI 成功路径行为）", () => {
       title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
       bullets: [
         "Easy cleaning with the dishwasher-safe removable parts option for this Water Bottle.",
-        "The straw lid with push-open mechanism keeps this Water Bottle easy to use.",
+        "The straw lid with push-open mechanism is a feature of this Water Bottle.",
         "Available with the Stainless Steel option for this Water Bottle.",
       ],
-      description: "The Owala bottle with stainless steel and 24 oz for easy use. The straw lid with push-open mechanism keeps this Water Bottle easy to use.",
+      description: "The Owala bottle has stainless steel and 24 oz. The straw lid with push-open mechanism is a feature of this Water Bottle.",
       backendSearchTerms: ["vacuum flask"],
       usedFactIds: ["care", "functional_feature", "material"],
       humanReviewRequired: true,
@@ -693,11 +693,11 @@ describe("ListingPlan.v2 绑定（AI 成功路径行为）", () => {
     setTaskLinkedAiListingClientForTests(async () => ({
       title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
       bullets: [
-        "The straw lid with push-open mechanism keeps this Water Bottle easy to use.",
+        "The straw lid with push-open mechanism is a feature of this Water Bottle.",
         "Double-wall vacuum insulation keeps drinks cold for 12 hours in the bottle.",
         "Available with the Stainless Steel option for this Water Bottle.",
       ],
-      description: "The Owala bottle with stainless steel and 24 oz for easy use. The straw lid with push-open mechanism keeps this Water Bottle easy to use.",
+      description: "The Owala bottle has stainless steel and 24 oz. The straw lid with push-open mechanism is a feature of this Water Bottle.",
       backendSearchTerms: [],
       usedFactIds: ["functional_feature", "construction", "material"],
       humanReviewRequired: true,
@@ -719,7 +719,10 @@ describe("ListingPlan.v2 绑定（AI 成功路径行为）", () => {
     const taskId = "sandbox-q2-v2-bind-nokw";
     await setupHandoff(taskId, true);
     // 不 saveBrief → 无有效关键词方案
-    setTaskLinkedAiListingClientForTests(async () => validAiClient()({} as never));
+    setTaskLinkedAiListingClientForTests(async () => ({
+      ...validAiClient()({} as never),
+      backendSearchTerms: ["owala cup", "vacuum flask"],
+    }));
     const p = await generateCreativeHandoffPreview(taskId, visitorContext());
     const result = await generateListingDraftFromHandoff(taskId, visitorContext(), {
       requestId: "550e8400-e29b-41d4-a716-446655440903",
@@ -752,7 +755,7 @@ describe("ListingPlan.v2 关键词采用三态（usedKeywordTrace / searchOnlyKe
     const plan = planLike("thermos", ["bento box for kids"]);
     const r = deriveKeywordAdoptionTrace(plan, [
       "THERMOS FUNTAINER Kids 10oz Stainless Steel Pink",
-      "Easy cleaning matches the Dishwasher Safe option for this FUNTAINER Kids product.",
+      "Dishwasher Safe is the cleaning option for this FUNTAINER Kids product.",
       "This FUNTAINER Kids product with the THERMOS brand for everyday use.",
     ], ["bento box for kids", "thermos", "lunch box kids", "kids lunch box"]);
     expect(r.usedKeywordTrace).toEqual(["thermos"]);
@@ -763,7 +766,7 @@ describe("ListingPlan.v2 关键词采用三态（usedKeywordTrace / searchOnlyKe
     const plan = planLike("thermos", ["bento box for kids"]);
     const r = deriveKeywordAdoptionTrace(plan, [
       "THERMOS FUNTAINER Kids 10oz Stainless Steel Pink",
-      "Easy cleaning matches the Dishwasher Safe option for this FUNTAINER Kids product.",
+      "Dishwasher Safe is the cleaning option for this FUNTAINER Kids product.",
       "",
     ], ["thermos", "bento box for kids"]);
     expect(r.usedKeywordTrace).toEqual(["thermos"]);
@@ -843,3 +846,96 @@ describe("ListingPlan.v2 关键词采用三态（usedKeywordTrace / searchOnlyKe
     expect(draftNoKw.searchOnlyKeywordTrace ?? []).toEqual([]);
   }, 60_000);
 });
+
+
+describe("LISTING_FINAL_CLOSURE：待确认句隔离 + 竞品品牌过滤 + 五点硬事实去重", () => {
+  it("红：review 句不得停留在正式字段（bullet 含未确认词 → 该句移除，humanReviewClaims 单独承载）", async () => {
+    const taskId = "sandbox-lfc-review-iso";
+    await setupHandoff(taskId, true);
+    await saveBrief(taskId);
+    // AI 返回其中一条含 未确认 的 review 级表达（keeps cold 12 hours 属 cannotSay，但用 "comfortable grip" 类无事实词制造 review tier）
+    setTaskLinkedAiListingClientForTests(async () => ({
+      title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
+      bullets: [
+        "The straw lid with push-open mechanism is a feature of this Water Bottle.",
+        "The dishwasher-safe removable parts option is included for this Water Bottle.",
+        "The straw lid with push-open mechanism keeps this Water Bottle easy to use every day.",
+      ],
+      description: "The Owala bottle has stainless steel and 24 oz. The straw lid with push-open mechanism is a feature of this Water Bottle.",
+      backendSearchTerms: ["vacuum flask"],
+      usedFactIds: ["functional_feature", "care", "material"],
+      humanReviewRequired: true,
+    }));
+    const pr = await generateCreativeHandoffPreview(taskId, visitorContext());
+    const result = await generateListingDraftFromHandoff(taskId, visitorContext(), { requestId: "550e8400-e29b-41d4-a716-446655441970", expectedStorageVersion: pr.gate.storageVersion!, expectedHandoffRevision: pr.gate.currentHandoff!.currentRevision });
+    const d = result.draft!;
+    const formal = [String(d.titles[0] ?? ""), ...d.bullets, String(d.description ?? "")].join(" ").toLowerCase();
+    // 正式字段不得含 review 句；review 句只能在 humanReviewClaims 区
+    expect(formal).not.toContain("easy to use");
+    // review 句（bullet3）被移除后进待确认表达区（当前 draftKind 可为回退但句不得回正式字段）
+    expect((d.humanReviewClaims ?? []).join(" ").toLowerCase()).toContain("easy to use");
+  }, 60_000);
+
+  it("红：人工保存 Keyword Brief 不能绕过竞品品牌过滤（stainley/owala 关键词不进正式字段）", async () => {
+    const taskId = "sandbox-lfc-brand-iso";
+    await setupHandoff(taskId, true);
+    await saveBrief(taskId);
+    // 注入含竞品品牌的手工 Brief（绕过途径 = 直接把 brand 词写进 brief）
+    const brief = buildListingKeywordBrief({ primaryKeyword: "owala bottle", supportingKeywords: ["water bottle"], backendSearchTerms: ["owala cup"], source: "synthetic", capturedAt: NOW });
+    if (!brief.ok) throw new Error("brief build failed");
+    await mutateTaskResultJson({ context: visitorContext(), taskId, writer: "keyword-brief", async mutate(current) { return { result: { ...current, listingKeywordBrief: brief.brief as unknown as Record<string, unknown> }, value: { saved: true } }; } });
+    setTaskLinkedAiListingClientForTests(async () => validAiClient()({} as never));
+    const pr = await generateCreativeHandoffPreview(taskId, visitorContext());
+    const result = await generateListingDraftFromHandoff(taskId, visitorContext(), { requestId: "550e8400-e29b-41d4-a716-446655441971", expectedStorageVersion: pr.gate.storageVersion!, expectedHandoffRevision: pr.gate.currentHandoff!.currentRevision });
+    const d = result.draft!;
+    const allKw = [...(d.keywords ?? []), ...((d.backendSearchTerms ?? []) as string[])].join(" ").toLowerCase();
+    expect(allKw).not.toContain("owala");
+    expect(allKw).not.toContain("owala cup");
+    expect(d.backendSearchTerms ?? []).not.toContain("owala cup");
+    // 无合格关键词 → 诚实空态（keywords 可为空但不含竞品品牌）
+  }, 60_000);
+
+  it("红：同一硬事实值不得成为两条五点的核心表达（bullet 1/2 重复 use same fact）", async () => {
+    const taskId = "sandbox-lfc-dupfact-iso";
+    await setupHandoff(taskId, true);
+    await saveBrief(taskId);
+    setTaskLinkedAiListingClientForTests(async () => ({
+      title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
+      bullets: [
+        // bullet1: 锚 functional_feature；但顺带提 material 值 → 硬事实 material 与 bullet3 共享
+        "The straw lid with push-open mechanism is a feature of this Stainless Steel bottle.",
+        // bullet2: 锚 care
+        "Dishwasher-safe removable parts are included with this bottle.",
+        // bullet3: 锚 material — 与 bullet1 共享 "Stainless Steel" 硬事实值
+        "Stainless Steel is the material of this bottle.",
+      ],
+      description: "The Owala bottle has stainless steel and 24 oz. The straw lid with push-open mechanism is a feature of this Water Bottle.",
+      backendSearchTerms: ["vacuum flask"],
+      usedFactIds: ["functional_feature", "care", "material"],
+      humanReviewRequired: true,
+    }));
+    const pr = await generateCreativeHandoffPreview(taskId, visitorContext());
+    const result = await generateListingDraftFromHandoff(taskId, visitorContext(), { requestId: "550e8400-e29b-41d4-a716-446655441972", expectedStorageVersion: pr.gate.storageVersion!, expectedHandoffRevision: pr.gate.currentHandoff!.currentRevision });
+    // 同一 material 硬事实进入两条 → 绑定拒绝 → 安全回退（不得 ai_optimized）
+    expect(result.draft?.draftKind).not.toBe("ai_optimized_listing");
+    expect(result.draft?.fallbackApplied).toBe(true);
+    expect((result.draft?.qualityIssues ?? []).join(" ")).toContain("核心事实重复");
+  }, 60_000);
+});
+
+
+  it("红：结构化回退（Provider 失败）的 keywords/backend 也不含竞品品牌", async () => {
+    const taskId = "sandbox-lfc-structured-brand";
+    await setupHandoff(taskId, true);
+    const brief = buildListingKeywordBrief({ primaryKeyword: "owala bottle", supportingKeywords: ["water bottle"], backendSearchTerms: ["owala cup"], source: "synthetic", capturedAt: NOW });
+    if (!brief.ok) throw new Error("brief build failed");
+    await mutateTaskResultJson({ context: visitorContext(), taskId, writer: "keyword-brief", async mutate(current) { return { result: { ...current, listingKeywordBrief: brief.brief as unknown as Record<string, unknown> }, value: { saved: true } }; } });
+    // Provider 失败 → 结构化回退
+    setTaskLinkedAiListingClientForTests(async () => { throw { code: "ai_provider_error", message: "off" }; });
+    const pr = await generateCreativeHandoffPreview(taskId, visitorContext());
+    const result = await generateListingDraftFromHandoff(taskId, visitorContext(), { requestId: "550e8400-e29b-41d4-a716-446655441973", expectedStorageVersion: pr.gate.storageVersion!, expectedHandoffRevision: pr.gate.currentHandoff!.currentRevision });
+    const d = result.draft!;
+    expect(d.draftKind).toBe("structured_listing_draft");
+    const allKw = [...(d.keywords ?? []), ...((d.backendSearchTerms ?? []) as string[])].join(" ").toLowerCase();
+    expect(allKw).not.toContain("owala");
+  }, 60_000);

@@ -22,6 +22,7 @@ import { buildListingPlan, type ListingPlan } from "@/lib/listingHandoff/listing
 import { buildListingReadiness } from "@/lib/listingHandoff/listingReadiness";
 import { parseListingKeywordBrief, buildListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
 import { buildAutoKeywordPlan } from "@/lib/listingHandoff/listingAutoKeywordPlan";
+import { extractKnownBrandsFromCompetitorTitles, extractBrandLikeTokensFromKeywords, filterKeywordsForListing, findCompetitorBrandMentions, type KeywordPolicyInput } from "@/lib/listingHandoff/listingKeywordPolicy";
 import { deriveUsedKeywordIds } from "@/lib/listingHandoff/listingKeywordProvenance";
 import { filterBackendSearchTerms } from "@/lib/listingHandoff/listingBackendTermSafety";
 import { validateAiListingPackDraft } from "@/lib/aiListingDraft";
@@ -150,12 +151,50 @@ function safeInt(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) ? value : null;
 }
 
+/** LISTING_FINAL_CLOSURE：竞品品牌/风险词在证据校验之前先被唯一策略出口过滤（人工 Brief 也不能绕过） */
+function keywordPolicyInputOf(generationInput: ListingGenerationInput): KeywordPolicyInput {
+  const ownBrand = generationInput.productFacts.find((f) => f.field === "brand")?.value ?? "";
+  const titles = (generationInput.creativeContext?.competitiveContext ?? []).map((entry) =>
+    typeof entry === "string" ? entry : String((entry as { note?: string }).note ?? ""),
+  );
+  return {
+    ownBrand,
+    knownBrands: dedupeTerms([
+      ...extractKnownBrandsFromCompetitorTitles(titles, { ownBrand }),
+      ...extractBrandLikeTokensFromKeywords(
+        (generationInput.creativeContext?.keywordCandidates ?? []).map((k) => typeof k === "string" ? k : String((k as { keyword?: string })?.keyword ?? "")),
+        { ownBrand },
+      ),
+    ]),
+  };
+}
+
+function policyFilterForListing(keywords: string[], generationInput: ListingGenerationInput): string[] {
+  return filterKeywordsForListing(keywords, keywordPolicyInputOf(generationInput)).accepted;
+}
+
+/** 读取边界也执行关键词策略：手工保存的 Brief 不能凭持久化路径绕过竞品/风险词过滤。 */
+function policyFilteredKeywordBrief<T extends { primaryKeyword: string; supportingKeywords: string[]; backendSearchTerms: string[] }>(
+  brief: T | null,
+  generationInput: ListingGenerationInput,
+): T | null {
+  if (!brief) return null;
+  const acceptedMain = policyFilterForListing([brief.primaryKeyword, ...brief.supportingKeywords], generationInput);
+  if (acceptedMain.length === 0) return null;
+  const acceptedBackend = policyFilterForListing(brief.backendSearchTerms, generationInput);
+  const [primaryKeyword, ...supportingKeywords] = acceptedMain;
+  return { ...brief, primaryKeyword, supportingKeywords, backendSearchTerms: acceptedBackend };
+}
+
 /** Keyword Brief 是 SEO 输入，不是事实来源；最终草稿中的每个 keyword 仍须能通过正式 Claim Evidence。 */
 function filterKeywordsByClaimEvidence(keywords: string[], generationInput: ListingGenerationInput, traceableTerms: string[] = []): string[] {
   // 轮 16：来自已保存 SellerSprite keywordEvidence 的 auto_suggested 词是可追溯 SEO 资料
   // （非 AI 自造、非商品事实声明），与"无证据的 brief 词不得进入草稿"不冲突。
   const traceable = new Set(traceableTerms.map((k) => k.trim().toLowerCase()));
+  // LISTING_FINAL_CLOSURE：唯一策略出口先行（竞品品牌/风险词直接拒绝；own_brand 不重复塞后台）
+  const policyAccepted = new Set(policyFilterForListing(keywords, generationInput).map((k) => k.trim().toLowerCase()));
   return keywords.filter((keyword) => {
+    if (!policyAccepted.has(keyword.trim().toLowerCase())) return false;
     if (traceable.has(keyword.trim().toLowerCase())) return true;
     return listingClaimsHaveEvidence(verifyListingClaims({
     source: "deterministic_composition_v1",
@@ -392,7 +431,14 @@ export type ListingGenerationOptions = {
  * 阶段C（锁内）：基于锁内快照二次验证（handoff active/revision/fingerprint/research）→
  *                幂等确认 → Claim Filter → 原子保存 aiListingPackSnapshot + listingHandoffBinding。
  */
-/** ListingPlan.v2：AI 输出与计划绑定校验（唯一入口；复用现有 Runtime 合同，不复制阈值） */
+/** ListingPlan.v2：AI 输出与计划绑定校验（唯一入口；复用现有 Runtime 合同，不复制阈值）
+ * LISTING_FINAL_CLOSURE 加强：
+ * - 每条命中自己的 planned fact（索引绑定不变）；
+ * - role 不重复（每条五点承担不同购买理由）；
+ * - 除品牌/商品类型等身份事实外，同一硬事实值不得成为两条五点的核心表达；
+ * - 仍接受 3–5 条（范围由 plan.bulletPlans 数量与 Runtime 阈值双重保证），不强凑数量。
+ */
+const IDENTITY_BIND_FIELDS = new Set(["brand", "product_type", "series_or_model"]);
 function aiBulletsBindToPlan(
   plan: ListingPlan,
   bullets: string[],
@@ -401,20 +447,43 @@ function aiBulletsBindToPlan(
   if (plan.status !== "ready") return { ok: false, issues: ["plan.status 非 ready"] };
   const used = plan.bulletPlans.length;
   if ((bullets ?? []).length !== used) return { ok: false, issues: ["bullets 数量与 bulletPlans 不一致：" + bullets.length + " vs " + used] };
+  if (bullets.length < 3 || bullets.length > 5) return { ok: false, issues: ["bullets 数量超出 3-5 条：" + bullets.length] };
   const issues: string[] = [];
+  const usedRoles = new Set<string>();
+  const factToBullets = new Map<string, number[]>();
   bullets.forEach((b, idx) => {
     const bp = plan.bulletPlans[idx];
     if (!bp) return;
     const lower = b.toLowerCase();
+    const role = bp.role ?? "core_outcome";
+    if (plan.schema === "listing-plan.v2" && usedRoles.has(role)) {
+      issues.push("bullet " + (idx + 1) + " 角色重复：" + role);
+    }
+    usedRoles.add(role);
     const factHit = bp.featureFactIds.some((fid) => {
       const f = facts.find((x) => x.field === fid);
       return f && f.value.trim() && lower.includes(f.value.trim().toLowerCase());
     });
     if (!factHit) issues.push("bullet " + (idx + 1) + " 未命中其计划事实");
+    // 非身份硬事实只要真实出现在正文就计入，不能在另一条五点借用后再次成为核心表达。
+    for (const f of facts) {
+      if (IDENTITY_BIND_FIELDS.has(f.field)) continue;
+      const value = String(f.value ?? "").trim();
+      if (!value || !lower.includes(value.toLowerCase())) continue;
+      const key = value.toLowerCase();
+      const occurrences = factToBullets.get(key) ?? [];
+      occurrences.push(idx + 1);
+      factToBullets.set(key, occurrences);
+    }
     for (const bad of bp.cannotSay ?? []) {
       if (bad && lower.includes(bad.toLowerCase())) issues.push("bullet " + (idx + 1) + " 含 cannotSay: " + bad);
     }
   });
+  for (const [value, bulletIndexes] of factToBullets) {
+    if (bulletIndexes.length > 1) {
+      issues.push("核心事实重复：" + value + " 出现在第 " + bulletIndexes.join("、") + " 条五点");
+    }
+  }
   return { ok: issues.length === 0, issues };
 }
 
@@ -647,11 +716,12 @@ export async function generateListingDraftFromHandoff(
       const autoBrief = keywordBrief
         ? null
         : (() => {
+            const keywordPolicy = keywordPolicyInputOf(generationInput);
             const auto = buildAutoKeywordPlan({
               keywordCandidates: generationInput.creativeContext?.keywordCandidates ?? [],
               confirmedFacts: generationInput.productFacts.map((f) => ({ field: f.field, label: f.label, value: f.value })),
-              ownBrand: generationInput.productFacts.find((f) => f.field === "brand")?.value ?? "",
-              knownBrands: [],
+              ownBrand: keywordPolicy.ownBrand,
+              knownBrands: keywordPolicy.knownBrands,
             });
             if (!auto.primaryKeyword) return null;
             const built = buildListingKeywordBrief({
@@ -678,7 +748,9 @@ export async function generateListingDraftFromHandoff(
           keywordBriefNeedsConfirm = true;
         }
       }
-      const effectiveKeywordBrief = keywordBrief && !keywordBriefNeedsConfirm ? keywordBrief : autoBrief;
+      const candidateKeywordBrief = keywordBrief && !keywordBriefNeedsConfirm ? keywordBrief : autoBrief;
+      // 已保存的手工 Brief 也必须在读取边界经过同一策略，避免持久化路径绕过品牌/风险词门禁。
+      const effectiveKeywordBrief = policyFilteredKeywordBrief(candidateKeywordBrief, generationInput);
       // 轮 16：auto_suggested 计划的全部词可追溯到已保存 keywordEvidence（同源安全集），
       // 通过 Claim Evidence 关键词过滤时放行；人工 Brief 词维持原有证据校验（零回归）。
       const autoTraceableTerms = effectiveKeywordBrief && effectiveKeywordBrief.source === "auto_suggested"
@@ -749,8 +821,9 @@ export async function generateListingDraftFromHandoff(
             titles: optimizedTitles,
             bullets: optimized.bullets,
             description: optimized.description,
-            keywords: dedupeTerms(optimizedKeywords),
-            backendSearchTerms: dedupeTerms(optimized.backendSearchTerms),
+            // LISTING_FINAL_CLOSURE：结构化回退同样经唯一关键词策略出口（竞品/未知品牌/风险词一律拒绝）
+            keywords: dedupeTerms(policyFilterForListing(optimizedKeywords, generationInput)),
+            backendSearchTerms: dedupeTerms(policyFilterForListing(optimized.backendSearchTerms, generationInput)),
             riskNotes: effectiveKeywordBrief
               ? ["结构化草稿基于已确认事实生成；所有表述仍需人工复核。"]
               : ["结构化草稿基于已确认事实生成；未进行关键词优化，所有表述仍需人工复核。"],
@@ -845,7 +918,8 @@ export async function generateListingDraftFromHandoff(
                 })),
               })
             : null;
-          const safeBackendTerms = backendSafety?.terms ?? [];
+          // 后台搜索词同样受唯一策略出口约束（竞品品牌、未知品牌和风险词不进搜索词）。
+          const safeBackendTerms = policyFilterForListing(backendSafety?.terms ?? [], generationInput);
           // AI 成功：映射到 draft + 服务器派生 keyword provenance + Claim Evidence + Quality
           const aiKeywords = [
             ...(plan.primaryKeyword ? [plan.primaryKeyword] : []),
@@ -890,12 +964,15 @@ export async function generateListingDraftFromHandoff(
           const aiTiered = classifyClaimTier(aiAllText, tierInput.map((f) => f.value));
           const blockedTexts = aiTiered.filter((r) => r.tier === "blocked").map((r) => r.text);
           const reviewTexts = aiTiered.filter((r) => r.tier === "review").map((r) => r.text);
-          const safeTitle = aiResult.data.title;
-          const safeBullets = aiResult.data.bullets.filter((b: string) => !blockedTexts.some((x) => b.includes(x)));
-          const safeDescription = aiResult.data.description && !blockedTexts.some((x) => String(aiResult.data.description).includes(x))
+          // LISTING_FINAL_CLOSURE：blocked 与 review 同待遇——任一条命中即从正式字段移除；
+          // review 句只保留在 humanReviewClaims（待人工确认），不得停留在 title/bullets/description。
+              const removedTierTexts = [...blockedTexts, ...reviewTexts];
+          const safeTitle = !removedTierTexts.some((x) => String(aiResult.data.title ?? "").includes(x)) ? aiResult.data.title : "";
+          const safeBullets = aiResult.data.bullets.filter((b: string) => !removedTierTexts.some((x) => b.includes(x)));
+          const safeDescription = aiResult.data.description && !removedTierTexts.some((x) => String(aiResult.data.description).includes(x))
             ? aiResult.data.description
             : "";
-          const safeAiDraft = {
+      const safeAiDraft = {
             ...aiDraft,
             titles: [safeTitle],
             bullets: safeBullets,
@@ -936,7 +1013,12 @@ export async function generateListingDraftFromHandoff(
           const aiQuality = aiFiltered && claimsAcceptable && aiRuntimeContract?.ok ? { ok: true, blockingIssues: [], issues: [], advisories: [] } : { ok: false, blockingIssues: (aiRuntimeContract?.issues ?? []), issues: (aiRuntimeContract?.issues ?? []), advisories: [] };
           const planBind = aiBulletsBindToPlan(plan, safeBullets, generationInput.productFacts);
           const planBindAcceptable = planBind.ok;
-          if (aiSchema.ok && aiFiltered && aiEvidence && unresolvedBlocked !== null && unresolvedBlocked.length === 0 && aiQuality?.ok && aiRuntimeContract?.ok && planBindAcceptable) {
+          const competitorBrandMentions = findCompetitorBrandMentions(
+            [safeTitle, ...safeBullets, safeDescription],
+            keywordPolicyInputOf(generationInput),
+          );
+          const brandPolicyAcceptable = competitorBrandMentions.length === 0;
+          if (aiSchema.ok && aiFiltered && aiEvidence && unresolvedBlocked !== null && unresolvedBlocked.length === 0 && aiQuality?.ok && aiRuntimeContract?.ok && planBindAcceptable && brandPolicyAcceptable) {
             // R1.6：filterListingClaims 重建对象不含后端元数据字段 → 显式补回
             draftKind = "ai_optimized_listing";
             finalDraft = {
@@ -962,13 +1044,27 @@ export async function generateListingDraftFromHandoff(
             // 纯结构/质量不达标（无内容被拦）按结构/质量回退；两者兼具优先报 claim。
             const contractFailed = aiRuntimeContract !== null && !aiRuntimeContract.ok;
             const claimFailed = blockedTexts.length > 0;
+            const planBindFailed = !planBind.ok;
+            const planBindIssue = planBind.issues.length > 0
+              ? "AI 文案未匹配卖点策略：" + planBind.issues.join("；")
+              : "AI 文案未匹配卖点策略。";
             applyStructuredFallback(
               claimFailed
                 ? "AI 文案包含未经确认的信息，已保留安全草稿。"
-                : (contractFailed ? "AI 文案未通过运行时质量合同（8-30 词完整句/事实锚点/品牌去重）。" : "AI 文案未通过结构或质量校验，已保留安全草稿。"),
+                : (!brandPolicyAcceptable
+                  ? "AI 文案包含当前竞品品牌，已保留安全草稿。"
+                  : (planBindFailed
+                  ? "AI 文案重复使用商品事实或未遵循卖点策略，已保留安全草稿。"
+                  : (contractFailed ? "AI 文案未通过运行时质量合同（8-30 词完整句/事实锚点/品牌去重）。" : "AI 文案未通过结构或质量校验，已保留安全草稿。"))),
               claimFailed ? "listing_claims_unsupported" : "listing_output_invalid",
-              claimFailed ? "AI 最终草稿未通过 Claim Evidence" : "AI 最终草稿未通过 Schema/Quality",
+              claimFailed
+                ? "AI 最终草稿未通过 Claim Evidence"
+                : (!brandPolicyAcceptable
+                  ? "AI 最终草稿包含竞品品牌：" + competitorBrandMentions.join("、")
+                  : (planBindFailed ? planBindIssue : "AI 最终草稿未通过 Schema/Quality")),
             );
+            // LISTING_FINAL_CLOSURE：回退稿同样保留确认前被移除的 review 句（仅待确认区展示）
+            if (reviewTexts.length > 0) { finalDraft.humanReviewClaims = reviewTexts.slice(0, 5); }
             if (aiRuntimeContract && !aiRuntimeContract.ok) {
               const rejected = asRejected(aiRuntimeContract.issues, aiResult.data.bullets);
               if (rejected.length > 0) finalDraft.rejectedListingSentences = rejected.slice(0, 5);

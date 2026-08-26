@@ -78,3 +78,34 @@ describe("FactCandidateReview Select All（契约⑥）", () => {
     expect(selectAllState(new Set(), new Set())).toBe("none");
   });
 });
+
+
+// ── LISTING_FINAL_CLOSURE：高风险候选不得被一键全选自动选中 ──
+describe("FactCandidateReview 高风险候选全选排除（契约收口）", () => {
+  const candidates = [
+    { candidateId: "brand", field: "brand" },
+    { candidateId: "material", field: "material" },
+    { candidateId: "capacity", field: "capacity" },
+    { candidateId: "functional_feature", field: "functional_feature" },
+    { candidateId: "care", field: "care" },
+    { candidateId: "construction", field: "construction" },
+    { candidateId: "insulation", field: "insulation" },
+    { candidateId: "certification", field: "certification" },
+  ];
+
+  it("红：selectable 排除高风险字段（functional_feature/care/insulation/认证）→ 全选不自动选中", () => {
+    const selectable = selectableCandidateIds(candidates as never);
+    expect(selectable.has("functional_feature")).toBe(false);
+    expect(selectable.has("care")).toBe(false);
+    expect(selectable.has("insulation")).toBe(false);
+    expect(selectable.has("certification")).toBe(false);
+    // 普通身份/规格事实保持可选
+    expect(selectable.has("brand")).toBe(true);
+    expect(selectable.has("material")).toBe(true);
+    expect(selectable.has("capacity")).toBe(true);
+    // 全选状态：仅普通项为 all
+    const ordinary = ["brand", "material", "capacity"];
+    expect(selectAllState(new Set(ordinary), selectable)).toBe("all");
+    expect(selectAllState(new Set(["brand"]), selectable)).toBe("some");
+  });
+});

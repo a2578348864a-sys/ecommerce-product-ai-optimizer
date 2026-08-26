@@ -447,8 +447,14 @@ export function BrowserEvidenceSection({
 
   return (
     <section id="workbench-browser-evidence" data-testid="workbench-browser-evidence" className="scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-4">
+      <details id="amazon-source-evidence" data-testid="amazon-source-evidence" className="group">
+        <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 rounded-lg px-1 py-1 text-sm font-bold text-slate-900 marker:hidden">
+          <span>Amazon 原始页面证据</span>
+          <span className="text-xs font-normal text-slate-500">来源资料 · 默认收起，供核对与采集</span>
+        </summary>
+        <div className="mt-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-bold text-slate-900">Amazon 商品资料</h3>
+        <p className="text-xs text-slate-500">原始页面快照仅用于核对来源，不会自动变成已确认商品事实。</p>
         <button
           type="button"
           disabled={collecting || saving || !canCollect}
@@ -570,6 +576,8 @@ export function BrowserEvidenceSection({
         </button>
       </div>
       {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
+        </div>
+      </details>
     </section>
   );
 }

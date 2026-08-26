@@ -141,11 +141,11 @@ async function saveBrief(taskId: string) {
 const GENERIC_AI_OUTPUT = {
   title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
   bullets: [
-    "The straw lid with push-open mechanism keeps this Water Bottle easy to use.",
-    "Easy cleaning matches the dishwasher-safe removable parts option for this Water Bottle.",
-    "Available construction with the Stainless Steel of this Water Bottle.",
+    "The straw lid with push-open mechanism is a feature of this Water Bottle.",
+    "The dishwasher-safe removable parts option is included for this Water Bottle.",
+    "Stainless Steel is the material of this Water Bottle.",
   ],
-  description: "The Owala bottle with stainless steel and 24 oz for easy use. The straw lid with push-open mechanism keeps this Water Bottle easy to use.",
+  description: "The Owala bottle has stainless steel and 24 oz. The straw lid with push-open mechanism is a feature of this Water Bottle.",
   backendSearchTerms: ["vacuum flask"],
   humanReviewRequired: true,
 };
@@ -225,9 +225,9 @@ describe("R1.2 Fact Reference 预防性测试（模拟真实 LLM 行为，不调
     const result = await generateWithAi("sandbox-r1-2-fact-reorder", async () => ({
       ...GENERIC_AI_OUTPUT,
       bullets: [
-        "Easy cleaning matches the dishwasher-safe removable parts option for this Water Bottle.",
-        "The straw lid with push-open mechanism keeps this Water Bottle easy to use.",
-        "Available construction with the Stainless Steel of this Water Bottle.",
+        "The dishwasher-safe removable parts option is included for this Water Bottle.",
+        "The straw lid with push-open mechanism is a feature of this Water Bottle.",
+        "Stainless Steel is the material of this Water Bottle.",
       ],
       usedFactIds: ["functional_feature", "care", "material"],
     }));

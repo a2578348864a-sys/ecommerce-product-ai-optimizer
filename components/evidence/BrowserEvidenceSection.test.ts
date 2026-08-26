@@ -174,6 +174,21 @@ describe("BrowserEvidenceSection rendering", () => {
     expect(html).toContain("B0A1B2C3D4");
   });
 
+  it("keeps Amazon 原始页面证据默认收起，但保留采集入口", () => {
+    const element = createElement(BrowserEvidenceSection, {
+      taskId: "sandbox_task_test",
+      evidence: null,
+      taskAsin: "B0A1B2C3D4",
+      storageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-06T00:00:00.000Z" },
+      onChanged: () => undefined,
+    });
+    const html = renderToStaticMarkup(element);
+    expect(html).toContain('<details id="amazon-source-evidence" data-testid="amazon-source-evidence"');
+    expect(html).not.toContain('<details id="amazon-source-evidence" data-testid="amazon-source-evidence" class="group" open=""');
+    expect(html).toContain("Amazon 原始页面证据");
+    expect(html).toContain("采集页面证据");
+  });
+
   it("warns when the task has no bound ASIN", () => {
     const element = createElement(BrowserEvidenceSection, {
       taskId: "sandbox_task_test",

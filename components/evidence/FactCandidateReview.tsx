@@ -94,8 +94,27 @@ export function pruneSelectionToAlive(
  * 候选均为「已验证/未确认/未阻断/无冲突」的待确认项（服务端已保证），
  * 故 selectable = 当前候选集合；已确认项不在候选列表，天然不参与全选。
  */
-export function selectableCandidateIds(candidates: ReadonlyArray<Pick<FactCandidateView, "candidateId">>): Set<string> {
-  return new Set(candidates.map((c) => c.candidateId));
+/** LISTING_FINAL_CLOSURE：高风险候选（功能/清洁/保温/认证/性能/时长类）不得被一键全选自动选中，必须逐项人工确认 */
+export const HIGH_RISK_FACT_FIELDS = new Set<string>([
+  "functional_feature",
+  "care",
+  "cleaning",
+  "insulation",
+  "certification",
+  "performance",
+  "duration",
+  "compatibility",
+  "operation",
+  "construction",
+]);
+
+export function selectableCandidateIds(candidates: ReadonlyArray<Pick<FactCandidateView, "candidateId"> & { field?: string }>): Set<string> {
+  const out = new Set<string>();
+  for (const c of candidates) {
+    if (c.field && HIGH_RISK_FACT_FIELDS.has(c.field)) continue;
+    out.add(c.candidateId);
+  }
+  return out;
 }
 
 /** 全选状态：all=全部可选已选中；some=部分选中（indeterminate）；none=未选中 */
@@ -138,6 +157,14 @@ export function FactCandidateReview({
   // V3 Final PHASE 1：✨ 智能补齐商品资料（采集 Amazon 商品规格 → 生成候选 → 人工确认）
   const [recovering, setRecovering] = useState(false);
 
+  const openAmazonSourceEvidence = useCallback(() => {
+    const target = document.getElementById("amazon-source-evidence");
+    if (!(target instanceof HTMLDetailsElement)) return;
+    target.open = true;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    target.focus();
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -151,7 +178,7 @@ export function FactCandidateReview({
         | { ok: true; data: { candidates: FactCandidateView[]; confirmed: ConfirmedFactView[] } }
         | { ok: false; error?: { message?: string } };
       if (!res.ok || !json.ok) {
-        setError((json as { error?: { message?: string } }).error?.message ?? "无法读取商品事实候选。");
+        setError((json as { error?: { message?: string } }).error?.message ?? "无法读取待确认商品事实。");
         return;
       }
       setCandidates(json.data.candidates);
@@ -162,7 +189,7 @@ export function FactCandidateReview({
       for (const c of json.data.confirmed) alive.add(c.candidateId);
       setSelected((prev) => pruneSelectionToAlive(prev, alive));
     } catch {
-      setError("无法读取商品事实候选，请重试。");
+      setError("无法读取待确认商品事实，请重试。");
     } finally {
       setLoading(false);
     }
@@ -394,7 +421,7 @@ export function FactCandidateReview({
   if (loading && candidates === null && confirmed === null) {
     return (
       <div id="fact-candidate-review" className="mt-4 scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500" data-testid="fact-candidates-loading">
-        <Loader2 className="mr-1 inline size-4 animate-spin" /> 正在从研究证据提取商品事实候选…
+        <Loader2 className="mr-1 inline size-4 animate-spin" /> 正在从研究证据整理待确认商品事实…
       </div>
     );
   }
@@ -403,7 +430,7 @@ export function FactCandidateReview({
   if (total === 0 && !error) {
     return (
       <div id="fact-candidate-review" className="mt-4 scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500" data-testid="fact-candidates-empty">
-        暂无可提取的商品事实候选（来源：SellerSprite 商品数据 / Amazon 页面证据 / 商品标题）。
+        暂无待确认商品事实（来源：SellerSprite 商品数据 / Amazon 原始页面证据 / 商品标题）。
       </div>
     );
   }
@@ -412,7 +439,7 @@ export function FactCandidateReview({
     <section id="fact-candidate-review" className="mt-4 scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-4" data-testid="fact-candidate-review">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-bold text-slate-900">
-          商品事实候选 <span className="ml-1 rounded-md bg-indigo-50 px-1.5 py-0.5 text-[11px] font-semibold text-indigo-700">来自研究证据 · 人工确认</span>
+          商品事实确认 <span className="ml-1 rounded-md bg-indigo-50 px-1.5 py-0.5 text-[11px] font-semibold text-indigo-700">来自研究证据 · 人工确认</span>
         </h3>
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -524,7 +551,7 @@ export function FactCandidateReview({
                   className="size-4 rounded border-slate-300 text-indigo-600"
                   aria-label="全选候选事实"
                 />
-                候选（{candidates.length}，全选/勾选后批量确认）
+                候选（{candidates.length}，高风险属性需逐项勾选确认）
               </label>
             );
           })()}
@@ -562,6 +589,11 @@ export function FactCandidateReview({
                 <span className="shrink-0 text-[11px] text-slate-400" title={item.sourceRef}>
                   <Sparkles className="mr-0.5 inline size-3" />
                   {SOURCE_LABELS[item.sourceKind] ?? item.sourceKind}
+                  {item.sourceKind === "amazon_browser_evidence" ? (
+                    <button type="button" onClick={openAmazonSourceEvidence} className="ml-1 underline hover:text-slate-700" data-testid="open-amazon-source-evidence">
+                      查看原始证据
+                    </button>
+                  ) : null}
                 </span>
               </li>
               ));
@@ -603,6 +635,11 @@ export function FactCandidateReview({
                       <span className="shrink-0 text-[11px] text-slate-400" title={item.sourceRef}>
                         <Sparkles className="mr-0.5 inline size-3" />
                         {SOURCE_LABELS[item.sourceKind] ?? item.sourceKind}
+                        {item.sourceKind === "amazon_browser_evidence" ? (
+                          <button type="button" onClick={openAmazonSourceEvidence} className="ml-1 underline hover:text-slate-700" data-testid="open-amazon-source-evidence">
+                            查看原始证据
+                          </button>
+                        ) : null}
                       </span>
                     </li>
                   ))}
