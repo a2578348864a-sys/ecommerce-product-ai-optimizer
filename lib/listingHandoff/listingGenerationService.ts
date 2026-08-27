@@ -521,12 +521,16 @@ export type ListingGenerationOptions = {
  * - 仍接受 3–5 条（范围由 plan.bulletPlans 数量与 Runtime 阈值双重保证），不强凑数量。
  */
 const IDENTITY_BIND_FIELDS = new Set(["brand", "product_type", "series_or_model"]);
-function aiBulletsBindToPlan(
+/** 导出仅供合同测试直测状态门禁语义（防御性状态 needs_facts/needs_review 的可达报警面）；行为与主链完全一致 */
+export function aiBulletsBindToPlan(
   plan: ListingPlan,
   bullets: string[],
   facts: Array<{ field: string; label: string; value: string }>,
 ): { ok: boolean; issues: string[] } {
-  if (plan.status !== "ready") return { ok: false, issues: ["plan.status 非 ready"] };
+  // ListingPlan.v2.3：needs_keywords 表示“不能做关键词优化”，不再拒绝采用合格 AI 文案；needs_facts/needs_review 仍阻断。
+  if (plan.status === "needs_facts" || plan.status === "needs_review") {
+    return { ok: false, issues: ["plan.status " + plan.status + " 不可采用文案"] };
+  }
   const used = plan.bulletPlans.length;
   if ((bullets ?? []).length !== used) return { ok: false, issues: ["bullets 数量与 bulletPlans 不一致：" + bullets.length + " vs " + used] };
   if (bullets.length < 3 || bullets.length > 5) return { ok: false, issues: ["bullets 数量超出 3-5 条：" + bullets.length] };

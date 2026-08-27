@@ -45,7 +45,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function normalizedText(value: unknown, limit: number): string | null {
   if (value === undefined || value === null) return "";
   if (typeof value !== "string") return null;
-  return value.normalize("NFC").trim().replace(/\s+/g, " ").slice(0, limit);
+  const normalized = value.normalize("NFC").trim().replace(/\s+/g, " ");
+  return normalized.length <= limit ? normalized : null;
 }
 
 /**
@@ -59,8 +60,17 @@ export function buildListingBrief(value: unknown): ListingBriefResult {
   }
 
   const allowed = new Set<keyof ListingBriefFields>(Object.keys(FIELD_LIMITS) as Array<keyof ListingBriefFields>);
-  if (Object.keys(value).some((key) => !allowed.has(key as keyof ListingBriefFields))) {
-    return { ok: false, code: "invalid_listing_brief", message: "商品创作补充包含不支持的字段。" };
+  for (const key of Object.keys(value)) {
+    // 唯一合法 schema 允许重复解析（持久化往返）；其他 schema 一律拒绝，避免绕行或旧格式文本。
+    if (key === "schema") {
+      if (value.schema !== "listing-creation-brief.v1") {
+        return { ok: false, code: "invalid_listing_brief", message: "商品创作补充 schema 不支持。" };
+      }
+      continue;
+    }
+    if (!allowed.has(key as keyof ListingBriefFields)) {
+      return { ok: false, code: "invalid_listing_brief", message: "商品创作补充包含不支持的字段。" };
+    }
   }
 
   const brief: ListingBrief = { schema: "listing-creation-brief.v1" };

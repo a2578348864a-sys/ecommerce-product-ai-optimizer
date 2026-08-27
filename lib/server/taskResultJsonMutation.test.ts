@@ -152,4 +152,76 @@ describe("task resultJson namespace mutation", () => {
     const error = new TaskResultJsonMutationError("task_result_conflict", 409, "conflict");
     expect(error).toMatchObject({ code: "task_result_conflict", status: 409, name: "TaskResultJsonMutationError" });
   });
+
+  // ── listing-creation-brief：save_listing_brief 专用写者的真实 namespace 合同（不经任何 mock） ──
+  it("lets listing-creation-brief create and update listingCreationBrief while preserving every other namespace", async () => {
+    const current = protectedResult();
+    const withBrief: Record<string, unknown> = {
+      ...current,
+      listingKeywordBrief: { primaryKeyword: "keep-kw" },
+    };
+    const currentJson = JSON.stringify(withBrief);
+    const next = await applyTaskResultJsonMutation({
+      currentResultJson: currentJson,
+      writer: "listing-creation-brief",
+      snapshot: snapshot(currentJson),
+      mutate: (document) => ({
+        result: { ...document, listingCreationBrief: { schema: "listing-creation-brief.v1", coreSellingPoint: "updated" } },
+        value: "saved",
+        updatedAt: "2026-08-03T01:00:00.000Z",
+      }),
+    });
+    const saved = JSON.parse(next.resultJson);
+    expect(saved.listingCreationBrief).toEqual({ schema: "listing-creation-brief.v1", coreSellingPoint: "updated" });
+    expect(saved.listingKeywordBrief).toEqual({ primaryKeyword: "keep-kw" });
+    expect(saved.researchRecord).toEqual(current.researchRecord);
+    expect(saved.researchVerification).toEqual(current.researchVerification);
+    expect(saved.unknownNamespace).toEqual(current.unknownNamespace);
+    expect(saved.productLifecycle).toEqual(current.productLifecycle);
+    expect(saved.listingPackSnapshot).toEqual(current.listingPackSnapshot);
+    expect(saved.aiListingPackSnapshot).toEqual(current.aiListingPackSnapshot);
+    expect(saved.aiImageDraftSnapshot).toEqual(current.aiImageDraftSnapshot);
+    expect(next.decisionStatus).toBeUndefined();
+  });
+
+  it("lets listing-creation-brief delete its own listingCreationBrief via destructuring without leaving an own property", async () => {
+    const current = protectedResult();
+    const withBrief: Record<string, unknown> = {
+      ...current,
+      listingCreationBrief: { schema: "listing-creation-brief.v1", coreSellingPoint: "to-remove" },
+    };
+    const currentJson = JSON.stringify(withBrief);
+    const next = await applyTaskResultJsonMutation({
+      currentResultJson: currentJson,
+      writer: "listing-creation-brief",
+      snapshot: snapshot(currentJson),
+      mutate: (document) => {
+        const { listingCreationBrief: _removed, ...rest } = document;
+        return { result: rest, value: "saved", updatedAt: "2026-08-03T01:00:00.000Z" };
+      },
+    });
+    const saved = JSON.parse(next.resultJson);
+    expect(Object.prototype.hasOwnProperty.call(saved, "listingCreationBrief")).toBe(false);
+    expect(saved.researchRecord).toEqual(current.researchRecord);
+    expect(saved.unknownNamespace).toEqual(current.unknownNamespace);
+  });
+
+  it.each([
+    ["listingKeywordBrief", { primaryKeyword: "hijack" }],
+    ["aiListingPackSnapshot", { version: 99 }],
+    ["unownedNewNamespace", { intrude: true }],
+  ])("rejects listing-creation-brief touching %s with namespace_contract_invalid/500 and leaves the input untouched", async (intruder, value) => {
+    const current = protectedResult();
+    const currentJson = JSON.stringify(current);
+    await expect(applyTaskResultJsonMutation({
+      currentResultJson: currentJson,
+      writer: "listing-creation-brief",
+      snapshot: snapshot(currentJson),
+      mutate: (document) => ({
+        result: { ...document, listingCreationBrief: { schema: "listing-creation-brief.v1" }, [intruder]: value },
+        value: "saved",
+      }),
+    })).rejects.toMatchObject({ code: "namespace_contract_invalid", status: 500 });
+    expect(currentJson).toBe(JSON.stringify(current));
+  });
 });

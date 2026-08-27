@@ -35,7 +35,8 @@ export type TaskResultJsonWriter =
   | "review-evidence"
   | "sourcing-evidence"
   | "research-save"
-  | "fact-candidates";
+  | "fact-candidates"
+  | "listing-creation-brief";
 
 const OWNED_NAMESPACES: Record<TaskResultJsonWriter, readonly string[]> = {
   "research-decision": ["researchRecord", "researchVerification"],
@@ -50,6 +51,8 @@ const OWNED_NAMESPACES: Record<TaskResultJsonWriter, readonly string[]> = {
   "fact-candidates": ["factCandidates"],
   "creative-handoff": ["creativeHandoff", "creativeHandoffRequestLedger"],
   "keyword-brief": ["listingKeywordBrief"],
+  // Listing 创作补充：save_listing_brief 专用 writer 独占 listingCreationBrief，不并入 keyword-brief/creative-handoff。
+  "listing-creation-brief": ["listingCreationBrief"],
   "visual-reference": ["sourceMeta"],
   "competitor-evidence": ["competitorEvidence"],
   "keyword-evidence": ["keywordEvidence"],

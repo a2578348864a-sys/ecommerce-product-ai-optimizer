@@ -40,6 +40,14 @@ const ALLOWED_GENERATE_FIELDS = new Set([
   "keywordBrief",
   "listingBrief",
 ]);
+const ALLOWED_LISTING_BRIEF_FIELDS = new Set([
+  "action",
+  "requestId",
+  "expectedStorageVersion",
+  "expectedHandoffRevision",
+  "confirmed",
+  "listingBrief",
+]);
 const ALLOWED_KEYWORD_BRIEF_FIELDS = new Set([
   "action",
   "expectedStorageVersion",
@@ -250,6 +258,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const { buildListingReadiness } = await import("@/lib/listingHandoff/listingReadiness");
     const { parseListingKeywordBrief } = await import("@/lib/listingHandoff/listingKeywordBrief");
     const keywordBrief = parseListingKeywordBrief(gate.keywordBriefRaw);
+    const listingBriefParsed = buildListingBrief(gate.listingCreationBriefRaw);
     const readiness = handoff
       ? buildListingReadiness({
           confirmedFacts: handoff.versions[handoff.versions.length - 1].confirmedFacts,
@@ -291,6 +300,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             ? { pass: true, reason: null }
             : { pass: false, reason: claimPreflight.reason }
           : null,
+        listingBrief: listingBriefParsed.ok ? listingBriefParsed.brief : null,
         keywordBriefSummary: keywordBrief
           ? { primaryKeyword: keywordBrief.primaryKeyword, source: keywordBrief.source, backendTermsCount: keywordBrief.backendSearchTerms.length }
           : null,
@@ -359,6 +369,64 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         },
       });
       return NextResponse.json({ ok: true, data: { saved: true } });
+    } catch (err) {
+      if (err instanceof TaskResultJsonMutationError) return errorResponse(err.status, err.code, err.message);
+      throw err;
+    }
+  }
+
+  if (body.action === "save_listing_brief") {
+    for (const key of Object.keys(body)) {
+      if (!ALLOWED_LISTING_BRIEF_FIELDS.has(key)) return errorResponse(400, "unknown_field", `未知字段: ${key}`);
+    }
+    if (body.confirmed !== true) return errorResponse(400, "confirmation_required", "请确认后提交。");
+    const expectedStorageVersion = parseStorageVersion(body.expectedStorageVersion);
+    if (!expectedStorageVersion) return errorResponse(400, "invalid_storage_version", "内容刚在其他位置更新，请刷新后重试。");
+    const handoffRevision = body.expectedHandoffRevision;
+    if (typeof handoffRevision !== "number" || !Number.isSafeInteger(handoffRevision) || handoffRevision <= 0) {
+      return errorResponse(400, "invalid_handoff_revision", "交接版本无效。");
+    }
+    const briefResult = buildListingBrief(body.listingBrief);
+    if (!briefResult.ok) return errorResponse(400, briefResult.code, briefResult.message);
+    const { ctx, error } = getAuth(req, id, body);
+    if (error) return error;
+    const liveGate = await checkCreativeHandoffGate(id, ctx!);
+    const liveRevision = liveGate.currentHandoff?.currentRevision ?? null;
+    if (liveRevision === null || Number(liveRevision) !== handoffRevision) {
+      return errorResponse(409, "handoff_revision_conflict", "创作交接版本已变化，请刷新后重新保存。");
+    }
+    try {
+      const mutated = await mutateTaskResultJson<{ saved: boolean }>({
+        context: ctx!,
+        taskId: id,
+        writer: "listing-creation-brief",
+        async mutate(current, snapshot) {
+          if (!snapshotVersionMatchesRoute(snapshot, expectedStorageVersion)) {
+            throw new TaskResultJsonMutationError("task_result_conflict", 409, "任务已在其他页面更新，请刷新后重试。");
+          }
+          if (briefResult.brief === null) {
+            const { listingCreationBrief: _removedLayout, ...rest } = current;
+            return { result: rest, value: { saved: true } };
+          }
+          return {
+            result: { ...current, listingCreationBrief: briefResult.brief as unknown as Record<string, unknown> },
+            value: { saved: true },
+          };
+        },
+      });
+      const freshHash = createHash("sha256").update(mutated.resultJson, "utf8").digest("hex");
+      return NextResponse.json({
+        ok: true,
+        data: {
+          saved: true,
+          listingBrief: briefResult.brief,
+          storageVersion: {
+            resultJsonHash: freshHash,
+            updatedAt: String(mutated.updatedAt ?? ""),
+          },
+          currentHandoffRevision: liveRevision,
+        },
+      });
     } catch (err) {
       if (err instanceof TaskResultJsonMutationError) return errorResponse(err.status, err.code, err.message);
       throw err;

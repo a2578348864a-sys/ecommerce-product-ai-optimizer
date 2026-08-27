@@ -8,6 +8,46 @@ import {
   type ListingGenerationInput,
 } from "@/lib/listingHandoff/listingGenerationInput";
 import { buildListingClaimEvidenceIndex, verifyListingClaims } from "@/lib/listingHandoff/listingClaimEvidenceResolver";
+
+describe("LISTING_CREATION_BRIEF persisted contract", () => {
+  const FIELDS = { coreSellingPoint: "便携补水", targetAudience: "通勤", useScenario: "旅行", differentiation: "轻量", contentEmphasis: "舒适" };
+  it("round-trips with the single legal schema", () => {
+    const first = buildListingBrief({ ...FIELDS });
+    expect(first.ok).toBe(true);
+    const second = buildListingBrief(first.ok ? first.brief : null);
+    expect(second.ok).toBe(true);
+    expect(second.ok && second.brief).toEqual(first.ok ? first.brief : null);
+  });
+  it("rejects any other schema", () => {
+    const r = buildListingBrief({ schema: "listing-creation-brief.v2", ...FIELDS });
+    expect(r.ok).toBe(false);
+  });
+  it("rejects unknown fields", () => {
+    const r = buildListingBrief({ ...FIELDS, internalId: "secret" });
+    expect(r.ok).toBe(false);
+  });
+  it("rejects non-string values", () => {
+    const r = buildListingBrief({ ...FIELDS, coreSellingPoint: ["array"] });
+    expect(r.ok).toBe(false);
+  });
+  it("rejects over-limit instead of silently truncating", () => {
+    const r = buildListingBrief({ ...FIELDS, coreSellingPoint: "x".repeat(301) });
+    expect(r.ok).toBe(false);
+  });
+  it("returns brief null for empty object", () => {
+    const r = buildListingBrief({});
+    expect(r.ok).toBe(true);
+    expect(r.ok && r.brief).toBeNull();
+  });
+  it("rejects unsupported claims and never mutates input", () => {
+    const input = { ...FIELDS, differentiation: "guaranteed best" };
+    const snapshot = JSON.stringify(input);
+    const r = buildListingBrief(input);
+    expect(r.ok).toBe(false);
+    expect(JSON.stringify(input)).toBe(snapshot);
+  });
+});
+
 import { buildTaskLinkedAiPrompt } from "@/lib/server/taskLinkedAiListing";
 
 function goldenInput(): ListingGenerationInput {

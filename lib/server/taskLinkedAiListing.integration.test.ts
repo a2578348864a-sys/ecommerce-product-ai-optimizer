@@ -24,7 +24,8 @@ import { setEnglishRendererForTests } from "@/lib/listingHandoff/listingEnglishR
 import { generateCreativeHandoffPreview } from "@/lib/server/productCreativeHandoffPreview";
 import { createOrAppendCreativeHandoff } from "@/lib/server/productCreativeHandoffPersistence";
 import { buildRequestFingerprint } from "@/lib/creativeHandoffRequestLedger";
-import { generateListingDraftFromHandoff, deriveKeywordAdoptionTrace } from "@/lib/listingHandoff/listingGenerationService";
+import { generateListingDraftFromHandoff, deriveKeywordAdoptionTrace, aiBulletsBindToPlan } from "@/lib/listingHandoff/listingGenerationService";
+import { buildListingPlan, type ListingPlanStatus } from "@/lib/listingHandoff/listingPlan";
 import { setTaskLinkedAiListingClientForTests, type TaskLinkedAiListingClient } from "@/lib/server/taskLinkedAiListing";
 import { createInitialProductResearchRecord, createProductResearchVerification, buildProductResearchHash, PRODUCT_RESEARCH_HASH_SCHEMA } from "@/lib/productResearchRecord";
 import { buildConfirmableCandidates } from "@/lib/productCreativeHandoffConfirmation";
@@ -61,7 +62,7 @@ function visitorContext() {
   return { mode: "demo" as const, token: "tok", demoAccessId: DEMO, isActive: true, isExpired: false, remainingAiCalls: 10 };
 }
 
-function researchDoc(candidateId = "candidate-quality2") {
+function researchDoc(candidateId = "candidate-quality2", extraNamespaces?: Record<string, unknown>) {
   const verification = createProductResearchVerification({
     schema: PRODUCT_RESEARCH_HASH_SCHEMA, candidateId, runId: "run-q2",
     contextHash: "a".repeat(64), inputHash: "b".repeat(64), resultHash: "c".repeat(64),
@@ -79,7 +80,7 @@ function researchDoc(candidateId = "candidate-quality2") {
   const agentOutput = { version: "agent-output-v1", generatedAt: NOW, sourcingSnapshot: { supplierConclusion: "S", sourceSignals: [], priceSignals: [], availabilitySignals: [], assumptions: [], missingInfo: [], confidence: "medium" }, riskSnapshot: { riskLevel: "low", riskFlags: [], complianceConcerns: [], ipConcerns: [], logisticsConcerns: [], safetyConcerns: [], riskReason: "ok", needsManualReview: false }, summarySnapshot: { decision: "recommended", decisionReason: "G", targetUser: "c", sellingPoints: ["L"], concerns: [], confidence: "medium" }, listingSnapshot: { titleDraft: "T", bulletDrafts: ["E"], keywordHints: [], imageIdeas: [], complianceNotes: [], missingInputs: [] }, nextActionSnapshot: { primaryAction: "prepare_listing", actionLabel: "l", checklist: [], blockingIssues: [], suggestedOwnerStep: "x" }, humanReviewSnapshot: { required: false, reasons: [], reviewFocus: [], defaultStatus: "not_required" }, fallbackUsed: false, warnings: [] };
   return JSON.stringify({ type: "workflow", researchRecord, researchVerification: verification,
     // V3 Completion Authority：正式完成标记（creative_ready 仅 Human Decision；完成需 research-completion.v1）
-    researchCompletion: { schema: "research-completion.v1", status: "completed", completedAt: "2026-08-05T00:00:00.000Z", decisionId: "11111111-1111-4111-8111-111111111111", revision: 1, finalStatus: "creative_ready" }, candidateAnalysisContext: context, agentOutputSnapshot: agentOutput });
+    researchCompletion: { schema: "research-completion.v1", status: "completed", completedAt: "2026-08-05T00:00:00.000Z", decisionId: "11111111-1111-4111-8111-111111111111", revision: 1, finalStatus: "creative_ready" }, candidateAnalysisContext: context, agentOutputSnapshot: agentOutput, ...(extraNamespaces ?? {}) });
 }
 
 function seedTask(taskId: string, resultJson: string) {
@@ -94,8 +95,8 @@ const FUNCTIONAL_MANUAL = [
   { field: "care" as const, value: "dishwasher-safe removable parts" },
 ];
 
-async function setupHandoff(taskId: string, withFunctional: boolean) {
-  seedTask(taskId, researchDoc());
+async function setupHandoff(taskId: string, withFunctional: boolean, researchExtra?: Record<string, unknown>) {
+  seedTask(taskId, researchDoc("candidate-quality2", researchExtra));
   const p1 = await generateCreativeHandoffPreview(taskId, visitorContext());
   const preview1 = p1.preview!;
   const sv = preview1.storageVersion!;
@@ -715,22 +716,39 @@ describe("ListingPlan.v2 绑定（AI 成功路径行为）", () => {
     expect(all.toLowerCase()).not.toContain("12 hours");
   });
 
-  it("P4：无有效关键词方案（plan=needs_keywords）即使 Provider 成功也不得 ai_optimized", async () => {
+  it("P4（v2.3 新合同）：无有效关键词方案（plan=needs_keywords）Provider 成功 → 合格 AI 稿照常正式采用，四类关键词字段仍全空", async () => {
     const taskId = "sandbox-q2-v2-bind-nokw";
     await setupHandoff(taskId, true);
     // 不 saveBrief → 无有效关键词方案
-    setTaskLinkedAiListingClientForTests(async () => ({
-      ...validAiClient()({} as never),
-      backendSearchTerms: ["owala cup", "vacuum flask"],
-    }));
+    setTaskLinkedAiListingClientForTests(async () => {
+      const base = (await validAiClient()({} as never)) as {
+        title: string;
+        bullets: string[];
+        description: string;
+        backendSearchTerms: string[];
+        usedFactIds: string[];
+        humanReviewRequired: true;
+      };
+      return { ...base, backendSearchTerms: ["owala cup", "vacuum flask"] }; // AI 自造后台词必须被丢弃
+    });
     const p = await generateCreativeHandoffPreview(taskId, visitorContext());
     const result = await generateListingDraftFromHandoff(taskId, visitorContext(), {
       requestId: "550e8400-e29b-41d4-a716-446655440903",
       expectedStorageVersion: p.gate.storageVersion!,
       expectedHandoffRevision: p.gate.currentHandoff!.currentRevision,
     });
-    expect(result.draft?.draftKind).not.toBe("ai_optimized_listing");
-    expect(result.draft?.fallbackApplied).toBe(true);
+    // ListingPlan.v2.3：needs_keywords 只表示“不能做关键词优化”，不等于“不能采用事实安全且文案合格的 AI 稿”
+    expect(result.draft?.draftKind).toBe("ai_optimized_listing");
+    expect(result.draft?.providerAttempted).toBe(true);
+    expect(result.draft?.providerSucceeded).toBe(true);
+    expect(result.draft?.fallbackApplied).toBe(false);
+    expect(result.draft?.listingUnqualified).toBe(false);
+    // 四类关键词字段全空：不得从研究候选词、商品标题或兜底词补入，AI 自造词也必须丢弃
+    expect(result.draft?.keywords ?? []).toEqual([]);
+    expect((result.draft?.backendSearchTerms ?? []) as string[]).toEqual([]);
+    expect(result.draft?.usedKeywordTrace ?? []).toEqual([]);
+    expect(result.draft?.searchOnlyKeywordTrace ?? []).toEqual([]);
+    expect(result.draft?.keywordPlanSource).toBe("none");
   });
 });
 
@@ -1008,4 +1026,337 @@ describe("LISTING_COPY_QUALITY：坏稿拦截（事实安全 + 文案质量）",
     const result = await generateListingDraftFromHandoff(taskId, visitorContext(), { requestId: "550e8400-e29b-41d4-a716-446655441997", expectedStorageVersion: pr.gate.storageVersion!, expectedHandoffRevision: pr.gate.currentHandoff!.currentRevision });
     expect(result.draft?.draftKind).not.toBe("ai_optimized_listing");
   }, 60_000);
+});
+
+// ── 无关键词主链合同（ListingPlan.v2.3）：无有效 KeywordBrief → 可采用合格 AI 文案，绝不伪造关键词 ──
+// 合同四要素：
+// (1) 事实安全且文案合格的 AI 稿照常正式采用（needs_keywords 只表示"不能做关键词优化"）；
+// (2) 四类关键词字段（keywords / backendSearchTerms / usedKeywordTrace / searchOnlyKeywordTrace）必须全空；
+// (3) needs_facts / needs_review 仍硬阻断，不得借伪造关键词改成 ready；
+// (4) 计划状态诚实保留 needs_keywords，不得伪装 ready。
+describe("无关键词主链合同：无有效 KeywordBrief → 可采用合格 AI 文案，绝不伪造关键词", () => {
+  const JUNK_CANDIDATES = ["owala straw bottle", "best seller water bottle", "guaranteed leakproof flask"];
+  // 事实偏薄：3 身份 + 2 规格、无功能事实 → readiness.copyReady=false（事实不足），但安全模板句仍可合格
+  const THIN_FACT_FIELDS = ["brand", "product_type", "series_or_model", "material", "capacity"];
+
+  /** 仅确认偏薄事实（无功能事实）→ copyReady=false → Provider 不得被调用（needs_facts 语义保护） */
+  async function setupHandoffThinFacts(taskId: string) {
+    seedTask(taskId, researchDoc());
+    const p1 = await generateCreativeHandoffPreview(taskId, visitorContext());
+    const preview1 = p1.preview!;
+    const sv = preview1.storageVersion!;
+    const confirmables = buildConfirmableCandidates(p1.gate.candidate!.stableSourceFacts);
+    const eligible = confirmables.filter((c) => c.allowedUsageScopes.includes("listing"));
+    const thinIds = eligible
+      .filter((c) => THIN_FACT_FIELDS.includes(c.field))
+      .map((c) => preview1.confirmableFactCandidates!.find((pc) => pc.canonicalField === c.field)!.selectionId);
+    await createOrAppendCreativeHandoff(taskId, visitorContext(), {
+      requestId: "550e8400-e29b-41d4-a716-446655447110",
+      expectedResearchRevision: preview1.expectedResearchRevision!,
+      expectedCurrentHandoffRevision: preview1.expectedCurrentHandoffRevision ?? 0,
+      expectedStorageVersion: sv,
+      selectedFactCandidateIds: thinIds,
+      requestFingerprint: buildRequestFingerprint({
+        action: "create",
+        selectedFactIds: thinIds,
+        expectedStorageVersion: sv,
+        expectedResearchRevision: preview1.expectedResearchRevision,
+        expectedCurrentHandoffRevision: preview1.expectedCurrentHandoffRevision ?? 0,
+        confirmed: true,
+      }),
+    });
+  }
+
+  it("NK1：Provider 成功 + 事实足够 + AI 五点与计划逐条绑定 + 无 keywordBrief → ai_optimized_listing 正式采用；计划仍 needs_keywords；四类关键词字段全空", async () => {
+    const taskId = "sandbox-nk-ai-success";
+    await setupHandoff(taskId, true); // 不 saveBrief → 无有效关键词方案
+    let providerCalls = 0;
+    let capturedPlanStatus: string | null | undefined = null;
+    let capturedKeywordBrief: unknown = "sentinel-not-called";
+    const valid = validAiClient();
+    setTaskLinkedAiListingClientForTests(async (input) => {
+      providerCalls += 1;
+      capturedPlanStatus = input.plan.status ?? null;
+      capturedKeywordBrief = input.keywordBrief;
+      return valid(input);
+    });
+    try {
+      const p = await generateCreativeHandoffPreview(taskId, visitorContext());
+      const result = await generateListingDraftFromHandoff(taskId, visitorContext(), {
+        requestId: "550e8400-e29b-41d4-a716-446655447101",
+        expectedStorageVersion: p.gate.storageVersion!,
+        expectedHandoffRevision: p.gate.currentHandoff!.currentRevision,
+      });
+      const d = result.draft!;
+      // 计划状态诚实：采用合格 AI 稿的同时计划仍是 needs_keywords（不能做关键词优化），且生成时无有效 Brief
+      expect(capturedPlanStatus).toBe("needs_keywords");
+      expect(capturedKeywordBrief).toBeNull();
+      expect(d.providerAttempted).toBe(true);
+      expect(d.providerSucceeded).toBe(true);
+      expect(providerCalls).toBe(1);
+      expect(d.draftKind).toBe("ai_optimized_listing");
+      expect(d.listingUnqualified).toBe(false);
+      expect(d.fallbackApplied).toBe(false);
+      // 正式标题、3–5 条五点与描述保留
+      expect(d.titles[0]).toBe("Owala 24 oz Stainless Steel Water Bottle, Blue");
+      expect(d.bullets).toEqual([
+        "The straw lid with push-open mechanism is a feature of this Water Bottle.",
+        "The dishwasher-safe removable parts option is included for this Water Bottle.",
+        "Stainless Steel is the material of this Water Bottle.",
+      ]);
+      expect(d.bullets.length).toBeGreaterThanOrEqual(3);
+      expect(d.bullets.length).toBeLessThanOrEqual(5);
+      expect(d.description).toBe("The Owala bottle has stainless steel and 24 oz. The straw lid with push-open mechanism is a feature of this Water Bottle.");
+      // 四类关键词字段/trace 全空：不得从研究候选词、商品标题或兜底词偷偷补入
+      expect(d.keywords ?? []).toEqual([]);
+      expect((d.backendSearchTerms ?? []) as string[]).toEqual([]);
+      expect(d.usedKeywordTrace ?? []).toEqual([]);
+      expect(d.searchOnlyKeywordTrace ?? []).toEqual([]);
+      expect(d.keywordPlanSource).toBe("none");
+    } finally {
+      setTaskLinkedAiListingClientForTests(null);
+    }
+  }, 60_000);
+
+  it("NK2：Provider 超时 + 事实足够 + 无 keywordBrief（研究关键词候选全部不合规）→ 合格 structured fallback；研究候选词不投射为正式关键词；四空", async () => {
+    const taskId = "sandbox-nk-provider-timeout";
+    await setupHandoff(taskId, true, {
+      keywordEvidence: {
+        reportType: "SellerSprite Keyword Research",
+        capturedAt: NOW,
+        rows: [
+          { keyword: JUNK_CANDIDATES[0], rowNumber: 1 }, // 品牌词（own brand）→ 必拒
+          { keyword: JUNK_CANDIDATES[1], rowNumber: 2 }, // 绝对承诺 → 必拒
+          { keyword: JUNK_CANDIDATES[2], rowNumber: 3 }, // 绝对承诺+禁止声明词面 → 必拒
+        ],
+      },
+    });
+    setTaskLinkedAiListingClientForTests(async () => {
+      throw { code: "ai_timeout", message: "timed out" };
+    });
+    try {
+      const p = await generateCreativeHandoffPreview(taskId, visitorContext());
+      const result = await generateListingDraftFromHandoff(taskId, visitorContext(), {
+        requestId: "550e8400-e29b-41d4-a716-446655447102",
+        expectedStorageVersion: p.gate.storageVersion!,
+        expectedHandoffRevision: p.gate.currentHandoff!.currentRevision,
+      });
+      const d = result.draft!;
+      expect(d.draftKind).toBe("structured_listing_draft");
+      expect(d.fallbackApplied).toBe(true);
+      expect(d.providerAttempted).toBe(true);
+      expect(d.providerSucceeded).toBe(false);
+      expect(d.listingUnqualified).toBe(false);
+      expect(d.bullets.length).toBeGreaterThanOrEqual(3);
+      expect(d.bullets.length).toBeLessThanOrEqual(5);
+      // 每条五点逐条锚定已确认事实值
+      const anchors = ["straw lid with push-open mechanism", "dishwasher-safe removable parts", "stainless steel"];
+      for (const b of d.bullets) {
+        expect(anchors.some((a) => b.toLowerCase().includes(a))).toBe(true);
+      }
+      // 四类关键词字段/trace 全空；研究关键词候选不得投射为正式关键词或正文内容
+      expect(d.keywords ?? []).toEqual([]);
+      expect((d.backendSearchTerms ?? []) as string[]).toEqual([]);
+      expect(d.usedKeywordTrace ?? []).toEqual([]);
+      expect(d.searchOnlyKeywordTrace ?? []).toEqual([]);
+      expect(d.keywordPlanSource).toBe("none");
+      const kwFieldText = [...(d.keywords ?? []), ...((d.backendSearchTerms ?? []) as string[])].join(" ").toLowerCase();
+      const formalText = [String(d.titles[0] ?? ""), ...d.bullets, String(d.description ?? "")].join(" ").toLowerCase();
+      for (const cand of JUNK_CANDIDATES) {
+        expect(kwFieldText).not.toContain(cand.toLowerCase());
+        expect(formalText).not.toContain(cand.toLowerCase());
+      }
+    } finally {
+      setTaskLinkedAiListingClientForTests(null);
+    }
+  }, 60_000);
+
+  it("NK3：Provider 返回未绑定计划且含 cannotSay（12 hours）的文案 + 无 keywordBrief → AI 稿拒绝，只进现有安全回退；被拒内容不入正式字段；四空", async () => {
+    const taskId = "sandbox-nk-cannotsay";
+    await setupHandoff(taskId, true); // 不 saveBrief
+    setTaskLinkedAiListingClientForTests(async () => ({
+      title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
+      bullets: [
+        "The straw lid with push-open mechanism is a feature of this Water Bottle.",
+        // 未命中其计划事实（bulletPlans[1] 绑 care），并含 cannotSay 词面 "12 hours"
+        "Double-wall vacuum insulation keeps drinks cold for 12 hours in the bottle.",
+        "Available with the Stainless Steel option for this Water Bottle.",
+      ],
+      description: "The Owala bottle has stainless steel and 24 oz. Keeps drinks cold for 12 hours everywhere you go.",
+      backendSearchTerms: [],
+      usedFactIds: ["functional_feature", "construction", "material"],
+      humanReviewRequired: true,
+    }));
+    try {
+      const p = await generateCreativeHandoffPreview(taskId, visitorContext());
+      const result = await generateListingDraftFromHandoff(taskId, visitorContext(), {
+        requestId: "550e8400-e29b-41d4-a716-446655447103",
+        expectedStorageVersion: p.gate.storageVersion!,
+        expectedHandoffRevision: p.gate.currentHandoff!.currentRevision,
+      });
+      const d = result.draft!;
+      // AI 稿不得被采用：只能进入现有安全回退或诚实 unqualified
+      expect(["structured_listing_draft", "safe_fact_draft"]).toContain(d.draftKind as string);
+      expect(d.draftKind).not.toBe("ai_optimized_listing");
+      expect(d.fallbackApplied).toBe(true);
+      expect(d.providerAttempted).toBe(true);
+      // 被拒内容不得进入正式字段
+      const formal = [String(d.titles[0] ?? ""), ...d.bullets, String(d.description ?? "")].join(" ");
+      expect(formal.toLowerCase()).not.toContain("12 hours");
+      expect(formal.toLowerCase()).not.toContain("keeps drinks cold");
+      // 四类关键词字段/trace 仍为空
+      expect(d.keywords ?? []).toEqual([]);
+      expect((d.backendSearchTerms ?? []) as string[]).toEqual([]);
+      expect(d.usedKeywordTrace ?? []).toEqual([]);
+      expect(d.searchOnlyKeywordTrace ?? []).toEqual([]);
+      expect(d.keywordPlanSource).toBe("none");
+    } finally {
+      setTaskLinkedAiListingClientForTests(null);
+    }
+  }, 60_000);
+
+  it("NK4：needs_facts 回归保护——即使 mock AI 文案本身格式正确，也不得成为 ai_optimized_listing；伪造关键词 brief 不得把状态改成 ready 或触发 Provider", async () => {
+    const taskId = "sandbox-nk-needs-facts";
+    await setupHandoffThinFacts(taskId); // 无功能事实 → 事实不足（copyReady=false）
+    // 直接写入持久层的伪造关键词方案：与商品零相关的垃圾词（必须被相关度门 fail-closed 拒绝）
+    const junk = buildListingKeywordBrief({
+      primaryKeyword: "qwerty zzz gadget xyz",
+      supportingKeywords: ["spam nonsense token"],
+      backendSearchTerms: ["fake seo filler"],
+      source: "synthetic",
+      capturedAt: NOW,
+    });
+    if (!junk.ok) throw new Error("brief build failed");
+    await mutateTaskResultJson({
+      context: visitorContext(),
+      taskId,
+      writer: "keyword-brief",
+      async mutate(current) {
+        return { result: { ...current, listingKeywordBrief: junk.brief as unknown as Record<string, unknown> }, value: { saved: true } };
+      },
+    });
+    let providerCalls = 0;
+    setTaskLinkedAiListingClientForTests(async () => {
+      providerCalls += 1;
+      return validAiClient()({} as never);
+    });
+    try {
+      const p = await generateCreativeHandoffPreview(taskId, visitorContext());
+      const result = await generateListingDraftFromHandoff(taskId, visitorContext(), {
+        requestId: "550e8400-e29b-41d4-a716-446655447104",
+        expectedStorageVersion: p.gate.storageVersion!,
+        expectedHandoffRevision: p.gate.currentHandoff!.currentRevision,
+      });
+      const d = result.draft!;
+      // 事实不足 ⇒ Provider 根本不被调用 ⇒ 即便 mock 文案格式正确也绝不成为 ai_optimized_listing
+      expect(providerCalls).toBe(0);
+      expect(d.providerAttempted).toBe(false);
+      expect(d.draftKind).not.toBe("ai_optimized_listing");
+      expect(d.draftKind).toBe("safe_fact_draft");
+      // 伪造关键词未被采纳：四类关键词字段/trace 全空，垃圾词不得出现在任何对外字段
+      expect(d.keywords ?? []).toEqual([]);
+      expect((d.backendSearchTerms ?? []) as string[]).toEqual([]);
+      expect(d.usedKeywordTrace ?? []).toEqual([]);
+      expect(d.searchOnlyKeywordTrace ?? []).toEqual([]);
+      const dump = JSON.stringify(d).toLowerCase();
+      for (const t of ["qwerty zzz gadget xyz", "spam nonsense token", "fake seo filler"]) {
+        expect(dump).not.toContain(t);
+      }
+    } finally {
+      setTaskLinkedAiListingClientForTests(null);
+    }
+  }, 60_000);
+
+  it("NK5：状态门禁报警器——机器取证 needs_review 生产不可达（claimMode 恒 verified）；直测证明 needs_facts/needs_review 必须被门禁拒绝而 needs_keywords 不因状态被拒", async () => {
+    // ── (a) 生产纯函数取证：多组真实形态事实输入下，buildListingPlan 永不产出 needs_review，claimMode 恒 verified ──
+    const FACT_SETS: Array<Array<{ field: string; label: string; value: string }>> = [
+      [ // 全谱系（身份+规格+功能，与主链 fixture 同形）
+        { field: "brand", label: "品牌", value: "Owala" },
+        { field: "product_type", label: "商品类型", value: "Water Bottle" },
+        { field: "series_or_model", label: "系列", value: "FreeSip" },
+        { field: "material", label: "材质", value: "Stainless Steel" },
+        { field: "capacity", label: "容量", value: "24 oz" },
+        { field: "color_or_variant", label: "颜色", value: "Blue" },
+        { field: "functional_feature", label: "功能", value: "straw lid with push-open mechanism" },
+        { field: "construction", label: "结构", value: "double-wall vacuum insulation" },
+        { field: "care", label: "清洁", value: "dishwasher-safe removable parts" },
+      ],
+      [ // 薄规格（无功能事实 → 可产出 needs_facts / needs_keywords）
+        { field: "brand", label: "品牌", value: "Owala" },
+        { field: "product_type", label: "商品类型", value: "Water Bottle" },
+        { field: "series_or_model", label: "系列", value: "FreeSip" },
+        { field: "material", label: "材质", value: "Stainless Steel" },
+        { field: "capacity", label: "容量", value: "24 oz" },
+      ],
+      [ // 功能主导
+        { field: "brand", label: "品牌", value: "Owala" },
+        { field: "product_type", label: "商品类型", value: "Water Bottle" },
+        { field: "functional_feature", label: "功能", value: "straw lid with push-open mechanism" },
+        { field: "care", label: "清洁", value: "dishwasher-safe removable parts" },
+      ],
+    ];
+    const planInputOf = (facts: Array<{ field: string; label: string; value: string }>) => ({
+      schema: "listing-generation-input.v1" as const,
+      source: { handoffRevision: 1, researchRevision: 1 },
+      productFacts: facts,
+      stableSourceFacts: facts,
+      creativeReferences: [],
+      creativePreferences: {},
+      prohibitedClaims: [],
+      unknowns: [],
+      humanReviewRequired: true as const,
+      researchMode: "market_research_only" as const,
+      promotionEligible: false as const,
+    });
+    const observedStatuses = new Set<string>();
+    for (const facts of FACT_SETS) {
+      const plan = buildListingPlan(planInputOf(facts), null);
+      observedStatuses.add(plan.status ?? "");
+      expect(plan.status).not.toBe("needs_review"); // 构造层证据：现状生产输入不可达 needs_review
+      for (const bp of plan.bulletPlans) {
+        expect(bp.claimMode).toBe("verified");       // claimMode 写入恒 verified（grep 已证无 review 写点）
+      }
+    }
+    expect(observedStatuses.has("needs_facts")).toBe(true);   // 防御分支的触发电机确实存在于纯函数内
+    expect(observedStatuses.has("needs_keywords")).toBe(true);
+    // 有有效 Brief 时同输入可达 ready（证明四状态中唯一不可达的是 needs_review）
+    const readyPlan = buildListingPlan(planInputOf(FACT_SETS[0]!), { primaryKeyword: "water bottle", supportingKeywords: ["stainless steel bottle"], backendSearchTerms: [], source: "synthetic", capturedAt: NOW } as never);
+    expect(readyPlan.status).toBe("ready");
+    expect(observedStatuses.has("needs_review")).toBe(false);
+
+    // ── (b) 门禁直测报警器：needs_facts / needs_review 无论文案多合格都必须被拒绝（语义本体红/绿） ──
+    const guardFacts = FACT_SETS[0]!;
+    const mkGuardPlan = (status: ListingPlanStatus) => ({
+      schema: "listing-plan.v2",
+      status,
+      primaryKeyword: null,
+      supportingKeywords: [],
+      titlePlan: [],
+      descriptionPlan: "",
+      backendSearchTerms: [],
+      missingFacts: [],
+      prohibitedClaims: [],
+      planQuality: "optimized",
+      bulletPlans: [
+        { role: "proof_or_fit", shopperAngle: "关键材质与容量选择依据", featureFactIds: ["material"], keywordIds: [] as string[], claimMode: "verified", cannotSay: [] as string[] },
+        { role: "core_outcome", shopperAngle: "日常核心功能需求", featureFactIds: ["capacity"], keywordIds: [] as string[], claimMode: "verified", cannotSay: [] as string[] },
+        { role: "ease_of_use", shopperAngle: "打理与清洁便利需求", featureFactIds: ["care"], keywordIds: [] as string[], claimMode: "verified", cannotSay: [] as string[] },
+      ],
+    }) as unknown as Parameters<typeof aiBulletsBindToPlan>[0];
+    const guardBullets = [
+      "Stainless Steel is the confirmed material for this water bottle.",
+      "The confirmed capacity value is exactly 24 oz for this product.",
+      "Dishwasher-safe removable parts are included with the care option.",
+    ];
+    for (const blockedStatus of ["needs_facts", "needs_review"] as ListingPlanStatus[]) {
+      const verdict = aiBulletsBindToPlan(mkGuardPlan(blockedStatus), guardBullets, guardFacts);
+      expect(verdict.ok).toBe(false);
+      expect(verdict.issues.join(" ")).toContain(blockedStatus);
+      expect(verdict.issues.join(" ")).toContain("不可采用文案");
+    }
+    // ── (c) 正向合同面：同一合格文案在 needs_keywords 下不得因状态被拒（其余绑定校验全过 → ok=true） ──
+    const kwVerdict = aiBulletsBindToPlan(mkGuardPlan("needs_keywords"), guardBullets, guardFacts);
+    expect(kwVerdict.ok).toBe(true);
+    expect(kwVerdict.issues.join(" ")).not.toContain("不可采用文案");
+  });
 });

@@ -167,3 +167,135 @@ describe("Fix.3 Gate 投影接线", () => {
     expect(gate.reason).toBe("legacy_not_supported");
   });
 });
+
+  it("27. listingCreationBriefRaw 窄投影：原样返回，不泄漏 resultJson", async () => {
+    const storePath = join(tmpdir(), "fix3-gate-test", "sandbox.json");
+    const doc = JSON.parse(researchDoc("candidate-fix3"));
+    const brief = {
+      schema: "listing-creation-brief.v1",
+      coreSellingPoint: "Comfortable everyday sipping",
+      targetAudience: "Daily commuters",
+      useScenario: "Office and travel",
+      differentiation: "Simple daily hydration",
+      contentEmphasis: "Natural and practical tone",
+    };
+    doc.listingCreationBrief = brief;
+    const keywordBrief = { primaryKeyword: "water bottle", supportingKeywords: ["tumbler"], backendSearchTerms: [] };
+    doc.listingKeywordBrief = keywordBrief;
+    const draft = { titles: ["T1"], bullets: ["B1"] };
+    doc.aiListingPackSnapshot = draft;
+    doc.unrelatedNamespace = { keep: true };
+    const inputJson = JSON.stringify(doc);
+    const task = {
+      id: "demo-task-fix3c", demoAccessId: DEMO, type: "workflow", title: "T", decisionStatus: "continue",
+      platform: "amazon", productUrl: null, materialText: "m", source: "demo", score: 1, level: "low",
+      oneLineSummary: "o", resultJson: JSON.stringify(doc), productLifecycle: "investigating",
+      createdAt: NOW, updatedAt: NOW,
+    };
+    writeFileSync(storePath, JSON.stringify({ version: 1, tasks: [task], candidates: [] }), "utf8");
+    const { gate } = await generateCreativeHandoffPreview("demo-task-fix3c", visitorContext());
+    expect(gate.listingCreationBriefRaw).toEqual(brief);
+    const projectedBrief = gate.listingCreationBriefRaw as { schema?: string; coreSellingPoint?: string } | undefined;
+    expect(projectedBrief?.schema).toBe("listing-creation-brief.v1");
+    expect(projectedBrief?.coreSellingPoint).toBe("Comfortable everyday sipping");
+    expect(gate.keywordBriefRaw).toEqual(keywordBrief);
+    expect(gate.listingDraftRaw).toEqual(draft);
+    expect(gate.storageVersion).toBeDefined();
+    expect((gate as unknown as Record<string, unknown>).resultJson).toBeUndefined();
+    expect((gate as unknown as Record<string, unknown>).unrelatedNamespace).toBeUndefined();
+    expect(JSON.stringify(doc)).toBe(inputJson);
+  });
+
+  it("28. listingCreationBriefRaw 缺失时安全返回 undefined，不影响其他投影", async () => {
+    const storePath = join(tmpdir(), "fix3-gate-test", "sandbox.json");
+    const doc = JSON.parse(researchDoc("candidate-fix3"));
+    const keywordBrief = { primaryKeyword: "water bottle", supportingKeywords: [], backendSearchTerms: [] };
+    doc.listingKeywordBrief = keywordBrief;
+    const task = {
+      id: "demo-task-fix3d", demoAccessId: DEMO, type: "workflow", title: "T", decisionStatus: "continue",
+      platform: "amazon", productUrl: null, materialText: "m", source: "demo", score: 1, level: "low",
+      oneLineSummary: "o", resultJson: JSON.stringify(doc), productLifecycle: "investigating",
+      createdAt: NOW, updatedAt: NOW,
+    };
+    writeFileSync(storePath, JSON.stringify({ version: 1, tasks: [task], candidates: [] }), "utf8");
+    const { gate } = await generateCreativeHandoffPreview("demo-task-fix3d", visitorContext());
+    expect(gate.listingCreationBriefRaw).toBeUndefined();
+    expect(gate.keywordBriefRaw).toEqual(keywordBrief);
+    expect(gate.storageVersion).toBeDefined();
+    expect((gate as unknown as Record<string, unknown>).resultJson).toBeUndefined();
+  });
+
+
+// 真实可达路径（PR2-0：投影输入链无 human_confirmed 生产点 → gate 恒走 no_confirmed_facts 降级；
+// eligible 分支不可达由 lib/server/productCreativeHandoffPreview.ts L508 candidateSourceFingerprint 与
+// parseCandidate isHash(64) 历史不一致 + mapResearchConfirmed 桥在降级分支所致——本轮已对齐 L508 并补 eligible 防御投影）。
+// 注意：mock 证据层使 eligible 可达的实验（PR2-0 human_confirmed evidence 注入）已证实投影函数 parseCandidate
+// 仍有校验拒收（fingerprint 抛 invalid_projected_candidate），属另一个独立问题，记录于 PROGRESS，不静默放宽。
+
+it("29. Gate listingCreationBriefRaw 窄投影（真实可达路径）：合法持久化 schema 原样返回、逐字段相等、不泄漏 resultJson", async () => {
+  const storePath = join(tmpdir(), "fix3-gate-test", "sandbox.json");
+  const doc = JSON.parse(researchDoc("candidate-eligible3"));
+  const brief = {
+    schema: "listing-creation-brief.v1",
+    coreSellingPoint: "Comfortable everyday sipping",
+    targetAudience: "Daily commuters",
+    useScenario: "Office and travel",
+    differentiation: "Simple daily hydration",
+    contentEmphasis: "Natural and practical tone",
+  };
+  doc.listingCreationBrief = brief;
+  const keywordBrief = { primaryKeyword: "water bottle", supportingKeywords: ["tumbler"], backendSearchTerms: [] };
+  doc.listingKeywordBrief = keywordBrief;
+  const draft = { titles: ["T1"], bullets: ["B1"] };
+  doc.aiListingPackSnapshot = draft;
+  doc.unrelatedNamespace = { keep: true };
+  const inputJson = JSON.stringify(doc);
+  const task = {
+    id: "demo-task-fix3e", demoAccessId: DEMO, type: "workflow", title: "T", decisionStatus: "continue",
+    platform: "amazon", productUrl: null, materialText: "m", source: "demo", score: 1, level: "low",
+    oneLineSummary: "o", resultJson: JSON.stringify(doc), productLifecycle: "investigating",
+    createdAt: NOW, updatedAt: NOW,
+  };
+  writeFileSync(storePath, JSON.stringify({ version: 1, tasks: [task], candidates: [] }), "utf8");
+  const { gate } = await generateCreativeHandoffPreview("demo-task-fix3e", visitorContext());
+  expect(gate.listingCreationBriefRaw).toEqual(brief);
+  const projected = gate.listingCreationBriefRaw as { schema?: string; coreSellingPoint?: string; targetAudience?: string; useScenario?: string; differentiation?: string; contentEmphasis?: string } | undefined;
+  expect(projected?.schema).toBe("listing-creation-brief.v1");
+  expect(projected?.coreSellingPoint).toBe("Comfortable everyday sipping");
+  expect(projected?.targetAudience).toBe("Daily commuters");
+  expect(projected?.useScenario).toBe("Office and travel");
+  expect(projected?.differentiation).toBe("Simple daily hydration");
+  expect(projected?.contentEmphasis).toBe("Natural and practical tone");
+  expect(gate.keywordBriefRaw).toEqual(keywordBrief);
+  expect(gate.listingDraftRaw).toEqual(draft);
+  expect(gate.storageVersion).toBeDefined();
+  expect((gate as unknown as Record<string, unknown>).resultJson).toBeUndefined();
+  expect((gate as unknown as Record<string, unknown>).unrelatedNamespace).toBeUndefined();
+  expect((gate as unknown as Record<string, unknown>).writer).toBeUndefined();
+  expect(JSON.stringify(doc)).toBe(inputJson);
+});
+
+it("30. Gate brief 缺失：raw undefined、不抛、其他投影不受影响", async () => {
+  const storePath = join(tmpdir(), "fix3-gate-test", "sandbox.json");
+  const doc = JSON.parse(researchDoc("candidate-fix3"));
+  const keywordBrief = { primaryKeyword: "water bottle", supportingKeywords: [], backendSearchTerms: [] };
+  doc.listingKeywordBrief = keywordBrief;
+  const task = {
+    id: "demo-task-fix3f", demoAccessId: DEMO, type: "workflow", title: "T", decisionStatus: "continue",
+    platform: "amazon", productUrl: null, materialText: "m", source: "demo", score: 1, level: "low",
+    oneLineSummary: "o", resultJson: JSON.stringify(doc), productLifecycle: "investigating",
+    createdAt: NOW, updatedAt: NOW,
+  };
+  writeFileSync(storePath, JSON.stringify({ version: 1, tasks: [task], candidates: [] }), "utf8");
+  const { gate } = await generateCreativeHandoffPreview("demo-task-fix3f", visitorContext());
+  expect(gate.listingCreationBriefRaw).toBeUndefined();
+  expect(gate.keywordBriefRaw).toEqual(keywordBrief);
+  expect(gate.storageVersion).toBeDefined();
+  expect((gate as unknown as Record<string, unknown>).resultJson).toBeUndefined();
+});
+
+it("31. 两条 Gate 返回分支均应透传 listingCreationBriefRaw（降级+eligible 契约）", async () => {
+  const source = (await import("node:fs")).readFileSync(join(process.cwd(), "lib/server/productCreativeHandoffPreview.ts"), "utf8");
+  const occurrences = source.match(/listingCreationBriefRaw: resultJson\.listingCreationBrief/g) ?? [];
+  expect(occurrences.length).toBeGreaterThanOrEqual(2);
+});

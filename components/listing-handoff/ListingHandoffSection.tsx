@@ -89,6 +89,7 @@ type ListingStateResponse = {
     } | null;
     // V3R（契约①）：claimPreflight 与服务端 Generate 校验同源（可生成与否的事实校验预演）
     claimPreflight?: { pass: boolean; reason: string | null } | null;
+    listingBrief?: { schema: "listing-creation-brief.v1"; coreSellingPoint: string; targetAudience: string; useScenario: string; differentiation: string; contentEmphasis: string } | null;
     keywordBriefSummary?: { primaryKeyword: string; source: string; backendTermsCount: number } | null;
   };
 };
@@ -109,26 +110,29 @@ type GenerateResponse = {
 
 type ApiError = { status: number; code: string; message: string };
 
-type ListingBriefForm = {
-  coreSellingPoint: string;
-  targetAudience: string;
-  useScenario: string;
-  differentiation: string;
-  contentEmphasis: string;
+/** 商品创作补充保存状态（保存按钮轮）：idle/saving/success/error/conflict */
+type ListingBriefSaveState = "idle" | "saving" | "success" | "error" | "conflict";
+
+/** save_listing_brief 成功响应（与后端 route 契约同形） */
+type SaveListingBriefResponse = {
+  ok: true;
+  data: {
+    saved: true;
+    listingBrief: ListingStateResponse["data"]["listingBrief"];
+    storageVersion: { resultJsonHash: string; updatedAt: string };
+    currentHandoffRevision: number | null;
+  };
 };
 
-const EMPTY_LISTING_BRIEF: ListingBriefForm = {
-  coreSellingPoint: "",
-  targetAudience: "",
-  useScenario: "",
-  differentiation: "",
-  contentEmphasis: "",
-};
+type ListingBriefForm = import("@/lib/client/listingCreationBriefState").ListingCreationBriefForm;
+const EMPTY_LISTING_BRIEF = emptyListingCreationBrief();
 
 const BTN_CLASS =
   "mt-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:focus-visible:ring-0";
 const BTN_SECONDARY_CLASS =
   "mt-2 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:focus-visible:ring-0";
+
+import { emptyListingCreationBrief, listingCreationBriefFormsEqual, resolveLoadedListingCreationBrief, type ListingCreationBriefForm } from "@/lib/client/listingCreationBriefState";
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
@@ -291,6 +295,15 @@ export function ListingHandoffSection({
   const [requestId, setRequestId] = useState<string | null>(null);
   const [retryBody, setRetryBody] = useState<Record<string, unknown> | null>(null);
   const [listingBrief, setListingBrief] = useState<ListingBriefForm>(EMPTY_LISTING_BRIEF);
+  const [savedListingBrief, setSavedListingBrief] = useState<ListingBriefForm>(EMPTY_LISTING_BRIEF);
+  const [briefSaveState, setBriefSaveState] = useState<ListingBriefSaveState>("idle");
+  const briefDirty = !listingCreationBriefFormsEqual(listingBrief, savedListingBrief);
+  // 编辑态镜像：load 只依赖读取身份（taskId），编辑不得改变 load 身份或触发重新 GET；
+  // 所有 editing/saved 更新入口同步镜像，避免事件后 effect 尚未运行的竞态。
+  const listingBriefRef = useRef<ListingBriefForm>(emptyListingCreationBrief());
+  const savedListingBriefRef = useRef<ListingBriefForm>(emptyListingCreationBrief());
+  // 请求序号：taskId 切换/新 load 后旧响应不得覆盖新任务状态
+  const loadSeqRef = useRef(0);
   const [factSummary, setFactSummary] = useState({
     confirmedFacts: 0,
     listingEligibleFacts: 0,
@@ -310,17 +323,20 @@ export function ListingHandoffSection({
     };
   }, []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (options?: { preserveBriefEdits?: boolean }) => {
+    const loadSeq = ++loadSeqRef.current;
     try {
       const res = await fetch(`${"/api/tasks"}/${encodeURIComponent(taskId)}/listing-handoff`, {
         headers: buildAccessHeaders(),
       });
+      if (!mounted.current || loadSeq !== loadSeqRef.current) return;
       if (!res.ok) {
-        if (mounted.current) setNotice({ tone: "error", text: "状态加载失败，请刷新重试。" });
+        setNotice({ tone: "error", text: "状态加载失败，请刷新重试。" });
         return;
       }
       const json = (await res.json()) as ListingStateResponse;
-      if (mounted.current && json.ok) {
+      if (!mounted.current || loadSeq !== loadSeqRef.current) return;
+      if (json.ok) {
         setStatus(json.data.listingStatus);
         setHandoffRevision(json.data.currentHandoffRevision);
         setHandoffEffectiveStatus(json.data.handoffEffectiveStatus);
@@ -330,10 +346,23 @@ export function ListingHandoffSection({
         setFactSummary(json.data.factSummary);
         setReadiness(json.data.readiness ?? null);
         setClaimPreflight(json.data.claimPreflight ?? null);
+        const resolvedBrief = resolveLoadedListingCreationBrief({
+          incoming: json.data.listingBrief,
+          editing: listingBriefRef.current,
+          saved: savedListingBriefRef.current,
+          preserveEdits: options?.preserveBriefEdits === true,
+        });
+        listingBriefRef.current = resolvedBrief.editing;
+        savedListingBriefRef.current = resolvedBrief.saved;
+        setListingBrief(resolvedBrief.editing);
+        setSavedListingBrief(resolvedBrief.saved);
       }
     } catch {
-      if (mounted.current) setNotice({ tone: "error", text: "网络异常，请重试。" });
+      if (mounted.current && loadSeq === loadSeqRef.current) {
+        setNotice({ tone: "error", text: "网络异常，请重试。" });
+      }
     }
+    // 依赖仅真实读取身份：编辑态经 ref 读取，不进入依赖（编辑不改变 load 身份，无额外 GET）
   }, [taskId]);
 
   useEffect(() => {
@@ -342,9 +371,8 @@ export function ListingHandoffSection({
 
   // 外部刷新信号（事实补充成功等）→ 重读服务端最新状态，解除旧提示/按钮状态
   useEffect(() => {
-    if (refreshSignal > 0) void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshSignal]);
+    if (refreshSignal > 0) void load({ preserveBriefEdits: true });
+  }, [refreshSignal, load]);
 
   // 轮 15：首次 409 自动恢复——版本刷新后（storageVersion 变化）自动重试一次
   useEffect(() => {
@@ -375,18 +403,88 @@ export function ListingHandoffSection({
       setConflictPending(false);
       setNotice({ tone: "error", text: "创作资料又发生变化，请再试一次" });
     }
-    void load();
+    void load({ preserveBriefEdits: true });
   }, [load]);
 
   const updateListingBrief = useCallback((field: keyof ListingBriefForm, value: string) => {
-    setListingBrief((current) => ({ ...current, [field]: value }));
+    const next = { ...listingBriefRef.current, [field]: value };
+    listingBriefRef.current = next;
+    setListingBrief(next);
     // The idempotency key binds all generation semantics, including this brief.
     setRequestId(null);
     setRetryBody(null);
+    // 再次编辑 → 保存状态回到 idle（清除旧成功/失败/冲突反馈）
+    setBriefSaveState("idle");
   }, []);
+
+  /** 保存创作补充：save_listing_brief POST（六字段；全空 → listingBrief:null；409 保留输入并刷新版本，不自动重试） */
+  const saveListingBrief = useCallback(async () => {
+    if (briefSaveState === "saving") return;
+    if (!storageVersion || handoffRevision === null) {
+      setBriefSaveState("error");
+      return;
+    }
+    const brief = listingBriefRef.current;
+    const hasBriefContent = Object.values(brief).some((value) => value.trim().length > 0);
+    const body = {
+      action: "save_listing_brief",
+      requestId: createBrowserUuid(),
+      expectedStorageVersion: storageVersion,
+      expectedHandoffRevision: handoffRevision,
+      confirmed: true,
+      listingBrief: hasBriefContent ? brief : null,
+    };
+    setBriefSaveState("saving");
+    try {
+      const res = await fetch(`${"/api/tasks"}/${encodeURIComponent(taskId)}/listing-handoff`, {
+        method: "POST",
+        headers: buildAccessHeaders(),
+        body: JSON.stringify(body),
+      });
+      if (!mounted.current) return;
+      if (res.status === 409) {
+        // 409：保留用户输入；刷新服务端版本（storageVersion/handoffRevision），后续由用户再次点击
+        setBriefSaveState("conflict");
+        await load({ preserveBriefEdits: true });
+        return;
+      }
+      if (!res.ok) {
+        // 400/500：不得改动 editing/saved，不清空字段
+        setBriefSaveState("error");
+        return;
+      }
+      const json = (await res.json()) as SaveListingBriefResponse;
+      if (!mounted.current) return;
+      if (!json.ok) {
+        setBriefSaveState("error");
+        return;
+      }
+      // 成功后以响应 listingBrief 为准（复用现有归一化入口）；同步 editing/saved 双 ref 与双 state 及版本
+      const resolved = resolveLoadedListingCreationBrief({
+        incoming: json.data.listingBrief,
+        editing: listingBriefRef.current,
+        saved: savedListingBriefRef.current,
+        preserveEdits: false,
+      });
+      listingBriefRef.current = resolved.editing;
+      savedListingBriefRef.current = resolved.saved;
+      setListingBrief(resolved.editing);
+      setSavedListingBrief(resolved.saved);
+      setStorageVersion(json.data.storageVersion);
+      setHandoffRevision(json.data.currentHandoffRevision);
+      setBriefSaveState("success");
+    } catch {
+      if (mounted.current) setBriefSaveState("error");
+    }
+  }, [storageVersion, handoffRevision, taskId, load, briefSaveState]);
 
   const generate = useCallback(async () => {
     if (submitting || handoffRevision === null || !canGenerate) return;
+    // 内部防线：未保存的商品创作补充禁止生成（不依赖按钮 disabled），在任何请求构造之前拦截
+    if (briefDirty) {
+      setNotice({ tone: "error", text: "请先保存商品创作补充，再生成 Listing 草稿。" });
+      return;
+    }
     const nextRequestId = requestId ?? createBrowserUuid();
     let effectiveSv = storageVersion;
     if (!effectiveSv) {
@@ -480,7 +578,7 @@ export function ListingHandoffSection({
     } finally {
       if (mounted.current) setSubmitting(false);
     }
-  }, [submitting, handoffRevision, canGenerate, requestId, taskId, status, load, handleConflict, storageVersion, onCommitted, listingBrief, conflictPending]);
+  }, [submitting, handoffRevision, canGenerate, requestId, taskId, status, load, handleConflict, storageVersion, onCommitted, listingBrief, conflictPending, briefDirty]);
 
   const retrySameRequest = useCallback(async () => {
     if (!retryBody || !requestId || submitting) return;
@@ -769,7 +867,7 @@ export function ListingHandoffSection({
           </div>
         )}
         {status !== null && status !== "legacy_unbound" ? (
-          <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3" data-testid="listing-creation-brief">
+          <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3" data-testid="listing-creation-brief" data-brief-dirty={briefDirty}>
             <legend className="px-1 text-sm font-bold text-slate-800">商品创作补充（可选）</legend>
             <p className="mt-1 text-xs leading-5 text-slate-600">
               用于帮助AI理解营销方向，不代表已验证商品事实。不会写入已确认事实，也不会放宽 Claim Safety。
@@ -795,6 +893,46 @@ export function ListingHandoffSection({
                 </label>
               ))}
             </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                data-testid="listing-brief-save"
+                disabled={briefSaveState === "saving" || !briefDirty}
+                onClick={() => void saveListingBrief()}
+                className={BTN_SECONDARY_CLASS}
+              >
+                {briefSaveState === "saving"
+                  ? "保存中…"
+                  : briefSaveState === "error" || briefSaveState === "conflict"
+                    ? "重新保存"
+                    : briefDirty
+                      ? "保存创作补充"
+                      : "已保存"}
+              </button>
+              {briefSaveState === "success" || briefSaveState === "error" || briefSaveState === "conflict" ? (
+                <p
+                  data-testid="listing-brief-save-status"
+                  role="status"
+                  aria-live="polite"
+                  className={`text-xs font-semibold ${briefSaveState === "success" ? "text-teal-700" : "text-rose-700"}`}
+                >
+                  {briefSaveState === "success"
+                    ? "创作补充已保存"
+                    : briefSaveState === "error"
+                      ? "保存失败，已保留你的输入"
+                      : "内容已在其他位置更新，已保留你的输入，请重新保存"}
+                </p>
+              ) : null}
+            </div>
+            {briefDirty ? (
+              <p
+                className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800"
+                data-testid="listing-brief-unsaved-warning"
+                role="alert"
+              >
+                请先保存商品创作补充，再生成 Listing 草稿。
+              </p>
+            ) : null}
           </fieldset>
         ) : null}
         {status === null ? (
@@ -821,7 +959,8 @@ export function ListingHandoffSection({
             ) : null}
             <button
               type="button"
-              disabled={!canGenerate || submitting}
+              data-testid="generate-listing-draft"
+              disabled={!canGenerate || submitting || briefDirty}
               onClick={() => void generate()}
               className={BTN_CLASS}
             >
@@ -896,7 +1035,7 @@ export function ListingHandoffSection({
             <div className="mt-3">
               <button
                 type="button"
-                disabled={!canGenerate || submitting}
+                disabled={!canGenerate || submitting || briefDirty}
                 onClick={() => void generate()}
                 className={BTN_SECONDARY_CLASS}
                 data-testid="regenerate-listing-draft"
@@ -917,7 +1056,7 @@ export function ListingHandoffSection({
             {renderDraftBody()}
             <button
               type="button"
-              disabled={!canGenerate || submitting}
+              disabled={!canGenerate || submitting || briefDirty}
               onClick={() => void generate()}
               className={BTN_CLASS}
             >

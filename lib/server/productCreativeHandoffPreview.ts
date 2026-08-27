@@ -237,6 +237,7 @@ export type CreativeHandoffGateResult = {
   imageDraftRaw?: unknown;
   /** Quality.1: Keyword Brief 原始值（只读） */
   keywordBriefRaw?: unknown;
+  listingCreationBriefRaw?: unknown;
   /** Phase 2: 当前 Image Studio 人工选择（只读；不含图片二进制） */
   imageStudioSelectionRaw?: unknown;
   /** V2 Final Integration: 生产视觉参考候选（从 candidateAnalysisContext.productImage 解析，安全摘要） */
@@ -504,7 +505,7 @@ export async function checkCreativeHandoffGate(
           researchHash: record.researchHash,
           workflowStatus: "completed",
           decisionStatus: "creative_ready",
-          candidateSourceFingerprint: researchContext.contextHash.slice(0, 16),
+          candidateSourceFingerprint: researchContext.contextHash,
         },
         productIdentity: {
           displayName: (taskRec.productName as string) || (taskRec.title as string) || "",
@@ -663,6 +664,7 @@ export async function checkCreativeHandoffGate(
       imageHandoffBindingRaw: resultJson.imageHandoffBinding,
       imageDraftRaw: resultJson.aiImageDraftSnapshot,
       keywordBriefRaw: resultJson.listingKeywordBrief,
+      listingCreationBriefRaw: resultJson.listingCreationBrief,
       imageStudioSelectionRaw: resultJson.imageStudioSelection,
       // V2 Final Integration: 降级分支也暴露生产视觉候选（从 researchContext2.productImage 解析）
       visualReferenceCandidates: researchContext2
@@ -759,7 +761,7 @@ export async function checkCreativeHandoffGate(
     approvedReferenceImageDataUrl = researchContext.productImage.dataUrl;
   }
 
-  return { allowed: true, reason: "eligible", taskAccessible: accessible, candidate, currentHandoff, storageVersion, requestLedger, ledgerInvalid, listingHandoffBindingRaw, listingDraftRaw, imageHandoffBindingRaw: resultJson.imageHandoffBinding, imageDraftRaw: resultJson.aiImageDraftSnapshot, imageStudioSelectionRaw: resultJson.imageStudioSelection, visualReferenceCandidates: visualCandidates, approvedReferenceImageDataUrl, externalUrlCandidate, keywordBriefRaw: resultJson.listingKeywordBrief, creativeContext: buildCreativeContextFromResearch({ resultJson, researchRevision: record.revision, candidateId: record.candidateId }), workbenchConfirmedFacts: (getFactCandidates(resultJson)?.confirmed ?? []).map((f) => ({ field: toConsumerField(f.field), label: f.label, value: f.value, sourceKind: f.sourceKind })) };
+  return { allowed: true, reason: "eligible", taskAccessible: accessible, candidate, currentHandoff, storageVersion, requestLedger, ledgerInvalid, listingHandoffBindingRaw, listingDraftRaw, imageHandoffBindingRaw: resultJson.imageHandoffBinding, imageDraftRaw: resultJson.aiImageDraftSnapshot, imageStudioSelectionRaw: resultJson.imageStudioSelection, visualReferenceCandidates: visualCandidates, approvedReferenceImageDataUrl, externalUrlCandidate, keywordBriefRaw: resultJson.listingKeywordBrief, listingCreationBriefRaw: resultJson.listingCreationBrief, creativeContext: buildCreativeContextFromResearch({ resultJson, researchRevision: record.revision, candidateId: record.candidateId }), workbenchConfirmedFacts: (getFactCandidates(resultJson)?.confirmed ?? []).map((f) => ({ field: toConsumerField(f.field), label: f.label, value: f.value, sourceKind: f.sourceKind })) };
 }
 
 // ─── Preview ──────────────────────────────────────────────
