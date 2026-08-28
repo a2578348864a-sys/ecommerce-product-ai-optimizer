@@ -209,9 +209,10 @@ export function buildLocalRuntimeConfig({
     : null;
   const resolvedDatabasePath = isolatedPaths?.databasePath
     ?? resolve(projectRoot, "prisma", "dev.db");
-  const databaseUrl = isolatedPaths
-    ? `file:${resolvedDatabasePath.replaceAll("\\", "/")}`
-    : LOCAL_DATABASE_URL;
+  // 被检查的数据库与实际传给 Prisma 的数据库必须一致：
+  // 默认正式路径与 isolated 路径统一从已验证的 resolvedDatabasePath 生成绝对 SQLite URL，
+  // 避免相对路径 (file:./dev.db) 被 Prisma 解析到生成目录下的空库。
+  const databaseUrl = `file:${resolvedDatabasePath.replaceAll("\\", "/")}`;
   const env = { ...parentEnv, DATABASE_URL: databaseUrl };
   if (isolatedPaths) env.DEMO_ACCESS_STORE_PATH = isolatedPaths.demoAccessStorePath;
   return {

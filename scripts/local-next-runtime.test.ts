@@ -41,7 +41,9 @@ describe("local Next runtime", () => {
       mode: "start",
       parentEnv: { DATABASE_URL: "file:./wrong.db", PRESERVED_VALUE: "yes" },
     });
-    expect(config.env.DATABASE_URL).toBe("file:./dev.db");
+    // 合同：DATABASE_URL 与 databasePath 指向同一文件（绝对 SQLite URL）；父进程错误 DATABASE_URL 必须被覆盖
+    expect(config.env.DATABASE_URL).toBe("file:" + resolve("fixture-project", "prisma", "dev.db").replaceAll("\\", "/"));
+    expect(config.env.DATABASE_URL).toBe("file:" + config.databasePath.replaceAll("\\", "/"));
     expect(config.env.PRESERVED_VALUE).toBe("yes");
     expect(config.databasePath).toBe(resolve("fixture-project", "prisma", "dev.db"));
     expect(config.args).toEqual([
@@ -56,6 +58,37 @@ describe("local Next runtime", () => {
     const packageJson = JSON.parse(readFileSync(resolve("package.json"), "utf8"));
     expect(packageJson.scripts["start:local"]).toBe("node scripts/local-next-runtime.mjs start");
     expect(packageJson.scripts["dev:local"]).toBe("node scripts/local-next-runtime.mjs dev");
+  });
+
+  it("default config DATABASE_URL points to the same file as databasePath (real CJK repo path)", async () => {
+    const runtime = await loadRuntime();
+    const config = runtime.buildLocalRuntimeConfig({ cwd: process.cwd(), mode: "start", parentEnv: {} });
+    const expectedAbs = resolve("prisma", "dev.db");
+    expect(config.databasePath).toBe(expectedAbs);
+    expect(config.env.DATABASE_URL).toBe("file:" + expectedAbs.replaceAll("\\", "/"));
+    expect(config.env.DATABASE_URL).toBe("file:" + config.databasePath.replaceAll("\\", "/"));
+    expect(config.databasePath).toContain("跨境电商AI工具");
+    expect(config.env.DATABASE_URL).toContain("跨境电商AI工具");
+    expect(config.env.DATABASE_URL).not.toBe("file:./dev.db");
+  });
+
+  it("isolated config DATABASE_URL points to the same file as its validated databasePath", async () => {
+    const runtime = await loadRuntime();
+    const smokeParentRoot = join(TEST_ROOT, "qingxuan-smoke-samefile");
+    const runtimeRoot = join(smokeParentRoot, "t");
+    mkdirSync(runtimeRoot, { recursive: true });
+    const databasePath = join(runtimeRoot, "dev.db");
+    const demoAccessStorePath = join(runtimeRoot, "demo-access.json");
+    const config = runtime.buildLocalRuntimeConfig({
+      cwd: resolve("fixture-project"),
+      mode: "start",
+      databasePath,
+      demoAccessStorePath,
+      smokeParentRoot,
+      parentEnv: {},
+    });
+    expect(config.env.DATABASE_URL).toBe("file:" + config.databasePath.replaceAll("\\", "/"));
+    expect(config.env.DATABASE_URL).toBe("file:" + databasePath.replaceAll("\\", "/"));
   });
 
   it("uses one explicit validated loopback port without changing the default", async () => {
