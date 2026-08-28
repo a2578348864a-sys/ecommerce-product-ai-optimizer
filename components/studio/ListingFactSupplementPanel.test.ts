@@ -1,7 +1,16 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import {
+  CONFLICT_NOTICE_TEXT,
+  SUCCESS_NOTICE_TEXT,
+  prefillManualValues,
+  changedManualFacts,
+  runCreativeHandoffCreate,
+  type HandoffNotice,
+} from "./ListingFactSupplementPanel";
 import { ListingFactSupplementPanel } from "@/components/studio/ListingFactSupplementPanel";
+import { HandoffApiRequestError } from "@/components/creative-handoff/useCreativeHandoffApi";
 import type { CreativeHandoffPreview } from "@/components/creative-handoff/types";
 
 function previewWith(candidates: Array<{ field: string; value: string; scopes: string[] }>): CreativeHandoffPreview {
@@ -77,5 +86,87 @@ describe("ListingFactSupplementPanel", () => {
       expect(html).toContain(label);
     }
     expect(html).toContain("我已核对，这是商品真实信息");
+  });
+});
+
+
+describe("轮 20 创作资料回填与版本冲突（保存过重开消失）", () => {
+  const saved = [
+    { field: "usage", label: "使用场景", value: "办公场所，家庭", sourceKind: "user_confirmation" as const },
+    { field: "material", label: "材质", value: "Stainless Steel", sourceKind: "user_confirmation" as const },
+  ];
+  it("prefillManualValues：重新打开时已保存事实回填到对应手动字段", () => {
+    const pre = prefillManualValues(saved as never);
+    expect(pre.usage).toBe("办公场所，家庭");
+    expect(pre.material).toBe("Stainless Steel");
+    expect(pre.construction).toBeUndefined();
+    expect(pre.compatibility).toBeUndefined();
+  });
+  it("changedManualFacts：与已保存值完全相同的提交被过滤（避免重复写/歧义）", () => {
+    const changed = changedManualFacts(
+      [{ field: "usage", value: "办公场所，家庭" }, { field: "construction", value: "不锈钢焊接工艺" }],
+      saved as never,
+    );
+    expect(changed).toEqual([{ field: "construction", value: "不锈钢焊接工艺" }]);
+  });
+});
+
+describe("行为级：409 冲突通知时序（runCreativeHandoffCreate，真实执行 create→onConflict→抛错→refresh→通知）", () => {
+  const err409 = { status: 409, code: "concurrent_update", message: "研究数据已更新，请刷新后重新确认。" };
+
+  function deferred() {
+    let resolve!: () => void;
+    const promise = new Promise<void>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  function payload() {
+    return {
+      requestId: "req-1",
+      selectedFactCandidateIds: [] as string[],
+      expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-10T00:00:00.000Z" },
+      expectedResearchRevision: 2,
+      expectedCurrentHandoffRevision: 1,
+    };
+  }
+
+  it("刷新完成前不显示成功提示；refresh 完成后稳定显示精确冲突文案；create/refresh 各一次；无自动重试；无成功提示；再等一个事件循环不被覆盖", async () => {
+    const d = deferred();
+    const emitted: HandoffNotice[] = [];
+    const create = vi.fn(async (opts: { onConflict?: (e: { status: number; code: string; message: string }) => void }) => {
+      // 模拟真实 API hook 行为：调用传入的 onConflict（如果实现仍传），随后抛出 409
+      opts.onConflict?.(err409);
+      throw new HandoffApiRequestError(err409);
+    });
+    const refresh = vi.fn(() => d.promise);
+    const onSuccess = vi.fn();
+    const run = runCreativeHandoffCreate({
+      create: create as never,
+      refresh,
+      requestPayload: payload(),
+      onSuccess,
+      emit: (n) => emitted.push(n),
+    });
+    // 刷新完成前：不得显示成功提示
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(emitted.some((n) => n?.text === SUCCESS_NOTICE_TEXT)).toBe(false);
+    // 完成刷新
+    d.resolve();
+    await run;
+    // create / refresh 各恰好一次；无自动重试 create
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(onSuccess).not.toHaveBeenCalled();
+    // 最终稳定显示精确冲突文案
+    const last = emitted[emitted.length - 1];
+    expect(last).toEqual({ tone: "error", text: CONFLICT_NOTICE_TEXT });
+    // 不得显示成功提示
+    expect(emitted.some((n) => n?.text === SUCCESS_NOTICE_TEXT)).toBe(false);
+    // 再等待事件循环：冲突提示仍存在（未被 catch 覆盖）
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(emitted[emitted.length - 1]?.text).toBe(CONFLICT_NOTICE_TEXT);
+    expect(emitted[emitted.length - 1]?.tone).toBe("error");
   });
 });

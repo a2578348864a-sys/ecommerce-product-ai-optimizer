@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CreativeHandoffPreview, HandoffDetailConfirmedFact } from "@/components/creative-handoff/types";
 import { HandoffApiRequestError } from "@/components/creative-handoff/useCreativeHandoffApi";
 import { createBrowserUuid } from "@/lib/browserUuid";
@@ -46,12 +46,86 @@ function titleDerivedHint(canonicalField: string): string {
 export type ManualFactInput = { field: string; value: string };
 
 /** V3 Final HWF（FIX-6）：Evidence Workbench 已确认事实（factCandidates namespace，只读展示） */
+export type HandoffDetailLikeFact = { field: string; label?: string; value: string | number; sourceKind?: string };
+
+/** 轮 20：重新打开时把已保存事实回填到对应手动字段（白名单字段、非空值；未保存的不占位）。 */
+export function prefillManualValues(existingFacts: ReadonlyArray<HandoffDetailLikeFact> | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const fact of existingFacts || []) {
+    if (!(fact.field in MANUAL_FIELD_LABELS) || !fact.value) continue;
+    const value = String(fact.value).trim();
+    if (value && value !== "unknown") out[fact.field] = value;
+  }
+  return out;
+}
+
+/** 轮 20：仅提交与已保存值不同的手工事实（相同值不重复写，避免歧义/噪音）。 */
+export function changedManualFacts(
+  manualFilled: Array<{ field: string; value: string }>,
+  existingFacts: ReadonlyArray<HandoffDetailLikeFact> | undefined,
+): Array<{ field: string; value: string }> {
+  return manualFilled.filter((item) => {
+    const saved = (existingFacts || []).find((fact) => fact.field === item.field);
+    return !saved || String(saved.value) !== item.value.trim();
+  });
+}
 export type WorkbenchConfirmedFact = {
   field: string;
   label: string;
   value: string | number;
   sourceKind: string;
 };
+
+/** 冲突/成功提示单一真理源（避免两套文案漂移；测试与实现共用同一常量） */
+export const CONFLICT_NOTICE_TEXT = "内容已在其他页面更新（版本冲突），已自动加载最新版本；请重新核对后再提交。";
+export const SUCCESS_NOTICE_TEXT = "商品事实已确认，可生成 Listing 草稿。";
+export type HandoffNotice = { tone: "info" | "error"; text: string } | null;
+
+export type CreativeHandoffCreateOptions = {
+  requestId: string;
+  selectedFactCandidateIds: string[];
+  manualConfirmedFacts?: ManualFactInput[];
+  expectedStorageVersion: { resultJsonHash: string; updatedAt: string };
+  expectedResearchRevision: number;
+  expectedCurrentHandoffRevision: number;
+  onConflict?: (error: { status: number; code: string; message: string }) => void;
+};
+
+/**
+ * 提交编排：create → refresh → 通知（与 DOM 解耦，可供行为级测试精确锁定时序）。
+ * 当前（修复前）时序保持与旧 submit 一致：create 传 onConflict（先发冲突通知并 void refresh），
+ * 409 抛出后 catch 再用 friendly 文案覆盖——测试将先锁定此旧时序（红），
+ * 随后按合同改为：409 分支先 await refresh 完成后再发统一冲突通知。
+ */
+export async function runCreativeHandoffCreate(input: {
+  create: (options: CreativeHandoffCreateOptions) => Promise<unknown>;
+  refresh: () => Promise<unknown>;
+  requestPayload: Omit<CreativeHandoffCreateOptions, "onConflict">;
+  onSuccess: () => void;
+  emit: (notice: HandoffNotice) => void;
+}): Promise<void> {
+  try {
+    const result = await input.create(input.requestPayload);
+    await input.refresh();
+    input.onSuccess();
+    input.emit({ tone: "info", text: SUCCESS_NOTICE_TEXT });
+    void result;
+  } catch (error) {
+    // 409 冲突：先完成自动刷新，再发统一冲突通知。
+    // 不得先发通知再被 catch 覆盖；不得自动重试 create；不得显示成功提示。
+    if (error instanceof HandoffApiRequestError && error.error?.status === 409) {
+      await input.refresh();
+      input.emit({ tone: "error", text: CONFLICT_NOTICE_TEXT });
+      return;
+    }
+    input.emit({
+      tone: "error",
+      text: error instanceof HandoffApiRequestError
+        ? friendlySupplementError(error.error)
+        : "保存失败，请稍后重试。",
+    });
+  }
+}
 
 export function ListingFactSupplementPanel({
   taskId,
@@ -109,9 +183,21 @@ export function ListingFactSupplementPanel({
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState<{ tone: "info" | "error"; text: string } | null>(null);
 
-  const manualFilled = Object.entries(manualValues)
-    .filter(([, value]) => value.trim().length > 0)
-    .map(([field, value]) => ({ field, value: value.trim() }));
+  // 轮 20：重新打开/刷新后回填已保存事实（消除「保存过重开却空白」）
+  useEffect(() => {
+    setManualValues((prev) => ({
+      ...prefillManualValues(existingFacts),
+      // 保留用户当前尚未确认的新输入（不覆盖未保存内容）
+      ...Object.fromEntries(Object.entries(prev).filter(([key, value]) => value.trim().length > 0 && !(key in prefillManualValues(existingFacts)))),
+    }));
+  }, [existingFacts]);
+
+  const manualFilled = changedManualFacts(
+    Object.entries(manualValues)
+      .filter(([, value]) => value.trim().length > 0)
+      .map(([field, value]) => ({ field, value: value.trim() })),
+    existingFacts,
+  );
   const canSubmit = Boolean(
     preview
     && preview.storageVersion
@@ -127,27 +213,24 @@ export function ListingFactSupplementPanel({
     setSubmitting(true);
     setNotice(null);
     try {
-      const result = await create({
-        requestId: createBrowserUuid(),
-        selectedFactCandidateIds: selectedIds,
-        ...(manualFilled.length > 0 ? { manualConfirmedFacts: manualFilled } : {}),
-        expectedStorageVersion: preview.storageVersion,
-        expectedResearchRevision: preview.expectedResearchRevision,
-        expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision ?? 0,
-      });
-      setSelectedIds([]);
-      setManualValues({});
-      setConfirmed(false);
-      await refresh();
-      onCommitted?.();
-      setNotice({ tone: "info", text: "商品事实已确认，可生成 Listing 草稿。" });
-      void result;
-    } catch (error) {
-      setNotice({
-        tone: "error",
-        text: error instanceof HandoffApiRequestError
-          ? friendlySupplementError(error.error)
-          : "保存失败，请稍后重试。",
+      await runCreativeHandoffCreate({
+        create,
+        refresh,
+        requestPayload: {
+          requestId: createBrowserUuid(),
+          selectedFactCandidateIds: selectedIds,
+          ...(manualFilled.length > 0 ? { manualConfirmedFacts: manualFilled } : {}),
+          expectedStorageVersion: preview.storageVersion,
+          expectedResearchRevision: preview.expectedResearchRevision,
+          expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision ?? 0,
+        },
+        onSuccess: () => {
+          setSelectedIds([]);
+          setManualValues({});
+          setConfirmed(false);
+          onCommitted?.();
+        },
+        emit: (notice) => setNotice(notice),
       });
     } finally {
       setSubmitting(false);
