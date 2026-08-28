@@ -1654,7 +1654,7 @@ export function formalV2ImageCopy(hasImageDraft: boolean) {
   return hasImageDraft
     ? {
       headline: "AI 图片草稿已生成（待人工确认）；真实参考图尚未提供。",
-      guidance: "发布前必须用真实参考图逐项核验。",
+      guidance: "人工确认入口：点击下方「补充清晰参考图后重新检查」，上传真实参考图并完成人工确认。",
       verificationReasons: [
         "无法仅凭 AI 图片确认是不是同一个商品",
         "无法确认产品结构、颜色和数量与真实商品一致",
@@ -1983,9 +1983,9 @@ function FormalV2RecordContent({
             <p className="mt-2 text-sm font-semibold leading-6 text-rose-700">
               {view.hasListingDraft ? "AI Listing 草稿已生成（未人工核实，暂不可发布）。" : "Listing 草稿尚未取得。"}
             </p>
-            <p className="mt-2 text-xs leading-5 text-slate-600">必须先核对商品事实、关键词、合规表述和平台规则，不能直接发布。</p>
+            <p className="mt-2 text-xs leading-5 text-slate-600">人工核实入口：点击下方「前往 Listing Studio 人工核对」，在「确认创作资料」区勾选「人工确认」并保存后，才可发布。</p>
             {!studioLegacyUnsupported && !researchStale ? (
-              <Link href={`/listing-studio?taskId=${encodeURIComponent(record.id)}`} className="linear-button mt-4 inline-flex h-9 items-center justify-center px-3 text-sm font-semibold">前往 Listing Studio 核对</Link>
+              <Link href={`/listing-studio?taskId=${encodeURIComponent(record.id)}`} className="linear-button mt-4 inline-flex h-9 items-center justify-center px-3 text-sm font-semibold">前往 Listing Studio 人工核对</Link>
             ) : <p className="mt-3 text-xs font-semibold text-amber-700">{researchStale ? "研究资料已变化，请先重新确认研究。" : "当前记录的创作资料尚未取得。"}</p>}
           </div>
           <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
@@ -2082,7 +2082,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
       };
     }
 
-    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword) && !isGuestMode()) {
+    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword) && !isGuestMode() && !noAuthOwner) {
       setRecord(null);
       setLoading(false);
       setError("请先输入访问密码后查看任务详情。");
@@ -2131,7 +2131,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
     return () => {
       cancelled = true;
     };
-  }, [id, accessPassword, isAccessPasswordReady]);
+  }, [id, accessPassword, isAccessPasswordReady, noAuthOwner]);
 
 
   

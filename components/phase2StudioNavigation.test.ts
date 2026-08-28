@@ -46,7 +46,7 @@ describe("Phase 2 Studio entry points", () => {
     expect(detail).not.toContain("ImageHandoffSection");
     expect(detail).toContain('data-testid="formal-v2-listing-images"');
     expect(detail).toContain("Listing 与商品图片");
-    expect(detail).toContain("前往 Listing Studio 核对");
+    expect(detail).toContain("前往 Listing Studio 人工核对");
     expect(detail).toContain("补充清晰参考图后重新检查");
     expect(detail).not.toContain("/prototype");
   });
