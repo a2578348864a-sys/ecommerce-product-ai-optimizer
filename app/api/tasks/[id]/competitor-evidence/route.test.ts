@@ -5,6 +5,9 @@ const mocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
   runCollector: vi.fn(),
   runAmazon: vi.fn(),
+  addAsin: vi.fn(),
+  readSnapshot: vi.fn(),
+  getEvidence: vi.fn(),
 }));
 
 vi.mock("@/lib/server/demoGuard", () => ({
@@ -32,8 +35,18 @@ vi.mock("@/tools/collectors/browser-use/sellerSpriteCollector", async (importOri
 
 vi.mock("@/lib/server/runtimeMode", () => ({ getRuntimeMode: () => "local_owner" }));
 
+// save_browser_use 保存循环单元级 mock：addCompetitorAsin 可编程抛冲突，
+// snapshot/evidence 读取返回确定数据（真实写入器经 updateMany 无法在单测环境提交成功）。
+vi.mock("@/lib/server/competitorEvidence", async (importOriginal) => ({
+  ...(await importOriginal() as object),
+  addCompetitorAsin: mocks.addAsin,
+  readCompetitorEvidenceSnapshot: mocks.readSnapshot,
+  getCompetitorEvidence: mocks.getEvidence,
+}));
+
 import { POST } from "./route";
 import { takeBrowserUsePreview, storeBrowserUsePreview, type BrowserUseResearchPreviewV1 } from "@/lib/server/browserUseResearch";
+import { CompetitorEvidenceError } from "@/lib/server/competitorEvidence";
 
 function batchResultJson(asin = "B0SAMPLE12") {
   return JSON.stringify({
@@ -95,6 +108,18 @@ beforeEach(() => {
   mocks.findUnique.mockResolvedValue({ id: "task-a", resultJson: batchResultJson(), updatedAt: new Date("2026-08-14T02:00:00.000Z") });
   mocks.runCollector.mockImplementation(async () => ({ ok: true, preview: keywordPreview(), observation: null }));
   mocks.runAmazon.mockImplementation(async () => ({ ok: true, observation: amazonObservation() }));
+  // 默认：每次保存成功；snapshot 从 findUnique（prisma）读取，保持路由原 seed 校验语义；
+  // evidence 返回已保存 asins。
+  const savedAsins: string[] = [];
+  mocks.addAsin.mockImplementation(async (input: { asin: string }) => {
+    savedAsins.push(input.asin);
+    return { asins: savedAsins.map((asin) => ({ asin })) };
+  });
+  mocks.readSnapshot.mockImplementation(async () => {
+    const row = await mocks.findUnique({ id: "task-a" });
+    return { updatedAt: row?.updatedAt ?? new Date("2026-08-14T02:00:00.000Z"), resultJson: row?.resultJson ?? batchResultJson(), candidateId: null };
+  });
+  mocks.getEvidence.mockImplementation(async () => ({ asins: savedAsins.map((asin) => ({ asin })) }));
 });
 
 describe("轮 9 竞品自动采集路由（browser_use）", () => {
@@ -133,6 +158,33 @@ describe("轮 9 竞品自动采集路由（browser_use）", () => {
     const missing = await POST(ownerRequest({ action: "save_browser_use", previewId: "bup_preview_missing", expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "x" } }), { params: Promise.resolve({ id: "task-a" }) });
     expect(missing.status).toBe(400);
     expect((await missing.json()).error.code).toBe("preview_not_found");
+  });
+
+  it("轮 9b 保存循环：单条冲突不丢弃后续条目（conflict 重试一次，saved/skipped 明细准确）", async () => {
+    // 3 条竞品：第 2 条保存始终 task_result_conflict（含重试）→ skipped；
+    // 第 1、3 条保存成功 → saved；循环不得因第 2 条冲突中断。
+    const multi = preview() as BrowserUseResearchPreviewV1;
+    multi.results = [
+      { asin: "B0COMP0002", title: "Competitor A", sourceUrl: "https://www.amazon.com/dp/B0COMP0002", capturedAt: "2026-08-14T02:00:01.000Z" },
+      { asin: "B0COMP0003", title: "Competitor B", sourceUrl: "https://www.amazon.com/dp/B0COMP0003", capturedAt: "2026-08-14T02:00:01.000Z" },
+      { asin: "B0COMP0004", title: "Competitor C", sourceUrl: "https://www.amazon.com/dp/B0COMP0004", capturedAt: "2026-08-14T02:00:01.000Z" },
+    ] as BrowserUseResearchPreviewV1["results"];
+    const previewId = storeBrowserUsePreview(multi);
+    mocks.addAsin.mockImplementation(async (input: { asin: string }) => {
+      if (input.asin === "B0COMP0003") {
+        throw new CompetitorEvidenceError("task_result_conflict", 409, "任务已在其他页面更新，请刷新后重试。");
+      }
+      return { asins: [{ asin: input.asin }] };
+    });
+    const save = await POST(ownerRequest({ action: "save_browser_use", previewId, expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-14T02:00:00.000Z" } }), { params: Promise.resolve({ id: "task-a" }) });
+    expect(save.status).toBe(200);
+    const body = await save.json();
+    expect(body.data.saved).toContain("B0COMP0002");
+    expect(body.data.saved).toContain("B0COMP0004");
+    expect(body.data.skipped.some((s: { asin: string; code: string }) => s.asin === "B0COMP0003" && s.code === "task_result_conflict")).toBe(true);
+    // 冲突重试两次（首次 + 重试），第 3 条仍被尝试
+    expect(mocks.addAsin.mock.calls.filter((c) => c[0].asin === "B0COMP0003").length).toBe(2);
+    expect(mocks.addAsin.mock.calls.some((c) => c[0].asin === "B0COMP0004")).toBe(true);
   });
 
   it("轮 10 服务端串联：seed→SellerSprite关键词→选词→Amazon 采集；客户端伪造 query/seed 被忽略；seed 不进入结果为竞品", async () => {

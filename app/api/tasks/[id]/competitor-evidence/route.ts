@@ -214,35 +214,49 @@ export async function POST(
       const skipped: { asin: string; code: string }[] = [];
       let currentVersion = expectedStorageVersion;
       for (const result of preview.results) {
-        try {
-          const detailBullets = Array.isArray(result.bullets) && result.bullets.length > 0
-            ? {
-                bullets: result.bullets.slice(0, 5),
+        // 冲突重试：版本失配时用最新快照重读一次（最多 1 次），避免其余条目被一次
+        // 并发写（如关键词保存）连带丢弃；连续 2 次冲突才放弃该条并记录 skipped。
+        let attempts = 0;
+        let saved = false;
+        while (attempts < 2 && !saved) {
+          attempts += 1;
+          try {
+            const detailBullets = Array.isArray(result.bullets) && result.bullets.length > 0
+              ? {
+                  bullets: result.bullets.slice(0, 5),
+                  capturedAt: result.capturedAt || preview.capturedAt,
+                  sourceUrl: result.sourceUrl,
+                }
+              : null;
+            await addCompetitorAsin({
+              context: resolved.context,
+              taskId: id,
+              asin: result.asin,
+              note: result.title.slice(0, 200) || undefined,
+              autoProvenance: {
+                collector: preview.collector,
+                sourceUrl: preview.sourceUrl,
                 capturedAt: result.capturedAt || preview.capturedAt,
-                sourceUrl: result.sourceUrl,
-              }
-            : null;
-          await addCompetitorAsin({
-            context: resolved.context,
-            taskId: id,
-            asin: result.asin,
-            note: result.title.slice(0, 200) || undefined,
-            autoProvenance: {
-              collector: preview.collector,
-              sourceUrl: preview.sourceUrl,
-              capturedAt: result.capturedAt || preview.capturedAt,
-              reasonCodes: ["browser_use_collected"],
-            },
-            expectedStorageVersion: currentVersion,
-            ...(detailBullets ? { detailBullets } : {}),
-          });
-          savedAsins.push(result.asin);
-          const after = await readCompetitorEvidenceSnapshot(resolved.context, id);
-          currentVersion = toStorageVersion(after);
-        } catch (error) {
-          const code = error instanceof CompetitorEvidenceError ? error.code : "save_failed";
-          skipped.push({ asin: result.asin, code });
-          if (code === "task_result_conflict") break;
+                reasonCodes: ["browser_use_collected"],
+              },
+              expectedStorageVersion: currentVersion,
+              ...(detailBullets ? { detailBullets } : {}),
+            });
+            saved = true;
+            savedAsins.push(result.asin);
+            const after = await readCompetitorEvidenceSnapshot(resolved.context, id);
+            currentVersion = toStorageVersion(after);
+          } catch (error) {
+            const code = error instanceof CompetitorEvidenceError ? error.code : "save_failed";
+            // 仅并发冲突（版本失配）值得重试；duplicate/上限等业务拒绝立即记 skip（不重复记 2 次）
+            if (code === "task_result_conflict" && attempts < 2) {
+              // 刷新版本后重试该条（其他页面并发写入导致的失配）
+              const fresh = await readCompetitorEvidenceSnapshot(resolved.context, id);
+              currentVersion = toStorageVersion(fresh);
+              continue;
+            }
+            skipped.push({ asin: result.asin, code });
+          }
         }
       }
       const evidence = await getCompetitorEvidence(resolved.context, id);

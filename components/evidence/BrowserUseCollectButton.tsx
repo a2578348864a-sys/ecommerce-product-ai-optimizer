@@ -1,8 +1,22 @@
 "use client";
 
-import { useCallback, useReducer } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 import { Loader2 } from "lucide-react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
+
+/** 命令式采集句柄的安全赋值：ref 存在才绑定，卸载时释放（保证同一时刻只有一个句柄） */
+function useImperativeHandleSafe(
+  ref: React.MutableRefObject<(() => void) | null> | undefined,
+  collect: () => void,
+) {
+  const collectRef = useRef(collect);
+  collectRef.current = collect;
+  useEffect(() => {
+    if (!ref) return;
+    ref.current = () => collectRef.current();
+    return () => { ref.current = null; };
+  }, [ref]);
+}
 
 /**
  * 轮 9：Browser Use 自动采集按钮（竞品/关键词）——只读采集 → 服务端 Preview → 人工确认保存。
@@ -45,7 +59,7 @@ export type BrowserUseCollectAction =
   | { type: "COLLECT_SUCCEEDED"; preview: BrowserUseCollectState["preview"]; previewId: string }
   | { type: "COLLECT_FAILED"; code: string; message: string }
   | { type: "SAVING" }
-  | { type: "SAVED"; count: number }
+  | { type: "SAVED"; count: number; skippedCount: number }
   | { type: "SAVE_FAILED"; message: string }
   | { type: "CANCEL" };
 
@@ -69,7 +83,16 @@ export function browserUseCollectStateReducer(
     case "SAVING":
       return { ...state, phase: "saving" };
     case "SAVED":
-      return { ...state, phase: "idle", preview: null, previewId: null, savedCount: action.count, message: `已保存 ${action.count} 条自动采集证据。` };
+      return {
+        ...state,
+        phase: "idle",
+        preview: null,
+        previewId: null,
+        savedCount: action.count,
+        message: action.skippedCount > 0
+          ? `已保存 ${action.count} 条；${action.skippedCount} 条已在列表中（重复采集被跳过）。`
+          : `已保存 ${action.count} 条自动采集证据。`,
+      };
     case "SAVE_FAILED":
       return { ...state, phase: "error", message: action.message };
     case "CANCEL":
@@ -90,6 +113,7 @@ export function BrowserUseCollectButton({
   storageVersion,
   onSaved,
   onCollected,
+  collectRef,
 }: {
   taskId: string;
   kind: "competitor" | "keyword";
@@ -97,6 +121,8 @@ export function BrowserUseCollectButton({
   onSaved?: (count: number) => void;
   /** 轮 10 合并：采集成功后额外产物（竞品采集同时产出的关键词预览） */
   onCollected?: (extra: { keywordPreviewId?: string | null; keywordCount?: number | null; seedAsin?: string | null; sourceUrl?: string | null }) => void;
+  /** 命令式采集句柄：供卡片内「自动采集竞品」等按钮复用同一采集链路 */
+  collectRef?: React.MutableRefObject<(() => void) | null>;
 }) {
   const [state, dispatch] = useReducer(browserUseCollectStateReducer, INITIAL_BROWSER_USE_COLLECT_STATE);
   const busy = state.phase === "collecting" || state.phase === "saving";
@@ -128,6 +154,8 @@ export function BrowserUseCollectButton({
     return () => { cancelled = true; };
   }, [taskId, kind, onCollected]);
 
+  useImperativeHandleSafe(collectRef, collect);
+
   const confirmSave = useCallback(() => {
     const payload = buildSaveBrowserUsePayload(state.previewId, storageVersion);
     if (!payload) {
@@ -149,7 +177,9 @@ export function BrowserUseCollectButton({
         }
         const saved = body?.data?.saved;
         const count = Array.isArray(saved) ? saved.length : 0;
-        dispatch({ type: "SAVED", count });
+        const skippedRaw = body?.data?.skipped;
+        const skippedCount = Array.isArray(skippedRaw) ? skippedRaw.length : 0;
+        dispatch({ type: "SAVED", count, skippedCount });
         onSaved?.(count);
       } catch {
         dispatch({ type: "SAVE_FAILED", message: "网络错误，请重试。" });

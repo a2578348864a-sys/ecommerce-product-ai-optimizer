@@ -8,7 +8,7 @@
  * 数据来源严格按 docs/v3/changes/phase-2/evidence-read-model.md；
  * 缺失一律显示 unknown/「未收集」，禁止 AI 填空、禁止编造。
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
@@ -566,6 +566,8 @@ export function EvidenceWorkbench({
   const [competitorBusy, setCompetitorBusy] = useState(false);
   // 轮 10 合并：竞品采集同时产出的关键词预览（待确认卡片）
   const [keywordPending, setKeywordPending] = useState<KeywordPendingPreview | null>(null);
+  // 竞品采集命令式句柄：卡片内「自动采集竞品」与下方 BrowserUseCollectButton 共用同一采集链路
+  const competitorCollectRef = useRef<(() => void) | null>(null);
 
   const [keywordReportEvidence, setKeywordReportEvidence] = useState<KeywordEvidenceView | null>(null);
   const [keywordReportStorageVersion, setKeywordReportStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
@@ -987,7 +989,7 @@ useEffect(() => {
           addedAt: c.addedAt ?? null,
           detailBulletsCount: Array.isArray(c.detailBullets?.bullets) ? c.detailBullets.bullets.length : 0,
         }))}
-        onCollect={() => { /* 采集走 BrowserUseCollectButton（只读组件不改） */ }}
+        onCollect={() => { competitorCollectRef.current?.(); }}
         onAdd={async (input) => {
           await mutateCompetitor("POST", { asin: input.asin, note: input.note });
           return competitorError || null;
@@ -999,7 +1001,7 @@ useEffect(() => {
         error={competitorError}
         busy={competitorBusy}
       />
-      <BrowserUseCollectButton taskId={taskId} kind="competitor" storageVersion={storageVersion} onCollected={({ keywordPreviewId, keywordCount, seedAsin, sourceUrl }) => { if (keywordPreviewId) setKeywordPending({ previewId: keywordPreviewId, seedAsin: seedAsin ?? "", sourceUrl: sourceUrl ?? "", keywordCount: keywordCount ?? 0, capturedAt: null }); }} onSaved={() => { void (async () => { try { const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/competitor-evidence`, { headers: buildFetchHeaders() }); const body = await res.json(); if (res.ok && body.ok && Array.isArray(body.data?.evidence?.asins)) setCompetitors(body.data.evidence.asins); if (body.ok && body.data?.storageVersion) setStorageVersion(body.data.storageVersion); } catch { /* refresh best-effort */ } })(); void loadKeywordEvidence(); onDataChanged?.(); }} />
+      <BrowserUseCollectButton taskId={taskId} kind="competitor" storageVersion={storageVersion} collectRef={competitorCollectRef} onCollected={({ keywordPreviewId, keywordCount, seedAsin, sourceUrl }) => { if (keywordPreviewId) setKeywordPending({ previewId: keywordPreviewId, seedAsin: seedAsin ?? "", sourceUrl: sourceUrl ?? "", keywordCount: keywordCount ?? 0, capturedAt: null }); }} onSaved={() => { void (async () => { try { const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/competitor-evidence`, { headers: buildFetchHeaders() }); const body = await res.json(); if (res.ok && body.ok && Array.isArray(body.data?.evidence?.asins)) setCompetitors(body.data.evidence.asins); if (body.ok && body.data?.storageVersion) setStorageVersion(body.data.storageVersion); } catch { /* refresh best-effort */ } })(); void loadKeywordEvidence(); onDataChanged?.(); }} />
       {/* ── Amazon 商品资料（V3.3） ── */}
       <div data-testid="workbench-browser">
         <SectionStatusBar
