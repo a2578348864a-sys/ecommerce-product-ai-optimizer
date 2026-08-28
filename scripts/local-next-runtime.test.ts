@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const RUNTIME_SCRIPT = resolve("scripts/local-next-runtime.mjs");
@@ -60,16 +60,23 @@ describe("local Next runtime", () => {
     expect(packageJson.scripts["dev:local"]).toBe("node scripts/local-next-runtime.mjs dev");
   });
 
-  it("default config DATABASE_URL points to the same file as databasePath (real CJK repo path)", async () => {
+  it("default config preserves a synthetic CJK project path and keeps DATABASE_URL aligned", async () => {
     const runtime = await loadRuntime();
-    const config = runtime.buildLocalRuntimeConfig({ cwd: process.cwd(), mode: "start", parentEnv: {} });
-    const expectedAbs = resolve("prisma", "dev.db");
+    const cjkProjectRoot = resolve(TEST_ROOT, "跨境电商AI工具", "fixture-project");
+    const config = runtime.buildLocalRuntimeConfig({
+      cwd: cjkProjectRoot,
+      mode: "start",
+      parentEnv: { DATABASE_URL: "file:./wrong.db", PRESERVED_VALUE: "yes" },
+    });
+    const expectedAbs = resolve(cjkProjectRoot, "prisma", "dev.db");
     expect(config.databasePath).toBe(expectedAbs);
     expect(config.env.DATABASE_URL).toBe("file:" + expectedAbs.replaceAll("\\", "/"));
     expect(config.env.DATABASE_URL).toBe("file:" + config.databasePath.replaceAll("\\", "/"));
     expect(config.databasePath).toContain("跨境电商AI工具");
     expect(config.env.DATABASE_URL).toContain("跨境电商AI工具");
     expect(config.env.DATABASE_URL).not.toBe("file:./dev.db");
+    expect(isAbsolute(config.databasePath)).toBe(true);
+    expect(config.env.PRESERVED_VALUE).toBe("yes");
   });
 
   it("isolated config DATABASE_URL points to the same file as its validated databasePath", async () => {
