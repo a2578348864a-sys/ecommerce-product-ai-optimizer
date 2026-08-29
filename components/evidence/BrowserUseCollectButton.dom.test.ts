@@ -3,7 +3,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
-/* ── 竞品策略卡 真实 DOM 行为测试（第2轮） ── */
+/* ── BrowserUseCollectButton 真实行为测试（轮 9 收口） ── */
+/* FakeDOM 基础设施与 CompetitorStrategyCard.dom.test.ts 同构。 */
 
 type Listener = (event: FakeEvent) => void;
 
@@ -113,7 +114,7 @@ class FakeElement extends FakeNode {
   dataset: Record<string, string> = {};
   style: Record<string, string> = {};
   className = "";
-  scrollIntoViewCalls = 0;
+  disabled = false;
   get open(): boolean { return this.attributes.has("open"); }
   set open(value: boolean) {
     if (value) this.setAttribute("open", "");
@@ -140,7 +141,7 @@ class FakeElement extends FakeNode {
   getAttribute(name: string): string | null { return this.attributes.get(name) ?? null; }
   hasAttribute(name: string): boolean { return this.attributes.has(name); }
   focus(_options?: { preventScroll?: boolean }) { this.ownerDocument.activeElement = this; }
-  scrollIntoView() { this.scrollIntoViewCalls += 1; }
+  scrollIntoView() {}
   querySelector(selector: string): FakeElement | null {
     const parts = selector.trim().split(/\s+/).filter(Boolean);
     if (parts.length === 0) return null;
@@ -229,94 +230,108 @@ async function flush() {
   });
 }
 
+const STORAGE_VERSION = { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-14T02:00:00.000Z" };
 
-
-const PRODUCT = "THERMOS FUNTAINER Kids Food Jar with Spoon 10oz Pink";
-const ENTRIES = [
-  { asin: "B0D1", note: "LunchBots Thermal Food Jar for Kids", sourceKind: "browser_use" as const, addedAt: "2026-08-01", detailBulletsCount: 5 },
-  { asin: "B0D2", note: "Thermal Lunch Jar", sourceKind: "manual" as const, addedAt: "2026-08-02", detailBulletsCount: 0 },
-  { asin: "B0D3", note: "Glass Storage Containers", sourceKind: "browser_use" as const, addedAt: "2026-08-03", detailBulletsCount: 2 },
-];
-describe("CompetitorStrategyCard", () => {
-  async function render(card: Parameters<typeof import("@/components/evidence/CompetitorStrategyCard").CompetitorStrategyCard>[0]) {
-    const { CompetitorStrategyCard } = await import("@/components/evidence/CompetitorStrategyCard");
+describe("BrowserUseCollectButton 真实行为", () => {
+  async function render(props: Partial<Parameters<typeof import("@/components/evidence/BrowserUseCollectButton").BrowserUseCollectButton>[0]> = {}) {
+    const { BrowserUseCollectButton } = await import("@/components/evidence/BrowserUseCollectButton");
+    const ref = { current: null as (() => void) | null };
     await act(async () => {
       root = createRoot(container as unknown as Element);
-      root.render(createElement(CompetitorStrategyCard, card as never));
+      root.render(createElement(BrowserUseCollectButton, {
+        taskId: "task-a",
+        kind: "competitor",
+        storageVersion: STORAGE_VERSION,
+        ...props,
+        collectRef: ref,
+      } as never));
     });
     await flush();
+    return ref;
   }
-  it("默认收起：管理竞品 details 关闭，无平铺管理操作", async () => {
-    await render({ productName: PRODUCT, entries: ENTRIES, onAdd: async () => null, onDelete: async () => null });
-    const mg = container.querySelector("[data-testid=cp-manage]") as unknown as { open: boolean };
-    expect(mg.open).toBe(false);
-  });
-  it("显示 direct/adjacent/irrelevant 数量", async () => {
-    await render({ productName: PRODUCT, entries: ENTRIES, onAdd: async () => null, onDelete: async () => null });
-    const text = documentInstance.body.textContent;
-    expect(text).toContain("直接竞品 1");
-    expect(text).toContain("相邻商品 1");
-    expect(text).toContain("待排除 1");
-  });
-  it("条目显示标题/备注、ASIN、来源（自动采集 vs 人工添加）、关系、五点数", async () => {
-    await render({ productName: PRODUCT, entries: ENTRIES, onAdd: async () => null, onDelete: async () => null });
-    const text = documentInstance.body.textContent;
-    expect(text).toContain("LunchBots Thermal Food Jar for Kids");
-    expect(text).toContain("B0D1");
-    expect(text).toContain("自动采集");
-    expect(text).toContain("人工添加");
-    expect(text).toContain("直接竞品");
-    expect(text).toContain("相邻商品");
-    expect(text).toContain("已采集五点 5");
-    expect(text).toContain("尚未采集五点");
-  });
-  it("browser_use 显示自动采集，manual 显示人工添加（绝不写人工添加假来源）", async () => {
-    await render({ productName: PRODUCT, entries: ENTRIES, onAdd: async () => null, onDelete: async () => null });
-    const text = documentInstance.body.textContent;
-    expect(text).toContain("B0D1 · 自动采集");
-    expect(text).toContain("B0D2 · 人工添加");
-  });
-  it("主操作「自动采集竞品」存在", async () => {
-    await render({ productName: PRODUCT, entries: ENTRIES, onAdd: async () => null, onDelete: async () => null });
-    expect(documentInstance.body.textContent).toContain("自动采集竞品");
-  });
-  it("409/失败：onAdd 返回错误 → 保留 ASIN/备注输入", async () => {
-    await render({ productName: PRODUCT, entries: ENTRIES, onAdd: async () => "内容刚在其他位置更新，请刷新后重试。", onDelete: async () => null });
-    const mg = container.querySelector("[data-testid=cp-manage]") as unknown as FakeElement;
-    mg.open = true;
+
+  it("命令句柄 collectRef 触发 → 采集 fetch 恰调用 1 次（真行为，非源码字符串）", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => ({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        data: {
+          kind: "competitor",
+          previewId: "bup_preview_h1",
+          preview: { schema: "browser-use-research-preview.v1", kind: "competitor", seedAsin: "B0SAMPLE12", marketplace: "Amazon US", sourceUrl: "https://www.amazon.com/s?k=lunch", capturedAt: "2026-08-14T02:00:00.000Z", results: [{ asin: "B0C1", title: "T" }], missing: [], failureReason: null },
+        },
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock as never);
+    const ref = await render();
+    expect(ref.current).not.toBeNull();
+    await act(async () => { ref.current!(); });
     await flush();
-    const asin = container.querySelector("[data-testid=cp-asin-input]") as unknown as FakeElement;
-    asin.setAttribute("value", "B0NEW");
-    const note = container.querySelector("[data-testid=cp-note-input]") as unknown as FakeElement;
-    note.setAttribute("value", "my note");
-    const add = container.querySelector("[data-testid=cp-add]") as unknown as FakeElement;
-    add.dispatchEvent(new FakeEvent("click", add as unknown as FakeNode));
     await flush();
-    expect(documentInstance.body.textContent).toContain("内容刚在其他位置更新");
-    expect(container.querySelector("[data-testid=cp-asin-input]")).not.toBeNull();
-    // 编辑区（管理竞品）在失败后仍保持打开 = 输入不丢的语义
-    const mg2 = container.querySelector("[data-testid=cp-manage]") as unknown as FakeElement;
-    expect(mg2.open).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toContain("/competitor-evidence");
+    vi.unstubAllGlobals();
   });
-  it("390 宽：无内部横向表格", async () => {
-    await render({ productName: PRODUCT, entries: ENTRIES, onAdd: async () => null, onDelete: async () => null });
-    expect(container.querySelector("[data-testid=competitor-strategy-card]")).not.toBeNull();
-    expect(container.querySelector("table")).toBeNull();
+
+  it("空竞品预览（results=[] 且 failureReason=null）→ 确认保存前被前端拒绝：不出现绿色已保存状态", async () => {
+    // 服务端空结果拒绝的红测在 route.test.ts（9c）；此处验证前端状态机双保险：
+    // 即使被注入空预览，确认保存按钮必须禁用或保存被拒（不进入 idle+已保存 0 条）。
+    const { browserUseCollectStateReducer, INITIAL_BROWSER_USE_COLLECT_STATE, browserUseSaveAllowed } = await import("@/components/evidence/BrowserUseCollectButton");
+    // 前端门禁是"空预览不得确认保存"；当前实现必须暴露此判定（若渲染层无此判断则红）。
+    const allowed = browserUseSaveAllowed({ results: [], failureReason: null } as never);
+    expect(allowed).toBe(false);
+    const withEmpty = browserUseCollectStateReducer(
+      browserUseCollectStateReducer(INITIAL_BROWSER_USE_COLLECT_STATE, { type: "START" }),
+      { type: "COLLECT_SUCCEEDED", preview: { kind: "competitor", results: [], failureReason: null } as never, previewId: "bup_preview_empty" },
+    );
+    // 不允许出现绿色 SAVED 且"已保存 0 条"
+    const saved = browserUseCollectStateReducer(withEmpty, { type: "SAVED", count: 0, skipped: [] });
+    expect(saved.message).not.toContain("已保存 0 条自动采集证据");
   });
-  it("点击 cp-collect → onCollect 恰调用 1 次", async () => {
-    const onCollect = vi.fn();
-    await render({ productName: PRODUCT, entries: ENTRIES, onAdd: async () => null, onDelete: async () => null, onCollect });
-    const btn = container.querySelector("[data-testid=cp-collect]") as unknown as FakeElement;
-    btn.dispatchEvent(new FakeEvent("click", btn as unknown as FakeNode));
+
+  it("busy 期间（采集中）重复触发 collectRef → 采集入口调用 0 次（busy guard）", async () => {
+    const gate: { open: (() => void) | null } = { open: null };
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => {
+      await new Promise<void>((resolve) => { gate.open = resolve; });
+      return {
+        ok: true,
+        json: async () => ({
+          ok: true,
+          data: {
+            kind: "competitor",
+            previewId: "bup_preview_busy",
+            preview: { schema: "browser-use-research-preview.v1", kind: "competitor", seedAsin: "B0SAMPLE12", marketplace: "Amazon US", sourceUrl: "https://www.amazon.com/s?k=lunch", capturedAt: "2026-08-14T02:00:00.000Z", results: [{ asin: "B0C1", title: "T" }], missing: [], failureReason: null },
+          },
+        }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock as never);
+    const ref = await render();
+    // 第一次触发 → 进入 collecting（fetch 挂起中）
+    await act(async () => { ref.current!(); });
     await flush();
-    expect(onCollect).toHaveBeenCalledTimes(1);
-  });
-  it("cp-collect disabled（busy）时点击 → onCollect 调用 0 次", async () => {
-    const onCollect = vi.fn();
-    await render({ productName: PRODUCT, entries: ENTRIES, onAdd: async () => null, onDelete: async () => null, onCollect, busy: true });
-    const btn = container.querySelector("[data-testid=cp-collect]") as unknown as FakeElement;
-    btn.dispatchEvent(new FakeEvent("click", btn as unknown as FakeNode));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // busy 期间第二次触发 → guard 拦截，不产生第二次请求
+    await act(async () => { ref.current!(); });
     await flush();
-    expect(onCollect).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    gate.open?.();
+    await flush();
+    await flush();
+    vi.unstubAllGlobals();
+  });
+
+  it("skipped 按真实 code 分类：未保存原因必须如实呈现（不得统一称已在列表中）", async () => {
+    const { buildSaveSummary } = await import("@/components/evidence/BrowserUseCollectButton");
+    const summary = buildSaveSummary(1, [
+      { asin: "B0D1", code: "duplicate_asin" },
+      { asin: "B0D2", code: "task_result_conflict" },
+      { asin: "B0D3", code: "competitor_evidence_limit_exceeded" },
+      { asin: "B0D4", code: "save_failed" },
+    ]);
+    expect(summary).toContain("已在列表中");
+    expect(summary).toContain("版本冲突");
+    expect(summary).toContain("达到竞品上限");
+    expect(summary).toContain("保存失败");
   });
 });

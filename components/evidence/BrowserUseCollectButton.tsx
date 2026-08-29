@@ -50,6 +50,42 @@ export function buildSaveBrowserUsePayload(
   if (!storageVersion || typeof storageVersion.resultJsonHash !== "string" || typeof storageVersion.updatedAt !== "string" || !storageVersion.resultJsonHash || !storageVersion.updatedAt) return null;
   return { action: "save_browser_use", previewId, expectedStorageVersion: storageVersion };
 }
+
+/**
+ * 空结果门禁（前端双保险，与路由 422 competitor_preview_empty 一致）：
+ * failureReason=null 且零条目 → 用户可见字段不得出现"已保存 0 条"类绿色成功态，
+ * 确认保存按钮必须禁用；返回 false 时调用方不得发送保存请求。
+ */
+export function browserUseSaveAllowed(preview: { results: unknown[]; failureReason: string | null } | null): boolean {
+  if (!preview) return false;
+  if (preview.failureReason !== null) return false;
+  return Array.isArray(preview.results) && preview.results.length > 0;
+}
+
+/**
+ * skipped 分类诚实文案：不得把未保存条目统一称为"已在列表中"。
+ * duplicate_asin → 已在列表中；task_result_conflict → 版本冲突未保存；
+ * competitor_evidence_limit_exceeded → 达到上限；其余 → 保存失败。
+ */
+export function buildSaveSummary(
+  savedCount: number,
+  skipped: Array<{ asin: string; code: string }> | undefined,
+): string {
+  const skippedList = Array.isArray(skipped) ? skipped : [];
+  if (skippedList.length === 0) {
+    return savedCount > 0 ? `已保存 ${savedCount} 条自动采集证据。` : "";
+  }
+  const duplicates = skippedList.filter((s) => s.code === "duplicate_asin").length;
+  const conflicts = skippedList.filter((s) => s.code === "task_result_conflict").length;
+  const limits = skippedList.filter((s) => s.code === "competitor_evidence_limit_exceeded").length;
+  const others = skippedList.filter((s) => !["duplicate_asin", "task_result_conflict", "competitor_evidence_limit_exceeded"].includes(s.code)).length;
+  const parts: string[] = [`已保存 ${savedCount} 条`];
+  if (duplicates > 0) parts.push(`${duplicates} 条已在列表中（重复采集被跳过）`);
+  if (conflicts > 0) parts.push(`${conflicts} 条因版本冲突未保存（请刷新后重试）`);
+  if (limits > 0) parts.push(`${limits} 条因达到竞品上限未保存`);
+  if (others > 0) parts.push(`${others} 条保存失败（未保存）`);
+  return `${parts.join("；")}。`;
+}
 export const INITIAL_BROWSER_USE_COLLECT_STATE: BrowserUseCollectState = {
   phase: "idle", preview: null, previewId: null, message: null, savedCount: null,
 };
@@ -59,7 +95,7 @@ export type BrowserUseCollectAction =
   | { type: "COLLECT_SUCCEEDED"; preview: BrowserUseCollectState["preview"]; previewId: string }
   | { type: "COLLECT_FAILED"; code: string; message: string }
   | { type: "SAVING" }
-  | { type: "SAVED"; count: number; skippedCount: number }
+  | { type: "SAVED"; count: number; skipped: Array<{ asin: string; code: string }> }
   | { type: "SAVE_FAILED"; message: string }
   | { type: "CANCEL" };
 
@@ -89,9 +125,7 @@ export function browserUseCollectStateReducer(
         preview: null,
         previewId: null,
         savedCount: action.count,
-        message: action.skippedCount > 0
-          ? `已保存 ${action.count} 条；${action.skippedCount} 条已在列表中（重复采集被跳过）。`
-          : `已保存 ${action.count} 条自动采集证据。`,
+        message: buildSaveSummary(action.count, action.skipped),
       };
     case "SAVE_FAILED":
       return { ...state, phase: "error", message: action.message };
@@ -128,6 +162,8 @@ export function BrowserUseCollectButton({
   const busy = state.phase === "collecting" || state.phase === "saving";
 
   const collect = useCallback(() => {
+    // busy guard：采集中/保存中禁止再次触发（含 collectRef 外部按钮，如卡片「自动采集竞品」）
+    if (busy) return;
     dispatch({ type: "START" });
     let cancelled = false;
     void (async () => {
@@ -152,11 +188,16 @@ export function BrowserUseCollectButton({
       }
     })();
     return () => { cancelled = true; };
-  }, [taskId, kind, onCollected]);
+  }, [taskId, kind, onCollected, busy]);
 
   useImperativeHandleSafe(collectRef, collect);
 
   const confirmSave = useCallback(() => {
+    // 空结果门禁（前端双保险）：results=[] 或 failureReason≠null 时不得发送保存请求
+    if (!browserUseSaveAllowed(state.preview)) {
+      dispatch({ type: "SAVE_FAILED", message: "采集预览没有可保存的竞品条目，未保存任何数据。请重新采集。" });
+      return;
+    }
     const payload = buildSaveBrowserUsePayload(state.previewId, storageVersion);
     if (!payload) {
       dispatch({ type: "SAVE_FAILED", message: "版本信息尚未就绪，请刷新后重试。未发送保存请求。" });
@@ -178,14 +219,14 @@ export function BrowserUseCollectButton({
         const saved = body?.data?.saved;
         const count = Array.isArray(saved) ? saved.length : 0;
         const skippedRaw = body?.data?.skipped;
-        const skippedCount = Array.isArray(skippedRaw) ? skippedRaw.length : 0;
-        dispatch({ type: "SAVED", count, skippedCount });
+        const skipped = Array.isArray(skippedRaw) ? skippedRaw : [];
+        dispatch({ type: "SAVED", count, skipped });
         onSaved?.(count);
       } catch {
         dispatch({ type: "SAVE_FAILED", message: "网络错误，请重试。" });
       }
     })();
-  }, [taskId, kind, state.previewId, storageVersion, onSaved]);
+  }, [taskId, kind, state.previewId, state.preview, storageVersion, onSaved]);
 
   const failureLabel = collectFailureLabel(state.phase);
 
@@ -220,7 +261,7 @@ export function BrowserUseCollectButton({
             ))}
           </ul>
           <div className="mt-2 flex items-center gap-2">
-            <button type="button" data-testid="browser-use-preview-save" onClick={confirmSave} disabled={!storageVersion} className="inline-flex h-9 items-center rounded-xl bg-teal-600 px-4 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50" title={storageVersion ? undefined : "版本信息尚未就绪，请刷新后重试"}>确认保存</button>
+            <button type="button" data-testid="browser-use-preview-save" onClick={confirmSave} disabled={!storageVersion || !browserUseSaveAllowed(state.preview)} className="inline-flex h-9 items-center rounded-xl bg-teal-600 px-4 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50" title={!storageVersion ? "版本信息尚未就绪，请刷新后重试" : !browserUseSaveAllowed(state.preview) ? "采集预览为空，无可保存条目" : undefined}>确认保存</button>
             <button type="button" data-testid="browser-use-preview-cancel" onClick={() => dispatch({ type: "CANCEL" })} className="inline-flex h-9 items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">取消</button>
           </div>
         </div>

@@ -36,7 +36,7 @@ describe("BrowserUseCollectButton 状态机（轮 9）", () => {
     const previewed = browserUseCollectStateReducer(started, { type: "COLLECT_SUCCEEDED", preview: preview as never, previewId: "bup_preview_abc1234567" });
     const saving = browserUseCollectStateReducer(previewed, { type: "SAVING" });
     expect(saving.phase).toBe("saving");
-    const saved = browserUseCollectStateReducer(saving, { type: "SAVED", count: 1, skippedCount: 0 });
+    const saved = browserUseCollectStateReducer(saving, { type: "SAVED", count: 1, skipped: [] });
     expect(saved.phase).toBe("idle");
     expect(saved.savedCount).toBe(1);
     expect(saved.message).toBe("已保存 1 条自动采集证据。");

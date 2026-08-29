@@ -240,4 +240,48 @@ describe("轮 9 竞品自动采集路由（browser_use）", () => {
     expect(failed.status).toBe(502);
     expect(failedBody.data?.keywordPreviewId).toBeUndefined();
   });
+
+  it("轮 9c 空结果红线：preview.results=[] 且 failureReason=null → 拒绝保存（4xx），写入器 0 次，不产生 saved", async () => {
+    const emptyPreview = preview({ results: [], failureReason: null });
+    const previewId = storeBrowserUsePreview(emptyPreview);
+    const save = await POST(ownerRequest({ action: "save_browser_use", previewId, expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-14T02:00:00.000Z" } }), { params: Promise.resolve({ id: "task-a" }) });
+    expect(save.status).toBeGreaterThanOrEqual(400);
+    expect(save.status).toBeLessThan(500);
+    const body = await save.json();
+    expect(body.data?.saved).toBeUndefined();
+    expect(mocks.addAsin).not.toHaveBeenCalled();
+  });
+
+  it("轮 9d saved/skipped 互斥：成功写入后刷新 storageVersion 失败，同一 ASIN 不得同时出现在 saved 与 skipped", async () => {
+    const multi = preview() as BrowserUseResearchPreviewV1;
+    multi.results = [
+      { asin: "B0MUTX001", title: "Mutex A", sourceUrl: "https://www.amazon.com/dp/B0MUTX001", capturedAt: "2026-08-14T02:00:01.000Z" },
+      { asin: "B0MUTX002", title: "Mutex B", sourceUrl: "https://www.amazon.com/dp/B0MUTX002", capturedAt: "2026-08-14T02:00:01.000Z" },
+    ] as BrowserUseResearchPreviewV1["results"];
+    const previewId = storeBrowserUsePreview(multi);
+    // B0MUTX001 写成功；随后刷新版本抛错（模拟并发写导致的快照读取失败）。
+    // 契约：该条已写入，不得再进 skipped；循环应继续处理后续条。
+    let snapshotCalls = 0;
+    mocks.addAsin.mockImplementation(async (input: { asin: string }) => {
+      if (input.asin === "B0MUTX002") throw new CompetitorEvidenceError("task_result_conflict", 409, "任务已在其他页面更新，请刷新后重试。");
+      return { asins: [{ asin: input.asin }] };
+    });
+    mocks.readSnapshot.mockImplementation(async () => {
+      snapshotCalls += 1;
+      if (snapshotCalls === 2) throw new Error("snapshot read failed");
+      const row = await mocks.findUnique({ id: "task-a" });
+      return { updatedAt: row?.updatedAt ?? new Date("2026-08-14T02:00:00.000Z"), resultJson: row?.resultJson ?? batchResultJson(), candidateId: null };
+    });
+    const save = await POST(ownerRequest({ action: "save_browser_use", previewId, expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-14T02:00:00.000Z" } }), { params: Promise.resolve({ id: "task-a" }) });
+    expect(save.status).toBe(200);
+    const body = await save.json();
+    const savedSet = new Set(body.data.saved as string[]);
+    const skippedSet = new Set((body.data.skipped as { asin: string }[]).map((s) => s.asin));
+    for (const asin of savedSet) {
+      expect(skippedSet.has(asin)).toBe(false);
+    }
+    expect(body.data.saved).toContain("B0MUTX001");
+    expect((body.data.skipped as { asin: string }[]).some((s) => s.asin === "B0MUTX001")).toBe(false);
+    expect((body.data.skipped as { asin: string }[]).some((s) => s.asin === "B0MUTX002")).toBe(true);
+  });
 });
