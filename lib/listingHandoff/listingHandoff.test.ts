@@ -680,7 +680,7 @@ describe("UI 状态（第20章 66-75）", () => {
     ]) {
       expect(combined).toContain(text);
     }
-    expect(uiSource).toContain("disabled={!canGenerate || submitting}");
+    expect(uiSource).toContain("disabled={!canGenerate || submitting || briefDirty}");
   });
 
   it("无发布/上传按钮（仅安全提示文案）", () => {

@@ -105,8 +105,8 @@ function buildRenderPrompt(fact: { factId: string; field: string; sourceValue: s
   ].join("\n");
 }
 
-async function callRenderAi(fact: { factId: string; field: string; sourceValue: string }): Promise<string | null> {
-  const result = await callAiJson<{ translated?: unknown }>({
+async function callRenderAiBatch(facts: Array<{ factId: string; field: string; sourceValue: string }>): Promise<Map<string, string>> {
+  const result = await callAiJson<{ translations?: Array<{ factId?: unknown; english?: unknown }> }>({
     messages: [
       {
         role: "system",
@@ -114,17 +114,34 @@ async function callRenderAi(fact: { factId: string; field: string; sourceValue: 
       },
       {
         role: "user",
-        content: buildRenderPrompt(fact),
+        content: [
+          "Translate each of the following confirmed product facts into natural English for an Amazon US listing.",
+          "Rules:",
+          "- Translate faithfully. Keep all numbers and units exactly as in the source.",
+          "- Do not add, strengthen, or infer product attributes, benefits, performance, certification, or audience.",
+          "- If the source is already English, return it as-is.",
+          "- If the source is already English but contains multiple independent statements without proper punctuation, separate them with periods.",
+          "- Return one object per fact with the same factId.",
+          "- Return strict JSON only: {\"translations\": [{\"factId\": \"...\", \"english\": \"...\"}]}",
+          "",
+          ...facts.map((f) => `FACT ${f.factId}: ${f.sourceValue}`),
+        ].join("\n"),
       },
     ],
     temperature: 0,
-    maxTokens: 300,
+    maxTokens: 1200,
     thinkingMode: "disabled",
     responseFormat: { type: "json_object" },
   });
-  if (!result.ok) return null;
-  const t = result.data?.translated;
-  return typeof t === "string" && t.trim() ? t.trim().slice(0, 300) : null;
+  if (!result.ok) return new Map();
+  const list = Array.isArray(result.data?.translations) ? result.data!.translations! : [];
+  const out = new Map<string, string>();
+  for (const item of list) {
+    if (typeof item?.factId === "string" && typeof item.english === "string" && item.english.trim()) {
+      out.set(item.factId, item.english.trim().slice(0, 300));
+    }
+  }
+  return out;
 }
 
 // ─── 测试注入缝隙 ──────────────────────────────────────
@@ -133,10 +150,24 @@ let injectedRenderer:
   | ((fact: { factId: string; field: string; sourceValue: string }) => Promise<string | null>)
   | null = null;
 
+/** 既有单条注入缝隙（逐事实调用；兼容既有测试，语义不变） */
 export function setEnglishRendererForTests(
   renderer: typeof injectedRenderer,
 ): void {
   injectedRenderer = renderer;
+}
+
+/** 批量注入缝隙：一次批量调用返回全部渲染（生产路径同语义：N 条中文 = 1 次调用） */
+export type EnglishBatchRenderer = (
+  facts: Array<{ factId: string; field: string; sourceValue: string }>,
+) => Promise<Array<{ factId: string; english: string } | null>>;
+
+let injectedBatchRenderer: EnglishBatchRenderer | null = null;
+
+export function setEnglishBatchRendererForTests(
+  renderer: EnglishBatchRenderer | null,
+): void {
+  injectedBatchRenderer = renderer;
 }
 
 // ─── 缓存（进程内，绑定 facts fingerprint）────────────────
@@ -175,11 +206,15 @@ export async function buildEnglishRenderingPack(
   const renderings: EnglishRendering[] = [];
   const failures: string[] = [];
 
+  // 分两轮：先逐事实判定是否需要 AI（中文/混合/粘连 run-on），
+  // 需要翻译的事实一次批量调用（N 条中文 = 1 次，最多 1 次 AI 调用）。
+  type PendingFact = { factId: string; field: string; sourceValue: string };
+  const pending: PendingFact[] = [];
+  const direct: Array<{ fact: PendingFact; english: string }> = [];
+
   for (const fact of input.facts) {
     const source = fact.sourceValue.trim();
     if (!source) continue;
-
-    let english: string | null = null;
 
     // run-on 检测只用于自由文本字段（规格短语如 "18oz Water Bottle" 的
     // 数字+大写边界不是粘连子句，不能误判）。
@@ -188,33 +223,59 @@ export async function buildEnglishRenderingPack(
       && /[a-z0-9] [A-Z]/.test(source.replace(/\. /g, ""));
     // 已英文且无粘连子句（"…lock Double-wall…"）→ 原样保留
     if (!HAS_CJK.test(source) && !runOn) {
-      english = source;
-    } else {
-      // 确定性 literal（dimensions/weight 单位映射）
-      const literal = LITERAL_RENDER[fact.field];
-      if (literal && !runOn) english = literal(source);
-      // AI 受控翻译/补标点
-      if (english === null) {
-        const renderer = injectedRenderer || callRenderAi;
-        english = await renderer({ factId: fact.factId, field: fact.field, sourceValue: source });
-      }
-    }
-
-    if (english === null || !english.trim()) {
-      failures.push(`${fact.factId}: cannot render to English`);
+      direct.push({ fact, english: source });
       continue;
     }
+    // 确定性 literal（dimensions/weight 单位映射）
+    const literal = LITERAL_RENDER[fact.field];
+    if (literal && !runOn) {
+      const rendered = literal(source);
+      if (rendered !== null) {
+        direct.push({ fact, english: rendered });
+        continue;
+      }
+    }
+    pending.push(fact);
+  }
 
-    const integrity = checkIntegrity(source, english, fact.field);
+  if (pending.length > 0) {
+    let byFactId = new Map<string, string>();
+    if (injectedBatchRenderer) {
+      // 生产语义：N 条待翻译事实一次批量调用（最多 1 次 AI 调用）
+      const list = await injectedBatchRenderer(pending);
+      pending.forEach((fact, index) => {
+        const item = list[index];
+        if (item && typeof item.english === "string" && item.english.trim()) byFactId.set(fact.factId, item.english.trim());
+      });
+    } else if (injectedRenderer) {
+      // 既有单条注入缝隙（兼容旧测试）：逐事实调用，语义不变
+      for (const fact of pending) {
+        const english = await injectedRenderer(fact);
+        if (english) byFactId.set(fact.factId, english);
+      }
+    } else {
+      byFactId = await callRenderAiBatch(pending);
+    }
+    for (const fact of pending) {
+      const english = byFactId.get(fact.factId);
+      if (!english) {
+        failures.push(`${fact.factId}: cannot render to English`);
+        continue;
+      }
+      direct.push({ fact, english });
+    }
+  }
+
+  for (const { fact, english } of direct) {
+    const integrity = checkIntegrity(fact.sourceValue, english, fact.field);
     if (integrity) {
       failures.push(`${fact.factId}: ${integrity}`);
       continue;
     }
-
     renderings.push({
       factId: fact.factId,
       field: fact.field,
-      sourceValue: source,
+      sourceValue: fact.sourceValue,
       english,
     });
   }

@@ -29,6 +29,7 @@ export const LISTING_SPECIFICATION_FIELDS = new Set([
   "color_or_variant",
   "quantity_or_pack_size",
   "dimension",
+  "dimensions",
   "weight",
   "size",
 ]);

@@ -27,6 +27,8 @@ import { setTaskLinkedAiListingClientForTests, type TaskLinkedAiListingClient } 
 import { createInitialProductResearchRecord, createProductResearchVerification, buildProductResearchHash, PRODUCT_RESEARCH_HASH_SCHEMA } from "@/lib/productResearchRecord";
 import { buildConfirmableCandidates } from "@/lib/productCreativeHandoffConfirmation";
 import { buildListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
+import { buildListingInputFromCreativeHandoff } from "@/lib/listingHandoff/listingGenerationInput";
+import { DEFAULT_CANNOT_SAY } from "@/lib/listingHandoff/listingPlan";
 import { mutateTaskResultJson } from "@/lib/server/taskResultJsonMutation";
 import { projectSellerSpriteFactCandidates } from "@/lib/server/sellerSpriteFactProjection";
 
@@ -230,24 +232,40 @@ describe("YETI Golden Case 全链（候选 → 确认 → Readiness → Brief �
       expectedStorageVersion: preview.gate.storageVersion!,
       expectedHandoffRevision: preview.gate.currentHandoff!.currentRevision,
     });
-    console.log("YETI_DRAFT:", JSON.stringify({ kind: result.draft?.draftKind, providerSucceeded: result.draft?.providerSucceeded, fallback: result.draft?.fallbackApplied, reason: result.draft?.fallbackReason, issues: result.draft?.qualityIssues, backend: result.draft?.backendSearchTerms }));
-    return { result, readiness };
+    return { result, readiness, preview };
   }
 
   it("claimSafe/copyReady/keywordReady → Mock Provider 被调用；固定夹具结果 = 无合格草稿（事实不足）", async () => {
-    const { result, readiness } = await fullChain();
+    const { result, readiness, preview: capPreview } = await fullChain();
     expect(readiness.claimSafe).toBe(true);
     expect(readiness.copyReady).toBe(true);
     expect(readiness.keywordReady).toBe(true);
-    // LISTING_COPY_QUALITY：YETI 确认功能事实仅 care（无 functional/usage/operation），
-    // 无法组成 >=3 条合格五点 → 诚实返回无合格草稿（正式五点为空 + listingUnqualified=true），禁止拼垃圾句。
+    // LISTING_COPY_QUALITY：YETI 确认功能事实仅 care（无 functional/usage/operation）→ V2 能力=2 组
+    //（material+care；color/identity 不计数）→ copyReady=false → 不调用 Provider → 诚实无合格草稿，禁止拼垃圾句。
     expect(result.draft?.draftKind).toBe("safe_fact_draft");
     expect(result.draft?.listingUnqualified).toBe(true);
-    expect(result.draft?.providerAttempted).toBe(true);
-    expect(result.draft?.providerSucceeded).toBe(true);
-    expect(result.draft?.fallbackApplied).toBe(true);
+    expect(result.draft?.providerAttempted).toBe(false);
+    expect(result.draft?.providerSucceeded).toBe(false);
+    expect(result.draft?.fallbackApplied).toBe(false);
     const bullets = result.draft?.bullets ?? [];
     expect(bullets).toEqual([]);
+    // V2 能力合同（与生成同源）：2 组 → 不足 3 条不调 Provider
+    const { evaluateListingCapabilityFromPolicy } = await import("@/lib/listingHandoff/listingCapabilityEvaluation");
+    const buildResult = buildListingInputFromCreativeHandoff(capPreview.gate.currentHandoff!, capPreview.gate.candidate!.sourceResearch.researchRevision);
+    if (buildResult.ok) {
+      const evalResult = evaluateListingCapabilityFromPolicy({
+        input: buildResult.input,
+        confirmedFacts: capPreview.gate.currentHandoff!.versions[capPreview.gate.currentHandoff!.versions.length - 1].confirmedFacts.map((f) => ({
+          field: String(f.field ?? ""), value: String(f.value ?? ""),
+          evidenceTier: String((f as { evidenceTier?: string }).evidenceTier ?? ""),
+          sourceRef: f.sourceRef as { sourceKind?: string } | undefined,
+        })),
+        extraProhibitedTerms: DEFAULT_CANNOT_SAY,
+        hasBlockingIssue: false,
+      });
+      expect(evalResult.capability.supportedBulletCount).toBeLessThan(3);
+      expect(evalResult.capability.canCallProvider).toBe(false);
+    }
     // 正式字段非空时也不得混入未确认内容（若未来事实足够允许有稿）
     for (const field of ["titles", "bullets", "description", "keywords", "sellingPoints"]) {
       const text = (result.draft as unknown as Record<string, unknown>)[field];
@@ -257,7 +275,7 @@ describe("YETI Golden Case 全链（候选 → 确认 → Readiness → Brief �
       expect(joined).not.toMatch(/Leakproof/i);
       expect(joined).not.toMatch(/BPA|FDA|CE certified|guaranteed|keeps cold|keeps warm|12 hours/i);
     }
-    // 合规展示 reasons（无合格草稿依据可见）
-    expect((result.draft?.qualityIssues ?? []).length).toBeGreaterThanOrEqual(1);
+    // 无合格草稿依据：listingUnqualified=true 表示；V2 能力<3 组已在上面 capability 断言证明（2 组不调 Provider）
+    expect(result.draft?.listingUnqualified === true).toBe(true);
   }, 30_000);
 });

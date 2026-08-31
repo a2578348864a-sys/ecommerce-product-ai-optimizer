@@ -49,11 +49,17 @@ function goodSnapshot() {
     polishModel: null,
     titles: ["HydroJug 40oz Tumbler"],
     bullets: [
-      "The Tumbler features a straw lid for everyday use.",
-      "For easy cleaning with this Tumbler, dishwasher safe parts.",
-      "The Tumbler available with stainless steel for practical use.",
+      // 迁移说明：原三条是「旧宽松合同」下的成功夹具，与本轮必须拒绝的病句同形——
+      //   "… features a straw lid for everyday use."                 → template_tail（for everyday use 填充尾）
+      //   "For easy cleaning with this Tumbler, dishwasher safe parts." → sentence_fragment（前置状语 + 名词短语，无谓语）
+      //   "The Tumbler available with stainless steel for practical use." → sentence_fragment + template_tail
+      // 意图保持不变：仍是一份「新格式、factSafe=true、copyQuality=true、3 条合格五点、1 段合格描述」的
+      // 历史快照，只把句子换成真正合格的自然英文（材质 / 护理祈使 / 功能 + 真实谓语）。
+      "The HydroJug Tumbler is made of stainless steel.",
+      "For care, rinse the parts and wipe dry.",
+      "The Tumbler features a straw lid for one-handed drinking.",
     ],
-    description: "The HydroJug Tumbler with stainless steel construction for daily use.",
+    description: "The HydroJug Tumbler is made of stainless steel. It features a straw lid for one-handed drinking.",
     keywords: ["HydroJug", "Tumbler"],
     backendSearchTerms: ["water bottle"],
     sellingPoints: ["A Tumbler"],

@@ -169,8 +169,10 @@ describe("listingGenerationService 安全降级接入", () => {
   it("10. UI 仅一条保守草稿提示，不含内部/Claim 详情", () => {
     expect(uiSource).toContain("AI 优化未通过质量检查，已保留安全基础草稿。");
     // 不显示内部错误、Claim 详情、模型字段或调试信息
+    // （reasonCode 例外：V2 微收口任务书要求 UI 用 claimPreflight.reasonCode 区分
+    //  english_rendering_pending（可生成）与真 blocked——该字段只在服务端 DTO/前端逻辑中使用，
+    //  不向用户展示内部值；BLOCKED 文档已记录）
     expect(uiSource).not.toContain("unclassified_factual_claim");
-    expect(uiSource).not.toContain("reasonCode");
     expect(uiSource).not.toContain("safeFallbackApplied ? ");
   });
 });

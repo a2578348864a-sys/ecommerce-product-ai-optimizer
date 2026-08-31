@@ -372,3 +372,128 @@ export function safeListingPlanSummary(plan: ListingPlan) {
 }
 
 export { factById };
+
+/* ── Step2：Capability 驱动的 Listing Plan 出口 ─────────────────────────────
+ *
+ * 与旧 buildListingPlan 共用同一 ListingPlan 结构，但计划条数由
+ * ListingCapabilityV2 能力合同（evaluateListingCapability 结果）驱动：
+ * 只消费 capability.eligibleGroups 中的核心组；identity / secondary_variant
+ * 永不生成 Bullet；bulletPlans.length 精确等于 targetBulletCount（最多 5）。
+ * claimGroup 承担事实语义（绑定该组全部去重 factId），role 只承担表达角度
+ * （固定 5 角色顺序分配，正式 3-5 条时唯一）。
+ * 纯函数：无 DB/网络/env/Date.now/随机；不修改输入；同输入同输出。
+ * -------------------------------------------------------------------------─ */
+
+import {
+  CORE_CLAIM_GROUPS,
+  IDENTITY_GROUP,
+  SECONDARY_VARIANT_GROUP,
+  type ClaimGroupName,
+  type ListingCapabilityResult,
+} from "@/lib/listingHandoff/listingCapabilityV2";
+
+/** Capability 驱动 Plan 的 5 个固定表达角色（顺序固定） */
+const CAPABILITY_ROLE_ORDER: readonly ListingPlanRole[] = [
+  "core_outcome",
+  "pain_relief",
+  "use_scenario",
+  "ease_of_use",
+  "proof_or_fit",
+];
+
+/** 组 → 表达角度（claimGroup 承载事实语义；role 只承载表达） */
+const CAPABILITY_GROUP_ANGLE_HINTS: Record<ClaimGroupName, string> = {
+  identity: "商品身份",
+  material_construction: "材质与构造",
+  size_capacity_fit: "容量/尺寸/重量与适配",
+  core_function_operation: "核心功能与操作方式",
+  use_scenario: "使用场景",
+  care_cleaning: "清洁与保养",
+  package_contents: "随附组件与包装",
+  proof_performance: "认证/性能/时长",
+  secondary_variant: "颜色/款式",
+};
+
+export type CapabilityBulletPlan = ListingBulletPlan & { claimGroup: ClaimGroupName };
+
+export type CapabilityDrivenPlan = Omit<ListingPlan, "bulletPlans" | "schema"> & {
+  schema: "listing-plan.v2";
+  bulletPlans: CapabilityBulletPlan[];
+};
+
+/**
+ * 由 ListingCapabilityV2 能力合同驱动的 Listing Plan（纯函数）。
+ * 与旧 buildListingPlan 并存（Step3 再切换权威调用点）。
+ */
+export function buildListingPlanFromCapability(
+  input: ListingGenerationInput,
+  keywordBrief: ListingKeywordBrief | null,
+  capability: ListingCapabilityResult,
+): CapabilityDrivenPlan {
+  const coreGroupNames: ClaimGroupName[] = CORE_CLAIM_GROUPS.filter(
+    (group) => capability.eligibleGroups.some((g) => g.group === group),
+  );
+
+  // 按固定顺序取 targetBulletCount 个核心组（最多 5）
+  const groups = coreGroupNames.slice(0, capability.targetBulletCount);
+
+  const primaryKeyword = keywordBrief?.primaryKeyword ?? null;
+  const supportingKeywords = keywordBrief?.supportingKeywords ?? [];
+  const backendSearchTerms = keywordBrief?.backendSearchTerms ?? [];
+  const keywordIdsValid = keywordBrief !== null && primaryKeyword !== null;
+  const keywordIdsFor = (index: number): string[] => {
+    if (!keywordIdsValid) return [];
+    const kw: string[] = [];
+    if (primaryKeyword) kw.push("kw:primary");
+    const support = supportingKeywords.length > 0 ? [supportingKeywords[index % supportingKeywords.length]] : [];
+    if (support.length) kw.push("kw:supporting:" + support[0]);
+    return kw;
+  };
+
+  // shopperNeed 差异化：复用既有 shopperNeedOfRole（同一实现，不新建第二套映射）
+  const baseNeed = shopperNeedOf(input.creativeContext?.vocInsights ?? []);
+  const bulletPlans = groups.map((group, index) => {
+    const eligible = capability.eligibleGroups.find((g) => g.group === group);
+    const factIds = [...new Set(eligible ? eligible.factIds : [])];
+    const role = CAPABILITY_ROLE_ORDER[index] ?? "core_outcome";
+    return {
+      role,
+      claimGroup: group,
+      shopperNeed: shopperNeedOfRole(role, baseNeed),
+      shopperAngle: CAPABILITY_GROUP_ANGLE_HINTS[group] ?? "实际使用价值",
+      featureFactIds: factIds,
+      evidenceRefs: [],
+      keywordIds: keywordIdsFor(index),
+      claimMode: "verified",
+      cannotSay: [...DEFAULT_CANNOT_SAY],
+    } satisfies ListingBulletPlan & { claimGroup: ClaimGroupName };
+  });
+
+  // status：isBlocked → needs_review；target<3 → needs_facts；正式能力缺关键词 → needs_keywords；否则 ready
+  const status: ListingPlanStatus = capability.isBlocked
+    ? "needs_review"
+    : capability.targetBulletCount < 3
+      ? "needs_facts"
+      : (keywordBrief === null || primaryKeyword === null)
+        ? "needs_keywords"
+        : "ready";
+
+  // planQuality：canCallProvider=true → optimized；否则 safe_fact_draft
+  const planQuality: ListingPlan["planQuality"] = capability.canCallProvider ? "optimized" : "safe_fact_draft";
+
+  const descriptionPlan = "产品用途 + 关键功能 + 使用场景 + 买方价值（全部基于已确认事实）";
+
+  return {
+    schema: "listing-plan.v2",
+    status,
+    primaryKeyword,
+    supportingKeywords,
+    titlePlan: [],
+    bulletPlans,
+    descriptionPlan,
+    backendSearchTerms,
+    missingFacts: capability.targetBulletCount < 3 ? ["较少的事实不足以生成正式 Listing（至少 3 条）。"] : [],
+    prohibitedClaims: input.prohibitedClaims,
+    planQuality,
+  };
+}

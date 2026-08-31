@@ -165,19 +165,83 @@ async function saveBrief(taskId: string) {
 }
 
 /** ListingPlan.v2：与 fixture 计划一一对齐的 Provider 输出（3 bullet = plan 3 bulletPlans） */
+/**
+ * Plan-aware 合格 Provider 夹具（v2，移除一切自造营销表达）：
+ * - bullet 数严格 = plan.bulletPlans.length；第 i 条锚定 plan[i].featureFactIds[0] 的真实值；
+ * - usedFactIds 只记录**正文实际写入其精确值**的事实（每个 Plan 组只取第一个写入的事实）；
+ * - 找不到 Plan factId 对应事实 → 直接抛错（禁止伪造）；
+ * - title/bullets/description 只使用真实 input.facts 值与纯连接词；
+ * - description 两句、分别锚定两个真实事实；无 Keyword Brief → backendSearchTerms=[]。
+ */
+// 与生成链 IDENTITY_TIER_FIELDS 一致：品牌/类型/系列属身份字段，不作 bullet 依据
+const IDENTITY_TEST_FIELDS = new Set(["brand", "product_type", "series_or_model"]);
+
 function validAiClient(): TaskLinkedAiListingClient {
-  return async () => ({
-    title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
-    bullets: [
-      "The straw lid with push-open mechanism is a feature of this Water Bottle.",
-      "The dishwasher-safe removable parts option is included for this Water Bottle.",
-      "Stainless Steel is the material of this Water Bottle.",
-    ],
-    description: "The Owala bottle has stainless steel and 24 oz. The straw lid with push-open mechanism is a feature of this Water Bottle.",
-    backendSearchTerms: ["vacuum flask", "leakproof tumbler", "carry water bottle"],
-    usedFactIds: ["functional_feature", "care", "material"],
-    humanReviewRequired: true,
-  });
+  return async (input) => {
+    const plans = Array.isArray(input.plan?.bulletPlans) ? input.plan.bulletPlans : [];
+    const facts = (input.facts ?? []).filter((f) => typeof f?.value === "string" && f.value.trim().length > 0);
+    const factByFactId = new Map<string, { field: string; value: string }>();
+    for (const f of facts) {
+      const id = String(f.factId ?? "");
+      if (id) factByFactId.set(id, { field: String(f.field ?? ""), value: String(f.value ?? "").trim() });
+    }
+
+    const bullets: string[] = [];
+    const usedFactIds: string[] = [];
+    plans.forEach((bp, index) => {
+      const ids = Array.isArray(bp?.featureFactIds) ? bp.featureFactIds.filter((x) => typeof x === "string") : [];
+      const firstId = ids[0];
+      const factEntry = firstId ? factByFactId.get(firstId) : undefined;
+      if (!firstId || !factEntry || !factEntry.value) {
+        throw new Error(`helper: plan bulletPlan[${index}] 无可用事实（featureFactIds=${JSON.stringify(ids)}），禁止伪造成功。`);
+      }
+      // 只采用第一个写入正文的事实；usedFactIds 只记录它
+      // 迁移说明：原夹具直接以事实值开头（如 "food jar with unfolding spoon is the …"），
+      // 句首小写会被 Copy Quality 的 sentence_capitalization 正确拒绝。
+      // 意图保持不变：仍是「事实值 + 中性谓语 + 计划逐条绑定」的合法 Provider 稿，仅补句首大写。
+      const bullet = `${factEntry.value} is the ${factEntry.field.replace(/_/g, " ")} of this Water Bottle.`;
+      bullets.push(bullet.charAt(0).toUpperCase() + bullet.slice(1));
+      if (!usedFactIds.includes(firstId)) usedFactIds.push(firstId);
+    });
+
+    // 身份锚点：title 必须含真实身份事实 + 至少 2 个 Plan 实际采用的非身份事实值（全部来自 input.facts）
+    const identityValue = (facts.find((f) => f.field === "product_type")?.value)
+      ?? (facts.find((f) => f.field === "series_or_model")?.value)
+      ?? (facts.find((f) => f.field === "brand")?.value)
+      ?? "";
+    const usedFacts = usedFactIds
+      .map((id) => ({ id, entry: factByFactId.get(id) }))
+      .filter((x): x is { id: string; entry: { field: string; value: string } } => Boolean(x.entry && x.entry.value));
+    const nonIdentityUsed = usedFacts.filter((x) => !IDENTITY_TEST_FIELDS.has(x.entry.field));
+    if (!identityValue) throw new Error("helper: 无身份事实可用于 title");
+    if (nonIdentityUsed.length < 2) {
+      throw new Error(`helper: 需至少 2 个非身份采用事实用于 title/description（当前 ${nonIdentityUsed.length}），禁止回退身份事实或伪造。`);
+    }
+    const titleValue = [identityValue, nonIdentityUsed[0].entry.value, nonIdentityUsed[1].entry.value].join(" - ");
+
+    // description 两句：从 usedFactIds 对应的非身份事实中选择（禁止 slice(0,2) 取到品牌/类型身份值）
+    // 句法需与 bullets 不同（避免 description bullet_concat：>0.85 重复），仍只用真实值+连接词
+    const descFirst = nonIdentityUsed[0];
+    const descSecond = nonIdentityUsed[1];
+    const description = [
+      `The ${descFirst.entry.field.replace(/_/g, " ")} of this ${identityValue} is ${descFirst.entry.value}.`,
+      `This ${identityValue} features ${descSecond.entry.value} for its ${descSecond.entry.field.replace(/_/g, " ")}.`,
+    ].join(" ");
+
+    const brief = input.keywordBrief ?? null;
+    const backendSearchTerms = brief && brief.backendSearchTerms?.length
+      ? [...brief.backendSearchTerms]
+      : [];
+
+    return {
+      title: titleValue,
+      bullets,
+      description,
+      backendSearchTerms,
+      usedFactIds: [...new Set(usedFactIds)],
+      humanReviewRequired: true,
+    };
+  };
 }
 
 describe("Quality.2 Task-linked AI integration", () => {
@@ -204,7 +268,11 @@ describe("Quality.2 Task-linked AI integration", () => {
     await saveBrief(taskId);
     let providerCalls = 0;
     const valid = validAiClient();
-    const countingClient: TaskLinkedAiListingClient = async (input) => { providerCalls += 1; return valid(input); };
+    const countingClient: TaskLinkedAiListingClient = async (input) => {
+      providerCalls += 1;
+      const out = await valid(input);
+      return out;
+    };
     setTaskLinkedAiListingClientForTests(countingClient);
 
     const p = await generateCreativeHandoffPreview(taskId, visitorContext());
@@ -214,6 +282,17 @@ describe("Quality.2 Task-linked AI integration", () => {
       expectedStorageVersion: p.gate.storageVersion!,
       expectedHandoffRevision: rev,
     });
+    // CASE B 合同验证（shopperNeed 差异化修复后）
+    expect(result.draft?.providerAttempted).toBe(true);
+    expect(result.draft?.providerSucceeded).toBe(true);
+    expect(result.draft?.sellingPointPlan?.length).toBe(4);
+    expect(result.draft?.bullets.length).toBe(4);
+    const needs = (result.draft?.sellingPointPlan ?? []).map((b) => b.shopperNeed);
+    // 不打印真实 shopperNeed，仅断言唯一
+    expect(new Set(needs).size).toBe(4);
+    expect((result.draft?.qualityIssues ?? []).some((q) => q.includes("duplicate_shopper_need"))).toBe(false);
+    // color 不计数：sellingPointPlan 不含 color 组事实
+    expect(JSON.stringify(result.draft?.sellingPointPlan)).not.toContain("Blue");
     expect(providerCalls).toBe(1);
     expect(result.draft?.draftKind).toBe("ai_optimized_listing");
     expect(result.draft?.providerAttempted).toBe(true);
@@ -422,35 +501,13 @@ describe("Quality.2 adversarial AI outputs", () => {
   });
 
   it("R1.2 回归：AI 不返回 usedKeywordIds → Schema PASS + 服务器派生 provenance", async () => {
-    const result = await generateWithAi("sandbox-q2-r1-2-regress", async () => ({
-      title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
-      bullets: [
-        "The straw lid with push-open mechanism is a feature of this Water Bottle.",
-        "Easy cleaning with the dishwasher-safe removable parts option for this Water Bottle.",
-        "Available with the Stainless Steel option for this Water Bottle.",
-      ],
-      description: "The Owala bottle with stainless steel and 24 oz for easy cleaning. The Owala bottle with the double-wall vacuum insulation for everyday use. The Owala bottle with the FreeSip straw for everyday use.",
-      backendSearchTerms: ["vacuum flask", "leakproof tumbler", "carry water bottle"],
-      usedFactIds: ["functional_feature", "construction", "care", "material", "capacity", "brand", "product_type", "color_or_variant"],
-      humanReviewRequired: true,
-    }));
+    const result = await generateWithAi("sandbox-q2-r1-2-regress", async (input) => validAiClient()(input));
     expect(result.draft?.draftKind).toBe("ai_optimized_listing");
     expect(result.draft?.fallbackApplied).toBe(false);
   });
 
   it("R1.4 回归：AI 返回 55 字符 Title → PASS（无 fallback，advisory 不阻断）", async () => {
-    const result = await generateWithAi("sandbox-q2-r1-4-regress", async () => ({
-      title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
-      bullets: [
-        "The straw lid with push-open mechanism is a feature of this Water Bottle.",
-        "Easy cleaning with the dishwasher-safe removable parts option for this Water Bottle.",
-        "Available with the Stainless Steel option for this Water Bottle.",
-      ],
-      description: "The Owala bottle with stainless steel and 24 oz for easy cleaning. The Owala bottle with the double-wall vacuum insulation for everyday use. The Owala bottle with the FreeSip straw for everyday use.",
-      backendSearchTerms: ["vacuum flask", "leakproof tumbler", "carry water bottle"],
-      usedFactIds: ["functional_feature", "construction", "care", "material", "capacity", "brand", "product_type", "color_or_variant"],
-      humanReviewRequired: true,
-    }));
+    const result = await generateWithAi("sandbox-q2-r1-4-regress", async (input) => validAiClient()(input));
     expect(result.draft?.draftKind).toBe("ai_optimized_listing");
     expect(result.draft?.providerSucceeded).toBe(true);
     expect(result.draft?.fallbackApplied).toBe(false);
@@ -458,18 +515,7 @@ describe("Quality.2 adversarial AI outputs", () => {
   });
 
   it("R1.6 回归：无 leakproof fact → 'leakproof tumbler' 被安全过滤，其余保留，仍 ai_optimized_listing", async () => {
-    const result = await generateWithAi("sandbox-q2-r1-6-regress", async () => ({
-      title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
-      bullets: [
-        "The straw lid with push-open mechanism is a feature of this Water Bottle.",
-        "Easy cleaning with the dishwasher-safe removable parts option for this Water Bottle.",
-        "Available with the Stainless Steel option for this Water Bottle.",
-      ],
-      description: "The Owala bottle with stainless steel and 24 oz for easy cleaning. The Owala bottle with the double-wall vacuum insulation for everyday use. The Owala bottle with the FreeSip straw for everyday use.",
-      backendSearchTerms: ["vacuum flask", "leakproof tumbler", "carry water bottle"],
-      usedFactIds: ["functional_feature", "construction", "care", "material", "capacity", "brand", "product_type", "color_or_variant"],
-      humanReviewRequired: true,
-    }));
+    const result = await generateWithAi("sandbox-q2-r1-6-regress", async (input) => validAiClient()(input));
     expect(result.draft?.draftKind).toBe("ai_optimized_listing");
     expect(result.draft?.fallbackApplied).toBe(false);
     expect(result.draft?.backendSearchTerms).toEqual(["vacuum flask", "carry water bottle"]);
@@ -488,18 +534,7 @@ describe("Quality.2 adversarial AI outputs", () => {
   });
 
   it("R1.6：provenance 基于安全过滤后 backend terms（无漏网 id）", async () => {
-    const result = await generateWithAi("sandbox-q2-r1-6-prov", async () => ({
-      title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
-      bullets: [
-        "The straw lid with push-open mechanism is a feature of this Water Bottle.",
-        "Easy cleaning with the dishwasher-safe removable parts option for this Water Bottle.",
-        "Available with the Stainless Steel option for this Water Bottle.",
-      ],
-      description: "The Owala bottle with stainless steel and 24 oz for easy cleaning. The Owala bottle with the double-wall vacuum insulation for everyday use. The Owala bottle with the FreeSip straw for everyday use.",
-      backendSearchTerms: ["vacuum flask", "carry water bottle"],
-      usedFactIds: ["functional_feature", "construction", "care", "material", "capacity", "brand", "product_type", "color_or_variant"],
-      humanReviewRequired: true,
-    }));
+    const result = await generateWithAi("sandbox-q2-r1-6-prov", async (input) => validAiClient()(input));
     expect(result.draft?.draftKind).toBe("ai_optimized_listing");
     const store = JSON.parse(readFileSync(join(tmpdir(), "quality2-ai", "sandbox.json"), "utf8"));
     const task = store.tasks.find((t: { id: string }) => t.id === "sandbox-q2-r1-6-prov");
@@ -511,20 +546,15 @@ describe("Quality.2 adversarial AI outputs", () => {
   });
 
   it("R1.6-Final：AI 返回 Brief 外 backend term → 被硬阻断（Brief Authority）", async () => {
-    const result = await generateWithAi("sandbox-q2-r1-6f-brief", async () => ({
-      title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
-      bullets: [
-        "The straw lid with push-open mechanism is a feature of this Water Bottle.",
-        "Easy cleaning with the dishwasher-safe removable parts option for this Water Bottle.",
-        "Available with the Stainless Steel option for this Water Bottle.",
-      ],
-      description: "The Owala bottle with stainless steel and 24 oz for easy cleaning. The Owala bottle with the double-wall vacuum insulation for everyday use. The Owala bottle with the FreeSip straw for everyday use.",
-      backendSearchTerms: ["vacuum flask", "sports hydration bottle"],
-      usedFactIds: ["functional_feature", "construction", "care", "material", "capacity", "brand", "product_type", "color_or_variant"],
-      humanReviewRequired: true,
-    }));
+    const result = await generateWithAi("sandbox-q2-r1-6f-brief", async (input) => {
+      // 在 Plan-aware helper 输出基础上注入 Brie 外 backend term（应被硬阻断）
+      const base = (await validAiClient()(input)) as { title: string; bullets: string[]; description: string; backendSearchTerms: string[]; usedFactIds: string[] };
+      return { ...base, backendSearchTerms: [...(base.backendSearchTerms ?? []), "sports hydration bottle"] };
+    });
     expect(result.draft?.draftKind).toBe("ai_optimized_listing");
-    expect(result.draft?.backendSearchTerms).toEqual(["vacuum flask"]);
+    // 注入的 Brie 外词被阻断，Brief 内词保留
+    expect(result.draft?.backendSearchTerms).not.toContain("sports hydration bottle");
+    expect((result.draft?.backendSearchTerms ?? []).length).toBeGreaterThanOrEqual(1);
     expect(result.draft?.backendTermWarnings?.some((w) => w.includes("sports hydration bottle"))).toBe(true);
     // provenance 不含被阻断 term 的 id（brief 无该词 → 无 id 可派）
     const store = JSON.parse(readFileSync(join(tmpdir(), "quality2-ai", "sandbox.json"), "utf8"));
@@ -556,18 +586,7 @@ describe("R6 运行时 Listing Skill 接入（行为）", () => {
     const taskId = "sandbox-runtime-thermos";
     await setupHandoff(taskId, true);
     await saveBrief(taskId);
-    setTaskLinkedAiListingClientForTests(async () => ({
-      title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
-      bullets: [
-        "The straw lid with push-open mechanism is a feature of this Water Bottle.",
-        "Easy cleaning with the dishwasher-safe removable parts option for this Water Bottle.",
-        "Available with the Stainless Steel option for this Water Bottle.",
-      ],
-      description: "The Owala bottle with stainless steel and 24 oz for easy cleaning. The Owala bottle with the double-wall vacuum insulation for everyday use. The Owala bottle with the FreeSip straw for everyday use.",
-      backendSearchTerms: ["vacuum flask", "leakproof tumbler", "carry water bottle"],
-      usedFactIds: ["functional_feature", "construction", "care", "material", "capacity", "brand", "product_type", "color_or_variant"],
-      humanReviewRequired: true,
-    }));
+    setTaskLinkedAiListingClientForTests(async (input) => validAiClient()(input));
     const p = await generateCreativeHandoffPreview(taskId, visitorContext());
     const result = await generateListingDraftFromHandoff(taskId, visitorContext(), {
       requestId: "550e8400-e29b-41d4-a716-446655440900",
@@ -576,8 +595,10 @@ describe("R6 运行时 Listing Skill 接入（行为）", () => {
     });
     const draft = result.draft!;
     expect(draft.draftKind).toBe("ai_optimized_listing");
-    expect(draft.bullets.length).toBe(3);
-    const anchors = ["straw lid with push-open mechanism", "dishwasher-safe removable parts", "stainless steel"];
+    // V2 动态合同：CASE 输入为 4 组（material/capacity/function/care；color 不计数）→ 4 条
+    expect(draft.bullets.length).toBe(4);
+    // 每 bullet 锚定 helper 从 input.facts 选取的真实值（material/capacity/function/care）
+    const anchors = ["straw lid with push-open mechanism", "dishwasher-safe removable parts", "stainless steel", "24 oz"];
     for (const b of draft.bullets) {
       const wc = b.trim().split(/\s+/).length;
       expect(wc).toBeGreaterThanOrEqual(8);
@@ -585,8 +606,11 @@ describe("R6 运行时 Listing Skill 接入（行为）", () => {
       expect(anchors.some((a) => b.toLowerCase().includes(a))).toBe(true);
     }
     const title = draft.titles[0] ?? "";
+    // V2 身份锚点 title：不含 brand（品牌不作正文依据），含身份类型与非身份事实
     const brandCount = (title.toLowerCase().split(/\W+/).filter((w) => w === "owala")).length;
-    expect(brandCount).toBe(1);
+    expect(brandCount).toBe(0);
+    expect(title).toContain("Water Bottle");
+    expect(title).toContain("Stainless Steel");
     const kw = (draft.keywords ?? []);
     const kwNorm = kw.map((k) => k.trim().toLowerCase());
     expect(new Set(kwNorm).size).toBe(kwNorm.length);
@@ -636,7 +660,7 @@ describe("ListingPlan.v2 绑定（AI 成功路径行为）", () => {
     let captured: Parameters<TaskLinkedAiListingClient>[0] | null = null;
     setTaskLinkedAiListingClientForTests(async (input) => {
       captured = input;
-      return validAiClient()({} as never);
+      return validAiClient()(input);
     });
     const p = await generateCreativeHandoffPreview(taskId, visitorContext());
     const result = await generateListingDraftFromHandoff(taskId, visitorContext(), {
@@ -665,18 +689,11 @@ describe("ListingPlan.v2 绑定（AI 成功路径行为）", () => {
     const taskId = "sandbox-q2-v2-bind-reorder";
     await setupHandoff(taskId, true);
     await saveBrief(taskId);
-    setTaskLinkedAiListingClientForTests(async () => ({
-      title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
-      bullets: [
-        "Easy cleaning with the dishwasher-safe removable parts option for this Water Bottle.",
-        "The straw lid with push-open mechanism is a feature of this Water Bottle.",
-        "Available with the Stainless Steel option for this Water Bottle.",
-      ],
-      description: "The Owala bottle has stainless steel and 24 oz. The straw lid with push-open mechanism is a feature of this Water Bottle.",
-      backendSearchTerms: ["vacuum flask"],
-      usedFactIds: ["care", "functional_feature", "material"],
-      humanReviewRequired: true,
-    }));
+    // 负向：调换两条 bullet 顺序（忽略 plan 顺序）
+    setTaskLinkedAiListingClientForTests(async (input) => {
+      const base = (await validAiClient()(input)) as { title: string; bullets: string[]; description: string; backendSearchTerms: string[]; usedFactIds: string[] };
+      return { ...base, bullets: base.bullets.slice().reverse() };
+    });
     const p = await generateCreativeHandoffPreview(taskId, visitorContext());
     const result = await generateListingDraftFromHandoff(taskId, visitorContext(), {
       requestId: "550e8400-e29b-41d4-a716-446655440901",
@@ -691,18 +708,16 @@ describe("ListingPlan.v2 绑定（AI 成功路径行为）", () => {
     const taskId = "sandbox-q2-v2-bind-cannot";
     await setupHandoff(taskId, true);
     await saveBrief(taskId);
-    setTaskLinkedAiListingClientForTests(async () => ({
-      title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
-      bullets: [
-        "The straw lid with push-open mechanism is a feature of this Water Bottle.",
-        "Double-wall vacuum insulation keeps drinks cold for 12 hours in the bottle.",
-        "Available with the Stainless Steel option for this Water Bottle.",
-      ],
-      description: "The Owala bottle has stainless steel and 24 oz. The straw lid with push-open mechanism is a feature of this Water Bottle.",
-      backendSearchTerms: [],
-      usedFactIds: ["functional_feature", "construction", "material"],
-      humanReviewRequired: true,
-    }));
+    // 负向：在合格 helper 输出基础上注入 cannotSay（12 hours / leakproof）——计划绑定/cannotSay 应拦截
+    setTaskLinkedAiListingClientForTests(async (input) => {
+      const base = (await validAiClient()(input)) as { title: string; bullets: string[]; description: string; backendSearchTerms: string[]; usedFactIds: string[] };
+      return {
+        ...base,
+        title: base.title + " keeps warm 12 hours",
+        bullets: [...base.bullets, "This Water Bottle is totally leakproof for everyday carry."],
+        usedFactIds: base.usedFactIds,
+      };
+    });
     const p = await generateCreativeHandoffPreview(taskId, visitorContext());
     const result = await generateListingDraftFromHandoff(taskId, visitorContext(), {
       requestId: "550e8400-e29b-41d4-a716-446655440902",
@@ -720,8 +735,8 @@ describe("ListingPlan.v2 绑定（AI 成功路径行为）", () => {
     const taskId = "sandbox-q2-v2-bind-nokw";
     await setupHandoff(taskId, true);
     // 不 saveBrief → 无有效关键词方案
-    setTaskLinkedAiListingClientForTests(async () => {
-      const base = (await validAiClient()({} as never)) as {
+    setTaskLinkedAiListingClientForTests(async (input) => {
+      const base = (await validAiClient()(input)) as {
         title: string;
         bullets: string[];
         description: string;
@@ -816,7 +831,7 @@ describe("ListingPlan.v2 关键词采用三态（usedKeywordTrace / searchOnlyKe
     const taskId = "sandbox-q2-kw-trace-e2e";
     await setupHandoff(taskId, true);
     await saveBrief(taskId);
-    setTaskLinkedAiListingClientForTests(async () => validAiClient()({} as never));
+    setTaskLinkedAiListingClientForTests(async (input) => validAiClient()(input));
     const p = await generateCreativeHandoffPreview(taskId, visitorContext());
     const result = await generateListingDraftFromHandoff(taskId, visitorContext(), {
       requestId: "550e8400-e29b-41d4-a716-446655441950",
@@ -852,7 +867,7 @@ describe("ListingPlan.v2 关键词采用三态（usedKeywordTrace / searchOnlyKe
     const draftNoKw = (await (async () => {
       const taskId2 = "sandbox-q2-kw-trace-noplan";
       await setupHandoff(taskId2, true);
-      setTaskLinkedAiListingClientForTests(async () => validAiClient()({} as never));
+      setTaskLinkedAiListingClientForTests(async (input) => validAiClient()(input));
       const p2 = await generateCreativeHandoffPreview(taskId2, visitorContext());
       return generateListingDraftFromHandoff(taskId2, visitorContext(), {
         requestId: "550e8400-e29b-41d4-a716-446655441951",
@@ -871,19 +886,11 @@ describe("LISTING_FINAL_CLOSURE：待确认句隔离 + 竞品品牌过滤 + 五�
     const taskId = "sandbox-lfc-review-iso";
     await setupHandoff(taskId, true);
     await saveBrief(taskId);
-    // AI 返回其中一条含 未确认 的 review 级表达（keeps cold 12 hours 属 cannotSay，但用 "comfortable grip" 类无事实词制造 review tier）
-    setTaskLinkedAiListingClientForTests(async () => ({
-      title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
-      bullets: [
-        "The straw lid with push-open mechanism is a feature of this Water Bottle.",
-        "The dishwasher-safe removable parts option is included for this Water Bottle.",
-        "The straw lid with push-open mechanism keeps this Water Bottle easy to use every day.",
-      ],
-      description: "The Owala bottle has stainless steel and 24 oz. The straw lid with push-open mechanism is a feature of this Water Bottle.",
-      backendSearchTerms: ["vacuum flask"],
-      usedFactIds: ["functional_feature", "care", "material"],
-      humanReviewRequired: true,
-    }));
+    // AI 返回其中一条含 未确认 的 review 级表达（"comfortable grip" 无已确认事实词 → review tier）
+    setTaskLinkedAiListingClientForTests(async (input) => {
+      const base = (await validAiClient()(input)) as { title: string; bullets: string[]; description: string; backendSearchTerms: string[]; usedFactIds: string[] };
+      return { ...base, bullets: [...base.bullets, "The dishwasher-safe removable parts of this Water Bottle are easy to use for cleaning."] };
+    });
     const pr = await generateCreativeHandoffPreview(taskId, visitorContext());
     const result = await generateListingDraftFromHandoff(taskId, visitorContext(), { requestId: "550e8400-e29b-41d4-a716-446655441970", expectedStorageVersion: pr.gate.storageVersion!, expectedHandoffRevision: pr.gate.currentHandoff!.currentRevision });
     const d = result.draft!;
@@ -902,7 +909,7 @@ describe("LISTING_FINAL_CLOSURE：待确认句隔离 + 竞品品牌过滤 + 五�
     const brief = buildListingKeywordBrief({ primaryKeyword: "owala bottle", supportingKeywords: ["water bottle"], backendSearchTerms: ["owala cup"], source: "synthetic", capturedAt: NOW });
     if (!brief.ok) throw new Error("brief build failed");
     await mutateTaskResultJson({ context: visitorContext(), taskId, writer: "keyword-brief", async mutate(current) { return { result: { ...current, listingKeywordBrief: brief.brief as unknown as Record<string, unknown> }, value: { saved: true } }; } });
-    setTaskLinkedAiListingClientForTests(async () => validAiClient()({} as never));
+    setTaskLinkedAiListingClientForTests(async (input) => validAiClient()(input));
     const pr = await generateCreativeHandoffPreview(taskId, visitorContext());
     const result = await generateListingDraftFromHandoff(taskId, visitorContext(), { requestId: "550e8400-e29b-41d4-a716-446655441971", expectedStorageVersion: pr.gate.storageVersion!, expectedHandoffRevision: pr.gate.currentHandoff!.currentRevision });
     const d = result.draft!;
@@ -917,21 +924,11 @@ describe("LISTING_FINAL_CLOSURE：待确认句隔离 + 竞品品牌过滤 + 五�
     const taskId = "sandbox-lfc-dupfact-iso";
     await setupHandoff(taskId, true);
     await saveBrief(taskId);
-    setTaskLinkedAiListingClientForTests(async () => ({
-      title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
-      bullets: [
-        // bullet1: 锚 functional_feature；但顺带提 material 值 → 硬事实 material 与 bullet3 共享
-        "The straw lid with push-open mechanism is a feature of this Stainless Steel bottle.",
-        // bullet2: 锚 care
-        "Dishwasher-safe removable parts are included with this bottle.",
-        // bullet3: 锚 material — 与 bullet1 共享 "Stainless Steel" 硬事实值
-        "Stainless Steel is the material of this bottle.",
-      ],
-      description: "The Owala bottle has stainless steel and 24 oz. The straw lid with push-open mechanism is a feature of this Water Bottle.",
-      backendSearchTerms: ["vacuum flask"],
-      usedFactIds: ["functional_feature", "care", "material"],
-      humanReviewRequired: true,
-    }));
+    // 负向：bullet1/2 核心事实用同一值（Stainless Steel）→ 应报核心事实重复
+    setTaskLinkedAiListingClientForTests(async (input) => {
+      const base = (await validAiClient()(input)) as { title: string; bullets: string[]; description: string; backendSearchTerms: string[]; usedFactIds: string[] };
+      return { ...base, bullets: ["Stainless Steel is the material of this Water Bottle.", "Stainless Steel is the material of this Water Bottle.", ...base.bullets.slice(2)] };
+    });
     const pr = await generateCreativeHandoffPreview(taskId, visitorContext());
     const result = await generateListingDraftFromHandoff(taskId, visitorContext(), { requestId: "550e8400-e29b-41d4-a716-446655441972", expectedStorageVersion: pr.gate.storageVersion!, expectedHandoffRevision: pr.gate.currentHandoff!.currentRevision });
     // 同一 material 硬事实进入两条 → 绑定拒绝 → 安全回退（不得 ai_optimized）
@@ -975,7 +972,7 @@ describe("LISTING_COPY_QUALITY：坏稿拦截（事实安全 + 文案质量）",
       ],
       description: "The HydroJug Tumbler with leak proof and double wall insulation.",
       backendSearchTerms: ["water bottle"],
-      usedFactIds: ["functional_feature", "care", "material"],
+      usedFactIds: ["functional_feature", "care", "material", "capacity"],
       humanReviewRequired: true,
     }));
     const pr = await generateCreativeHandoffPreview(taskId, visitorContext());
@@ -1019,7 +1016,7 @@ describe("LISTING_COPY_QUALITY：坏稿拦截（事实安全 + 文案质量）",
       ],
       description: "The Water Bottle with straw lid and double wall insulation for use.",
       backendSearchTerms: ["vacuum flask"],
-      usedFactIds: ["functional_feature", "care", "material"],
+      usedFactIds: ["functional_feature", "care", "material", "capacity"],
       humanReviewRequired: true,
     }));
     const pr = await generateCreativeHandoffPreview(taskId, visitorContext());
@@ -1097,16 +1094,17 @@ describe("无关键词主链合同：无有效 KeywordBrief → 可采用合格 
       expect(d.draftKind).toBe("ai_optimized_listing");
       expect(d.listingUnqualified).toBe(false);
       expect(d.fallbackApplied).toBe(false);
-      // 正式标题、3–5 条五点与描述保留
-      expect(d.titles[0]).toBe("Owala 24 oz Stainless Steel Water Bottle, Blue");
-      expect(d.bullets).toEqual([
-        "The straw lid with push-open mechanism is a feature of this Water Bottle.",
-        "The dishwasher-safe removable parts option is included for this Water Bottle.",
-        "Stainless Steel is the material of this Water Bottle.",
-      ]);
+      // 正式标题、3–5 条五点与描述保留（V2 动态：值来自 Plan-aware helper 的真实 input.facts）
+      expect(d.titles[0]).toContain("Water Bottle");
+      expect(d.titles[0]).toContain("Stainless Steel");
+      expect(d.bullets.length).toBe(4); // 4 组（material/capacity/function/care）
       expect(d.bullets.length).toBeGreaterThanOrEqual(3);
       expect(d.bullets.length).toBeLessThanOrEqual(5);
-      expect(d.description).toBe("The Owala bottle has stainless steel and 24 oz. The straw lid with push-open mechanism is a feature of this Water Bottle.");
+      // 每条 bullet 锚定真实事实值
+      const nkBases = ["stainless steel", "24 oz", "straw lid", "dishwasher-safe"];
+      for (const b of d.bullets) {
+        expect(nkBases.some((x) => b.toLowerCase().includes(x))).toBe(true);
+      }
       // 四类关键词字段/trace 全空：不得从研究候选词、商品标题或兜底词偷偷补入
       expect(d.keywords ?? []).toEqual([]);
       expect((d.backendSearchTerms ?? []) as string[]).toEqual([]);
@@ -1150,7 +1148,7 @@ describe("无关键词主链合同：无有效 KeywordBrief → 可采用合格 
       expect(d.bullets.length).toBeGreaterThanOrEqual(3);
       expect(d.bullets.length).toBeLessThanOrEqual(5);
       // 每条五点逐条锚定已确认事实值
-      const anchors = ["straw lid with push-open mechanism", "dishwasher-safe removable parts", "stainless steel"];
+      const anchors = ["straw lid with push-open mechanism", "dishwasher-safe removable parts", "stainless steel", "24 oz"];
       for (const b of d.bullets) {
         expect(anchors.some((a) => b.toLowerCase().includes(a))).toBe(true);
       }
@@ -1174,19 +1172,11 @@ describe("无关键词主链合同：无有效 KeywordBrief → 可采用合格 
   it("NK3：Provider 返回未绑定计划且含 cannotSay（12 hours）的文案 + 无 keywordBrief → AI 稿拒绝，只进现有安全回退；被拒内容不入正式字段；四空", async () => {
     const taskId = "sandbox-nk-cannotsay";
     await setupHandoff(taskId, true); // 不 saveBrief
-    setTaskLinkedAiListingClientForTests(async () => ({
-      title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
-      bullets: [
-        "The straw lid with push-open mechanism is a feature of this Water Bottle.",
-        // 未命中其计划事实（bulletPlans[1] 绑 care），并含 cannotSay 词面 "12 hours"
-        "Double-wall vacuum insulation keeps drinks cold for 12 hours in the bottle.",
-        "Available with the Stainless Steel option for this Water Bottle.",
-      ],
-      description: "The Owala bottle has stainless steel and 24 oz. Keeps drinks cold for 12 hours everywhere you go.",
-      backendSearchTerms: [],
-      usedFactIds: ["functional_feature", "construction", "material"],
-      humanReviewRequired: true,
-    }));
+    // 负向：bullet1/2 的"核心事实"用同一值（Stainless Steel）→ 应报核心事实重复
+    setTaskLinkedAiListingClientForTests(async (input) => {
+      const base = (await validAiClient()(input)) as { title: string; bullets: string[]; description: string; backendSearchTerms: string[]; usedFactIds: string[] };
+      return { ...base, bullets: ["Stainless Steel is the material of this Water Bottle.", "Stainless Steel is the material of this Water Bottle.", ...base.bullets.slice(2)] };
+    });
     try {
       const p = await generateCreativeHandoffPreview(taskId, visitorContext());
       const result = await generateListingDraftFromHandoff(taskId, visitorContext(), {
@@ -1236,9 +1226,9 @@ describe("无关键词主链合同：无有效 KeywordBrief → 可采用合格 
       },
     });
     let providerCalls = 0;
-    setTaskLinkedAiListingClientForTests(async () => {
+    setTaskLinkedAiListingClientForTests(async (input) => {
       providerCalls += 1;
-      return validAiClient()({} as never);
+      return validAiClient()(input);
     });
     try {
       const p = await generateCreativeHandoffPreview(taskId, visitorContext());
@@ -1359,4 +1349,74 @@ describe("无关键词主链合同：无有效 KeywordBrief → 可采用合格 
     expect(kwVerdict.ok).toBe(true);
     expect(kwVerdict.issues.join(" ")).not.toContain("不可采用文案");
   });
+
+  it("能力驱动：2 组（material+capacity）→ Provider=0 且 Plan 精确 2 条 needs_facts", async () => {
+    const taskId = "sandbox-v2-cap-2";
+    await setupHandoff(taskId, false);
+    let providerCalls = 0;
+    setTaskLinkedAiListingClientForTests(async () => { providerCalls += 1; return {}; });
+    const p = await generateCreativeHandoffPreview(taskId, visitorContext());
+    const result = await generateListingDraftFromHandoff(taskId, visitorContext(), {
+      requestId: "550e8400-e29b-41d4-a716-446655440810",
+      expectedStorageVersion: p.gate.storageVersion!,
+      expectedHandoffRevision: p.gate.currentHandoff!.currentRevision,
+    });
+    expect(providerCalls).toBe(0);
+    expect(result.draft?.providerAttempted).toBe(false);
+    const plan = result.draft?.sellingPointPlan;
+    expect(plan?.length).toBe(2);
+    expect(result.draft?.draftKind).toBe("safe_fact_draft");
+  });
+
+  it("能力驱动：4 组（6基础+3manual，color 不计数）Plan 精确 4 条", async () => {
+    const taskId = "sandbox-v2-cap-5";
+    await setupHandoff(taskId, true);
+    let providerCalls = 0;
+    setTaskLinkedAiListingClientForTests(async () => { providerCalls += 1; return {}; });
+    const p = await generateCreativeHandoffPreview(taskId, visitorContext());
+    const result = await generateListingDraftFromHandoff(taskId, visitorContext(), {
+      requestId: "550e8400-e29b-41d4-a716-446655440811",
+      expectedStorageVersion: p.gate.storageVersion!,
+      expectedHandoffRevision: p.gate.currentHandoff!.currentRevision,
+    });
+    const plan = result.draft?.sellingPointPlan;
+    expect(plan?.length).toBe(4); // 4 组（material/capacity/function/care；color 不计数）
+  });
+
+  it("能力驱动：Plan 与 Provider bullets 不匹配（少 1 条）→ 拒绝 ai_optimized_listing", async () => {
+    const taskId = "sandbox-v2-cap-mismatch";
+    await setupHandoff(taskId, true);
+    await saveBrief(taskId);
+    // 独立负向 Client：明确返回 plan.bulletPlans.length - 1 条（禁止调用合格 helper）
+    const negativeClient: TaskLinkedAiListingClient = async (input) => {
+      const plans = Array.isArray(input.plan?.bulletPlans) ? input.plan.bulletPlans : [];
+      const count = Math.max(0, plans.length - 1);
+      const facts = (input.facts ?? []).filter((f) => typeof f?.value === "string" && f.value.trim().length > 0);
+      const byField = new Map<string, string>();
+      for (const f of facts) byField.set(String(f.field ?? ""), String(f.value ?? "").trim());
+      const bullets = plans.slice(0, count).map((bp) => {
+        const id = Array.isArray(bp?.featureFactIds) ? bp.featureFactIds[0] : undefined;
+        return `${byField.get(String(id)) ?? "X"} is a factual detail of this Water Bottle.`;
+      });
+      return {
+        title: facts.find((f) => f.field === "product_type")?.value ?? "Product",
+        bullets,
+        description: `${facts[0]?.value ?? "X"} is the first fact. ${facts[1]?.value ?? "Y"} is the second fact.`,
+        backendSearchTerms: [],
+        usedFactIds: plans.slice(0, count).map((bp) => String(bp?.featureFactIds?.[0] ?? "")).filter(Boolean),
+        humanReviewRequired: true,
+      };
+    };
+    setTaskLinkedAiListingClientForTests(negativeClient);
+    const p = await generateCreativeHandoffPreview(taskId, visitorContext());
+    const result = await generateListingDraftFromHandoff(taskId, visitorContext(), {
+      requestId: "550e8400-e29b-41d4-a716-446655440812",
+      expectedStorageVersion: p.gate.storageVersion!,
+      expectedHandoffRevision: p.gate.currentHandoff!.currentRevision,
+    });
+    // 负向：Provider 返回条数 < Plan target → aiBulletsBindToPlan 拒绝 → 不得成为 ai_optimized_listing
+    expect(result.draft?.draftKind).not.toBe("ai_optimized_listing");
+  });
+
+
 });

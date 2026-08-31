@@ -455,3 +455,145 @@ describe("R6 独立证明：Claim Evidence 单独拦截未确认硬属性", () =
     expect(bad, JSON.stringify(evidence.unsupportedClaims)).toBeDefined();
   });
 });
+
+/* ──────────────────────────────────────────────────────────────
+ * 自然英文完整句 × Claim Evidence 安全合同
+ *
+ * 核心命题：中性连接词（is / has / measures / weighs / includes / For care …）
+ * 只能在「确切事实值已被剥离之后」的受控语法位置放行；
+ * 任何夹带未确认内容词（lid / liner / durable / 12 hours / 认证）的句子必须照旧拒绝。
+ * 判定面向句法位置，不面向商品名或完整句字符串。
+ * ────────────────────────────────────────────────────────────── */
+
+function ceInput(facts: Array<{ field: string; label: string; value: string }>): ListingGenerationInput {
+  return baseInput({ productFacts: facts as ListingGenerationInput["productFacts"] });
+}
+
+/** 受控句所需的已确认事实（英文渲染后的值） */
+const ORG_CONSTRUCTION = { field: "construction", label: "构造", value: "built with an expandable multi-compartment design in molded plastic" };
+const ORG_CAPACITY_STORES = { field: "capacity", label: "容量", value: "stores about 40 to 50 pieces of cutlery" };
+const ORG_CAPACITY_OZ = { field: "capacity", label: "容量", value: "24 oz" };
+const ORG_DIMENSIONS = { field: "dimensions", label: "尺寸", value: '3.5"L x 3.5"W x 5.3"H' };
+const ORG_WEIGHT = { field: "weight", label: "重量", value: "4 ounces" };
+const ORG_CARE = { field: "care", label: "保养", value: "rinse with clean water and wipe dry" };
+const ORG_TYPE = { field: "product_type", label: "商品类型", value: "Organizer" };
+const ORG_MATERIAL = { field: "material", label: "材质", value: "Plastic" };
+
+type CeCase = {
+  name: string;
+  bullet: string;
+  facts: Array<{ field: string; label: string; value: string }>;
+  /** true = 必须通过 Claim Evidence；false = 必须被拒 */
+  supported: boolean;
+  reason?: string;
+};
+
+const NATURAL_SENTENCE_CASES: CeCase[] = [
+  // ── 正例：事实值确切存在时，受控位置的连接词必须放行 ──
+  { name: "P1 分词补语 + 系动词", bullet: "The Organizer is built with an expandable multi-compartment design in molded plastic.", facts: [ORG_TYPE, ORG_CONSTRUCTION], supported: true },
+  { name: "P2 三单谓语（值自带谓语）", bullet: "The Organizer stores about 40 to 50 pieces of cutlery.", facts: [ORG_TYPE, ORG_CAPACITY_STORES], supported: true },
+  { name: "P3 has a capacity of（名词规格值 + 真实谓语）", bullet: "The Organizer has a capacity of 24 oz.", facts: [ORG_TYPE, ORG_CAPACITY_OZ], supported: true },
+  { name: "P4 measures / weighs（尺寸与重量真实谓语）", bullet: 'The Organizer measures 3.5"L x 3.5"W x 5.3"H and weighs 4 ounces.', facts: [ORG_TYPE, ORG_DIMENSIONS, ORG_WEIGHT], supported: true },
+  { name: "P5 For care 祈使引导语", bullet: "For care, rinse with clean water and wipe dry.", facts: [ORG_TYPE, ORG_CARE], supported: true },
+  // ── 负例：同一句型但无对应事实值 → 照旧拒绝（连接词不是免死金牌）──
+  { name: "N1 同 P1 句型但无 construction 事实", bullet: "The Organizer is built with an expandable multi-compartment design in molded plastic.", facts: [ORG_TYPE], supported: false },
+  { name: "N2 同 P3 句型但无 capacity 事实", bullet: "The Organizer has a capacity of 24 oz.", facts: [ORG_TYPE], supported: false },
+  { name: "N3 同 P5 句型但无 care 事实", bullet: "For care, rinse with clean water and wipe dry.", facts: [ORG_TYPE], supported: false },
+  // ── 负例：谓语宾语夹带未确认内容词 ──
+  { name: "N4 已确认 Plastic，却追加未确认 lid", bullet: "The Organizer is made of Plastic and includes a lid.", facts: [ORG_TYPE, ORG_MATERIAL], supported: false, reason: "unclassified_factual_claim" },
+  { name: "N5 Trash Can：Can 是商品名的一部分，不是谓语", bullet: "The Trash Can with a liner for storage.", facts: [{ field: "product_type", label: "商品类型", value: "Trash Can" }], supported: false },
+  { name: "N6 从句中的 is 不得洗白主句残片", bullet: "The Organizer with a lid that is durable.", facts: [ORG_TYPE], supported: false, reason: "unclassified_factual_claim" },
+  // ── 负例：数字 / 性能 / 认证 / 绝对承诺 ──
+  { name: "N7 虚构数字 + 性能声明", bullet: "The Organizer is made of Plastic and keeps food cold for 12 hours.", facts: [ORG_TYPE, ORG_MATERIAL], supported: false },
+  { name: "N8 未确认认证", bullet: "The Organizer is made of Plastic and is FDA approved.", facts: [ORG_TYPE, ORG_MATERIAL], supported: false },
+  { name: "N9 未确认组件数量", bullet: "The Organizer includes 3 compartments.", facts: [ORG_TYPE], supported: false },
+];
+
+describe("自然英文完整句 × Claim Evidence 安全合同", () => {
+  for (const c of NATURAL_SENTENCE_CASES) {
+    it((c.supported ? "绿：" : "红：") + c.name, () => {
+      const result = verifyListingClaims(
+        baseDraft({ bullets: [c.bullet], description: "" }),
+        ceInput(c.facts),
+      );
+      const rejected = result.unsupportedClaims.length > 0;
+      if (c.supported) {
+        expect(rejected, "自然句被误拒：" + JSON.stringify(result.unsupportedClaims)).toBe(false);
+      } else {
+        expect(rejected, "未确认内容被放行：" + c.bullet).toBe(true);
+        if (c.reason) {
+          expect(result.unsupportedClaims.some((u) => u.reason === c.reason), "原因码应为 " + c.reason + "；实际=" + JSON.stringify(result.unsupportedClaims)).toBe(true);
+        }
+      }
+    });
+  }
+
+  it("红：禁止声明（prohibited）仍被拦，不因自然句型放行", () => {
+    const result = verifyListingClaims(
+      baseDraft({ bullets: ["The Organizer is made of Plastic and is leakproof."], description: "" }),
+      ceInput([ORG_TYPE, ORG_MATERIAL]),
+    );
+    expect(result.unsupportedClaims.length).toBeGreaterThan(0);
+  });
+
+  it("绿：ukeetap 五条精确自然句整体通过 Claim Evidence", () => {
+    const result = verifyListingClaims(
+      baseDraft({
+        bullets: [
+          "The Organizer is built with an expandable multi-compartment design in molded plastic.",
+          "The Organizer stores about 40 to 50 pieces of cutlery.",
+          "The Organizer expands or collapses to the sides according to the drawer width.",
+          "The Organizer is suitable for daily kitchen storage and carrying.",
+          "For care, rinse with clean water and wipe dry.",
+        ],
+        description: "",
+      }),
+      ceInput([
+        ORG_TYPE,
+        ORG_CONSTRUCTION,
+        ORG_CAPACITY_STORES,
+        { field: "operation", label: "使用方式", value: "expands or collapses to the sides according to the drawer width" },
+        { field: "usage", label: "适用场景", value: "suitable for daily kitchen storage and carrying" },
+        ORG_CARE,
+      ]),
+    );
+    expect(result.unsupportedClaims, JSON.stringify(result.unsupportedClaims)).toEqual([]);
+  });
+});
+
+describe("消费者自然句窄受控语法（body/mechanism/control + from/through/its/as + uses）", () => {
+  const F = (pairs: Array<[string, string]>) =>
+    pairs.map(([field, value]) => ({ field, label: field, value }));
+  const FACT = {
+    brand: ["brand", "Acme"] as [string, string],
+    type: ["product_type", "Water Bottle"] as [string, string],
+    material: ["material", "Plastic"] as [string, string],
+    operation: ["operation", "Latch"] as [string, string],
+    feature: ["functional_feature", "Push Button"] as [string, string],
+  };
+  const cases: Array<{ name: string; bullet: string; facts: Array<[string, string]>; supported: boolean; reason?: string }> = [
+    { name: "P1 The Water Bottle body is made from plastic.", bullet: "The Water Bottle body is made from plastic.", facts: [FACT.brand, FACT.type, FACT.material, FACT.operation, FACT.feature], supported: true },
+    { name: "P2 The Water Bottle opens through its latch mechanism.", bullet: "The Water Bottle opens through its latch mechanism.", facts: [FACT.brand, FACT.type, FACT.operation], supported: true },
+    { name: "P3 The Water Bottle uses a push button as a control.", bullet: "The Water Bottle uses a push button as a control.", facts: [FACT.brand, FACT.type, FACT.operation, FACT.feature], supported: true },
+    { name: "N1 ...and guarantees durability.", bullet: "The Water Bottle body is made from plastic and guarantees durability.", facts: [FACT.brand, FACT.type, FACT.material], supported: false },
+    { name: "N2 ...and never leaks.", bullet: "The Water Bottle opens through its latch mechanism and never leaks.", facts: [FACT.brand, FACT.type, FACT.operation], supported: false },
+    { name: "N3 ...for waterproof performance.", bullet: "The Water Bottle uses a push button as a control for waterproof performance.", facts: [FACT.brand, FACT.type, FACT.operation, FACT.feature], supported: false },
+    { name: "N4 ...for easy use.", bullet: "The Water Bottle opens through its latch mechanism for easy use.", facts: [FACT.brand, FACT.type, FACT.operation], supported: false },
+    { name: "N5 ...and works with every lid.", bullet: "The Water Bottle uses a push button as a control and works with every lid.", facts: [FACT.brand, FACT.type, FACT.operation, FACT.feature], supported: false },
+  ];
+  for (const c of cases) {
+    it((c.supported ? "绿：" : "红：") + c.name, () => {
+      const li = ceInput(F(c.facts));
+      const result = verifyListingClaims(
+        baseDraft({ bullets: [c.bullet], description: "" }),
+        li,
+      );
+      const rejected = result.unsupportedClaims.length > 0;
+      if (c.supported) {
+        expect(rejected, "自然句被误拒：" + JSON.stringify(result.unsupportedClaims)).toBe(false);
+      } else {
+        expect(rejected, "未确认内容被放行：" + c.bullet).toBe(true);
+      }
+    });
+  }
+});

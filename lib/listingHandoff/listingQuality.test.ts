@@ -136,6 +136,30 @@ describe("listingReadiness", () => {
     expect(listingFactRole(makeFact("brand", "Owala"))).toBe("identity");
     expect(listingFactRole(makeFact("capacity", "24 oz"))).toBe("specification");
   });
+
+  it("dimensions 精确合同：listingFactRole(dimensions) === specification", () => {
+    expect(listingFactRole(makeFact("dimensions", "5 in"))).toBe("specification");
+    // 历史兼容别名不变
+    expect(listingFactRole(makeFact("dimension", "5 in"))).toBe("specification");
+  });
+
+  it("dimensions 构造：identity(product_type)+specification(material, dimensions)+functional(usage) → copyReady=true 且 specification=2", () => {
+    const readiness = buildListingReadiness({
+      confirmedFacts: [
+        makeFact("product_type", "Water Bottle"),
+        makeFact("material", "Plastic"),
+        makeFact("dimensions", "5 in"),
+        makeFact("usage", "Home"),
+      ],
+      listingEligibleFacts: 4,
+      hasBlockingIssue: false,
+      keywordBrief: null,
+    });
+    expect(readiness.counts.specification).toBe(2);
+    expect(readiness.counts.identity).toBe(1);
+    expect(readiness.counts.functional).toBe(1);
+    expect(readiness.copyReady).toBe(true);
+  });
 });
 
 describe("listingPlan", () => {

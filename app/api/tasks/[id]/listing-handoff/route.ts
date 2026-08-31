@@ -18,8 +18,9 @@ import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPre
 import { computeListingStatus, parseListingHandoffBinding, type ListingStatus } from "@/lib/listingHandoff/listingBinding";
 import { TaskResultJsonMutationError } from "@/lib/server/taskResultJsonMutation";
 import { evaluateHandoffStatus } from "@/lib/productCreativeHandoffStatus";
-import { summarizeListingHandoffFacts } from "@/lib/listingHandoff/listingGenerationInput";
+import { summarizeListingHandoffFacts, buildListingInputFromCreativeHandoff } from "@/lib/listingHandoff/listingGenerationInput";
 import { preflightListingClaimSafety } from "@/lib/listingHandoff/listingClaimPreflight";
+import { DEFAULT_CANNOT_SAY } from "@/lib/listingHandoff/listingPlan";
 import { buildListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
 import { buildListingBrief } from "@/lib/listingHandoff/listingBrief";
 import { mutateTaskResultJson } from "@/lib/server/taskResultJsonMutation";
@@ -238,21 +239,83 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const staleDraftPresent = listingStatus === "stale" && draft !== null;
 
+    // V2：capability 安全评估（与生成服务同源 adapter；同输入同输出）——必须在 canGenerate 之前计算。
+    // 安全边界：仅返回 level/supportedBulletCount/targetBulletCount/canCallProvider/hasIdentity/isBlocked/
+    // missingClaimGroups/suggestedQuestions；绝不返回事实值、内部来源或 reason 细节。
+    let capabilitySafe: {
+      level: string;
+      supportedBulletCount: number;
+      targetBulletCount: number;
+      canCallProvider: boolean;
+      hasIdentity: boolean;
+      isBlocked: boolean;
+      missingClaimGroups: string[];
+      suggestedQuestions: string[];
+    } | null = null;
+    if (handoff && handoff.controlState === "active" && listingStatus !== "revoked" && listingStatus !== "invalid") {
+      const { evaluateListingCapabilityFromPolicy } = await import("@/lib/listingHandoff/listingCapabilityEvaluation");
+      const buildResult = buildListingInputFromCreativeHandoff(handoff, researchRevision ?? 1);
+      if (buildResult.ok) {
+        // 全局阻断的真实派生：handoff 有效状态（active/current）才允许生成；
+        // stale/revoked/研究来源哈希变化/评价失败 → generationAllowed=false → isBlocked=true。
+        // buildResult.ok=false（handoff 无效/阻断 issue）→ capabilitySafe 保持 null → fail-closed。
+        const hasGlobalBlockingIssue = handoffEffectiveStatus === null
+          || handoffEffectiveStatus.generationAllowed !== true;
+        const evalResult = evaluateListingCapabilityFromPolicy({
+          input: buildResult.input,
+          confirmedFacts: handoff.versions[handoff.versions.length - 1].confirmedFacts.map((f) => ({
+            field: String(f.field ?? ""),
+            value: String(f.value ?? ""),
+            evidenceTier: String((f as { evidenceTier?: string }).evidenceTier ?? ""),
+            sourceRef: f.sourceRef as { sourceKind?: string } | undefined,
+          })),
+          extraProhibitedTerms: DEFAULT_CANNOT_SAY,
+          hasBlockingIssue: hasGlobalBlockingIssue,
+        });
+        const c = evalResult.capability;
+        capabilitySafe = {
+          level: c.level,
+          supportedBulletCount: c.supportedBulletCount,
+          targetBulletCount: c.targetBulletCount,
+          canCallProvider: c.canCallProvider,
+          hasIdentity: c.hasIdentity,
+          isBlocked: c.isBlocked,
+          missingClaimGroups: c.missingClaimGroups,
+          suggestedQuestions: c.suggestedQuestions,
+        };
+      }
+    }
+
     // V3R（契约① LISTENING_READINESS）：canGenerate 与服务端 Generate 的事实校验同源——
     // 预演确定性校验链（buildListingInput → deterministic draft → filter → verify → haveEvidence）。
     // 仅当 handoff 可用时预演；不可用时不预演（canGenerate 已为 false）。
+    // V2 语义：中文事实可英文化（非不安全）——preflight 返回 english_rendering_pending；
+    // canGenerate 真消费同一 Capability 内部结果（hasIdentity/targetBulletCount/isBlocked）。
     const claimPreflight = handoff && handoff.controlState === "active"
       && listingStatus !== "revoked"
       && listingStatus !== "invalid"
       ? preflightListingClaimSafety({ handoff, researchRevision: researchRevision ?? 1 })
       : null;
 
+    // 真实 blocking（Policy/unsupported/结构错误）不得进入生成：preflight blocked 或 capability.isBlocked
+    const preflightAllows = claimPreflight === null || claimPreflight.pass
+      || claimPreflight.reasonCode === "english_rendering_pending";
+
+    // 可生成草稿资格：身份 + 至少 2 条目标能力 + 非全局阻断（由同一 Capability 行为驱动）
+    const hasUsableDraft = capabilitySafe !== null
+      && capabilitySafe.hasIdentity
+      && capabilitySafe.targetBulletCount >= 2
+      && !capabilitySafe.isBlocked;
+    const providerEligible = capabilitySafe?.canCallProvider === true;
+
+    // capability 计算失败 → fail closed（不得回退到只看 preflightAllows）
     const canGenerate = handoff?.controlState === "active"
       && listingStatus !== "revoked"
       && listingStatus !== "invalid"
       && handoffEffectiveStatus?.status === "active"
       && factSummary.listingEligibleFacts > 0
-      && (claimPreflight === null || claimPreflight.pass);
+      && preflightAllows
+      && hasUsableDraft;
 
     // Quality.1：readiness（claimSafe / copyReady / keywordReady / missingForQuality）
     const { buildListingReadiness } = await import("@/lib/listingHandoff/listingReadiness");
@@ -267,6 +330,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           keywordBrief,
         })
       : null;
+
+    // V2：copyReady 与服务端 capability.canCallProvider 同源；canGenerate 保留安全草稿语义（2 组仍可生成部分草稿）
+    const effectiveCopyReady = capabilitySafe !== null
+      ? capabilitySafe.canCallProvider
+      : readiness?.copyReady === true;
 
     return NextResponse.json({
       ok: true,
@@ -287,18 +355,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         readiness: readiness
           ? {
               claimSafe: readiness.claimSafe,
-              copyReady: readiness.copyReady,
+              copyReady: effectiveCopyReady,
               keywordReady: readiness.keywordReady,
               missingForQuality: readiness.missingForQuality,
               counts: readiness.counts,
             }
           : null,
+        // V2：capability 安全字段（仅 level/counts/canCallProvider/isBlocked/missing/suggested；
+        // 绝不返回事实值、内部来源或 reason 细节）
+        capability: capabilitySafe,
         // V3R（契约①）：claimPreflight 与服务端 Generate 校验同源；pass=false 时 reason 为
         // 面向用户的阻断原因（人话），UI 直接展示，不再让用户点击生成后才失败。
         claimPreflight: claimPreflight
           ? claimPreflight.pass
-            ? { pass: true, reason: null }
-            : { pass: false, reason: claimPreflight.reason }
+            ? { pass: true, reasonCode: null, reason: null }
+            : { pass: false, reasonCode: claimPreflight.reasonCode, reason: claimPreflight.reason }
           : null,
         listingBrief: listingBriefParsed.ok ? listingBriefParsed.brief : null,
         keywordBriefSummary: keywordBrief

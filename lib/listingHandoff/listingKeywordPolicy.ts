@@ -6,7 +6,7 @@
  * 竞品品牌词、风险/绝对承诺词永不进入正式 Listing；own_brand 可进标题但默认不重复塞后台搜索词。
  */
 
-export const listingKeywordPolicyVersion = "listing-keyword-policy.v1" as const;
+export const listingKeywordPolicyVersion = "listing-keyword-policy.v2" as const;
 
 export type KeywordCategory =
   | "generic"
@@ -134,23 +134,53 @@ export function filterKeywordsForListing(
 }
 
 
-/** 从关键词候选识别「品牌样」token（4+ 字母、非通用词、非自身品牌）——用于补齐 knownBrands（竞品证据之外） */
+/** 每个 brand/series 标记只识别一个品牌候选：优先标记前一 token，不合格时取后一 token，绝不同时提取两侧。 */
+function brandCandidateAt(
+  toks: string[],
+  markerIndex: number,
+  ownTokens: Set<string>,
+  commonWords: Set<string>,
+): string | null {
+  const BRAND_MARKER_WORDS = new Set(["brand", "series"]);
+  const candidateToks = [toks[markerIndex - 1], toks[markerIndex + 1]].filter((t): t is string => Boolean(t));
+  for (const candidate of candidateToks) {
+    if (candidate.length < 4) continue;
+    if (BRAND_MARKER_WORDS.has(candidate)) continue;
+    if (ownTokens.has(candidate)) continue;
+    if (commonWords.has(candidate)) continue;
+    return candidate;
+  }
+  return null;
+}
+
+/**
+ * 关键词不是品牌事实：只有显式出现 brand/series 标记时才可辅助识别品牌。
+ * 裸关键词中的陌生 token 不再凭长度被猜为品牌（普通功能词无限，黑名单必然再次误杀，
+ * 如 dishwasher/straw 被误判为竞品品牌导致已确认事实被品牌门禁拦截）。
+ * 有标记时最多识别一个品牌候选（优先标记前一侧；前面无合格候选才取后一侧）；
+ * 候选不得是标记词/ownBrand 组成 token/普通类目词；仍保留保序去重与数量上限。
+ */
 export function extractBrandLikeTokensFromKeywords(
   keywords: ReadonlyArray<string | null | undefined>,
   input: { ownBrand?: string },
 ): string[] {
   const own = norm(input.ownBrand ?? "");
-  const skip = new Set<string>([...STOPWORDS, ...GENERIC_WORDS, ...ATTRIBUTE_WORDS, ...SCENARIO_WORDS, ...RISK_WORDS, "brand", "cup", "bottle", "tumbler", "jug", "flask", "leak", "proof"]);
+  const ownTokens = new Set(own.split(/\s+/).filter(Boolean));
+  const commonWords = new Set<string>([...STOPWORDS, ...GENERIC_WORDS, ...ATTRIBUTE_WORDS, ...SCENARIO_WORDS, ...RISK_WORDS, "brand", "series"]);
+  const BRAND_MARKER_WORDS = new Set(["brand", "series"]);
   const seen = new Set<string>();
   const out: string[] = [];
   for (const kw of keywords ?? []) {
     if (!kw) continue;
     const toks = String(kw).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().split(/\s+/).filter(Boolean);
-    for (const w of toks) {
-      if (w.length < 4 || skip.has(w) || w === own) continue;
-      if (seen.has(w)) continue;
-      seen.add(w);
-      out.push(w);
+    // 无显式 brand/series 标记：关键词不得升级为品牌证据
+    if (!toks.some((w) => BRAND_MARKER_WORDS.has(w))) continue;
+    for (let i = 0; i < toks.length; i++) {
+      if (!BRAND_MARKER_WORDS.has(toks[i])) continue;
+      const candidate = brandCandidateAt(toks, i, ownTokens, commonWords);
+      if (!candidate || seen.has(candidate)) continue;
+      seen.add(candidate);
+      out.push(candidate);
     }
     if (out.length >= 12) break;
   }

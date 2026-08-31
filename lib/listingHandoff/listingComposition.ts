@@ -12,7 +12,8 @@
  */
 
 import type { AiListingPackDraft } from "@/lib/aiListingDraft";
-import { buildSafeFactSentences, type RuntimeFact } from "@/lib/listingHandoff/listingRuntimeSkill";
+import { buildSafeFactSentences, type RuntimeFact, RUNTIME_QUALITY_LIMITS } from "@/lib/listingHandoff/listingRuntimeSkill";
+import { isTrivialSingleUnitQuantity } from "@/lib/listingHandoff/listingCapabilityV2";
 import {
   LISTING_COMPOSER_VERSION,
   LISTING_GENERATION_POLICY_VERSION,
@@ -51,23 +52,30 @@ function joinFacts(input: ListingGenerationInput, fields: readonly string[], joi
   return values.length > 0 ? values.join(join) : null;
 }
 
+/** 组合一组事实的英文渲染值（跳过缺失/含 CJK 且无渲染的 fail-closed） */
+function joinFactsRendered(input: ListingGenerationInput, fields: readonly string[], join: string): string | null {
+  const values = fields.map((f) => englishRenderingOf(input, f)).filter((v): v is string => v !== null);
+  return values.length > 0 ? values.join(join) : null;
+}
+
 /**
  * 组合 Title：
  * brand + series_or_model + capacity + material + product_type，末尾加 color。
+ * 英文渲染优先（中文 facts 经 rendering 转英文）；见 englishRenderingOf。
  * 例：Owala FreeSip 24 oz Stainless Steel Water Bottle, Out of the Blue
  */
 function composeTitle(input: ListingGenerationInput): string {
   // 品牌去重：product_type 渲染值等于品牌（大小写不敏感）时不重复并入（如 THERMOS THERMOS）
-  const brand0 = factsOf(input, "brand");
-  const type0 = factsOf(input, "product_type");
+  const brand0 = englishRenderingOf(input, "brand");
+  const type0 = englishRenderingOf(input, "product_type");
   const fields = ["brand", "series_or_model", "capacity", "material"].concat(
     type0 && brand0 && type0.toLowerCase() === brand0.toLowerCase() ? [] : ["product_type" as const],
   ) as Array<"brand" | "series_or_model" | "capacity" | "material" | "product_type">;
-  const core = joinFacts(input, fields, " ");
-  const color = factsOf(input, "color_or_variant");
+  const core = joinFactsRendered(input, fields, " ");
+  const color = englishRenderingOf(input, "color_or_variant");
   if (!core && !color) {
     // 无任何可组合事实（不应发生：调用方已保证至少 1 个 product_fact）
-    return input.productFacts[0]?.value ?? "商品";
+    return englishRenderingOf(input, input.productFacts[0]?.field) ?? input.productFacts[0]?.value ?? "商品";
   }
   if (core && color) return `${core}, ${color}`;
   return core ?? color!;
@@ -198,30 +206,65 @@ function descriptionIdentity(input: ListingGenerationInput): string {
  * 组合 Description：身份句（品牌去重）+ 安全模板功能句（至多 2 条）+ 规格句。
  * 全部为完整句；禁止属性碎片拼接；中文 facts 经英文渲染（factRef 溯源）。
  */
+/**
+ * 受控身份句：`The {subject} is a/an {brand} product.`
+ * 旧写法 `The {subject} with {brand}` 是「主语 + with 短语、无谓语」的病句，
+ * 会被 Copy Quality 的 sentence_fragment 正确拒绝。
+ */
+function descriptionIdentitySentence(input: ListingGenerationInput): string {
+  const brand = renderingOf(input, "brand");
+  const series = renderingOf(input, "series_or_model");
+  const type = renderingOf(input, "product_type");
+  const parts: string[] = [];
+  if (series) parts.push(series);
+  if (type && (!brand || type.toLowerCase() !== brand.toLowerCase())) parts.push(type);
+  if (parts.length === 0) parts.push("product");
+  const subject = parts.join(" ");
+  if (!brand) return "The " + subject + " is a product in this category.";
+  return "The " + subject + " is " + articleFor(brand) + " " + brand + " product.";
+}
+
+/**
+ * 组合 Description：与 Bullets **同一质量合同**（受控完整句）。
+ * 结构：受控身份句 + 尺寸/重量句（真实谓语 measures / weighs）+ 事实句。
+ * 禁止 `The X with ...` 无谓语结构，禁止 `for everyday use` 类填充尾。
+ * 描述句不足时复用受控规格句（材质/容量），绝不添加未确认的场景声明。
+ */
 function composeDescription(input: ListingGenerationInput): string {
   const sentences: string[] = [];
-  sentences.push(descriptionIdentity(input) + ".");
+  sentences.push(descriptionIdentitySentence(input));
+  const typeLabel = typeLabelOf(input);
   const dimensions = renderingOf(input, "dimensions");
   const weight = renderingOf(input, "weight");
-  const extraSpec: string[] = [];
-  if (dimensions) extraSpec.push("Dimensions: " + dimensions);
-  if (weight) extraSpec.push("Weight: " + weight);
-  if (extraSpec.length > 0) sentences.push("The " + typeLabelOf(input) + " with " + extraSpec.join(" and ") + " for everyday use.");
-  // 补充句：仅当描述句不足 2 句时补目标通用句（功能事实句已由五点承载，避免五点/描述高度重复）
-  // 描述句不足时：不添加未经确认的性能/场景声明（cup-holder/保温时长/认证一律禁止）
-  if (sentences.length < 2) sentences.push("It fits standard cup holders for easy use.");
+  if (dimensions && weight) {
+    sentences.push("The " + typeLabel + " measures " + dimensions + " and weighs " + weight + ".");
+  } else if (dimensions) {
+    sentences.push("The " + typeLabel + " measures " + dimensions + ".");
+  } else if (weight) {
+    sentences.push("The " + typeLabel + " weighs " + weight + ".");
+  }
+  if (sentences.length < 2) {
+    const material = englishRenderingOf(input, "material");
+    const capacity = englishRenderingOf(input, "capacity");
+    const extra = material
+      ? buildControlledSentence("material", material, typeLabel)
+      : capacity
+        ? buildControlledSentence("capacity", capacity, typeLabel)
+        : null;
+    if (extra) sentences.push(extra);
+  }
   return sentences.slice(0, 5).join(" ");
 }
-/** Keywords：纯事实值（无字段标签，无市场指标）。 */
+/** Keywords：纯事实值（无字段标签，无市场指标）；英文渲染优先（中文 facts 不泄漏原始值）。 */
 function composeKeywords(input: ListingGenerationInput): string[] {
   const values = new Set<string>();
   for (const field of TITLE_FIELD_ORDER) {
-    const v = factsOf(input, field);
+    const v = englishRenderingOf(input, field);
     if (v) values.add(v);
   }
   // 补充常见组合词（仅 confirmed facts 组合）
-  const brand = factsOf(input, "brand");
-  const type = factsOf(input, "product_type");
+  const brand = englishRenderingOf(input, "brand");
+  const type = englishRenderingOf(input, "product_type");
   if (brand && type && brand.toLowerCase() !== type.toLowerCase()) values.add(`${brand} ${type}`);
   return Array.from(values).slice(0, 12);
 }
@@ -316,12 +359,14 @@ function planFactValues(input: ListingGenerationInput, factIds: string[]): strin
  */
 function composeOptimizedTitle(input: ListingGenerationInput, plan: ListingPlan): string {
   // 品牌去重：product_type 渲染值等于品牌（大小写不敏感）时不得重复并入（THERMOS THERMOS / 品牌重复）
-  const brand0 = valueOf(input, "brand");
-  const type0 = valueOf(input, "product_type");
+  const brand0 = englishRenderingOf(input, "brand");
+  const type0 = englishRenderingOf(input, "product_type");
   const identity = ["brand", "series_or_model"].concat(
     type0 && brand0 && type0.toLowerCase() === brand0.toLowerCase() ? [] : ["product_type"],
-  ).map((f) => valueOf(input, f)).filter((v): v is string => v !== null);
-  const specs = ["capacity", "material", "color_or_variant", "quantity_or_pack_size"].map((f) => valueOf(input, f)).filter((v): v is string => v !== null);
+  ).map((f) => englishRenderingOf(input, f)).filter((v): v is string => v !== null);
+  const specs = ["capacity", "material", "color_or_variant", "quantity_or_pack_size"].filter(
+    (f) => f !== "quantity_or_pack_size" || !isTrivialSingleUnitQuantity(f, englishRenderingOf(input, f) ?? ""),
+  ).map((f) => englishRenderingOf(input, f)).filter((v): v is string => v !== null);
   let lead = identity.join(" ");
   // primaryKeyword 合理纳入：标题长度不足目标时，将主词并入高权重位置。
   // R3：无确认事实证据的 keyword（如 "insulated water bottle" 中 insulated）不得并入标题——
@@ -330,7 +375,7 @@ function composeOptimizedTitle(input: ListingGenerationInput, plan: ListingPlan)
     const keyword = plan.primaryKeyword;
     const keywordTokens = keyword.toLocaleLowerCase().split(/\s+/).filter((w) => w.length > 2);
     const leadTokens = lead.toLocaleLowerCase().split(/\s+/).filter((w) => w.length > 2);
-    const factValues = input.productFacts.map((f) => f.value.toLocaleLowerCase()).join(" ");
+    const factValues = input.productFacts.map((f) => (englishRenderingOf(input, f.field) ?? f.value).toLocaleLowerCase()).join(" ");
     const keywordCoveredByFacts = keywordTokens.length > 0 && keywordTokens.every((w) => factValues.includes(w));
     const alreadyCovered = keywordTokens.every((w) => leadTokens.includes(w));
     // 计划关键词：全词由已确认事实证明（事实安全）→ 允许自然进入标题一次
@@ -387,67 +432,332 @@ function englishRenderingOf(input: ListingGenerationInput, field: string): strin
  * 各角色使用不同句法结构以避免模板重复；不使用 option fits / pairs with / Available construction 等模板腔。
  */
 /**
- * v2（COPY_QUALITY）：事实值前置的自然、保守、可证实的原子事实句。
+ * v2（COPY_QUALITY）：自然、保守、可证实的原子事实句。
  * 句法按角色多样化以通过 0.75 重复检测；只用 Claim Evidence 允许词。
  */
-/**
- * v2（COPY_QUALITY）：自然、保守、可证实的原子事实句。
- * 混合 5 种句法（均通过 Claim Evidence 允许词判定）以通过 0.75 重复检测。
- */
-const V2_ROLE_FRAMES: Record<string, (v: string, t: string) => string> = {
-  core_outcome: (v, t) => "The " + t + " with " + v + " for everyday use.",
-  pain_relief: (v, t) => "This " + v + " for easy use with the " + t + ".",
-  use_scenario: (v, t) => v + " for standard use with this product every day.",
-  ease_of_use: (v, t) => "For easy cleaning with this " + t + ", " + v + ".",
-  proof_or_fit: (v, t) => "The " + t + " available with " + v + " for practical use.",
-};
-
 
 /** 无确认事实支持/高风险营销表述（与 runtimeSkill 同源；防止 leakproof/保温时长/认证等进入正式五点） */
 const V2_RISKY_WORDS = /(?:leakproof|bpa\s*[- ]?free|guaranteed|100%|fda|ce certified|best seller|self\s*[- ]?sealing|luxury|premium|military|medically|keeps\s*cold|keeps\s*warm|hours\s*cold|pairs with|feel like|safe\s*[- ]?for|non\s*[- ]?to\s*[- ]?xic|spill\s*[- ]?proof|never\s*leaks|no\s*leaks|shockproof|crushproof|slashproof|military\s*[- ]?grade)/i;
 
-function planBulletValue(input: ListingGenerationInput, factIds: string[]): string {
+/* ── v2 受控句型（病句根治位）────────────────────────────────
+ *
+ * 已删除万能 `V2_ROLE_FRAMES` / `V2_GENERIC_FRAME` / `PLAN_FRAME_BY_FIELD`：
+ * 旧思路按 role 随机塞「主值 + 模板填充尾」槽位，句骨架与事实语义脱钩，
+ * 从根上产生 `The {t} with {v} for everyday use.` 一类无谓语病句。
+ *
+ * 新思路：**字段 + 英文 rendering 短语形态 → 确定性完整句**。
+ * 先识别 rendering 值的英文短语形态（分词/形容词补语、三单谓语、祈使短语、名词短语），
+ * 再按该形态选唯一正确的完整句骨架；名词规格值使用真实谓语
+ * （is made of / measures / weighs / has / includes / fits），绝不追加 `for … use` 填充。
+ * 形态无法识别 → fail-closed 跳过并记录质量不足，禁止通用模板凑句。
+ * rendering 原文一律 verbatim 嵌入，事实锚点不丢。
+ */
+
+/** 分词 / 形容词补语头：需系动词引导 → `The {t} is {v}.` */
+const COMPLEMENT_PHRASE_HEADS = [
+  "built with", "built from", "built of", "built to", "built for",
+  "made of", "made from", "made with", "made for",
+  "designed for", "designed with", "designed to", "designed as",
+  "constructed of", "constructed with", "constructed from",
+  "equipped with", "fitted with", "finished in", "finished with",
+  "suitable for", "compatible with", "intended for", "meant for",
+  "available in", "packaged in", "packed in",
+  "reinforced with", "coated with", "lined with", "wrapped in",
+] as const;
+
+/** 三单现在时谓语头：可直接接主语 → `The {t} {v}.` */
+const FINITE_PHRASE_HEADS = new Set<string>([
+  "stores", "holds", "carries", "contains", "includes", "features", "comes", "comprises",
+  "fits", "expands", "collapses", "folds", "unfolds", "extends", "retracts", "adjusts",
+  "measures", "weighs", "spans", "opens", "closes", "locks", "seals", "attaches",
+  "mounts", "converts", "rotates", "slides", "stands", "sits", "hangs", "rests",
+  "organizes", "separates", "divides", "accommodates", "arranges", "protects",
+  "supports", "keeps", "works", "offers", "provides", "allows", "doubles", "helps", "uses",
+]);
+
+/** 祈使原形动词头（护理 / 清洁说明）→ `For care, {v}.` */
+const IMPERATIVE_PHRASE_HEADS = new Set<string>([
+  "rinse", "wipe", "wash", "clean", "dry", "soak", "rub", "scrub", "avoid", "remove",
+  "place", "store", "keep", "use", "insert", "fill", "empty", "press", "pull", "push",
+  "turn", "hand", "air", "towel", "refer", "follow", "check", "separate", "handle",
+]);
+
+/** 祈使句前导语（按字段；只用于 care / cleaning 语义字段） */
+const IMPERATIVE_LEAD_BY_FIELD: Record<string, string> = {
+  care: "For care",
+  cleaning: "For cleaning",
+};
+
+/**
+ * 名词规格值 → 字段专属真实谓语。
+ * 只使用 is made of / measures / weighs / has / includes / fits / is available in 等真实谓语；
+ * 补足的名词（capacity / feature / operation）是字段自身语义元数据，非新增性能声明。
+ */
+/** 冠词选择（元音开头用 an） */
+function articleFor(word: string): string {
+  return /^[aeiou]/i.test(String(word).trim()) ? "an" : "a";
+}
+
+/**
+ * 名词值是数量/复数形态（以数字开头，或以复数名词收尾）时不能再加不定冠词：
+ * "includes a 3 compartments" 是病句，"includes 3 compartments" 才是英文。
+ */
+function isQuantityOrPluralNoun(value: string): boolean {
+  const v = String(value).trim();
+  if (/^\d/.test(v)) return true;
+  const last = v.split(/\s+/).filter(Boolean).pop() ?? "";
+  return last.length > 2 && /[^suyxoz]s$/i.test(last) && !/(ss|us|is)$/i.test(last);
+}
+
+/**
+ * 只在消费者正文中自然化普通名词事实值；不修改原始事实、Plan、Title 或事实锚点。
+ *
+ * - 普通 Title Case：Plastic / Stainless Steel / Push Button → 小写；
+ * - 品牌式 CamelCase、全大写缩写、全大写技术连字符：SoftSip / ABS / USB-C → 保留；
+ * - 数字/单位/包装 token：12 oz / 2-pack → 保留。
+ */
+const CONSUMER_NOUN_CASE_FIELDS = new Set<string>([
+  "material",
+  "operation",
+  "functional_feature",
+  "usage",
+  "included_components",
+]);
+
+function consumerWordCase(token: string): string {
+  const matched = token.match(/^([^A-Za-z0-9]*)([A-Za-z0-9][A-Za-z0-9'’-]*)([^A-Za-z0-9]*)$/);
+  if (!matched) return token;
+  const [, leading, core, trailing] = matched;
+  // 数值、单位组合和数量包装值不做大小写改写。
+  if (/\d/.test(core)) return token;
+  // USB-C 一类全大写技术 token 作为整体保留。
+  if (/^[A-Z]+(?:-[A-Z]+)+$/.test(core)) return token;
+  // SoftSip 一类内部大小写品牌/型号 token 保留。
+  if (/[a-z][A-Z]/.test(core)) return token;
+  const natural = core.split("-").map((part) => {
+    // ABS / BPA 等两字母以上缩写保留；普通 Title Case 单词小写。
+    if (/^[A-Z]{2,}$/.test(part)) return part;
+    return part.toLowerCase();
+  }).join("-");
+  return leading + natural + trailing;
+}
+
+function consumerFactPhrase(field: string, value: string): string {
+  if (!CONSUMER_NOUN_CASE_FIELDS.has(field)) return value;
+  // 本层只修正短名词值；较长英文 rendering 可能已经是人工/模型编辑后的完整事实表达，必须原文保留。
+  if (value.trim().split(/\s+/).filter(Boolean).length > 5) return value;
+  return value.split(/(\s+)/).map((token) => /\s+/.test(token) ? token : consumerWordCase(token)).join("");
+}
+
+/**
+ * 功能类名词值 → 数量/复数用 `includes {v}.`（"includes 3 compartments"），
+ * 其余用 `has a {v} feature.`。
+ * 禁止产出 "has a 3 compartments feature" —— 数量/复数前不能加不定冠词。
+ */
+function featureObjectFrame(t: string, v: string): string {
+  return isQuantityOrPluralNoun(v)
+    ? "The " + t + " includes " + v + "."
+    : "The " + t + " has " + articleFor(v) + " " + v + " feature.";
+}
+
+/** 纯控件名（push button / switch / lever / knob / dial）→ uses-as-control 帧；其余名词机制 → opens-through 帧 */
+const PURE_CONTROL_NAMES = /^(?:push|press|slide|flip|toggle)?\s*(?:button|switch|lever|knob|dial)\s*$/i;
+
+/**
+ * 操作类名词值 → 消费者自然句。
+ * 1) 纯控件名（Push Button）→ `uses a {v} as a control.`；
+ * 2) 其余机制名（Latch / Step pedal mechanism）→ `opens through its {v} mechanism.`
+ * 禁止产出 "has a push-button opening operation" / "opens with a Latch operation."（字段标签拼接）。
+ * 不用 works with：works with 命中 Claim Evidence 的兼容性高风险类别（无兼容性事实时会被拒）。
+ */
+function operationObjectFrame(t: string, v: string): string {
+  if (PURE_CONTROL_NAMES.test(String(v).trim())) {
+    return "The " + t + " uses " + articleFor(v) + " " + v + " as a control.";
+  }
+  // 值已含 mechanism（Step pedal mechanism / sliding sip lid mechanism）则不再重复追加
+  return /\bmechanism\b/i.test(String(v))
+    ? "The " + t + " opens through its " + v + "."
+    : "The " + t + " opens through its " + v + " mechanism.";
+}
+
+const NOUN_SPEC_FRAME_BY_FIELD: Record<string, (t: string, v: string) => string> = {
+  material: (t, v) => "The " + t + " body is made from " + v + ".",
+  construction: (t, v) => "The " + t + " is built with " + v + " material.",
+  dimensions: (t, v) => "The " + t + " has a dimension of " + v + ".",
+  weight: (t, v) => "The " + t + " has a weight of " + v + ".",
+  capacity: (t, v) => "The " + t + " has a capacity of " + v + ".",
+  color_or_variant: (t, v) => "The " + t + " is available in " + v + " color.",
+  included_components: (t, v) =>
+    isQuantityOrPluralNoun(v)
+      ? "The " + t + " includes " + v + "."
+      : "A " + v + " is included with the " + t + ".",
+  quantity_or_pack_size: (t, v) => "The " + t + " comes in a " + v + ".",
+  compatibility: (t, v) => "The " + t + " fits " + v + ".",
+  usage: (t, v) => "The " + t + " is suitable for use at " + v + ".",
+  // 功能类字段：值本身即可作 features / uses 的宾语，不再套 "has a X feature / operation"
+  // （"has a 3 compartments feature" / "has a push-button opening operation" 均非自然英文）。
+  functional_feature: (t, v) =>
+    isQuantityOrPluralNoun(v)
+      ? "The " + t + " includes " + v + "."
+      : PURE_CONTROL_NAMES.test(String(v).trim())
+        ? "The " + t + " uses " + articleFor(v) + " " + v + " as a control."
+        : featureObjectFrame(t, v),
+  insulation: (t, v) => featureObjectFrame(t, v),
+  drinking_mechanism: (t, v) => featureObjectFrame(t, v),
+  lid_behavior: (t, v) => featureObjectFrame(t, v),
+  other: (t, v) => featureObjectFrame(t, v),
+  operation: (t, v) => operationObjectFrame(t, v),
+  care: (t, v) => "For care, the " + t + " is " + v + ".",
+  cleaning: (t, v) => "For cleaning, the " + t + " is " + v + ".",
+};
+
+/** 值的首词（小写、去标点） */
+function phraseHeadWord(value: string): string {
+  const m = String(value).trim().toLowerCase().match(/^[a-z][a-z'’-]*/);
+  return m ? m[0] : "";
+}
+
+/** 值本身已是自带主语的完整句（The X …/This X …/It …）且含谓语 */
+function isSelfContainedSentence(value: string): boolean {
+  const v = String(value).trim();
+  if (!/^(?:the|this|that|these|those|it)\s/i.test(v)) return false;
+  return /\b(?:is|are|was|were|has|have|includes?|uses?|stores?|holds?|fits?|expands?|measures?|weighs?|comes?|features?|keeps?|works?)\b/i.test(v);
+}
+
+/**
+ * 受控完整句构造：字段 + 英文短语形态 → 唯一确定性句骨架。
+ * 返回 null = 形态不可识别（fail-closed，调用方跳过并记录质量不足）。
+ */
+function buildControlledSentence(field: string, rawValue: string, typeLabel: string): string | null {
+  const value = String(rawValue).trim().replace(/[.\s]+$/, "");
+  if (!value) return null;
+  const head = phraseHeadWord(value);
+  const lower = value.toLowerCase();
+
+  // 0) 值已是完整句 → 原样复述（只做句点归一），不再套骨架
+  if (isSelfContainedSentence(value)) return endWithPeriod(value);
+
+  // 1) care / cleaning 的祈使短语 → `For care, {v}.`
+  const lead = IMPERATIVE_LEAD_BY_FIELD[field];
+  if (lead && IMPERATIVE_PHRASE_HEADS.has(head)) return lead + ", " + value + ".";
+
+  // 2) 分词 / 形容词补语 → `The {t} is {v}.`
+  if (COMPLEMENT_PHRASE_HEADS.some((h) => lower.startsWith(h + " "))) {
+    return "The " + typeLabel + " is " + value + ".";
+  }
+
+  // 3) 三单谓语开头 → `The {t} {v}.`
+  if (FINITE_PHRASE_HEADS.has(head)) return "The " + typeLabel + " " + value + ".";
+
+  // 4) 名词规格值 → 字段专属真实谓语
+  const nounFrame = NOUN_SPEC_FRAME_BY_FIELD[field];
+  if (nounFrame) return nounFrame(typeLabel, consumerFactPhrase(field, value));
+
+  // 5) 形态不可识别 → fail-closed
+  return null;
+}
+
+/**
+ * Plan 组内候选（**字段与值成对**，帧必须与被选中值的字段一致，不得错配）。
+ * 按「能否组成 8-30 词自然句」的适配度排序：长值含完整事实更多上下文，短值难以成句。
+ */
+function planBulletCandidates(
+  input: ListingGenerationInput,
+  factIds: string[],
+): Array<{ field: string; value: string }> {
+  const candidates: Array<{ field: string; value: string }> = [];
   for (const id of factIds) {
     const f = input.productFacts.find((x) => x.field === id);
     if (!f || !f.value.trim()) continue;
+    // 1 Count：单件默认数量无消费者价值，即使旧 Plan/历史数据传入也不得生成正式句
+    if (isTrivialSingleUnitQuantity(f.field, f.value)) continue;
     // English rendering 优先（中文 facts 经渲染转英文；渲染失败 → 原值仅当无 CJK 才可用）
     const rendered = renderingOf(input, id);
     const candidate = rendered && !HAS_CJK.test(rendered) && !HAS_CJK_PUNCT.test(rendered) ? rendered : "";
     if (!candidate) continue;
     if (V2_RISKY_WORDS.test(candidate)) continue;
-    return candidate;
+    candidates.push({ field: id, value: candidate });
   }
-  return "";
+  return candidates.sort((a, b) => {
+    const wa = planWordCount(a.value), wb = planWordCount(b.value);
+    const scoreA = wa >= 5 && wa <= 30 ? (wa >= 8 ? 0 : 8 - wa) : 100;
+    const scoreB = wb >= 5 && wb <= 30 ? (wb >= 8 ? 0 : 8 - wb) : 100;
+    return scoreA - scoreB;
+  });
+}
+
+/** 受控组合结果：合格句 + fail-closed 记录（质量不足，供调用方判定是否降级） */
+export type ControlledBulletsResult = {
+  bullets: string[];
+  /** 形态不可识别或不足词数而被跳过的事实（质量不足记录；不参与凑句） */
+  unrenderable: Array<{ field: string; value: string; reason: string }>;
+};
+
+/**
+ * 按 plan.bulletPlans 逐条生成受控完整句（每组一条，逐 Plan 绑定）。
+ * 任一组无法生成自然完整句 → 跳过并记入 unrenderable，绝不用通用模板凑句。
+ */
+export function composeControlledBullets(
+  input: ListingGenerationInput,
+  plan: ListingPlan,
+): ControlledBulletsResult {
+  const typeLabel = typeLabelOf(input);
+  const bullets: string[] = [];
+  const unrenderable: Array<{ field: string; value: string; reason: string }> = [];
+  for (const bp of plan.bulletPlans) {
+    const candidates = planBulletCandidates(input, bp.featureFactIds);
+    if (candidates.length === 0) {
+      unrenderable.push({
+        field: (bp.featureFactIds ?? [])[0] ?? "",
+        value: "",
+        reason: "该计划组无可用英文渲染事实值（缺失/含中文/含高风险营销词）。",
+      });
+      continue;
+    }
+    // 同组回退：第一个事实不能形成受控句（形态不可识别 / 词数越界）时，
+    // 依次尝试同组下一个可用事实，不得因为长值或不可识别值直接丢掉整组。
+    // 失败的候选**逐条记录** unrenderable（即使同组后续候选成功——失败事实不进入正式 bullets，
+    // 但质量记录必须保留供调用方/展示判定）。
+    const groupFailures: Array<{ field: string; value: string; reason: string }> = [];
+    let rendered = false;
+    for (const picked of candidates) {
+      const sentence = buildControlledSentence(picked.field, picked.value, typeLabel);
+      if (!sentence) {
+        groupFailures.push({
+          field: picked.field,
+          value: picked.value,
+          reason: "英文短语形态不可识别，无受控句型可用；按 fail-closed 跳过，不用通用模板凑句。",
+        });
+        continue;
+      }
+      const wc = planWordCount(sentence);
+      // 单一权威词数合同：与 Runtime Quality（RUNTIME_QUALITY_LIMITS.bulletWordsMin/Max）一致；
+      // Composition 不得返回它已知最终 Runtime 必然拒绝（too_short/too_long）的候选句。
+      if (wc < RUNTIME_QUALITY_LIMITS.bulletWordsMin || wc > RUNTIME_QUALITY_LIMITS.bulletWordsMax || !/[.!?]$/.test(sentence)) {
+        groupFailures.push({
+          field: picked.field,
+          value: picked.value,
+          reason: "受控完整句词数不在 " + RUNTIME_QUALITY_LIMITS.bulletWordsMin + "-" + RUNTIME_QUALITY_LIMITS.bulletWordsMax + " 区间（" + wc + " 词），不得追加模板填充语凑足词数。",
+        });
+        continue;
+      }
+      bullets.push(sentence);
+      rendered = true;
+      break;
+    }
+    unrenderable.push(...groupFailures);
+  }
+  return { bullets: bullets.slice(0, 5), unrenderable };
 }
 
 function composeOptimizedBullets(input: ListingGenerationInput, plan: ListingPlan): string[] {
   // v2：计划必须真实驱动生成——绝不无差别退回 composeBullets。
-  const typeLabel = typeLabelOf(input);
   // 关键词只出现在标题（主词一次）与 Keywords 字段；正文不内嵌关键词词面
-  // （市场词可能越过 Claim Evidence 允许表 → 保 claim 安全零风险；"最多自然使用"允许 0–2，取 0 最稳）
-  const kwByIndex = new Map<number, string>();
-  const bullets: string[] = [];
-  const usedKws = new Set<string>();
-  plan.bulletPlans.forEach((bp, index) => {
-    const value = planBulletValue(input, bp.featureFactIds);
-    if (!value) return;
-    const frame = V2_ROLE_FRAMES[bp.role ?? "core_outcome"] ?? V2_ROLE_FRAMES.core_outcome;
-    let sentence = frame(value, typeLabel);
-    // 至多自然带入 1 个计划关键词（仅当该词尚未被引用且不在句内重复）
-    const kw = kwByIndex.get(index);
-    if (kw && !usedKws.has(kw.toLowerCase()) && sentence.toLowerCase().indexOf(kw.toLowerCase()) === -1) {
-      // 关键词追加在句末前（自然收尾）；防止词内重复与超长
-      const trimmed = sentence.replace(/.$/, "");
-      if (trimmed.length + kw.length + 3 <= 200) {
-        sentence = trimmed + " " + kw + ".";
-        usedKws.add(kw.toLowerCase());
-      }
-    }
-    const wc = planWordCount(sentence);
-    if (wc >= 8 && wc <= 30 && /[.!?]$/.test(sentence)) bullets.push(sentence);
-  });
-  // 计划不足以产出 ≥3 条合格句时，回退既有安全模板路径（旧行为保持；不混合导致重复）
-  if (bullets.length < 3) {
+  // （市场词可能越过 Claim Evidence 允许表 → 保 claim 安全零风险）。
+  const { bullets } = composeControlledBullets(input, plan);
+  // 受控句 ≥1 条即采用（即使 <3 条——模板回退句含 "for ... use" 模板尾，违反无模板尾合同）；
+  // 仅受控句为 0（全部 fail-closed）时才退回既有安全模板路径（旧行为）。
+  if (bullets.length === 0) {
     return composeBullets(input);
   }
   return bullets.slice(0, 5);
@@ -465,8 +775,9 @@ function composeOptimizedKeywords(input: ListingGenerationInput, brief: ListingK
     // 不关闭 SEO 优化；关键词是 SEO 参考，不是商品事实（不进 confirmed facts）。
     const auto = buildAutoKeywordPlan({
       keywordCandidates: input.creativeContext?.keywordCandidates ?? [],
-      confirmedFacts: input.productFacts.map((f) => ({ field: f.field, label: f.label, value: f.value })),
-      ownBrand: valueOf(input, "brand") ?? "",
+      // 英文渲染值：属性词(材质/容量)匹配已确认事实用英文值（中文原值会漏配）
+      confirmedFacts: input.productFacts.map((f) => ({ field: f.field, label: f.label, value: englishRenderingOf(input, f.field) ?? f.value })),
+      ownBrand: englishRenderingOf(input, "brand") ?? "",
       knownBrands: [],
     });
     const kw: string[] = [];
@@ -482,12 +793,12 @@ function composeOptimizedKeywords(input: ListingGenerationInput, brief: ListingK
     if (!keywords.includes(s)) keywords.push(s);
   }
   // 补充身份词（品牌/类型组合），但去重
-  const brand = valueOf(input, "brand");
-  const type = valueOf(input, "product_type");
+  const brand = englishRenderingOf(input, "brand");
+  const type = englishRenderingOf(input, "product_type");
   // 品牌==类型（THERMOS THERMOS）不得生成词内重复组合词
   if (brand && type && brand.toLowerCase() !== type.toLowerCase() && !keywords.includes(`${brand} ${type}`)) keywords.push(`${brand} ${type}`);
-  const materialV = valueOf(input, "material");
-  const capacityV = valueOf(input, "capacity");
+  const materialV = englishRenderingOf(input, "material");
+  const capacityV = englishRenderingOf(input, "capacity");
   if (type && materialV && !keywords.includes(materialV + " " + type) && keywords.length < 12) keywords.push(materialV + " " + type);
   if (type && capacityV && !keywords.includes(capacityV + " " + type) && keywords.length < 12) keywords.push(capacityV + " " + type);
   return {

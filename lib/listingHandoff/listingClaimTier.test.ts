@@ -63,3 +63,31 @@ describe("轮 16：Claim 三级判定", () => {
     expect(r[0].tier).toBe("review");
   });
 });
+
+describe("FAILURE_ATTRIBUTION 判定（身份锚点验证）", () => {
+  const CONFIRMED = [
+    "Stainless Steel",
+    "24 oz",
+    "straw lid with push-open mechanism",
+    "double-wall vacuum insulation",
+    "dishwasher-safe removable parts",
+  ];
+
+  it("行为1：'Stainless Steel is the material of this Water Bottle.' + 值集 → 应为 verified", () => {
+    const r = classifyClaimTier(["Stainless Steel is the material of this Water Bottle."], CONFIRMED);
+    // 记录真实结果（供判定），断言事实：值在句中 -> 应为 verified
+    expect(r[0].tier).toBe("verified");
+  });
+
+  it("行为2：'24 oz is the capacity of this Water Bottle.' + 值集 → 应为 verified（DIMENSION 特判）", () => {
+    const r = classifyClaimTier(["24 oz is the capacity of this Water Bottle."], CONFIRMED);
+    expect(r[0].tier).toBe("verified");
+  });
+
+  it("行为3（已收紧）：'Water Bottle' 仅传非身份值集（无 brand/product_type/series）→ 必须 blocked + 原因含无锚点", () => {
+    const nonIdentityValues = CONFIRMED; // 生成链 tierInput 传的非身份事实值
+    const r = classifyClaimTier(["Water Bottle"], nonIdentityValues);
+    expect(r[0].tier).toBe("blocked");
+    expect(r[0].reason ?? "").toContain("无已确认事实锚点");
+  });
+});

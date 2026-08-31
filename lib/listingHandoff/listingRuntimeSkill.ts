@@ -13,7 +13,7 @@
  * 生成链（taskLinkedAiListing / 组合 / 兜底）统一引用本模块。
  */
 
-export const LISTING_RUNTIME_SKILL_VERSION = "listing-runtime-skill.v1";
+export const LISTING_RUNTIME_SKILL_VERSION = "listing-runtime-skill.v3";
 
 export type RuntimeFact = {
   factId: string;
@@ -55,6 +55,11 @@ export function buildRuntimePromptRules(input: {
     "- Title: brand appears at most once; no keyword stuffing; no unconfirmed attributes.",
     "- keywords: case-insensitive dedupe, order preserved; never a doubled term such as THERMOS THERMOS.",
     "- description: 2-4 natural sentences (each >= 6 words); never paste attribute fragments.",
+    "- STRUCTURE_CONTRACT (bullets AND description): every sentence must start with a capital letter;",
+    "  must carry a real main-clause predicate (is/has/stores/fits/measures/weighs/includes ...) or be a",
+    "  legitimate imperative (For care, rinse ...); a noun such as Can inside a product name is NOT a predicate,",
+    "  and a verb inside a subordinate clause does not rescue a main-clause fragment;",
+    "  no padded template tails such as for everyday/practical/easy/standard use.",
     "- Do not fabricate performance/certification/absolute claims (BPA-free, keeps food warm for X hours, guaranteed, best seller, FDA, CE, medical/health).",
     "- Research reference layers are NOT FACT: never turn VOC/competitor/supplier/AI reference content into a product claim.",
     "INPUT_BOUNDS: facts=" + input.factsCount + ", plan=" + (input.hasPlan ? "yes" : "no") + ", keywordOptimization=" + (input.keywordOptimizationEnabled ? "ENABLED" : "DISABLED"),
@@ -285,6 +290,176 @@ function canonicalTerm(text: string): string {
   return String(text ?? "").toLowerCase().replace(/[-_\s]+/g, "");
 }
 
+/* ── 结构维度（v2）：句法完整性 / 模板尾 / 句首大写 ──
+ *
+ * 判定完全基于**英文短语形态**（谓语词形、分词/形容词补语头、祈使原形动词、填充尾骨架），
+ * 不含任何商品名 / 品牌 / 类型 / 具体完整句字符串特判——换商品同样生效。
+ * 词数、标点、锚点只是必要条件；本节补齐「合格判定的结构盲区」。
+ */
+
+/**
+ * 三单现在时谓语（-s 词形）。英文事实句的核心谓语信号。
+ * 只收 -s 词形：原形（use / store / fit）在 "for everyday use" 里是名词，
+ * 若把原形当谓语，"The X with Y for everyday use." 会被误判为完整句。
+ */
+const FINITE_VERB_S = Object.freeze(new Set([
+  "is", "was", "has", "does",
+  "stores", "holds", "carries", "contains", "includes", "features", "comes", "comprises",
+  "fits", "expands", "collapses", "folds", "unfolds", "extends", "retracts", "adjusts",
+  "measures", "weighs", "spans",
+  "opens", "closes", "locks", "seals", "attaches", "mounts", "converts", "rotates",
+  "slides", "stands", "sits", "hangs", "rests",
+  "organizes", "separates", "divides", "accommodates", "arranges",
+  "protects", "supports", "keeps", "works", "offers", "provides", "allows",
+  "prevents", "reduces", "resists", "uses", "makes", "helps", "doubles", "requires",
+]));
+
+/** 复数/不可数主语的系动词与助动词（The parts are ... / The trays have ...） */
+const FINITE_AUX_PLURAL = Object.freeze(new Set([
+  "are", "were", "have", "do", "can", "will", "may", "must", "should", "would",
+]));
+
+/**
+ * 复数主语的原形谓语（Dishwasher safe parts **make** cleaning quick.）。
+ * 只收「词性无歧义」的动词：凡在英文商品文案里常作名词的原形
+ * （use / store / design / care / cleaning / need / rinse / wipe / wash / dry / clean）
+ * 一律不收——否则 "The X with Y for everyday use." 会因名词 use 被误判为完整句。
+ */
+const UNAMBIGUOUS_BASE_VERBS = Object.freeze(new Set([
+  "make", "keep", "hold", "include", "measure", "weigh", "protect", "support",
+  "provide", "offer", "allow", "work", "expand", "collapse", "fold", "unfold",
+  "fit", "organize", "separate", "accommodate", "carry", "contain", "come",
+  "feature", "open", "close", "attach", "mount", "convert", "slide", "stand",
+  "sit", "hang", "double", "help", "resist", "reduce", "prevent", "seal", "lock",
+  "extend", "retract", "adjust", "divide", "arrange", "span", "comprise", "require",
+]));
+
+/**
+ * 合法祈使句原形动词（护理/使用说明）。
+ * 仅在句首（可含一个前置状语，如 "For care," / "Before use,"）位置生效，
+ * 因此不会把句中的名词性 use / store 误当谓语。
+ */
+const IMPERATIVE_HEAD_VERBS = Object.freeze(new Set([
+  "rinse", "wipe", "wash", "clean", "dry", "soak", "rub", "scrub",
+  "avoid", "remove", "place", "store", "keep", "use", "insert", "attach", "detach",
+  "fill", "empty", "expand", "collapse", "fold", "unfold", "press", "pull", "push", "turn",
+  "hand", "air", "towel", "do", "refer", "follow", "check", "separate", "handle", "let",
+]));
+
+/**
+ * 模板填充尾骨架：`for {everyday|practical|easy|standard|…} use|cleaning`
+ * 可选跟 `with/of this|the <至多 4 词>`、可选跟 `every day`，且必须收尾。
+ *
+ * 关键：要求 `for` 直接引导，因此自然句 `The reinforced handle supports everyday use.`
+ * （无 for 引导）与 `... is suitable for daily kitchen storage and carrying.`
+ * （for 后不是 use/cleaning）都不会命中——避免整词命中式误杀。
+ */
+const TEMPLATE_TAIL_PATTERN =
+  /\bfor\s+(?:everyday|practical|easy|standard|general|daily|regular|normal)\s+(?:use|cleaning)(?:\s+(?:with|of)\s+(?:this|the|these|those)(?:\s+[A-Za-z][A-Za-z'’-]*){0,4})?(?:\s+every\s+day)?\s*[.!?]*\s*$/i;
+
+/** 句子词元（小写、去标点） */
+function structureTokens(sentence: string): string[] {
+  return String(sentence)
+    .toLowerCase()
+    .replace(/[^a-z\s'’-]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+/** 是否存在正常谓语（三单 -s 词形 / 复数系动词助动词 / 无歧义原形谓语） */
+/**
+ * 从属标记：把句子截断到**主句骨架**。
+ * 从句里的谓语（"... a lid that is durable"）不算主句谓语——
+ * 否则主句残片会被从句的 is 洗白（已知假绿 #2）。
+ */
+const SUBORDINATE_MARKERS = Object.freeze(new Set([
+  "that", "which", "who", "whom", "whose", "where", "while", "because",
+  "since", "if", "although", "though", "unless", "after", "before",
+  "when", "whenever", "whereas", "so", "as",
+]));
+
+/**
+ * 情态/助动词：**只有后接动词**才算谓语。
+ * 商品名里的 Can / Will / May（Trash Can、Willow、Maybelline）是名词的一部分，
+ * 直接计入谓语会让 "The Trash Can with a liner." 这类残片被放行（已知假绿 #1）。
+ */
+const MODAL_AUX_VERBS = Object.freeze(new Set([
+  "can", "may", "will", "must", "should", "would", "could", "do", "does", "did",
+]));
+
+/** 主句骨架：截断到第一个从属标记之前 */
+function mainClauseHead(sentence: string): string {
+  const tokens = structureTokens(sentence);
+  const cut = tokens.findIndex((t) => SUBORDINATE_MARKERS.has(t));
+  return (cut < 0 ? tokens : tokens.slice(0, cut)).join(" ");
+}
+
+/**
+ * 主句骨架谓语判定：先切出主句，再在主句内按「词形 + 位置」找真谓语。
+ * 与整句任意 token 扫描的区别：商品名 Can 与从句 is 都不再被当成主句谓语。
+ */
+function hasMainClausePredicate(sentence: string): boolean {
+  const tokens = structureTokens(mainClauseHead(sentence));
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (MODAL_AUX_VERBS.has(t)) {
+      const next = tokens[i + 1] ?? "";
+      if (
+        UNAMBIGUOUS_BASE_VERBS.has(next)
+        || IMPERATIVE_HEAD_VERBS.has(next)
+        || FINITE_VERB_S.has(next)
+        || FINITE_AUX_PLURAL.has(next)
+      ) return true;
+      continue;
+    }
+    if (FINITE_VERB_S.has(t) || FINITE_AUX_PLURAL.has(t) || UNAMBIGUOUS_BASE_VERBS.has(t)) return true;
+  }
+  return false;
+}
+
+/**
+ * 是否为合法祈使句：允许一个前置状语（以逗号收尾，如 "For care," / "After each use,"），
+ * 其后第一个词必须是祈使原形动词。
+ */
+function isLegitImperative(sentence: string): boolean {
+  const trimmed = String(sentence).trim();
+  const body = trimmed.replace(/^[A-Za-z][^,]{0,48},\s+/, "");
+  const first = structureTokens(body)[0] ?? "";
+  return IMPERATIVE_HEAD_VERBS.has(first);
+}
+
+/** 句首必须大写（合法祈使句同样要求大写）；数字/引号开头视为合规 */
+function isSentenceCapitalized(sentence: string): boolean {
+  const trimmed = String(sentence).trim();
+  const first = trimmed.match(/[A-Za-z]/);
+  if (!first) return true;
+  const head = trimmed[0];
+  if (/[0-9"'“”‘’(\[]/.test(head)) return true;
+  return head === head.toUpperCase();
+}
+
+/** 结构性原因码（bullet / description 共用同一判定，防止字段漏检成为病句港湾） */
+type StructureIssueCode = "sentence_fragment" | "template_tail" | "sentence_capitalization";
+
+/** 单句结构检查：返回命中的结构原因码（可多命中） */
+function structureIssuesOf(sentence: string): StructureIssueCode[] {
+  const out: StructureIssueCode[] = [];
+  const trimmed = String(sentence).trim();
+  if (!trimmed) return out;
+  // 少于 3 个词的残片交由词数门禁处理，结构判定不参与（避免噪声）
+  if (structureTokens(trimmed).length < 3) return out;
+  if (!isSentenceCapitalized(trimmed)) out.push("sentence_capitalization");
+  if (!hasMainClausePredicate(trimmed) && !isLegitImperative(trimmed)) out.push("sentence_fragment");
+  if (TEMPLATE_TAIL_PATTERN.test(trimmed)) out.push("template_tail");
+  return out;
+}
+
+const STRUCTURE_MESSAGE: Record<StructureIssueCode, string> = {
+  sentence_fragment: "缺少正常谓语（主语后仅 with / available with 等短语拼接，也非合法祈使句），不是完整英文句。",
+  template_tail: "以固定模板尾收尾（for everyday / practical / easy / standard use 等填充语），非自然文案。",
+  sentence_capitalization: "句首未大写（英文句子必须大写开头，合法祈使句同样要求）。",
+};
+
 /** 检测高风险模板垃圾表达；返回命中码（null=未命中） */
 function templateJargonHit(sentence: string): string | null {
   const s = canonicalTerm(sentence);
@@ -325,6 +500,17 @@ export function validateCopyQualityContract(input: CopyQualityInput): CopyQualit
     }
     if (templateJargonHit(b)) {
       issues.push({ target: "bullets", code: "template_jargon", message: "Bullet " + (index + 1) + " 是模板拼接表达（如 option fits / pairs with / Available construction），非自然文案。" });
+    }
+    // 结构维度（v2）：句法完整性 / 模板尾 / 句首大写
+    for (const code of structureIssuesOf(b)) {
+      issues.push({ target: "bullets", code, message: "Bullet " + (index + 1) + " " + STRUCTURE_MESSAGE[code] });
+    }
+  });
+
+  // 结构维度（v2）：描述与五点走同一判定——任何字段漏检都会成为模板尾/病句港湾
+  sentenceList(String(input.description ?? "")).forEach((s, index) => {
+    for (const code of structureIssuesOf(s)) {
+      issues.push({ target: "description", code, message: "描述第 " + (index + 1) + " 句 " + STRUCTURE_MESSAGE[code] });
     }
   });
 

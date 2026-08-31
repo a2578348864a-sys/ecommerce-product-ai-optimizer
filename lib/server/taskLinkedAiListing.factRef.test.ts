@@ -190,18 +190,36 @@ describe("R1.2 Fact Reference 预防性测试（模拟真实 LLM 行为，不调
   }
 
   it("合法 factId 原样返回 → PASS（ai_optimized_listing；计划对齐强断言）", async () => {
-    const result = await generateWithAi("sandbox-r1-2-fact-ok", async () => ({
-      ...GENERIC_AI_OUTPUT,
-      usedFactIds: ["functional_feature", "care", "material"],
-    }));
+    const result = await generateWithAi("sandbox-r1-2-fact-ok", async (input) => {
+      // Plan-aware：bullets 动态等于 plan.bulletPlans.length，第 i 条锚定 plan[i].featureFactIds 真实值
+      const plans = input.plan?.bulletPlans ?? [];
+      const factById = new Map<string, string>();
+      for (const f of input.facts ?? []) factById.set(String(f.factId ?? ""), String(f.value ?? "").trim());
+      const bullets = plans.map((bp) => {
+        const first = (bp.featureFactIds ?? [])[0] ?? "";
+        const value = factById.get(String(first)) ?? "";
+        const capValue = value.charAt(0).toUpperCase() + value.slice(1);
+        return `${capValue} is the ${String(first).replace(/_/g, " ")} of this product.`;
+      });
+      const usedFactIds = [...new Set(plans.map((bp) => (bp.featureFactIds ?? [])[0] ?? "").filter(Boolean))];
+      const titleValue = (input.facts ?? []).find((f) => f.field === "product_type")?.value ?? "Water Bottle";
+      return {
+        title: `${titleValue} - ${factById.get("material") ?? ""} - ${factById.get("capacity") ?? ""}`,
+        bullets,
+        description: `The material of this ${titleValue} is ${factById.get("material") ?? ""}. This ${titleValue} has a capacity of ${factById.get("capacity") ?? ""}.`,
+        backendSearchTerms: (input.keywordBrief?.backendSearchTerms ?? []).slice(),
+        usedFactIds,
+        humanReviewRequired: true,
+      };
+    });
     const draft = result.draft!;
     expect(draft.draftKind).toBe("ai_optimized_listing");
     expect(draft.providerAttempted).toBe(true);
     expect(draft.providerSucceeded).toBe(true);
     expect(draft.fallbackApplied).toBe(false);
-    // 3 条正式五点，每条 8-30 词，逐条锚定计划事实（functional_feature / care / material）
-    const anchors = ["straw lid with push-open mechanism", "dishwasher-safe removable parts", "Stainless Steel"];
-    expect(draft.bullets.length).toBe(3);
+    // 正式五点数=当前 Plan 条数（Owala 场景 4 组：material/capacity/function/care），每条 8-30 词并锚定计划事实
+    const anchors = ["straw lid with push-open mechanism", "dishwasher-safe removable parts", "Stainless Steel", "24 oz"];
+    expect(draft.bullets.length).toBe(4);
     for (const b of draft.bullets) {
       const wc = b.trim().split(/\s+/).length;
       expect(wc).toBeGreaterThanOrEqual(8);

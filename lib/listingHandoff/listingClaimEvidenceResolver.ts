@@ -190,6 +190,155 @@ const NEUTRAL_COPY_ALLOWLIST = Object.freeze([
   "human review required",
 ]);
 
+/* ─── 残余语法（Residual Grammar）───────────────────────────
+ *
+ * 安全不变式：进入这里的文本，是「段 − 全部已确认事实值 − 其他已确认事实值」的**残余**。
+ * 残余只允许是无事实内容的语法材料。因此判定必须逐个 token 过窄集合，
+ * 而不是「整批词塞进全局白名单」——后者会让未确认的内容词（lid / liner / durable）
+ * 借助某个白名单词蒙混过关。
+ *
+ * 三类语法材料：
+ *  1. FUNCTION   功能词（限定词/介词/连词/助动词/量词）—— 无事实内容；
+ *  2. FIELD      字段元数据名词（material / capacity / care / use …）—— 描述字段角色，不是商品属性；
+ *  3. QUALIFIER  无事实内容的限定修饰词（everyday / easy / suitable / made …）；
+ *  4. PREDICATE  中性连接谓语（is / has / measures / weighs / includes …）——**受位置约束**。
+ *
+ * 连接谓语的两条位置约束（这是「连接器」与「普通白名单词」的本质区别）：
+ *  a) 不得充当句首 token：谓语前必须已有主语/限定词（"Is the Organizer X" 不是陈述事实句）；
+ *  b) 谓语一旦出现，其后**每一个** token 仍必须落在上述四类之内——
+ *     于是 `… is made of Plastic and includes a lid.` 中未确认的 `lid` 会使整句失效，
+ *     `The Organizer with a lid that is durable.` 中从句的 `is` 也洗白不了 `lid` / `durable`。
+ *
+ * 不含连接谓语的残余不受 (a)(b) 影响，行为与既有判定一致。
+ */
+
+/** 1. 功能词：限定词 / 代词 / 介词 / 连词 / 助动词 / 量词 / 单位字母 */
+const RESIDUAL_FUNCTION_WORDS = Object.freeze(new Set([
+  "the", "a", "an", "this", "that", "these", "those", "it", "its", "their", "there",
+  "of", "for", "with", "in", "on", "at", "to", "from", "by", "as", "into", "onto",
+  "through",
+  "within", "without", "per", "than", "over", "under", "between", "about", "around",
+  "up", "down", "out", "off", "back", "when", "while", "before", "after", "during",
+  "and", "or", "but", "nor", "also", "plus", "then", "if",
+  "not", "no", "all", "any", "each", "both", "more", "most", "only",
+  "can", "may", "will", "must", "should", "would", "could", "do", "does", "did",
+  "be", "been", "being",
+  "approx", "approximately", "about", "x", "w", "h", "l", "d", "oz", "g", "kg", "ml", "cm", "mm",
+]));
+
+/** 2. 字段元数据名词：描述「字段角色」，不描述商品属性 */
+const RESIDUAL_FIELD_NOUNS = Object.freeze(new Set([
+  "product", "products", "item", "items", "unit", "units", "brand", "category",
+  "type", "model", "series", "style", "design", "finish", "material", "color", "colour",
+  "weight", "size", "length", "width", "height", "depth", "dimension", "dimensions",
+  "capacity", "volume", "quantity", "count", "pack", "set", "piece", "pieces",
+  "part", "parts", "component", "components", "feature", "features",
+  "option", "options", "spec", "specs", "specification", "range", "level",
+  "care", "cleaning", "usage", "use", "operation", "compatibility", "construction",
+  "function", "functions", "price", "rating", "review", "reviews", "usd",
+  "standard", "version", "field", "value", "name",
+  // 消费者自然句字段语义名词（任务书窄授权：body/mechanism/control）
+  "body", "mechanism", "control",
+  // 中文字段词（与英文同义，仅供中文残余走同一判定）
+  "材质", "材料", "为", "是", "尺寸", "长度", "重量", "颜色", "品牌", "类目", "款",
+  "外壳", "设计", "价格", "参考价格", "评分", "评论数", "商品名", "参考", "产品",
+  "类别", "净重", "约", "商品类型", "类型", "系列", "型号", "容量", "数量", "包装",
+  "的", "与", "和", "及",
+  // 组合字段标签词：字段标签不是商品属性，剥离事实值后允许残留
+  "款式", "规格", "参数", "功能", "说明", "特点", "优点", "内容", "清单", "名称", "单位",
+]));
+
+/** 3. 无事实内容的限定修饰词 */
+const RESIDUAL_QUALIFIERS = Object.freeze(new Set([
+  "everyday", "daily", "practical", "easy", "easily", "simple", "simply", "general",
+  "regular", "normal", "common", "typical", "basic", "convenient", "gently",
+  "suitable", "available", "made", "built", "designed", "included", "including",
+  "together", "individually", "on-the-go", "every", "day", "times",
+]));
+
+/** 4. 中性连接谓语（受位置约束；见上） */
+const RESIDUAL_PREDICATES = Object.freeze(new Set([
+  "is", "are", "was", "were", "has", "have", "had",
+  "includes", "include", "contains", "contain",
+  "measures", "measure", "weighs", "weigh", "spans", "span",
+  "holds", "hold", "stores", "store", "carries", "carry", "accommodates", "accommodate",
+  "fits", "fit", "comes", "come", "features", "feature",
+  "provides", "provide", "offers", "offer", "supports", "support",
+  "works", "work", "expands", "expand", "collapses", "collapse",
+  "organizes", "organize", "separates", "separate", "divides", "divide",
+  "seals", "seal", "opens", "open", "closes", "close", "locks", "lock",
+  "uses",
+  "slides", "slide", "rotates", "rotate", "adjusts", "adjust",
+  "helps", "help", "allows", "allow", "prevents", "prevent",
+  "reduces", "reduce", "resists", "resist", "doubles", "double",
+  "sits", "sit", "stands", "stand", "hangs", "hang", "rests", "rest",
+]));
+
+/**
+ * 残余分词：ASCII 按词切；中文按「字段词」整体切（长词优先），
+ * 未命中的单字仍作为独立 token 保留（因此无法借字段词蒙混）。
+ * 若按单字切，"材质外壳" 会被切成 材/质/外/壳 四个无意义 token。
+ */
+const CJK_RESIDUAL_WORDS = [...RESIDUAL_FIELD_NOUNS]
+  .filter((w) => /[一-鿿]/.test(w))
+  .sort((a, b) => b.length - a.length);
+const RESIDUAL_TOKEN_PATTERN = new RegExp(
+  `[0-9a-z]+|${CJK_RESIDUAL_WORDS.map(escapeRegExp).join("|")}|[一-鿿]`,
+  "gi",
+);
+
+function residualTokens(text: string): string[] {
+  return String(text).toLocaleLowerCase().match(RESIDUAL_TOKEN_PATTERN) ?? [];
+}
+
+/**
+ * 祈使护理动词：出现在无事实锚点的段中，即构成「未证实的护理/用法声明」，
+ * 不能走"纯文案中性表达"通道（假绿：无锚点句借中性通道过关）。
+ */
+const ASSERTIVE_IMPERATIVE_VERBS = Object.freeze(new Set([
+  "rinse", "rinsed", "wipe", "wiped", "wash", "washed", "dry", "dried",
+  "soak", "scrub", "place", "store", "insert", "fill", "empty", "press",
+  "pull", "push", "turn", "remove", "avoid", "follow", "check", "separate",
+  "handle", "clean", "cleaned",
+]));
+
+/**
+ * 残余语法判定：残余必须全部由无事实内容的语法材料构成，
+ * 且中性连接谓语只能出现在受控位置（非句首，其后论元同样收口）。
+ */
+function isNeutralResidualGrammar(restSpaced: string): boolean {
+  const tokens = residualTokens(restSpaced);
+  if (tokens.length === 0) return true;
+  for (const t of tokens) {
+    if (
+      !RESIDUAL_FUNCTION_WORDS.has(t)
+      && !RESIDUAL_FIELD_NOUNS.has(t)
+      && !RESIDUAL_QUALIFIERS.has(t)
+      && !RESIDUAL_PREDICATES.has(t)
+    ) {
+      return false;
+    }
+  }
+  const firstPredicate = tokens.findIndex((t) => RESIDUAL_PREDICATES.has(t));
+  // 连接谓语不得充当句首 token（必须有主语/限定词在前）
+  if (firstPredicate === 0) return false;
+  // 连接谓语后不得接空洞填充尾（for easy use / for practical use 等）：即使残余 token
+  // 全在窄集合内，这也是模板填充而非事实陈述（任务书 N4：连接词不得洗白模板尾）。
+  // 只作用于「已出现连接谓语」的句子——无谓语的既有无尾句走既有判定，不受影响。
+  if (firstPredicate >= 0) {
+    const tail = tokens.slice(firstPredicate + 1);
+    const last = tail[tail.length - 1] ?? "";
+    if (
+      (last === "use" || last === "cleaning")
+      && tail.includes("for")
+      && tail.some((t) => ["everyday", "practical", "easy", "standard", "general", "daily", "regular", "normal", "simple", "convenient", "typical", "basic"].includes(t))
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // ─── 高风险事实类别触发词（第八节）──────────────────────────
 // 用于"识别 Claim 类别"，识别后必须进入 Evidence Mapping；
 // 命中词 + 无对应 Evidence → 拒绝；命中词 + 有 Evidence 且保守表达 → 允许。
@@ -587,6 +736,7 @@ export function verifyListingClaims(
           protectedWords.forEach((word, i) => {
             rest = rest.replaceAll(`__P${i}__`, word);
           });
+          const restSpacedBeforeCompact = rest;
           rest = compactText(rest);
           // 剩余部分允许：其他 confirmed 事实值（组合事实，含部分重叠如 Bottle ⊆ Water Bottle）、
           // 中性词、字段词/连接词/介词
@@ -597,14 +747,40 @@ export function verifyListingClaims(
           for (const otherValue of otherEvidenceValues) {
             restCleaned = restCleaned.replace(otherValue, "");
           }
+          // 残余语法需要在**带空格**的文本上分词；其他已确认事实值必须同步剥离，
+          // 否则 "organizer" 这类身份事实值会被当成未确认内容词而误拒。
+          const otherEvidenceValuesSpaced = entries
+            .filter((e) => e.normalizedValue && compactText(e.normalizedValue) !== compactText(evidenceEntry.normalizedValue))
+            .map((e) => e.normalizedValue)
+            .filter(Boolean)
+            .sort((a, b) => b.length - a.length);
+          // 注意：`rest` 在下方已被 compactText 去掉空白（供紧凑匹配使用），
+          // 残余语法必须在**去空白之前**的版本上分词，否则整段会退化成单个 token。
+          let restSpaced = restSpacedBeforeCompact;
+          for (const otherValue of otherEvidenceValuesSpaced) {
+            restSpaced = restSpaced.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(otherValue)}`, "giu"), " ");
+            const stripped = stripTrailingPunct(otherValue);
+            if (stripped !== otherValue) {
+              restSpaced = restSpaced.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(stripped)}`, "giu"), " ");
+            }
+          }
+          // 部分重叠（Bottle ⊆ Water Bottle）在 compacted 残余上已被清空，
+          // 同步清掉带空格残余，避免同一事实值被重复计入。
+          if (restCleaned.length === 0) restSpaced = "";
           // 部分重叠：剩余部分是某个 evidence 值的前缀/后缀（Bottle ⊆ Water Bottle）
           if (restCleaned.length > 0) {
             const overlapHit = otherEvidenceValues.some((v) => v.startsWith(restCleaned) || v.endsWith(restCleaned) || restCleaned.startsWith(v) || restCleaned.endsWith(v));
             if (overlapHit) restCleaned = "";
           }
+          // 残余判定：紧凑文本走中性短语允许集；带空格文本走**残余语法**逐 token 判定。
+          // 旧实现是「整批词塞进一张全局正则」，会让未确认内容词借白名单词过关
+          // （如已确认 Plastic 却追加 lid —— lid 恰在旧表里）。改为窄集合 + 谓语位置约束。
+          // 残余判定：紧凑文本走中性短语允许集；带空格文本走**残余语法**逐 token 判定。
+          // 旧实现是「整批词塞进一张全局正则」，会让未确认内容词借白名单词过关
+          // （如已确认 Plastic 却追加 lid —— lid 恰在旧表里）。改为窄集合 + 谓语位置约束。
           const restAllowed = restCleaned.length === 0
             || NEUTRAL_COPY_ALLOWLIST.some((p) => restCleaned.includes(compactText(p)))
-            || /^(?:材质|材料|为|是|尺寸|长度|重量|颜色|品牌|类目|款|外壳|设计|价格|参考价格|评分|评论数|商品名|product|madeof|brand|category|material|color|weight|length|size|price|rating|reviewcount|usd|参考|(?:usd)|,|、|:|;|\(|\)|\.|-|的|与|和|及|产品|类别|净重|约|商品类型|类型|系列|型号|容量|数量|包装|颜色\/款式|系列\/型号|option|pairs|available|construction|capacity|dimensions|practical|on-the-go|everyday|hydration|matches|your|style|preference|use|in|of|for|with|and|the|a|an|approx|x|width|height|w|h|wide|mouth|easy|cleaning|adding|ice|insulated|built|straw|spout|push|button|lid|carry|loop|opens|sip|upright|tilt|drink|doubles|lock|keeps|cold|hours|bottle|water|cup|holders|oversized|specialty|fits|standard|may|only|fit|wider|designed|larger|containers|base|this|these|those|per|than|for|up|to|into|with|without|when|after|before|over|under|between|about)+$/i.test(restCleaned);
+            || isNeutralResidualGrammar(restSpaced);
           if (!restAllowed) {
             unsupportedClaims.push({ text: segment, reason: "unclassified_factual_claim" });
             continue;
@@ -629,7 +805,18 @@ export function verifyListingClaims(
           continue;
         }
 
-        // 9) 无任何事实性信号 → 纯文案中性表达 → 允许
+        // 9) 无任何事实性信号 → 纯文案中性表达 → 允许。
+        //    例外（假绿修复）：段中出现「祈使护理/用法动词」时，该段是在陈述具体护理
+        //    或操作步骤（rinse / wipe / wash …）——属商品专属事实，在没有任何已确认
+        //    事实值支撑的情况下不得借中性通道放行。
+        //    不把连接谓语纳入此处：中性兜底句长期走本通道，一并收紧会误伤既有中性文案
+        //    （该语义迁移不在本轮授权范围）。
+        const segTokens = residualTokens(normalizeText(segment));
+        const assertsWithoutEvidence = segTokens.some((t) => ASSERTIVE_IMPERATIVE_VERBS.has(t));
+        if (assertsWithoutEvidence) {
+          unsupportedClaims.push({ text: segment, reason: "unclassified_factual_claim" });
+          continue;
+        }
         neutralPhrases.push(segment);
       }
     }

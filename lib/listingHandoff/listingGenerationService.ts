@@ -15,13 +15,13 @@ import { buildListingHandoffBinding, parseListingHandoffBinding, computeListingS
 import type { MockListingProvider } from "@/lib/listingHandoff/mockListingProvider";
 import { verifyListingClaims, listingClaimsHaveEvidence } from "@/lib/listingHandoff/listingClaimEvidenceResolver";
 import { classifyClaimTier } from "@/lib/listingHandoff/listingClaimTier";
-import { classifyClaimPolicy, type ClaimPolicyVerdict } from "@/lib/listingHandoff/listingClaimPolicy";
-import { DEFAULT_CANNOT_SAY } from "@/lib/listingHandoff/listingPlan";
+import type { ClaimPolicyVerdict } from "@/lib/listingHandoff/listingClaimPolicy";
+import { DEFAULT_CANNOT_SAY, buildListingPlanFromCapability, type ListingPlan } from "@/lib/listingHandoff/listingPlan";
+import { evaluateListingCapabilityFromPolicy } from "@/lib/listingHandoff/listingCapabilityEvaluation";
 import { validateCopyQualityContract } from "@/lib/listingHandoff/listingRuntimeSkill";
 import { buildDeterministicListingPackDraft, composeBullets as composeSafeBullets, composeOptimizedListingDraft } from "@/lib/listingHandoff/listingComposition";
 import { RUNTIME_QUALITY_LIMITS, type RuntimeFact, validateRuntimeQualityContract, type RuntimeIssue } from "@/lib/listingHandoff/listingRuntimeSkill";
 import { pickBestKeyword } from "@/lib/research/researchInputQuality";
-import { buildListingPlan, type ListingPlan } from "@/lib/listingHandoff/listingPlan";
 import { buildListingReadiness } from "@/lib/listingHandoff/listingReadiness";
 import { parseListingKeywordBrief, buildListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
 import { buildAutoKeywordPlan } from "@/lib/listingHandoff/listingAutoKeywordPlan";
@@ -664,11 +664,31 @@ export async function generateListingDraftFromHandoff(
   }
   const generationInputBase = withListingBrief(buildResult.input, input.listingBrief);
 
+  // 事实安全裁决必须先于英文化和 Composition：review / prohibited 既不能进入正式字段，
+  // 也不应消耗翻译 Provider。阶段 C 仍会在锁内按当前快照重新裁决，保留并发安全。
+  const confirmedFactsA = handoffA.versions[handoffA.versions.length - 1]?.confirmedFacts ?? [];
+  const capabilityEvalA = evaluateListingCapabilityFromPolicy({
+    input: generationInputBase,
+    confirmedFacts: confirmedFactsA.map((f) => ({
+      field: String(f.field ?? ""),
+      value: String(f.value ?? ""),
+      evidenceTier: String(f.evidenceTier ?? ""),
+      sourceRef: f.sourceRef as { sourceKind?: string } | undefined,
+    })),
+    extraProhibitedTerms: DEFAULT_CANNOT_SAY,
+    hasBlockingIssue: false,
+  });
+  const verifiedFactKeysA = new Set(capabilityEvalA.verifiedFacts.map((f) => `${f.field}\u0000${f.value}`));
+  const policySafeInputBase: ListingGenerationInput = {
+    ...generationInputBase,
+    productFacts: generationInputBase.productFacts.filter((f) => verifiedFactKeysA.has(`${f.field}\u0000${f.value}`)),
+  };
+
   // R3.2 English rendering：中文 confirmed facts 转英文（factRef 溯源），不跳过、不丢事实。
   // 逐事实 fail-closed（渲染器文档：无法安全英文化的事实不进入最终 Listing）。
   const { buildEnglishRenderingPack, ENGLISH_RENDERING_VERSION } = await import("@/lib/listingHandoff/listingEnglishRendering");
   const renderingResult = await buildEnglishRenderingPack({
-    facts: buildResult.input.productFacts.map((f) => ({
+    facts: policySafeInputBase.productFacts.map((f) => ({
       factId: f.field,
       field: f.field,
       sourceValue: f.value,
@@ -676,13 +696,14 @@ export async function generateListingDraftFromHandoff(
   });
   let generationInput: ListingGenerationInput;
   if (renderingResult.ok) {
-    generationInput = { ...generationInputBase, englishRenderings: renderingResult.pack };
+    generationInput = { ...policySafeInputBase, englishRenderings: renderingResult.pack };
   } else if (renderingResult.code === "integrity_failed" && renderingResult.message.includes("cannot render to English")) {
     // Provider 关闭 / AI 翻译不可用时的确定性降级（与渲染器“该 fact 不进入最终 Listing”的
-    // 逐事实 fail-closed 契约一致）：不调外部 Provider；仅无法英文化（含 CJK/粘连）事实不进入
-    // 组合输入，其余 already-English 事实保持原样；Claim Evidence / Runtime 门禁零放宽。
+    // 逐事实 fail-closed 契约一致）：无法英文化且仍含 CJK 的事实必须真正从生成输入移除；
+    // 其余 already-English 事实保持原样，Claim Evidence / Runtime 门禁零放宽。
     generationInput = {
-      ...generationInputBase,
+      ...policySafeInputBase,
+      productFacts: policySafeInputBase.productFacts.filter((f) => !/[一-鿿㐀-䶿]/.test(String(f.value ?? ""))),
       englishRenderings: { schema: ENGLISH_RENDERING_VERSION, renderings: [], generatedAt: null, source: "literal" },
     };
   } else {
@@ -855,41 +876,33 @@ export async function generateListingDraftFromHandoff(
        * LISTING_COPY_QUALITY：读取边界 fail-closed（单一 Claim Policy 出口）。
        * 新版逐项确认元数据 = confirmedFacts 中 evidenceTier="human_confirmed" 且
        * sourceRef.sourceKind="user_confirmation"（人工逐项确认）。历史快照无此字段 → 高风险字段默认 review。
+       * V2：统一走共享 Policy 适配器（evaluateListingCapabilityFromPolicy），
+       * 消除下方重复的高风险/tier 计算；无证据自动建议/竞品五点/VOC/关键词/供应商参考不参与事实。
        */
-      const highRiskConfirmedFields = new Set<string>();
-      {
-        const confirmed = handoffC.versions[handoffC.versions.length - 1]?.confirmedFacts ?? [];
-        for (const f of confirmed) {
-          const kind = (f.sourceRef as { sourceKind?: string } | undefined)?.sourceKind;
-          if (f.evidenceTier === "human_confirmed" && kind === "user_confirmation") {
-            highRiskConfirmedFields.add(String(f.field ?? ""));
-          }
-        }
-      }
-      const claimVerdicts = new Map<string, ClaimPolicyVerdict>();
-      for (const gf of generationInput.productFacts) {
-        const verdict = classifyClaimPolicy({
-          field: gf.field,
-          value: String(gf.value ?? ""),
-          explicitHighRiskConfirmed: highRiskConfirmedFields.has(gf.field),
-          prohibited: [...DEFAULT_CANNOT_SAY, ...(generationInput.prohibitedClaims ?? [])],
-        });
-        claimVerdicts.set(gf.field, verdict);
-      }
+      const confirmedFactsCurrent = handoffC.versions[handoffC.versions.length - 1]?.confirmedFacts ?? [];
+      const capabilityEval = evaluateListingCapabilityFromPolicy({
+        input: generationInput,
+        confirmedFacts: confirmedFactsCurrent.map((f) => ({
+          field: String(f.field ?? ""),
+          value: String(f.value ?? ""),
+          evidenceTier: String(f.evidenceTier ?? ""),
+          sourceRef: f.sourceRef as { sourceKind?: string } | undefined,
+        })),
+        extraProhibitedTerms: DEFAULT_CANNOT_SAY,
+        hasBlockingIssue: false,
+      });
+      const capability = capabilityEval.capability;
       /** 事实安全基线：仅 verified 事实可进正式字段 */
-      const claimSafeFacts = generationInput.productFacts.filter((gf) => {
-        const v = claimVerdicts.get(gf.field);
-        return v ? v.tier === "verified" : false;
-      });
-      const reviewOnlyFacts = generationInput.productFacts.filter((gf) => {
-        const v = claimVerdicts.get(gf.field);
-        return v ? v.tier === "review" : false;
-      });
-      /** 生成链输入使用事实安全基线（plan/验证/锚点只认 verified）；reviewOnlyFacts 仅展示用 */
+      const verifiedFactKeys = new Set(capabilityEval.verifiedFacts.map((f) => `${f.field}\u0000${f.value}`));
+      const claimSafeFacts = generationInput.productFacts.filter((gf) =>
+        verifiedFactKeys.has(`${gf.field}\u0000${gf.value}`),
+      );
+      /** 生成链输入使用事实安全基线（plan/验证/锚点只认 verified） */
       generationInput = { ...generationInput, productFacts: claimSafeFacts };
-      const plan = buildListingPlan(generationInput, effectiveKeywordBrief);
-      // 与既有语义保持一致（v2214 无 Brief AI 路径为既定行为；关键词有效性在输出端约束 keywords/backendTerms）
-      const copyReady = readiness.copyReady && plan.planQuality === "optimized";
+      // V2：Capability 驱动的 Plan（计划条数与事实能力精确一致；target=2 时 needs_facts）
+      const plan = buildListingPlanFromCapability(generationInput, effectiveKeywordBrief, capability);
+      // V2：copyReady 只认 capability.canCallProvider（>=3 组 + 身份 + 无阻断）+ 精确条数
+      const copyReady = capability.canCallProvider && plan.bulletPlans.length === capability.targetBulletCount;
       const keywordReady = readiness.keywordReady;
       let finalDraft: Record<string, unknown> = safeDraft;
       let draftKind: "ai_optimized_listing" | "structured_listing_draft" | "safe_fact_draft" = "safe_fact_draft";
@@ -901,8 +914,12 @@ export async function generateListingDraftFromHandoff(
       let fallbackReasonCode: "listing_claims_unsupported" | "provider_failed" | "listing_output_invalid" | null = null;
 
 
-  /** 运行时 Skill 合同所需事实（已确认事实原值；id = field） */
-  const runtimeFacts = generationInput.productFacts.map((f): RuntimeFact => ({ factId: f.field, field: f.field, label: f.label, value: String(f.value ?? "").trim() }));
+  /** 运行时 Skill 合同所需事实（已确认事实；id = field；值优先英文渲染——与正式 bullets 一致，锚定才能命中） */
+  const runtimeFacts = generationInput.productFacts.map((f): RuntimeFact => {
+    const rendered = generationInput.englishRenderings?.renderings.find((r) => r.field === f.field)?.english;
+    const value = (rendered && rendered.trim() && !/[一-鿿㐀-䶿]/.test(rendered) ? rendered : String(f.value ?? "")).trim();
+    return { factId: f.field, field: f.field, label: f.label, value };
+  });
   const runtimeUsedIds = runtimeFacts.map((f) => f.factId);
   const asRejected = (issues: RuntimeIssue[], bullets: string[]): Array<{ text: string; reason: string }> => {
     const out: Array<{ text: string; reason: string }> = [];

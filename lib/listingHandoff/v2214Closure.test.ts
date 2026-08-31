@@ -94,7 +94,7 @@ function buildBruteMateResultJson() {
         version: "product-batch-listing-facts.v1", marketplace: "US", asin: "B0GZYLV89B", category: "Sports & Outdoors",
         productTitle: "BrüMate Rise 18oz Water Bottle with Covered Silicone Straw", brand: "BrüMate",
         productDetails: "Brand: BrüMate | Material: Silicone | Bottle Type: Water Bottle | Color: red | Capacity: 18 fluid ounces",
-        productBulletPoints: "LEAKPROOF DESIGN WITH COVERED, SOFTSIP STRAW: Our leakproof, SoftSip silicone straw makes every sip feel like a luxury",
+        productBulletPoints: "Our SoftSip covered straw system provides comfortable sipping every day for busy routines",
       },
     },
     researchMode: "market_research_only",
@@ -117,7 +117,7 @@ const BRUMATE_CONFIRMED_FACTS: Array<{ field: string; value: string }> = [
   { field: "material", value: "Silicone" },
   { field: "capacity", value: "18oz" },
   { field: "color_or_variant", value: "red" },
-  { field: "functional_feature", value: "LEAKPROOF DESIGN WITH COVERED, SOFTSIP STRAW: Our leakproof, SoftSip silicone straw makes every sip feel like a luxury" },
+  { field: "functional_feature", value: "Our SoftSip covered straw system provides comfortable sipping every day for busy routines" },
 ];
 
 /**
@@ -160,6 +160,55 @@ function assertAiSuccessMeetsRuntimeContract(draft: {
   const brand = "BrüMate";
   const brandCount = draft.titles.join(" ").split(brand).length - 1;
   expect(brandCount, "标题品牌词应只出现一次").toBeLessThanOrEqual(1);
+}
+
+/** 本地 Plan-aware 自然句夹具（禁跨文件 import）：
+ * - bullet 数精确 = input.plan.bulletPlans.length；
+ * - 第 i 条锚定 plan[i].featureFactIds[0] 的事实值，用自然受控谓语句（8-30 词、无模板尾）；
+ * - usedFactIds 只记录正文实际采用的事实；description 两句与 bullets 不同形。
+ */
+function v2214ValidAiClient(): TaskLinkedAiListingClient {
+  return async (input) => {
+    const plans = Array.isArray(input.plan?.bulletPlans) ? input.plan.bulletPlans : [];
+    const facts = (input.facts ?? []).filter((f) => typeof f?.value === "string" && f.value.trim().length > 0);
+    const byId = new Map<string, string>();
+    for (const f of facts) byId.set(String(f.factId ?? ""), String(f.value ?? "").trim());
+    const FRAME: Record<string, (v: string) => string> = {
+      material: (v) => "The BrüMate Water Bottle is made of " + v + ".",
+      capacity: (v) => "The Water Bottle has a capacity of " + v + ".",
+      color_or_variant: (v) => "The " + v + " color option matches this Water Bottle product.",
+      care: (v) => "For care, " + v + ".",
+      functional_feature: (v) => "The BrüMate Water Bottle provides " + v + ".",
+      operation: (v) => "The Water Bottle " + v + ".",
+      usage: (v) => "The Water Bottle is suitable for " + v + ".",
+      included_components: (v) => "This Water Bottle includes " + v + ".",
+      construction: (v) => "The BrüMate Water Bottle is built with " + v + ".",
+    };
+    const bullets: string[] = [];
+    const usedFactIds: string[] = [];
+    plans.forEach((bp) => {
+      for (const id of (bp.featureFactIds ?? [])) {
+        const v = byId.get(String(id));
+        if (!v) continue;
+        const frame = FRAME[String(id)] ?? ((val: string) => "The Water Bottle features " + val + ".");
+        bullets.push(frame(v));
+        if (!usedFactIds.includes(String(id))) usedFactIds.push(String(id));
+        break;
+      }
+    });
+    const descFacts = facts.filter((f) => f.field === "material" || f.field === "capacity");
+    const description = descFacts.length >= 2
+      ? "This Water Bottle provides the BrüMate brand." + " The " + descFacts[0].field.replace(/_/g, " ") + " value of this product is " + String(descFacts[0].value ?? "").trim() + "."
+      : "This Water Bottle provides the BrüMate brand. The capacity value of this product is 18oz.";
+    return {
+      title: "BrüMate Silicone Water Bottle, 18oz, red",
+      bullets,
+      description,
+      backendSearchTerms: [],
+      usedFactIds,
+      humanReviewRequired: true,
+    };
+  };
 }
 
 async function confirmBruteMateHandoff(taskId: string) {
@@ -241,23 +290,16 @@ describe("v2.2.14 无 Keyword Brief AI 路径", () => {
     seedTask(taskId, buildBruteMateResultJson());
     await confirmBruteMateHandoff(taskId);
     let calls = 0;
+    let capturedInput: Parameters<TaskLinkedAiListingClient>[0] | null = null;
+    const planAware = v2214ValidAiClient();
     setTaskLinkedAiListingClientForTests(async (input) => {
       calls += 1;
       // 无 brief：prompt 必须含 KEYWORD_OPTIMIZATION = DISABLED
       expect(input.keywordBrief).toBeNull();
       expect(input.listingBrief).toBeNull();
-      return {
-        title: "BrüMate Silicone Water Bottle, 18oz, red",
-        bullets: [
-          "The BrüMate water bottle with Silicone for everyday use in the bottle.",
-          "An 18oz size for easy cleaning with water.",
-          "The red color option for everyday use in the bottle.",
-        ],
-        description: "This 18oz bottle matches your style preference for everyday use. This bottle with Silicone for easy cleaning with water.",
-        backendSearchTerms: ["self-invented keyword"], // AI 不得自造关键词，服务端必须丢弃
-        usedFactIds: ["functional_feature", "material", "capacity", "color_or_variant"],
-        humanReviewRequired: true,
-      };
+      const out = await planAware(input);
+      capturedInput = input as never;
+      return { ...(out as Record<string, unknown>), backendSearchTerms: ["self-invented keyword"] } as never;
     });
     try {
       const p2 = await generateCreativeHandoffPreview(taskId, visitorContext());
@@ -269,11 +311,13 @@ describe("v2.2.14 无 Keyword Brief AI 路径", () => {
       });
       expect(calls).toBe(1);
       expect(result.listingSaved).toBe(true);
-      // ListingPlan.v2 P4：无有效关键词方案（needs_keywords）即使 Provider 成功也不得 ai_optimized
-      expect(result.draft?.draftKind).not.toBe("ai_optimized_listing");
+      // 迁移语义说明：旧 Mock 病句被新结构门禁拒绝走 fallback；现 Plan-aware 自然句通过全部门禁
+      // → AI 稿真实成功（ai_optimized_listing）；无 brief 时 riskNotes 提示未进行关键词优化。
+      expect(result.draft?.draftKind).toBe("ai_optimized_listing");
       expect(result.draft?.providerAttempted).toBe(true);
       expect(result.draft?.providerSucceeded).toBe(true);
-      expect(result.draft?.fallbackApplied).toBe(true);
+      // AI 稿被采纳 → 无需回退（fallbackApplied=false；旧断言 toBe(true) 是病句 fallback 语义残留）
+      expect(result.draft?.fallbackApplied).toBe(false);
       // AI 自造 backend terms 被服务端丢弃
       expect(result.draft?.keywords).toEqual([]);
       expect(result.draft?.backendSearchTerms).toEqual([]);
@@ -307,20 +351,11 @@ describe("v2.2.16 BrüMate Listing Brief Golden Case", () => {
       contentEmphasis: "功能与使用价值结合表达",
     };
     const capturedInputs: Parameters<TaskLinkedAiListingClient>[0][] = [];
+    const planAwareB = v2214ValidAiClient();
     setTaskLinkedAiListingClientForTests(async (input) => {
       capturedInputs.push(input);
-      return {
-        title: "BrüMate Silicone Water Bottle, 18oz, red",
-        bullets: [
-          "The BrüMate water bottle with Silicone for everyday use in the bottle.",
-          "An 18oz size for easy cleaning with water.",
-          "The red color option for everyday use in the bottle.",
-        ],
-        description: "This 18oz bottle matches your style preference for everyday use. This bottle with Silicone for easy cleaning with water.",
-        backendSearchTerms: [],
-        usedFactIds: ["functional_feature", "material", "capacity", "color_or_variant"],
-        humanReviewRequired: true,
-      };
+      const out = await planAwareB(input);
+      return { ...(out as Record<string, unknown>), backendSearchTerms: [] } as never;
     });
     try {
       const preview = await generateCreativeHandoffPreview(taskId, visitorContext());
@@ -337,9 +372,9 @@ describe("v2.2.16 BrüMate Listing Brief Golden Case", () => {
       expect(captured.keywordBrief).toBeNull();
       expect(captured.facts.map((fact) => fact.value)).not.toContain(listingBrief.coreSellingPoint);
       expect(result.listingSaved).toBe(true);
-      // ListingPlan.v2 P4：无有效关键词方案（needs_keywords）即使 Provider 成功也不得 ai_optimized
-      expect(result.draft?.draftKind).not.toBe("ai_optimized_listing");
-      expect(result.draft?.fallbackApplied).toBe(true);
+      // 迁移语义说明：旧 Mock 病句被拒走 fallback；现自然句通过 → ai_optimized（listingBrief 被发送但不入 facts）
+      expect(result.draft?.draftKind).toBe("ai_optimized_listing");
+      expect(result.draft?.fallbackApplied).toBe(false);
       expect(result.draft?.titles[0]).not.toBe("Brand: BrüMate");
       expect(result.draft?.description).not.toBe(result.draft?.titles[0]);
       // P1-2：AI 成功输出必须通过真实 Runtime 合同 + 事实锚点 + 品牌单次 + 5 点 3-5 条 × 8-30 词 + 无未确认承诺
@@ -516,20 +551,11 @@ describe("第3轮反向验证②：irrelevant 竞品不得进入 Listing 生成�
     seedTask(taskId, JSON.stringify(base));
     await confirmBruteMateHandoff(taskId);
     let capturedInput: Parameters<TaskLinkedAiListingClient>[0] | null = null;
+    const planAwareC = v2214ValidAiClient();
     setTaskLinkedAiListingClientForTests(async (input: Parameters<TaskLinkedAiListingClient>[0]) => {
       capturedInput = input as Parameters<TaskLinkedAiListingClient>[0];
-      return {
-        title: "BrüMate Silicone Water Bottle, 18oz, red",
-        bullets: [
-          "The BrüMate water bottle with Silicone for everyday use in the bottle.",
-          "An 18oz size for easy cleaning with water.",
-          "The red color option for everyday use in the bottle.",
-        ],
-        description: "This 18oz bottle matches your style preference for everyday use. This bottle with Silicone for easy cleaning with water.",
-        backendSearchTerms: [],
-        usedFactIds: ["functional_feature", "material", "capacity", "color_or_variant"],
-        humanReviewRequired: true,
-      };
+      const out = await planAwareC(input);
+      return { ...(out as Record<string, unknown>), backendSearchTerms: [] } as never;
     });
     try {
       const preview = await generateCreativeHandoffPreview(taskId, visitorContext());

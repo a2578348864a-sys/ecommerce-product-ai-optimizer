@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyKeyword,
+  extractBrandLikeTokensFromKeywords,
   filterKeywordsForListing,
   extractKnownBrandsFromCompetitorTitles,
   findCompetitorBrandMentions,
@@ -42,7 +43,7 @@ describe("listingKeywordPolicy（唯一关键词出口）", () => {
     expect(brands).toContain("yeti");
     expect(brands).not.toContain("generic");
     expect(brands).not.toContain("thermos");
-    expect(listingKeywordPolicyVersion).toBe("listing-keyword-policy.v1");
+    expect(listingKeywordPolicyVersion).toBe("listing-keyword-policy.v2");
   });
 
   it("过滤后无合格关键词 → 诚实空态（accepted=[] 且可见）", () => {
@@ -81,5 +82,82 @@ describe("listingKeywordPolicy（唯一关键词出口）", () => {
       "Owala is not part of this product.",
     ], input)).toEqual(["stanley", "owala"]);
     expect(findCompetitorBrandMentions(["HydroJug 40oz Water Bottle"], input)).toEqual([]);
+  });
+});
+
+describe("Listing V2 关键词品牌证据规则（品牌必须有证据）", () => {
+  it("普通关键词候选不升级为 knownBrands；已确认事实（dishwasher-safe/straw cap）不误报为品牌", () => {
+    const keywordCandidates = [
+      "kids water bottle",
+      "straw cap bottle",
+      "dishwasher safe bottle",
+      "insulated bottle",
+      "12 oz kids bottle",
+    ];
+    const brands = extractBrandLikeTokensFromKeywords(keywordCandidates, { ownBrand: "YETI" });
+    // 关键：无 brand/series 标记的裸关键词不得被提取为品牌
+    expect(brands).not.toContain("straw");
+    expect(brands).not.toContain("dishwasher");
+    expect(brands).not.toContain("safe");
+    expect(brands).not.toContain("insulated");
+    expect(brands).not.toContain("kids");
+    expect(brands).not.toContain("water");
+    // 用其结果构造 knownBrands 后：合规正文（已确认事实值）不得被误判为竞品品牌
+    const knownBrands = [...new Set([...brands])];
+    expect(findCompetitorBrandMentions([
+      "Stainless Steel is the material of this Bottle.",
+      "dishwasher-safe bottle and lid is the care of this Bottle.",
+      "straw cap is a feature of this Bottle.",
+    ], { ownBrand: "YETI", knownBrands })).toEqual([]);
+  });
+
+  it("真实竞品标题仍提取品牌；正文命中仍拦截；`acme brand tumbler` 仍拒绝；ownBrand 不误报", () => {
+    const knownBrands = extractKnownBrandsFromCompetitorTitles([
+      "Stanley Quencher Tumbler 40 oz",
+      "Owala FreeSip Stainless Steel Water Bottle",
+    ], { ownBrand: "YETI" });
+    expect(knownBrands).toContain("stanley");
+    expect(knownBrands).toContain("owala");
+    expect(findCompetitorBrandMentions(["A Stanley-style tumbler for travel."], { ownBrand: "YETI", knownBrands })).toEqual(["stanley"]);
+    const filtered = filterKeywordsForListing(["acme brand tumbler", "water bottle"], { ownBrand: "YETI", knownBrands });
+    expect(filtered.rejected).toContainEqual({ keyword: "acme brand tumbler", reason: "unknown_brand" });
+    // 显式 "stanley brand bottle" 可提取 stanley（带明显 brand 标记）；ownBrand 不提取；
+    // 精确数组：只允许标记单侧候选，普通类目词 bottle 不得混入
+    const explicit = extractBrandLikeTokensFromKeywords(["stanley brand bottle"], { ownBrand: "YETI" });
+    expect(explicit).toEqual(["stanley"]);
+    expect(extractBrandLikeTokensFromKeywords(["yeti brand bottle"], { ownBrand: "YETI" })).toEqual([]);
+  });
+});
+
+describe("品牌标记单侧提取精确合同（listing-keyword-policy.v2）", () => {
+  const CASES: Array<{ input: string; ownBrand: string; expected: string[] }> = [
+    { input: "stanley brand bottle", ownBrand: "YETI", expected: ["stanley"] },
+    { input: "brand stanley bottle", ownBrand: "YETI", expected: ["stanley"] },
+    { input: "stanley series tumbler", ownBrand: "YETI", expected: ["stanley"] },
+    { input: "series stanley tumbler", ownBrand: "YETI", expected: ["stanley"] },
+    { input: "brand bottle", ownBrand: "YETI", expected: [] },
+    { input: "bottle brand series", ownBrand: "YETI", expected: [] },
+    { input: "hydro brand bottle", ownBrand: "Hydro Jug", expected: [] },
+  ];
+  for (const c of CASES) {
+    it(`${c.input} (ownBrand=${c.ownBrand}) 精确返回 ${JSON.stringify(c.expected)}`, () => {
+      expect(extractBrandLikeTokensFromKeywords([c.input], { ownBrand: c.ownBrand })).toEqual(c.expected);
+    });
+  }
+
+  it("普通无标记关键词全部返回空数组（精确）", () => {
+    const keywords = ["kids water bottle", "straw cap bottle", "dishwasher safe bottle", "insulated bottle", "12 oz kids bottle"];
+    expect(extractBrandLikeTokensFromKeywords(keywords, { ownBrand: "YETI" })).toEqual([]);
+  });
+
+  it("提取结果构造 knownBrands 后，正文含已确认事实值不得命中 bottle/dishwasher/safe", () => {
+    const brands = extractBrandLikeTokensFromKeywords(["stanley brand bottle"], { ownBrand: "YETI" });
+    const knownBrands = [...new Set([...brands])];
+    expect(findCompetitorBrandMentions([
+      "This Bottle has dishwasher-safe parts.",
+    ], { ownBrand: "YETI", knownBrands })).toEqual([]);
+    expect(knownBrands).not.toContain("bottle");
+    expect(knownBrands).not.toContain("dishwasher");
+    expect(knownBrands).not.toContain("safe");
   });
 });

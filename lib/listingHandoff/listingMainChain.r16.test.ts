@@ -192,6 +192,68 @@ describe("SellerSprite Source Fact Projection（真实 YETI B0GZRLKJT8）", () =
 });
 
 describe("轮 16 主链红灯：无 Brief 自动关键词贯通 generateListingDraftFromHandoff", () => {
+  // 本地 Plan-aware helper（与 integration 已验证算法同构；禁跨文件 import）
+  // - bullet 数精确 = input.plan.bulletPlans.length；第 i 条锚定 plan[i].featureFactIds[0] 真实值
+  // - usedFactIds 只记录正文实际采用的事实；title 含身份锚点 + 2 个非身份事实值
+  // - description 两句且句法与 bullets 不同；backendSearchTerms 只来自 input.keywordBrief
+  const R16_IDENTITY_FIELDS = new Set(["brand", "product_type", "series_or_model"]);
+  function r16ValidAiClient(): TaskLinkedAiListingClient {
+    return async (input) => {
+      const plans = Array.isArray(input.plan?.bulletPlans) ? input.plan.bulletPlans : [];
+      const facts = (input.facts ?? []).filter((f) => typeof f?.value === "string" && f.value.trim().length > 0);
+      const factByFactId = new Map<string, { field: string; value: string }>();
+      for (const f of facts) {
+        const id = String(f.factId ?? "");
+        if (id) factByFactId.set(id, { field: String(f.field ?? ""), value: String(f.value ?? "").trim() });
+      }
+      const bullets: string[] = [];
+      const usedFactIds: string[] = [];
+      plans.forEach((bp, index) => {
+        const ids = Array.isArray(bp?.featureFactIds) ? bp.featureFactIds.filter((x) => typeof x === "string") : [];
+        const firstId = ids[0];
+        const factEntry = firstId ? factByFactId.get(firstId) : undefined;
+        if (!firstId || !factEntry || !factEntry.value) {
+          throw new Error(`r16 helper: plan bulletPlan[${index}] 无可用事实（featureFactIds=${JSON.stringify(ids)}），禁止伪造成功。`);
+        }
+        // 迁移说明：原夹具直接以事实值开头（如 "food jar with unfolding spoon is the …"），
+        // 句首小写会被 Copy Quality 的 sentence_capitalization 正确拒绝。
+        // 意图保持不变：仍是「事实值 + 中性谓语」的合法 Provider 稿，仅补句首大写。
+        const bullet = `${factEntry.value} is the ${factEntry.field.replace(/_/g, " ")} of this product.`;
+        bullets.push(bullet.charAt(0).toUpperCase() + bullet.slice(1));
+        if (!usedFactIds.includes(firstId)) usedFactIds.push(firstId);
+      });
+      const identityValue = (facts.find((f) => f.field === "product_type")?.value)
+        ?? (facts.find((f) => f.field === "series_or_model")?.value)
+        ?? (facts.find((f) => f.field === "brand")?.value)
+        ?? "";
+      const usedFacts = usedFactIds
+        .map((id) => ({ id, entry: factByFactId.get(id) }))
+        .filter((x): x is { id: string; entry: { field: string; value: string } } => Boolean(x.entry && x.entry.value));
+      const nonIdentityUsed = usedFacts.filter((x) => !R16_IDENTITY_FIELDS.has(x.entry.field));
+      if (!identityValue) throw new Error("r16 helper: 无身份事实可用于 title");
+      if (nonIdentityUsed.length < 2) {
+        throw new Error(`r16 helper: 需至少 2 个非身份采用事实（当前 ${nonIdentityUsed.length}），禁止回退身份事实或伪造。`);
+      }
+      const titleValue = [identityValue, nonIdentityUsed[0].entry.value, nonIdentityUsed[1].entry.value].join(" - ");
+      const descFirst = nonIdentityUsed[0];
+      const descSecond = nonIdentityUsed[1];
+      const description = [
+        `The ${descFirst.entry.field.replace(/_/g, " ")} of this ${identityValue} is ${descFirst.entry.value}.`,
+        `This ${identityValue} features ${descSecond.entry.value} for its ${descSecond.entry.field.replace(/_/g, " ")}.`,
+      ].join(" ");
+      const brief = input.keywordBrief ?? null;
+      const backendSearchTerms = brief && brief.backendSearchTerms?.length ? [...brief.backendSearchTerms] : [];
+      return {
+        title: titleValue,
+        bullets,
+        description,
+        backendSearchTerms,
+        usedFactIds: [...new Set(usedFactIds)],
+        humanReviewRequired: true,
+      };
+    };
+  }
+
   async function fullChain() {
     const taskId = "sandbox-r16-mainchain-auto";
     await setupHandoff(taskId);
@@ -199,19 +261,8 @@ describe("轮 16 主链红灯：无 Brief 自动关键词贯通 generateListingD
 
     // 轮 16：无人工 Brief（auto_suggested 路径）
 
-    // Mock AI（55-char title + 合法 facts，R3 Claim Evidence 只允许已确认事实词）
-    setTaskLinkedAiListingClientForTests((async () => ({
-      title: "YETI Bottle, Stainless Steel, 12 ounces",
-      bullets: [
-        "Easy cleaning matches the dishwasher-safe bottle and lid option for this Bottle.",
-        "Available construction with the Stainless Steel of this Bottle.",
-        "The Mist option for the everyday use of this Bottle.",
-      ],
-      description: "The YETI Bottle with Stainless Steel and 12 ounces for easy use. The dishwasher-safe bottle and lid keeps cleaning easy for this Bottle.",
-      backendSearchTerms: ["kids water bottle"],
-      usedFactIds: ["brand", "product_type", "material", "color_or_variant", "care"],
-      humanReviewRequired: true,
-    })) as TaskLinkedAiListingClient);
+    // Mock AI（本地 Plan-aware helper：动态服从 input.plan，条数=bulletPlans，逐条锚定真实事实值）
+    setTaskLinkedAiListingClientForTests(r16ValidAiClient());
 
     const preview = await generateCreativeHandoffPreview(taskId, visitorContext());
     // 任务 1：先断言 Preview/Creative Context 读到原始关键词（无展示前缀）
@@ -241,7 +292,6 @@ describe("轮 16 主链红灯：无 Brief 自动关键词贯通 generateListingD
       expectedStorageVersion: preview.gate.storageVersion!,
       expectedHandoffRevision: preview.gate.currentHandoff!.currentRevision,
     });
-    console.log("YETI_DRAFT:", JSON.stringify({ kind: result.draft?.draftKind, providerSucceeded: result.draft?.providerSucceeded, fallback: result.draft?.fallbackApplied, reason: result.draft?.fallbackReason, issues: result.draft?.qualityIssues, backend: result.draft?.backendSearchTerms }));
     return { result, readiness };
   }
 
@@ -249,7 +299,6 @@ describe("轮 16 主链红灯：无 Brief 自动关键词贯通 generateListingD
     const { result, readiness } = await fullChain();
     expect(readiness.claimSafe).toBe(true);
     expect(readiness.copyReady).toBe(true);
-    console.error("R16_RESULT:", JSON.stringify({ kind: result.draft?.draftKind, providerSucceeded: result.draft?.providerSucceeded, keywords: result.draft?.keywords, backend: result.draft?.backendSearchTerms, bullets: result.draft?.bullets, fallbackReason: result.draft?.fallbackReason, issues: result.draft?.qualityIssues }));
     // 断言：主链保存结果必须含自动计划关键词（当前 withoutKeywordOptimization 清空 → 必红）
     expect(result.draft?.keywords?.length ?? 0).toBeGreaterThanOrEqual(3);
     const kwJoined = (result.draft?.keywords ?? []).join(" ").toLowerCase();
