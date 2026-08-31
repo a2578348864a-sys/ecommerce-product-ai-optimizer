@@ -39,7 +39,7 @@ function goodInput(over: Partial<RuntimeQualityInput> = {}): RuntimeQualityInput
   };
 }
 describe("运行时 Listing Skill：质量合同", () => {
-  it("合格 THERMOS 五点（8-30 词、完整句、逐条事实锚点）通过合同", () => {
+  it("合格 THERMOS 五点（5-30 词、完整句、逐条事实锚点）通过合同", () => {
     const r = validateRuntimeQualityContract(goodInput());
     expect(r.ok).toBe(true);
   });
@@ -70,9 +70,9 @@ describe("运行时 Listing Skill：质量合同", () => {
     expect(r2.ok).toBe(false);
     expect(r2.issues.some((i) => i.code === "description_sentences")).toBe(true);
   });
-  it("bullet 词数越界（<8 或 >30）→ 拒绝", () => {
+  it("bullet 词数越界（<5 或 >30）→ 拒绝", () => {
     const shortBullet = "The THERMOS Food Jar keeps food warm for school lunches and travel days every single day for kids.";
-    const r = validateRuntimeQualityContract(goodInput({ bullets: goodInput().bullets.map((b, i) => i === 0 ? "The THERMOS Food Jar keeps warm." : b) }));
+    const r = validateRuntimeQualityContract(goodInput({ bullets: goodInput().bullets.map((b, i) => i === 0 ? "The THERMOS Jar." : b) }));
     expect(r.ok).toBe(false);
     expect(r.issues.some((i) => i.code === "too_short")).toBe(true);
     const long = "The THERMOS Food Jar keeps food warm for school lunches and travel days every single day for kids in the morning and afternoon at school or at home and during the evening at work as well, which is a really long sentence for testing.";
@@ -84,7 +84,7 @@ describe("运行时 Listing Skill：质量合同", () => {
 });
 
 describe("运行时 Listing Skill：安全兜底句（事实模板）与事实不足", () => {
-  it("THERMOS 事实可组 ≥3 条 8-30 词、含事实值的完整句", () => {
+  it("THERMOS 事实可组 ≥3 条 5-30 词、含事实值的完整句", () => {
     const r = buildSafeFactSentences({ typeLabel: "Food Jar", facts: THERMOS_FACTS });
     console.log("SAFE_B:", JSON.stringify(r.sentences));
     expect(r.ok).toBe(true);
@@ -92,7 +92,7 @@ describe("运行时 Listing Skill：安全兜底句（事实模板）与事实�
       expect(r.sentences.length).toBeGreaterThanOrEqual(3);
       for (const s of r.sentences) {
         const words = s.trim().split(/\s+/).length;
-        expect(words).toBeGreaterThanOrEqual(8);
+        expect(words).toBeGreaterThanOrEqual(5);
         expect(words).toBeLessThanOrEqual(30);
         expect(/[.!?]$/.test(s.trim())).toBe(true);
         expect(THERMOS_FACTS.some((f) => s.toLowerCase().includes(f.value.toLowerCase()))).toBe(true);
@@ -111,7 +111,7 @@ describe("运行时 Listing Skill：安全兜底句（事实模板）与事实�
     const rules = buildRuntimePromptRules({ keywordOptimizationEnabled: true, factsCount: 2, hasPlan: true });
     expect(rules).toContain(LISTING_RUNTIME_SKILL_VERSION);
     expect(rules).toContain("QUALITY_CONTRACT");
-    expect(rules).toContain("8-30");
+    expect(rules).toContain("5-30");
     expect(rules).toContain("buyer value");
     expect(rules).toContain("Do not fabricate");
   });

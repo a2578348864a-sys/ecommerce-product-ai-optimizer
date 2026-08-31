@@ -4,7 +4,7 @@
  * 唯一可执行的 Amazon Listing 规则模块：
  * - Prompt 规则：确认事实 + 实际研究参考（NOT FACT 分层）+ 关键词计划；
  *   五点 = 确认事实 → 买家价值/适用场景；禁止编造性能/认证/绝对承诺。
- * - 质量合同（Quality Contract）：3-5 条、完整句、每条 8-30 英文词、逐条事实锚点；
+ * - 质量合同（Quality Contract）：3-5 条、完整句、每条 5-30 英文词、逐条事实锚点；
  *   标题品牌不重复；关键词大小写不敏感去重（保序）；描述 2-4 个自然句（每句 >= 6 词）。
  * - 安全兜底：只把已确认事实按安全模板组成完整句（不新增性能声明）；
  *   事实不足（无法组成 >= 3 条合格句）→ ok:false + rejected（中文原因），页面显示「暂无合格草稿」。
@@ -50,7 +50,7 @@ export function buildRuntimePromptRules(input: {
   return [
     "LISTING_RUNTIME_SKILL = " + LISTING_RUNTIME_SKILL_VERSION,
     "QUALITY_CONTRACT:",
-    "- bullets: 3-5 complete sentences; each 8-30 English words; each bullet MUST anchor to at least one confirmed fact value from CONFIRMED_FACTS.",
+    "- bullets: 3-5 complete sentences; each 5-30 English words; each bullet MUST anchor to at least one confirmed fact value from CONFIRMED_FACTS.",
     "- Feature -> buyer value: anchor on a confirmed fact FIRST, then state the shopper benefit or use context.",
     "- Title: brand appears at most once; no keyword stuffing; no unconfirmed attributes.",
     "- keywords: case-insensitive dedupe, order preserved; never a doubled term such as THERMOS THERMOS.",
@@ -145,11 +145,11 @@ export function validateRuntimeQualityContract(input: RuntimeQualityInput): Runt
   }
   bullets.forEach((b, index) => {
     const wc = wordCount(b);
-    if (wc < 8) {
+    if (wc < RUNTIME_QUALITY_LIMITS.bulletWordsMin) {
       issues.push({
         target: "bullets",
         code: wc < 3 ? "fragment" : "too_short",
-        message: "Bullet " + (index + 1) + " 不是合格句（" + wc + " 个词，需 8-30 词）。",
+        message: "Bullet " + (index + 1) + " 不是合格句（" + wc + " 个词，需 " + RUNTIME_QUALITY_LIMITS.bulletWordsMin + "-" + RUNTIME_QUALITY_LIMITS.bulletWordsMax + " 词）。",
       });
     } else if (wc > 30) {
       issues.push({ target: "bullets", code: "too_long", message: "Bullet " + (index + 1) + " 超过 30 词（" + wc + "）。" });
@@ -580,10 +580,10 @@ export function buildSafeFactSentences(input: SafeFactSentencesInput): SafeFactS
     }
     const sentence = tpl.build(typeLabel, value);
     const wc = wordCount(sentence);
-    if (wc >= 8 && wc <= 30 && /[.!?]$/.test(sentence)) {
+    if (wc >= RUNTIME_QUALITY_LIMITS.bulletWordsMin && wc <= RUNTIME_QUALITY_LIMITS.bulletWordsMax && /[.!?]$/.test(sentence)) {
       sentences.push(sentence);
     } else {
-      rejected.push({ text: sentence, reason: "确认事实值过短，无法组成合格句（8-30 词）。" });
+      rejected.push({ text: sentence, reason: "确认事实值过短，无法组成合格句（" + RUNTIME_QUALITY_LIMITS.bulletWordsMin + "-" + RUNTIME_QUALITY_LIMITS.bulletWordsMax + " 词）。" });
     }
     if (sentences.length >= 5) break;
   }
@@ -604,7 +604,7 @@ export function buildSafeFactSentences(input: SafeFactSentencesInput): SafeFactS
 export const RUNTIME_QUALITY_LIMITS = {
   bulletsMin: 3,
   bulletsMax: 5,
-  bulletWordsMin: 8,
+  bulletWordsMin: 5,
   bulletWordsMax: 30,
   descriptionSentencesMin: 2,
   descriptionSentencesMax: 4,

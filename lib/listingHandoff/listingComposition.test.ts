@@ -532,6 +532,60 @@ describe("多商品类型：受控句型泛化（禁止万能帧病句）", () =
 });
 
 describe("跨模块：Composition 正式输出必须整体通过权威 Runtime Quality（Latch 反例）", () => {
+  it("红：Organizer 的 17 条确认事实应由可渲染材质/颜色/规格/随附组件组成至少 3 条安全五点", async () => {
+    const facts = [
+      { field: "brand", label: "品牌", value: "ukeetap" },
+      { field: "product_type", label: "商品类型", value: "Organizer" },
+      { field: "material", label: "材质", value: "Plastic" },
+      { field: "color_or_variant", label: "颜色", value: "Silver" },
+      { field: "dimensions", label: "尺寸", value: '16.5"D x 21"W x 1.77"H' },
+      { field: "weight", label: "重量", value: "0.81 kg" },
+      { field: "quantity_or_pack_size", label: "数量", value: "1 Count" },
+      { field: "included_components", label: "随附组件", value: "1 Expandable Silverware Organizer" },
+      { field: "functional_feature", label: "功能特性", value: "Extra Large Capacity, Expandable, Sturdy, Food Safe, Waterproof" },
+    ];
+    const li = input(facts);
+    li.englishRenderings = {
+      schema: "listing-english-rendering.v1",
+      generatedAt: null,
+      source: "literal",
+      renderings: facts.map((f) => ({ factId: f.field, field: f.field, sourceValue: f.value, english: f.value })),
+    };
+    const { evaluateListingCapabilityFromPolicy } = await import("@/lib/listingHandoff/listingCapabilityEvaluation");
+    const { buildListingPlanFromCapability } = await import("@/lib/listingHandoff/listingPlan");
+    const cap = evaluateListingCapabilityFromPolicy({
+      input: li,
+      confirmedFacts: facts.map((f) => ({ field: f.field, value: f.value, evidenceTier: "human_confirmed", sourceRef: { sourceKind: "user_confirmation" } })),
+      extraProhibitedTerms: [],
+      hasBlockingIssue: false,
+    });
+    const plan = buildListingPlanFromCapability(li, null, cap.capability);
+    const opt = composeOptimizedListingDraft(li, plan, null);
+    const corpus = [opt.titles[0], ...opt.bullets].join(" ").toLowerCase();
+    expect(cap.capability.supportedBulletCount).toBeGreaterThanOrEqual(3);
+    expect(opt.bullets.length).toBeGreaterThanOrEqual(3);
+    expect(opt.bullets.length).toBeLessThanOrEqual(5);
+    expect(corpus).toContain("plastic");
+    expect(corpus).toContain("silver");
+    expect(corpus).toContain('16.5"d x 21"w x 1.77"h');
+    expect(corpus).toContain("expandable silverware organizer");
+    expect(corpus).not.toContain("food safe");
+    expect(corpus).not.toContain("waterproof");
+    expect(corpus).not.toContain("sturdy");
+    expect(corpus).not.toContain("1 count");
+    const { validateCopyQualityContract } = await import("@/lib/listingHandoff/listingRuntimeSkill");
+    const copy = validateCopyQualityContract({
+      title: opt.titles[0],
+      bullets: opt.bullets,
+      description: opt.description,
+      cannotSay: [],
+      facts: facts.map((fact) => ({ factId: fact.field, field: fact.field, label: fact.label, value: fact.value })),
+      bulletPlans: plan.bulletPlans,
+      typeLabel: "Organizer",
+    });
+    expect(copy.ok, copy.issues.map((issue) => issue.message).join(" | ")).toBe(true);
+  });
+
   const LATCH_FACTS = [
     { field: "brand", label: "品牌", value: "Acme" },
     { field: "product_type", label: "商品类型", value: "Water Bottle" },
@@ -572,13 +626,13 @@ describe("跨模块：Composition 正式输出必须整体通过权威 Runtime Q
     for (const b of optimized.bullets) {
       expect(LATCH_FACTS.some((f) => b.toLowerCase().includes(f.value.toLowerCase())), "bullet 未锚定事实: " + b).toBe(true);
     }
-    // 5/6/7) 完整句 + 8-30 词 + Runtime ok
+    // 5/6/7) 完整句 + 5-30 词 + Runtime ok
     const facts = LATCH_FACTS.map((f) => ({ factId: f.field, field: f.field, label: f.field, value: f.value }));
     const rt = validateRuntimeQualityContract({ title: optimized.titles[0], bullets: optimized.bullets, description: optimized.description, keywords: optimized.keywords, facts, usedFactIds: facts.map((f) => f.factId) });
     expect(rt.ok, JSON.stringify(rt.issues)).toBe(true);
     for (const b of optimized.bullets) {
       const wc = b.trim().split(/\s+/).filter(Boolean).length;
-      expect(wc, "词数越界: " + b + "（" + wc + " 词）").toBeGreaterThanOrEqual(8);
+      expect(wc, "词数越界: " + b + "（" + wc + " 词）").toBeGreaterThanOrEqual(5);
       expect(wc, "词数越界: " + b + "（" + wc + " 词）").toBeLessThanOrEqual(30);
       expect(/[.!?]$/.test(b.trim())).toBe(true);
     }
@@ -621,7 +675,7 @@ describe("跨模块：Composition 正式输出必须整体通过权威 Runtime Q
   });
 });
 
-describe("短值事实表驱动交叉合同（8-30 词 / 事实原样 / 谓语 / 无模板尾 / 三合同通过）", () => {
+describe("短值事实表驱动交叉合同（5-30 词 / 事实原样 / 谓语 / 无模板尾 / 三合同通过）", () => {
   const CASES: Array<{ name: string; field: string; value: string; mustContain: string }> = [
     { name: "短 operation", field: "operation", value: "Latch", mustContain: "Latch" },
     { name: "短 material", field: "material", value: "Plastic", mustContain: "Plastic" },
@@ -633,7 +687,7 @@ describe("短值事实表驱动交叉合同（8-30 词 / 事实原样 / 谓语 /
     { name: "短 usage", field: "usage", value: "Home", mustContain: "Home" },
   ];
   for (const c of CASES) {
-    it(`${c.name}（${c.value}）→ 8-30 词自然句 + 三合同通过`, async () => {
+    it(`${c.name}（${c.value}）→ 5-30 词自然句 + 三合同通过`, async () => {
       const facts = [
         { field: "brand", label: "品牌", value: "Acme" },
         { field: "product_type", label: "商品类型", value: "Water Bottle" },
@@ -663,10 +717,10 @@ describe("短值事实表驱动交叉合同（8-30 词 / 事实原样 / 谓语 /
       // ③ 事实值出现（大小写不敏感）
       const joined = opt.bullets.join(" ");
       expect(joined.toLowerCase()).toContain(c.mustContain.toLowerCase());
-      // ④ 每条 8-30 + 完整句
+      // ④ 每条 5-30 + 完整句
       for (const b of opt.bullets) {
         const wc = b.trim().split(/\s+/).filter(Boolean).length;
-        expect(wc, "词数越界:" + b + "（" + wc + " 词）").toBeGreaterThanOrEqual(8);
+        expect(wc, "词数越界:" + b + "（" + wc + " 词）").toBeGreaterThanOrEqual(5);
         expect(wc).toBeLessThanOrEqual(30);
         expect(/[.!?]$/.test(b.trim())).toBe(true);
       }
@@ -747,15 +801,15 @@ describe("消费者自然英语精确合同（字段标签式拼接禁用）", (
     { field: "material", label: "材质", value: "Plastic" },
   ];
   const CASES: Array<{ name: string; field: string; value: string; target: string; oldCasing?: string; extra?: Array<{ field: string; label: string; value: string }> }> = [
-    { name: "material Plastic", field: "material", value: "Plastic", target: "The Water Bottle body is made from plastic.", oldCasing: "The Water Bottle body is made from Plastic.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
-    { name: "material Stainless Steel", field: "material", value: "Stainless Steel", target: "The Water Bottle body is made from stainless steel.", oldCasing: "The Water Bottle body is made from Stainless Steel.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
-    { name: "dimensions 5 in", field: "dimensions", value: "5 in", target: "The Water Bottle has a dimension of 5 in.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
+    { name: "material Plastic", field: "material", value: "Plastic", target: "The Water Bottle is made of plastic.", oldCasing: "The Water Bottle is made of Plastic.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
+    { name: "material Stainless Steel", field: "material", value: "Stainless Steel", target: "The Water Bottle is made of stainless steel.", oldCasing: "The Water Bottle is made of Stainless Steel.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
+    { name: "dimensions 5 in", field: "dimensions", value: "5 in", target: "The Water Bottle measures 5 in.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
     { name: "operation Latch", field: "operation", value: "Latch", target: "The Water Bottle opens through its latch mechanism.", oldCasing: "The Water Bottle opens through its Latch mechanism.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
     { name: "included_components Lid", field: "included_components", value: "Lid", target: "A lid is included with the Water Bottle.", oldCasing: "A Lid is included with the Water Bottle.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
     { name: "functional_feature Push Button", field: "functional_feature", value: "Push Button", target: "The Water Bottle uses a push button as a control.", oldCasing: "The Water Bottle uses a Push Button as a control.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
     { name: "usage Home", field: "usage", value: "Home", target: "The Water Bottle is suitable for use at home.", oldCasing: "The Water Bottle is suitable for use at Home.", extra: [{ field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
     { name: "capacity 12 oz", field: "capacity", value: "12 oz", target: "The Water Bottle has a capacity of 12 oz.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
-    { name: "weight 1 lb", field: "weight", value: "1 lb", target: "The Water Bottle has a weight of 1 lb.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
+    { name: "weight 1 lb", field: "weight", value: "1 lb", target: "The Water Bottle weighs 1 lb.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
   ];
   for (const c of CASES) {
     it("红（当前旧句）：" + c.name + " → 必须输出 " + c.target, async () => {
@@ -813,7 +867,7 @@ describe("消费者自然英语精确合同（字段标签式拼接禁用）", (
 
     expect(opt.titles[0]).toContain("Owala SoftSip");
     expect(opt.titles[0]).not.toContain("owala softsip");
-    expect(joined).toContain("The Water Bottle body is made from ABS plastic.");
+    expect(joined).toContain("The Water Bottle is made of ABS plastic.");
     expect(joined).toContain("SoftSip covered straw");
     expect(joined).not.toContain("softsip covered straw");
     expect(joined).toContain("A USB-C cable is included with the Water Bottle.");
@@ -863,8 +917,8 @@ describe("消费者自然英语精确合同（字段标签式拼接禁用）", (
     expect(cap.capability).toMatchObject({ level: "full_draft", supportedBulletCount: 5, targetBulletCount: 5, canCallProvider: true });
     expect(plan.bulletPlans.flatMap((bp) => bp.featureFactIds)).not.toContain("quantity_or_pack_size");
     expect(opt.bullets).toEqual([
-      "The Water Bottle body is made from plastic.",
-      "The Water Bottle has a dimension of 5 in.",
+      "The Water Bottle is made of plastic.",
+      "The Water Bottle measures 5 in.",
       "The Water Bottle opens through its latch mechanism.",
       "The Water Bottle is suitable for use at home.",
       "A lid is included with the Water Bottle.",

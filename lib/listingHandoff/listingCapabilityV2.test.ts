@@ -389,4 +389,17 @@ describe("1 Count 不形成正式卖点（Capability 层隔离）", () => {
     expect(pkg?.factIds).toEqual(["f5"]);
     expect(r.supportedBulletCount).toBe(3);
   });
+
+  it("高风险复合功能值不占可渲染能力组", () => {
+    const r = evaluateListingCapability({
+      facts: [
+        fact("f1", "brand", "Acme"),
+        fact("f2", "product_type", "Organizer"),
+        fact("f3", "material", "Plastic"),
+        fact("f4", "functional_feature", "Extra Large Capacity, Expandable, Sturdy, Food Safe, Waterproof"),
+      ],
+    });
+    expect(r.eligibleGroups.map((g) => g.group)).not.toContain("core_function_operation");
+    expect(r.supportedBulletCount).toBe(1);
+  });
 });

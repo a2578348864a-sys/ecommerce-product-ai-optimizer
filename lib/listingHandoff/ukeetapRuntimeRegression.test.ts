@@ -242,7 +242,51 @@ afterAll(() => {
 });
 
 describe("ukeetap 离线回归（坏 Provider 稿 → 5 条 Plan 绑定确定性兜底）", () => {
-  it("真实英文化失败形态：排除无法英文化的中文事实后仍用英文 4 组继续，不冒充 claims_unsupported", async () => {
+  it("真实路由形态：中文确认事实完成英文化后，不得被旧组合草稿提前拦截", async () => {
+    const taskId = "sandbox-ukeetap-rendered-route-preflight";
+    await setupHandoff(taskId);
+    const provider = vi.fn(async () => ({})) as TaskLinkedAiListingClient;
+    const composition = await import("@/lib/listingHandoff/listingComposition");
+    const legacyDraft = {
+      source: "deterministic_composition_v1" as const,
+      version: 1,
+      generatedAt: NOW,
+      model: "listing-composer-v1",
+      composerVersion: "listing-composer-v1",
+      generationPolicyVersion: "listing-generation-policy-v1",
+      polishApplied: false,
+      polishModel: null,
+      humanReviewRequired: true as const,
+      titles: ["The Organizer weighs 999 kg."],
+      bullets: [
+        "The Organizer weighs 999 kg.",
+        "The Organizer weighs 999 kg.",
+        "The Organizer weighs 999 kg.",
+      ],
+      description: "The Organizer weighs 999 kg.",
+      keywords: [],
+      sellingPoints: ["The Organizer weighs 999 kg."],
+      riskNotes: ["Legacy composition candidate."],
+      complianceWarnings: [],
+      blockedClaims: [],
+      reviewChecklist: ["Review facts."],
+    };
+    const legacySpy = vi.spyOn(composition, "buildDeterministicListingPackDraft").mockReturnValue(legacyDraft);
+    try {
+      const result = await runGeneration(taskId, provider);
+      expect(provider).toHaveBeenCalledOnce();
+      expect(result.draft?.draftKind).toBe("structured_listing_draft");
+      expect(result.draft?.bullets).toHaveLength(5);
+      expect(result.draft?.listingUnqualified).toBe(false);
+      expect(result.draft?.factSafe).toBe(true);
+      expect(result.draft?.copyQuality).toBe(true);
+      expect(result.draft?.bullets).toEqual([...EXPECTED_NATURAL_BULLETS]);
+    } finally {
+      legacySpy.mockRestore();
+    }
+  });
+
+  it("真实英文化失败形态：排除无法英文化的中文事实后仍用安全英文事实继续生成", async () => {
     const taskId = "sandbox-ukeetap-rendering-provider-failed";
     await setupHandoff(taskId, { includeRuntimeEnglishFacts: true });
     setEnglishBatchRendererForTests(async () => []); // 复现真实 Provider 未返回可用英文化结果
@@ -257,10 +301,17 @@ describe("ukeetap 离线回归（坏 Provider 稿 → 5 条 Plan 绑定确定性
       expect(provider).toHaveBeenCalledOnce();
       expect(providerInputs).toHaveLength(1);
       expect(providerInputs[0].facts.some((f) => /[一-鿿㐀-䶿]/.test(f.value))).toBe(false);
-      // 模拟 Provider 返回空对象时必须诚实降级，不能为了“继续生成”放宽质量门禁。
-      expect(result.draft?.draftKind).toBe("safe_fact_draft");
-      expect(result.draft?.bullets).toHaveLength(0);
-      expect(result.draft?.listingUnqualified).toBe(true);
+      // Provider 返回空对象时，仍应从已确认且可安全渲染的英文事实生成正式五点。
+      expect(result.draft?.draftKind).toBe("structured_listing_draft");
+      expect(result.draft?.bullets).toHaveLength(3);
+      expect(result.draft?.listingUnqualified).toBe(false);
+      expect(result.draft?.factSafe).toBe(true);
+      expect(result.draft?.copyQuality).toBe(true);
+      const formalCopy = result.draft?.bullets.join(" ").toLowerCase() ?? "";
+      expect(formalCopy).not.toContain("food safe");
+      expect(formalCopy).not.toContain("waterproof");
+      expect(formalCopy).not.toContain("sturdy");
+      expect(formalCopy).not.toContain("1 count");
       expect(result.draft?.factSafe).toBe(true);
     } finally {
       setEnglishBatchRendererForTests(async (facts) =>

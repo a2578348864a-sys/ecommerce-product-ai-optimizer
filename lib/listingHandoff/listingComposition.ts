@@ -133,8 +133,7 @@ function skillFactsOf(input: ListingGenerationInput): RuntimeFact[] {
   return out;
 }
 
-/** 规格类完整句（品牌/材质/容量/颜色；每条 8-30 词，锚定已确认事实值；Claim-Evidence 安全措辞） */
-/** 规格类完整句（品牌/材质/容量/颜色；每条 8-30 词，锚定已确认事实值；Claim-Evidence 安全措辞；低重复自然句） */
+/** 规格类完整句（品牌/材质/容量/颜色；每条 5-30 词，锚定已确认事实值；Claim-Evidence 安全措辞；低重复自然句） */
 function composeSpecSentences(input: ListingGenerationInput): string[] {
   const out: string[] = [];
   const brand = englishRenderingOf(input, "brand");
@@ -510,6 +509,17 @@ function isQuantityOrPluralNoun(value: string): boolean {
 }
 
 /**
+ * 检查事实值是否已经包含商品类型，避免 `The Organizer includes ... Organizer.`
+ * 这只用于选择句式，不改写事实值本身，也不做同义推断。
+ */
+function valueContainsTypeLabel(value: string, typeLabel: string): boolean {
+  const normalize = (text: string) => String(text).toLocaleLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const normalizedValue = normalize(value);
+  const normalizedType = normalize(typeLabel);
+  return Boolean(normalizedType && normalizedValue.split(/\s+/).join(" ").includes(normalizedType));
+}
+
+/**
  * 只在消费者正文中自然化普通名词事实值；不修改原始事实、Plan、Title 或事实锚点。
  *
  * - 普通 Title Case：Plastic / Stainless Steel / Push Button → 小写；
@@ -581,15 +591,17 @@ function operationObjectFrame(t: string, v: string): string {
 }
 
 const NOUN_SPEC_FRAME_BY_FIELD: Record<string, (t: string, v: string) => string> = {
-  material: (t, v) => "The " + t + " body is made from " + v + ".",
-  construction: (t, v) => "The " + t + " is built with " + v + " material.",
-  dimensions: (t, v) => "The " + t + " has a dimension of " + v + ".",
-  weight: (t, v) => "The " + t + " has a weight of " + v + ".",
+  material: (t, v) => "The " + t + " is made of " + v + ".",
+  construction: (t, v) => "The " + t + " includes " + v + ".",
+  dimensions: (t, v) => "The " + t + " measures " + v + ".",
+  weight: (t, v) => "The " + t + " weighs " + v + ".",
   capacity: (t, v) => "The " + t + " has a capacity of " + v + ".",
   color_or_variant: (t, v) => "The " + t + " is available in " + v + " color.",
   included_components: (t, v) =>
     isQuantityOrPluralNoun(v)
-      ? "The " + t + " includes " + v + "."
+      ? valueContainsTypeLabel(v, t)
+        ? "The included component is " + v + "."
+        : "The " + t + " includes " + v + "."
       : "A " + v + " is included with the " + t + ".",
   quantity_or_pack_size: (t, v) => "The " + t + " comes in a " + v + ".",
   compatibility: (t, v) => "The " + t + " fits " + v + ".",
@@ -659,7 +671,7 @@ function buildControlledSentence(field: string, rawValue: string, typeLabel: str
 
 /**
  * Plan 组内候选（**字段与值成对**，帧必须与被选中值的字段一致，不得错配）。
- * 按「能否组成 8-30 词自然句」的适配度排序：长值含完整事实更多上下文，短值难以成句。
+ * 按「能否组成 5-30 词自然句」的适配度排序：长值含完整事实更多上下文，短值难以成句。
  */
 function planBulletCandidates(
   input: ListingGenerationInput,

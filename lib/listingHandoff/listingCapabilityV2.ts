@@ -120,6 +120,20 @@ export function factContributes(fact: ListingCapabilityFact): boolean {
 }
 
 /**
+ * 事实已通过 Claim Policy 并不代表它一定有安全的消费者句型。
+ * 这些高风险复合词即使被确认，也不能作为“可渲染能力”去占用计划名额；
+ * 否则 Capability 会承诺一条 Renderer 最终必然拒绝的 Bullet。
+ */
+export function isSafeRenderableFact(fact: ListingCapabilityFact): boolean {
+  if (!factContributes(fact)) return false;
+  if (isTrivialSingleUnitQuantity(fact.field, fact.value)) return false;
+  if (String(fact.field ?? "").trim() === "functional_feature" && /(?:food\s*safe|waterproof|sturdy)/i.test(String(fact.value ?? ""))) {
+    return false;
+  }
+  return true;
+}
+
+/**
  * 单件默认数量（1 Count / 1 count 等）无消费者选择价值：
  * 保留为已确认内部事实，但不消耗卖点组、不进入正式文案。
  * 只处理 quantity_or_pack_size；有界单件默认值：规范化后恰为 "1 count"。
@@ -151,9 +165,7 @@ export function evaluateListingCapability(input: {
   const groupToFactIds = new Map<ClaimGroupName, Set<string>>();
   const seen = new Set<string>();
   for (const fact of facts) {
-    if (!factContributes(fact)) continue;
-    // 1 Count：保留确认事实但不组卖点（数量无消费者价值，不得占正式 Bullet）
-    if (isTrivialSingleUnitQuantity(fact.field, fact.value)) continue;
+    if (!isSafeRenderableFact(fact)) continue;
     const group = claimGroupOfField(fact.field);
     if (!group) continue;
     if (seen.has(fact.factId)) continue;

@@ -167,6 +167,21 @@ export function draftKindLabel(draftKind: "ai_optimized_listing" | "structured_l
   return "当前草稿：已有草稿";
 }
 
+/** ListingPlan.v2：最终结果标签必须同时读取 draftKind 与服务端质量结论。 */
+export function listingDraftStatusLabel({
+  draftKind,
+  listingUnqualified,
+}: {
+  draftKind?: ListingDraftSafeSummary["draftKind"];
+  listingUnqualified?: boolean;
+}): string {
+  if (listingUnqualified) return "暂无合格草稿";
+  if (draftKind === "ai_optimized_listing") return "AI 运营优化稿 · 已通过门禁，需人工复核";
+  if (draftKind === "structured_listing_draft") return "结构化安全事实稿 · 已通过门禁，需人工复核";
+  if (draftKind === "safe_fact_draft") return "安全事实稿 · 已通过门禁，需人工复核";
+  return "已有草稿";
+}
+
 export function ListingGenerationBasis({ draft }: { draft: ListingDraftSafeSummary | null }) {
   if (!draft) return null;
   // R4 契约：先检查 providerAttempted 显式值（true/false 优先于数组空判断）
@@ -816,18 +831,18 @@ export function ListingHandoffSection({
         <h2 className="text-base font-bold text-slate-800">Listing 草稿</h2>
         {draft?.listingUnqualified ? (
           <span className="rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-semibold text-rose-700" data-testid="listing-unqualified-badge">
-            暂无合格草稿
+            {listingDraftStatusLabel(draft ?? {})}
           </span>
         ) : (
-          <span className="rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-semibold text-teal-700">
-            当前有效 Listing
+          <span className="rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-semibold text-teal-700" data-testid="listing-qualified-badge">
+            {listingDraftStatusLabel(draft ?? {})}
           </span>
         )}
         {draft ? (
           <div className="flex flex-wrap gap-1.5 text-[11px] font-semibold">
             <span className={`rounded-full px-2 py-0.5 ${draft.factSafe ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`} data-testid="fact-safe-status">事实安全：{draft.factSafe ? "通过" : "未通过"}</span>
             <span className={`rounded-full px-2 py-0.5 ${draft.copyQuality ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`} data-testid="copy-quality-status">文案质量：{draft.copyQuality ? "通过" : "未通过"}</span>
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600" data-testid="draft-kind-status">草稿类型：{draft.draftKind === "ai_optimized_listing" ? "AI 运营优化稿" : draft.draftKind === "structured_listing_draft" ? "安全事实提纲" : "暂无合格草稿"}</span>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600" data-testid="draft-kind-status">{listingDraftStatusLabel(draft)}</span>
           </div>
         ) : null}
       </header>
@@ -1047,12 +1062,12 @@ export function ListingHandoffSection({
             ) : null}
             {draft?.draftKind === "safe_fact_draft" && readiness && !readiness.copyReady ? (
               <p className="mt-1 rounded-lg bg-amber-50 px-3 py-2 text-amber-800" data-testid="safe-fact-draft-issues">
-                当前为基础草稿：{draft.qualityIssues?.slice(0, 3).join("；") ?? "事实资料尚不足以生成优化草稿"}
+                前序生成尝试未通过，当前保留安全事实稿：{draft.qualityIssues?.slice(0, 3).join("；") ?? "事实资料尚不足以生成优化草稿"}
               </p>
             ) : null}
             {draft?.draftKind === "structured_listing_draft" && draft.qualityIssues && draft.qualityIssues.length > 0 ? (
               <p className="mt-1 rounded-lg bg-amber-50 px-3 py-2 text-amber-800" data-testid="structured-advisory-issues">
-                当前为结构化草稿，还有 {draft.qualityIssues.length} 项建议可完善。
+                前序生成尝试还有 {draft.qualityIssues.length} 项建议可完善；当前安全事实稿已通过门禁。
               </p>
             ) : null}
             {draft?.providerAttempted === true && draft.providerSucceeded === false ? (

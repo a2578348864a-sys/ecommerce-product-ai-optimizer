@@ -483,6 +483,30 @@ describe("ListingPlan.v2 草稿类型标签（draftKindLabel 三态）", () => {
   });
 });
 
+describe("ListingPlan.v2 最终状态标签（安全稿与真正不合格稿分离）", () => {
+  it("safe_fact + listingUnqualified=false → 明确显示已通过门禁的安全事实稿", async () => {
+    const { listingDraftStatusLabel } = await import("@/components/listing-handoff/ListingHandoffSection");
+    const label = listingDraftStatusLabel({ draftKind: "safe_fact_draft", listingUnqualified: false });
+    expect(label).toContain("安全事实稿");
+    expect(label).toContain("已通过门禁");
+    expect(label).toContain("需人工复核");
+    expect(label).not.toContain("暂无合格草稿");
+  });
+
+  it("structured 与 ai_optimized 保留各自运营语义", async () => {
+    const { listingDraftStatusLabel } = await import("@/components/listing-handoff/ListingHandoffSection");
+    expect(listingDraftStatusLabel({ draftKind: "structured_listing_draft", listingUnqualified: false })).toContain("结构化安全事实稿");
+    expect(listingDraftStatusLabel({ draftKind: "ai_optimized_listing", listingUnqualified: false })).toContain("AI 运营优化稿");
+  });
+
+  it("listingUnqualified=true → 无论 draftKind 都保持真正不合格空态", async () => {
+    const { listingDraftStatusLabel } = await import("@/components/listing-handoff/ListingHandoffSection");
+    for (const draftKind of ["safe_fact_draft", "structured_listing_draft", "ai_optimized_listing"] as const) {
+      expect(listingDraftStatusLabel({ draftKind, listingUnqualified: true })).toBe("暂无合格草稿");
+    }
+  });
+});
+
 
   describe("ListingPlan.v2 关键词采用三态（正文采用 / 仅搜索词 诚实分离）", () => {
     it("红：两组中文标题同时渲染；正文采用组不含搜索词；无内部 id", async () => {
