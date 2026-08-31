@@ -132,3 +132,22 @@ describe("HistoricalDraftReadGuard 红测：历史坏快照按当前门禁重新
     expect(JSON.stringify(snap)).toBe(snapshotBefore);
   });
 });
+
+describe("历史 Organizer 坏句必须按当前规则重新拒绝", () => {
+  it("红：持久化旧 pass 标记不能洗白错误套壳句", () => {
+    const verdict = revalidateHistoricalDraftRead({
+      factSafe: true,
+      copyQuality: true,
+      titles: ["ukeetap UTO001 Organizer Plastic Silver"],
+      bullets: [
+        "The Organizer has a capacity of Can hold about 40-50 pieces of common cutlery.",
+        "The Organizer opens through its After placing in the drawer, expand to the sides.",
+        "The Organizer is suitable for use at For storing knives and forks in a kitchen drawer.",
+        "For care, Wipe with a damp cloth; if necessary, clean with warm water.",
+      ],
+      description: "The Organizer is made of plastic. It stores cutlery.",
+    });
+    expect(verdict.listingUnqualified).toBe(true);
+    expect(verdict.copyQuality).toBe(false);
+  });
+});

@@ -182,6 +182,15 @@ export function listingDraftStatusLabel({
   return "已有草稿";
 }
 
+export function keywordPlanDisplayLabel(source: ListingDraftSafeSummary["keywordPlanSource"], keywordCount: number): string {
+  if (keywordCount > 0) {
+    return source === "manual" ? "已使用人工关键词方案" : source === "auto_suggested" ? "已自动使用关键词资料" : "暂无有效关键词方案";
+  }
+  if (source === "manual") return "人工关键词方案已提供，但当前草稿未采用关键词";
+  if (source === "auto_suggested") return "关键词资料已加载，但当前草稿未采用关键词";
+  return "暂无有效关键词方案";
+}
+
 export function ListingGenerationBasis({ draft }: { draft: ListingDraftSafeSummary | null }) {
   if (!draft) return null;
   // R4 契约：先检查 providerAttempted 显式值（true/false 优先于数组空判断）
@@ -757,11 +766,7 @@ export function ListingHandoffSection({
         {/* 轮 16 收口：人工审核信息只展示服务端权威结果（不再本地猜测事实级别） */}
         {draft.bullets.length > 0 ? (() => {
           const reviewClaims = draft.humanReviewClaims ?? [];
-          const planLabel = draft.keywordPlanSource === "manual"
-            ? "已使用人工关键词方案"
-            : draft.keywordPlanSource === "auto_suggested"
-              ? "已自动使用关键词资料"
-              : "暂无有效关键词方案";
+          const planLabel = keywordPlanDisplayLabel(draft.keywordPlanSource, draft.keywords.length);
           return (
             <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3" data-testid="listing-human-review-aid">
               <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">人工审核辅助</p>

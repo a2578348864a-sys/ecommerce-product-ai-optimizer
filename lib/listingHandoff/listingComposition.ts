@@ -356,16 +356,24 @@ function planFactValues(input: ListingGenerationInput, factIds: string[]): strin
  * primaryKeyword（合理时前置或纳入）或 Brand + Type 开头，
  * 后跟 1-3 关键属性；长度目标 60-100。
  */
+function isTitleSafeValue(value: string): boolean {
+  const trimmed = String(value).trim();
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  if (words.length > 5 || /[.!?;]/.test(trimmed)) return false;
+  if (/^(?:can|could|will|would|after|before|when|while|for|wipe|wash|clean|use|place|store)\b/i.test(trimmed)) return false;
+  return true;
+}
+
 function composeOptimizedTitle(input: ListingGenerationInput, plan: ListingPlan): string {
   // 品牌去重：product_type 渲染值等于品牌（大小写不敏感）时不得重复并入（THERMOS THERMOS / 品牌重复）
   const brand0 = englishRenderingOf(input, "brand");
   const type0 = englishRenderingOf(input, "product_type");
   const identity = ["brand", "series_or_model"].concat(
     type0 && brand0 && type0.toLowerCase() === brand0.toLowerCase() ? [] : ["product_type"],
-  ).map((f) => englishRenderingOf(input, f)).filter((v): v is string => v !== null);
+  ).map((f) => englishRenderingOf(input, f)).filter((v): v is string => v !== null && isTitleSafeValue(v));
   const specs = ["capacity", "material", "color_or_variant", "quantity_or_pack_size"].filter(
     (f) => f !== "quantity_or_pack_size" || !isTrivialSingleUnitQuantity(f, englishRenderingOf(input, f) ?? ""),
-  ).map((f) => englishRenderingOf(input, f)).filter((v): v is string => v !== null);
+  ).map((f) => englishRenderingOf(input, f)).filter((v): v is string => v !== null && isTitleSafeValue(v));
   let lead = identity.join(" ");
   // primaryKeyword 合理纳入：标题长度不足目标时，将主词并入高权重位置。
   // R3：无确认事实证据的 keyword（如 "insulated water bottle" 中 insulated）不得并入标题——
@@ -379,16 +387,23 @@ function composeOptimizedTitle(input: ListingGenerationInput, plan: ListingPlan)
     const alreadyCovered = keywordTokens.every((w) => leadTokens.includes(w));
     // 计划关键词：全词由已确认事实证明（事实安全）→ 允许自然进入标题一次
     const keywordSafeByFacts = keywordCoveredByFacts && !alreadyCovered && lead.length + keyword.length <= 110;
-    if (keywordSafeByFacts) {
+    if (keywordSafeByFacts && isTitleSafeValue(keyword)) {
       lead = lead ? lead + " " + keyword : keyword;
-    } else if (lead.length === 0) {
-      lead = keyword;
     }
   }
   const rest = specs.slice(0, 3).join(" ");
   const title = [lead, rest].filter(Boolean).join(" ");
-  // 若超硬限，截断到 200
-  return title.length > 200 ? title.slice(0, 197).trimEnd() + "..." : title;
+  if (!title) {
+    const fallback = ["brand", "series_or_model", "product_type", "material", "color_or_variant"]
+      .map((field) => englishRenderingOf(input, field))
+      .find((value): value is string => value !== null && isTitleSafeValue(value));
+    return fallback ?? "Product";
+  }
+  // 若超硬限，按完整 token 截断，禁止字符中间切出半词。
+  if (title.length <= 200) return title;
+  const bounded = title.slice(0, 200).trimEnd();
+  const boundary = bounded.lastIndexOf(" ");
+  return (boundary > 0 ? bounded.slice(0, boundary) : bounded).trimEnd();
 }
 
 /**
@@ -629,6 +644,10 @@ function phraseHeadWord(value: string): string {
   return m ? m[0] : "";
 }
 
+function lowerFirstWord(value: string): string {
+  return String(value).replace(/^([A-Z])/, (_, letter: string) => letter.toLowerCase());
+}
+
 /** 值本身已是自带主语的完整句（The X …/This X …/It …）且含谓语 */
 function isSelfContainedSentence(value: string): boolean {
   const v = String(value).trim();
@@ -649,9 +668,24 @@ function buildControlledSentence(field: string, rawValue: string, typeLabel: str
   // 0) 值已是完整句 → 原样复述（只做句点归一），不再套骨架
   if (isSelfContainedSentence(value)) return endWithPeriod(value);
 
+  // 带情态动词的完整事实短语（如 "Can hold ..."）需要补商品主语，不能再套 capacity of。
+  if (/^can\s+(?:hold|store|accommodate|contain)\b/i.test(value)) {
+    return "The " + typeLabel + " " + lowerFirstWord(value) + ".";
+  }
+
+  // After/Before 等从句已带完整祈使主句，原样保留，避免再套 operation 名词帧。
+  if (/^(?:after|before|when|while)\b/i.test(value) && /,\s*[a-z]+\b/i.test(value)) {
+    return endWithPeriod(value);
+  }
+
+  // For storing/For organizing 等用途短语需要一个真实动作主语；保留事实短语本身作为锚点。
+  if (/^for\s+(?:storing|organizing|holding|keeping)\b/i.test(value)) {
+    return "Use the " + typeLabel + " " + lowerFirstWord(value) + ".";
+  }
+
   // 1) care / cleaning 的祈使短语 → `For care, {v}.`
   const lead = IMPERATIVE_LEAD_BY_FIELD[field];
-  if (lead && IMPERATIVE_PHRASE_HEADS.has(head)) return lead + ", " + value + ".";
+  if (lead && IMPERATIVE_PHRASE_HEADS.has(head)) return lead + ", " + lowerFirstWord(value) + ".";
 
   // 2) 分词 / 形容词补语 → `The {t} is {v}.`
   if (COMPLEMENT_PHRASE_HEADS.some((h) => lower.startsWith(h + " "))) {

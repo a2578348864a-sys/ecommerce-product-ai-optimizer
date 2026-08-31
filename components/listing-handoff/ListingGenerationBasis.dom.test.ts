@@ -508,7 +508,7 @@ describe("ListingPlan.v2 最终状态标签（安全稿与真正不合格稿分�
 });
 
 
-  describe("ListingPlan.v2 关键词采用三态（正文采用 / 仅搜索词 诚实分离）", () => {
+describe("ListingPlan.v2 关键词采用三态（正文采用 / 仅搜索词 诚实分离）", () => {
     it("红：两组中文标题同时渲染；正文采用组不含搜索词；无内部 id", async () => {
       const { ListingGenerationBasis } = await import("@/components/listing-handoff/ListingHandoffSection");
       await act(async () => {
@@ -621,5 +621,13 @@ describe("LISTING_HISTORICAL_DRAFT_READ_GUARD DOM：历史坏快照经读取边�
     expect(text).not.toContain("pairs with");
     // 诚实空态/研究说明必然存在其一
     expect(text.includes("这份历史草稿") || text.includes("研究资料只用于定位和表达参考")).toBe(true);
+  });
+});
+
+describe("关键词空态与来源状态一致", () => {
+  it("红：auto_suggested 但没有实际关键词时不得显示‘已自动使用关键词资料’", async () => {
+    const { keywordPlanDisplayLabel } = await import("@/components/listing-handoff/ListingHandoffSection");
+    expect(keywordPlanDisplayLabel("auto_suggested", 0)).not.toBe("已自动使用关键词资料");
+    expect(keywordPlanDisplayLabel("auto_suggested", 0)).toContain("未采用");
   });
 });

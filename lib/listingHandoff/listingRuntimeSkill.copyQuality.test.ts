@@ -305,6 +305,25 @@ describe("反向验证（防作弊）", () => {
     expect(verdict.tier).toBe("prohibited");
   });
 });
+
+describe("Organizer 结构性病句门禁", () => {
+  it("红：重复谓语与错误引导框架必须被 Copy Quality 拒绝", () => {
+    const r = validateCopyQualityContract({
+      title: "ukeetap UTO001 Organizer",
+      bullets: [
+        "The Organizer has a capacity of Can hold about 40-50 pieces of common cutlery.",
+        "The Organizer opens through its After placing in the drawer, expand or contract to the sides.",
+        "The Organizer is suitable for use at For storing knives, forks, and spoons in a kitchen drawer.",
+        "For care, Wipe with a damp cloth; if necessary, clean with warm water.",
+      ],
+      description: "The Organizer is made of plastic. It stores cutlery.",
+      facts: [],
+      typeLabel: "Organizer",
+    });
+    expect(r.ok, JSON.stringify(r.issues)).toBe(false);
+    expect(r.issues.some((i) => ["sentence_fragment", "template_jargon", "template_filler"].includes(i.code))).toBe(true);
+  });
+});
 /* ──────────────────────────────────────────────────────────────
  * 主句骨架谓语检测（本轮）：不得扫描整句任意 token 冒充谓语。
  *

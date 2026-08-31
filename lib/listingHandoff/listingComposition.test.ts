@@ -123,6 +123,62 @@ describe("V2.1.5 Listing Composition Layer", () => {
   });
 });
 
+describe("Organizer 自然文案终局：真实长事实不得套错模板", () => {
+  it("红：标题只使用短字段，不吞入完整容量事实且不产生半词截断", async () => {
+    const facts = [
+      { field: "brand", label: "品牌", value: "ukeetap" },
+      { field: "series_or_model", label: "系列/型号", value: "UTO001" },
+      { field: "product_type", label: "商品类型", value: "Organizer" },
+      { field: "material", label: "材质", value: "Plastic" },
+      { field: "color_or_variant", label: "颜色/款式", value: "Silver" },
+      { field: "capacity", label: "容量", value: "Can hold about 40-50 pieces of common cutlery." },
+    ];
+    const li = input(facts);
+    const { evaluateListingCapabilityFromPolicy } = await import("@/lib/listingHandoff/listingCapabilityEvaluation");
+    const { buildListingPlanFromCapability } = await import("@/lib/listingHandoff/listingPlan");
+    const cap = evaluateListingCapabilityFromPolicy({ input: li, confirmedFacts: facts.map((f) => ({ field: f.field, value: f.value, evidenceTier: "human_confirmed", sourceRef: { sourceKind: "user_confirmation" } })), extraProhibitedTerms: [], hasBlockingIssue: false });
+    const plan = buildListingPlanFromCapability(li, null, cap.capability);
+    const draft = composeOptimizedListingDraft(li, plan, null);
+    expect(draft.titles[0]).not.toContain("Can hold about 40-50 pieces");
+    expect(draft.titles[0]).not.toMatch(/Plasti\b|Plasti[^c]/i);
+    expect(draft.titles[0]).not.toMatch(/\.{3}$/);
+  });
+
+  it("红：标题超长时必须在完整词边界结束，不得用省略号切断", () => {
+    const draft = composeOptimizedListingDraft(input([
+      { field: "brand", label: "品牌", value: "A".repeat(220) },
+      { field: "product_type", label: "商品类型", value: "Organizer" },
+    ]), { primaryKeyword: null, bulletPlans: [] } as never, null);
+    expect(draft.titles[0]).not.toMatch(/\.{3}$/);
+    expect(draft.titles[0].length).toBeLessThanOrEqual(200);
+  });
+
+  it("红：Organizer 长事实渲染不得出现四类重复谓语/引导短语", async () => {
+    const facts = [
+      { field: "brand", label: "品牌", value: "ukeetap" },
+      { field: "product_type", label: "商品类型", value: "Organizer" },
+      { field: "material", label: "材质", value: "Plastic" },
+      { field: "capacity", label: "容量", value: "Can hold about 40-50 pieces of common cutlery." },
+      { field: "operation", label: "操作方式", value: "After placing in the drawer, expand or contract to the sides according to the drawer width mechanism." },
+      { field: "usage", label: "使用场景", value: "For storing knives, forks, spoons, and other cutlery in a kitchen drawer." },
+      { field: "care", label: "清洁保养", value: "Wipe with a damp cloth; if necessary, clean with warm water and mild detergent." },
+    ];
+    const li = input(facts);
+    const { evaluateListingCapabilityFromPolicy } = await import("@/lib/listingHandoff/listingCapabilityEvaluation");
+    const { buildListingPlanFromCapability } = await import("@/lib/listingHandoff/listingPlan");
+    const { validateCopyQualityContract } = await import("@/lib/listingHandoff/listingRuntimeSkill");
+    const cap = evaluateListingCapabilityFromPolicy({ input: li, confirmedFacts: facts.map((f) => ({ field: f.field, value: f.value, evidenceTier: "human_confirmed", sourceRef: { sourceKind: "user_confirmation" } })), extraProhibitedTerms: [], hasBlockingIssue: false });
+    const plan = buildListingPlanFromCapability(li, null, cap.capability);
+    const draft = composeOptimizedListingDraft(li, plan, null);
+    const corpus = [draft.titles[0], ...draft.bullets, draft.description].join(" ");
+    for (const bad of ["has a capacity of Can hold", "opens through its After placing", "suitable for use at For storing", "For care, Wipe"]) {
+      expect(corpus, corpus).not.toContain(bad);
+    }
+    const quality = validateCopyQualityContract({ title: draft.titles[0], bullets: draft.bullets, description: draft.description, cannotSay: [], facts: facts.map((f) => ({ factId: f.field, ...f })), bulletPlans: plan.bulletPlans, typeLabel: "Organizer" });
+    expect(quality.ok, JSON.stringify(quality.issues)).toBe(true);
+  });
+});
+
 describe("中文事实 English-safe 渲染（V2 关闭假阻断）", () => {
   const CN_FACTS = [
     { field: "brand", label: "品牌", value: "YETI" },
@@ -138,11 +194,13 @@ describe("中文事实 English-safe 渲染（V2 关闭假阻断）", () => {
     factId: f.field,
     field: f.field,
     sourceValue: f.value,
-    english: f.value.includes("40–50")
+    english: f.field === "capacity"
       ? "stores about 40 to 50 pieces of cutlery"
-      : f.value.includes("清水")
+      : f.field === "care"
         ? "rinse with clean water and wipe dry"
-        : "suitable for daily kitchen storage and carrying",
+        : f.field === "usage"
+          ? "suitable for daily kitchen storage and carrying"
+          : f.value,
   }));
 
   it("注入英文渲染：基础 Title 使用英文值且无 CJK，validateAiListingPackDraft.ok=true", () => {
@@ -180,7 +238,8 @@ describe("中文事实 English-safe 渲染（V2 关闭假阻断）", () => {
     expect(/[一-鿿]/.test(all)).toBe(false);
     expect(all).not.toContain("可收纳约");
     expect(all).not.toContain("适合日常厨房收纳");
-    expect(d.titles[0]).toContain("store");
+    expect(d.titles[0]).toContain("Stainless Steel");
+    expect(d.titles[0]).not.toContain("suitable for daily kitchen storage and carrying");
   });
 });
 

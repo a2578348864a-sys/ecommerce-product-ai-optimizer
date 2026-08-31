@@ -423,7 +423,9 @@ function hasMainClausePredicate(sentence: string): boolean {
  */
 function isLegitImperative(sentence: string): boolean {
   const trimmed = String(sentence).trim();
-  const body = trimmed.replace(/^[A-Za-z][^,]{0,48},\s+/, "");
+  const body = /^(?:for\s+(?:care|cleaning)|after|before|when|while|during)\b[^,]{0,48},\s+/i.test(trimmed)
+    ? trimmed.replace(/^[A-Za-z][^,]{0,48},\s+/, "")
+    : trimmed;
   const first = structureTokens(body)[0] ?? "";
   return IMPERATIVE_HEAD_VERBS.has(first);
 }
@@ -469,6 +471,7 @@ function templateJargonHit(sentence: string): string | null {
   if (s.includes("availableconstructionwith")) return "template_jargon";
   if (s.includes("standardusewiththe")) return "template_jargon";
   if (s.includes("easycleaningmatches")) return "template_jargon";
+  if (s.includes("hasacapacityofcanhold") || s.includes("opensthroughitsafter") || s.includes("issuitableforuseatforstoring") || s.includes("forcarewipe")) return "template_jargon";
   return null;
 }
 

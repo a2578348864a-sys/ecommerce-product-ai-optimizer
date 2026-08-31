@@ -577,12 +577,12 @@ describe("R6 运行时 Listing Skill 接入（行为）", () => {
     });
     expect(prompt).toContain(LISTING_RUNTIME_SKILL_VERSION);
     expect(prompt).toContain("QUALITY_CONTRACT");
-    expect(prompt).toContain("8-30");
+    expect(prompt).toContain("5-30");
     expect(prompt).toContain("buyer value");
     expect(prompt).toContain("Do not fabricate");
   });
 
-  it("注入 Provider 的 THERMOS 型数据生成 5 条 8-30 词、逐条锚定已确认事实的五点", async () => {
+  it("注入 Provider 的 THERMOS 型数据生成 5 条 5-30 词、逐条锚定已确认事实的五点", async () => {
     const taskId = "sandbox-runtime-thermos";
     await setupHandoff(taskId, true);
     await saveBrief(taskId);
