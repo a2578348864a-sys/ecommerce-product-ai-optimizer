@@ -42,19 +42,21 @@ describe("进度即时同步（Release Closeout）", () => {
   });
 
   it("失败操作不触发 onCommitted（不得错误推进进度）", () => {
-    // CreativeHandoff：handleConflict 回调体（清空选择 → 重新加载）内不得调用 onCommitted
+    // CreativeHandoff：handleConflict 回调体（清空选择 → 重新加载）内不得调用 onCommitted；
+    // 截取到下一个 useCallback（toggleSelection），避开 setNotice 对象里的 ",}" 提前截断
     const creative = readComponentSource("components/creative-handoff/CreativeHandoffPanel.tsx");
     const conflictStart = creative.indexOf("const handleConflict = useCallback");
-    const conflictEnd = creative.indexOf("},", conflictStart);
+    const conflictEnd = creative.indexOf("const toggleSelection", conflictStart);
     const conflictBody = creative.slice(conflictStart, conflictEnd);
     expect(conflictBody).toContain("void loadAll();");
     expect(conflictBody).not.toContain("onCommitted");
-    // Listing：handleConflict（交接已更新，请重新生成）内不得调用 onCommitted
+    // Listing：handleConflict（交接已更新，请重新生成）内不得调用 onCommitted；
+    // 截取到下一个 useCallback（updateListingBrief）
     const listing = readComponentSource("components/listing-handoff/ListingHandoffSection.tsx");
     const listingConflictStart = listing.indexOf("const handleConflict = useCallback");
-    const listingConflictEnd = listing.indexOf("},", listingConflictStart);
+    const listingConflictEnd = listing.indexOf("const updateListingBrief", listingConflictStart);
     const listingConflictBody = listing.slice(listingConflictStart, listingConflictEnd);
-    expect(listingConflictBody).toContain("void load();");
+    expect(listingConflictBody).toContain("void load({ preserveBriefEdits: true });");
     expect(listingConflictBody).not.toContain("onCommitted");
     // Image：onCommitted 只出现在成功写入后（紧跟 loadState()），错误分支不含
     const image = readComponentSource("components/image-handoff/ImageHandoffSection.tsx");

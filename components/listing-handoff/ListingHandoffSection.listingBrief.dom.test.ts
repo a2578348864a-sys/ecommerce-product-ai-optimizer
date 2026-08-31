@@ -247,12 +247,18 @@ async function flush() {
 
 function listingState(
   listingBrief: Record<string, string>,
-  overrides: Partial<{ listingStatus: "ready" | "active" | "stale" | "revoked" | "legacy_unbound" | "invalid"; currentHandoffRevision: number; confirmedFacts: number }> = {},
+  overrides: Partial<{
+    listingStatus: "ready" | "active" | "stale" | "revoked" | "legacy_unbound" | "invalid";
+    currentHandoffRevision: number;
+    confirmedFacts: number;
+    canGenerate: boolean;
+    claimPreflight: { pass: boolean; reasonCode?: string | null; reason: string | null };
+  }> = {},
 ) {
   return {
     ok: true,
     data: {
-      canGenerate: true,
+      canGenerate: overrides.canGenerate ?? true,
       listingStatus: overrides.listingStatus ?? "ready",
       currentHandoffRevision: overrides.currentHandoffRevision ?? 1,
       sourceHandoffRevision: 1,
@@ -272,7 +278,7 @@ function listingState(
         missingForQuality: [],
         counts: { identity: 1, specification: 1, functional: 2, listingEligible: 4 },
       },
-      claimPreflight: { pass: true, reason: null },
+      claimPreflight: overrides.claimPreflight ?? { pass: true, reason: null },
       listingBrief: { schema: "listing-creation-brief.v1", ...listingBrief },
       keywordBriefSummary: null,
     },
@@ -930,5 +936,67 @@ describe("Listing 创作补充表单（真实 DOM）", () => {
     expect(posts.filter((body) => body.action === undefined)).toHaveLength(0);
     expect(JSON.stringify(posts)).not.toContain("未保存新值");
     expect(fetchMock).toHaveBeenCalledTimes(2); // GET + save POST，无生成 POST
+  });
+});
+
+describe("claimPreflight 三态 UI（Pending 可生成 / 真 blocked 禁用）", () => {
+  function renderWith(overrides: Parameters<typeof listingState>[1]) {
+    const fetchMock = vi.fn(async () => jsonResponse(listingState(brief("A"), overrides)));
+    globalThis.fetch = fetchMock as typeof globalThis.fetch;
+    return { fetchMock };
+  }
+  function readyText(): string {
+    return documentInstance.body.textContent ?? "";
+  }
+  function generateBtn(): FakeElement | null {
+    return elementByTestId("generate-listing-draft");
+  }
+
+  it("Pending（english_rendering_pending + canGenerate=true）：显示可生成 + 英文化提醒 + 按钮启用 + 无 blocking 标记", async () => {
+    const { fetchMock } = renderWith({
+      canGenerate: true,
+      claimPreflight: {
+        pass: false,
+        reasonCode: "english_rendering_pending",
+        reason: "中文商品事实将在正式生成阶段英文化（不阻塞生成）；完整文案校验在生成时执行。",
+      },
+    });
+    const { ListingHandoffSection } = await import("@/components/listing-handoff/ListingHandoffSection");
+    await act(async () => {
+      root = createRootForTest(container as unknown as Element);
+      root.render(createElement(ListingHandoffSection, { taskId: "task-pending-a", refreshSignal: 0 }));
+    });
+    await flush();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    expect(readyText()).toContain("可生成 Listing 草稿");
+    expect(readyText()).toContain("中文事实将在生成时自动英文化");
+    // Pending 不是阻断：不得显示 blocking 文案/标记
+    expect(readyText()).not.toContain("事实校验未通过");
+    expect(readyText()).not.toContain("暂不能生成");
+    expect(elementByTestId("claim-preflight-blocked")).toBeNull();
+    // 生成按钮启用
+    expect(generateBtn()?.disabled).toBe(false);
+  });
+
+  it("真 blocked（listing_claims_unsupported + canGenerate=false）：显示阻断 + 原因 + 按钮禁用", async () => {
+    const { fetchMock } = renderWith({
+      canGenerate: false,
+      claimPreflight: {
+        pass: false,
+        reasonCode: "listing_claims_unsupported",
+        reason: "组合草稿含未经验证的表述（无事实支持）。请补充并确认相应商品事实后重试。",
+      },
+    });
+    const { ListingHandoffSection } = await import("@/components/listing-handoff/ListingHandoffSection");
+    await act(async () => {
+      root = createRootForTest(container as unknown as Element);
+      root.render(createElement(ListingHandoffSection, { taskId: "task-blocked-a", refreshSignal: 0 }));
+    });
+    await flush();
+
+    expect(readyText()).toContain("事实校验未通过，暂不能生成");
+    expect(elementByTestId("claim-preflight-blocked")).not.toBeNull();
+    expect(generateBtn()?.disabled).toBe(true);
   });
 });

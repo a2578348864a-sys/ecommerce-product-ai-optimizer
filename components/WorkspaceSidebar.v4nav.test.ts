@@ -28,15 +28,23 @@ describe("WorkspaceSidebar 导航矩阵（V4.1 C 端）", () => {
     expect(g[1].items.length).toBe(4);
     expect(modeBadgeLabel({ mode: null, v4Graph: false })).toBe("");
   });
-  it("公网：V4 概览 + 案例回放 + 内容工具 + 历史功能（且无研究任务）", () => {
+  it("公网：演示门户分组仅首页 + 完整商品案例（不恢复旧 V4 概览/内容工具/历史功能）", () => {
     const g = labels({ mode: "public_showcase", v4Graph: true });
-    expect(g[0].items).toEqual(["V4 概览:/", "案例回放:/replay"]);
-    expect(g[1].label).toBe("内容工具");
-    expect(g[2].label).toBe("历史功能");
-    expect(g.flatMap((x) => x.items).some((i) => i.includes("/v4/runs"))).toBe(false);
+    // 当前产品合同：一个"演示门户"分组，仅「首页」「完整商品案例」
+    expect(g.length).toBe(1);
+    expect(g[0].label).toBe("演示门户");
+    expect(g[0].items).toEqual(["首页:/", "完整商品案例:/replay"]);
+    // 不含研究/Studio/历史功能/V4 runs/GitHub
+    const all = g.flatMap((x) => x.items.map((i) => i.toLowerCase()));
+    expect(g.some((x) => x.label.includes("内容工具"))).toBe(false);
+    expect(g.some((x) => x.label.includes("历史功能"))).toBe(false);
+    expect(all.some((i) => i.includes("/v4/runs"))).toBe(false);
+    expect(all.some((i) => i.includes("/research"))).toBe(false);
+    expect(all.some((i) => i.includes("studio"))).toBe(false);
+    expect(all.some((i) => i.includes("github"))).toBe(false);
   });
   it("模式 Badge 文案：普通本地页面不显示 V4 / Local Live（公网保留）", () => {
-    expect(modeBadgeLabel({ mode: "public_showcase", v4Graph: false })).toBe("Public Replay · 只读脱敏案例");
+    expect(modeBadgeLabel({ mode: "public_showcase", v4Graph: false })).toBe("演示门户 · 只读案例");
     expect(modeBadgeLabel({ mode: "local_owner", v4Graph: true })).toBe("");
     expect(modeBadgeLabel({ mode: "local_owner", v4Graph: false })).toBe("");
     // 普通本地页面不出现技术模式文案

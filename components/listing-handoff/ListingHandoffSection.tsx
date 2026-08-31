@@ -87,8 +87,19 @@ type ListingStateResponse = {
       missingForQuality: string[];
       counts: { identity: number; specification: number; functional: number; listingEligible: number };
     } | null;
+    // V2：capability 安全字段（仅 level/counts/canCallProvider/isBlocked/missing/suggested）
+    capability?: {
+      level: string;
+      supportedBulletCount: number;
+      targetBulletCount: number;
+      canCallProvider: boolean;
+      isBlocked: boolean;
+      missingClaimGroups: string[];
+      suggestedQuestions: string[];
+    } | null;
     // V3R（契约①）：claimPreflight 与服务端 Generate 校验同源（可生成与否的事实校验预演）
-    claimPreflight?: { pass: boolean; reason: string | null } | null;
+    // reasonCode=english_rendering_pending 是允许生成状态（中文事实生成时英文化）
+    claimPreflight?: { pass: boolean; reasonCode?: string | null; reason: string | null } | null;
     listingBrief?: { schema: "listing-creation-brief.v1"; coreSellingPoint: string; targetAudience: string; useScenario: string; differentiation: string; contentEmphasis: string } | null;
     keywordBriefSummary?: { primaryKeyword: string; source: string; backendTermsCount: number } | null;
   };
@@ -310,6 +321,7 @@ export function ListingHandoffSection({
     prohibitedClaims: 0,
   });
   const [readiness, setReadiness] = useState<ListingStateResponse["data"]["readiness"]>(null);
+  const [capability, setCapability] = useState<ListingStateResponse["data"]["capability"]>(null);
   const [claimPreflight, setClaimPreflight] = useState<ListingStateResponse["data"]["claimPreflight"]>(null);
   /** v2.2.14：每个复制按钮独立的短暂反馈（"已复制 ✓" / "复制失败"） */
   const [copiedButton, setCopiedButton] = useState<string | null>(null);
@@ -345,6 +357,7 @@ export function ListingHandoffSection({
         setCanGenerate(json.data.canGenerate);
         setFactSummary(json.data.factSummary);
         setReadiness(json.data.readiness ?? null);
+        setCapability(json.data.capability ?? null);
         setClaimPreflight(json.data.claimPreflight ?? null);
         const resolvedBrief = resolveLoadedListingCreationBrief({
           incoming: json.data.listingBrief,
@@ -866,6 +879,33 @@ export function ListingHandoffSection({
             ) : null}
           </div>
         )}
+        {capability ? (
+          <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold" data-testid="listing-capability-badges">
+            <span
+              className={`rounded-full px-2.5 py-1 ${
+                capability.canCallProvider ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"
+              }`}
+              data-testid="listing-capability-copy"
+            >
+              {capability.level === "full_draft"
+                ? "可生成 5 条完整卖点"
+                : capability.level === "standard_draft"
+                  ? `可生成 ${capability.targetBulletCount} 条正式卖点`
+                  : capability.level === "partial_draft"
+                    ? "可生成 2 条部分草稿（还缺至少 1 个独立卖点组）"
+                    : "仅能整理事实，暂不能生成正式 Listing"}
+            </span>
+            {capability.suggestedQuestions.length > 0 ? (
+              <span
+                className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-800"
+                data-testid="listing-capability-questions"
+                title={capability.suggestedQuestions.join("；")}
+              >
+                补资料（最多 3 项）：{capability.suggestedQuestions.join("；")}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
         {status !== null && status !== "legacy_unbound" ? (
           <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3" data-testid="listing-creation-brief" data-brief-dirty={briefDirty}>
             <legend className="px-1 text-sm font-bold text-slate-800">商品创作补充（可选）</legend>
@@ -945,14 +985,30 @@ export function ListingHandoffSection({
         ) : status === "ready" ? (
           <div>
             <p>
-              {claimPreflight && !claimPreflight.pass
-                ? "创作资料已确认 · 事实校验未通过，暂不能生成"
-                : factSummary.listingEligibleFacts > 0
+              {(() => {
+                // 三态：pending（可生成）不显示阻断；真 blocked 才显示
+                const preflightBlocked = claimPreflight && !claimPreflight.pass
+                  && claimPreflight.reasonCode !== "english_rendering_pending";
+                const preflightPending = claimPreflight && !claimPreflight.pass
+                  && claimPreflight.reasonCode === "english_rendering_pending";
+                if (preflightBlocked) {
+                  return "创作资料已确认 · 事实校验未通过，暂不能生成";
+                }
+                if (preflightPending) {
+                  return "创作资料已确认 · 中文事实将在生成时自动英文化 · 可生成 Listing 草稿";
+                }
+                return factSummary.listingEligibleFacts > 0
                   ? "创作资料已确认 · 可生成 Listing 草稿"
-                  : "创作资料已确认 · 但缺少可用于 Listing 的商品事实"}
+                  : "创作资料已确认 · 但缺少可用于 Listing 的商品事实";
+              })()}
             </p>
-            {/* V3R（契约①）：claimPreflight 未通过时展示与服务端 Generate 同源的阻断原因 */}
-            {claimPreflight && !claimPreflight.pass ? (
+            {/* V3R（契约①）：真 blocked 才展示服务端同源阻断原因；pending 只显示普通提醒 */}
+            {claimPreflight && !claimPreflight.pass && claimPreflight.reasonCode === "english_rendering_pending" ? (
+              <p className="mt-1 rounded-lg bg-sky-50 px-3 py-2 text-sky-800">
+                中文商品事实将在生成阶段转换为英文，并在生成后继续执行事实与文案校验。
+              </p>
+            ) : null}
+            {claimPreflight && !claimPreflight.pass && claimPreflight.reasonCode !== "english_rendering_pending" ? (
               <p className="mt-1 rounded-lg bg-amber-50 px-3 py-2 text-amber-800" data-testid="claim-preflight-blocked" role="alert">
                 暂不能生成：{claimPreflight.reason}
               </p>

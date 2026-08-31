@@ -475,18 +475,20 @@ describe("buildKeywordBriefDraft（已保存证据 → Brief 草稿）", () => {
   });
 });
 
-describe("KeywordBriefCreateCard 接线契约", () => {
-  const createSource = readFileSync(resolve(process.cwd(), "components/evidence/KeywordBriefCreateCard.tsx"), "utf8");
-  it("必须调用后端 save_keyword_brief（action + confirmed:true + keywordBrief）", () => {
-    expect(createSource).toContain("save_keyword_brief");
-    expect(createSource).toContain("confirmed: true");
-    expect(createSource).toContain("keywordBrief");
-    expect(createSource).toContain("/listing-handoff");
+describe("KeywordStrategyCard 接线契约（替代旧 KeywordBriefCreateCard）", () => {
+  const kwCardSource = readFileSync(resolve(process.cwd(), "components/evidence/KeywordStrategyCard.tsx"), "utf8");
+  it("KeywordStrategyCard 是关键词方案卡片（旧 KeywordBriefCreateCard 已废弃）", () => {
+    expect(kwCardSource).toContain("KeywordStrategyCard");
+    expect(kwCardSource).toContain("我已核对关键词方案");
+    expect(kwCardSource).toContain("disabled");
+    expect(kwCardSource).toContain("onSaved");
   });
-  it("必须有确认复选与禁用守卫（未勾选不可提交）", () => {
-    expect(createSource).toContain("我已核对");
-    expect(createSource).toContain("disabled");
-    expect(createSource).toContain("onSaved");
+  it("EvidenceWorkbench 的 onSave 必须调用后端 save_keyword_brief（action + confirmed:true + keywordBrief + /listing-handoff）", () => {
+    expect(wbSource).toContain("KeywordStrategyCard");
+    expect(wbSource).toContain("save_keyword_brief");
+    expect(wbSource).toContain("confirmed: true");
+    expect(wbSource).toContain("keywordBrief");
+    expect(wbSource).toContain("/listing-handoff");
   });
 });
 

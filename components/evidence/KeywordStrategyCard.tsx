@@ -41,11 +41,13 @@ export function KeywordStrategyCard({
   const [newSupporting, setNewSupporting] = useState("");
   const [backendTerms, setBackendTerms] = useState("");
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
 
   const openEditor = () => {
     setPrimaryKeyword(briefPrimary ?? recommended?.primaryKeyword ?? "");
     setSupporting((recommended?.supportingKeywords ?? []).slice(0, 5));
     setBackendTerms("");
+    setConfirmed(false);
     setEditing(true);
   };
 
@@ -59,11 +61,14 @@ export function KeywordStrategyCard({
   const removeSupporting = (word: string) => setSupporting((prev) => removeSupportingTag(prev, word));
 
   const submit = async () => {
+    // 保存前必须人工核对关键词方案；未勾选直接返回（按钮禁用为第一道门，此处为二次守卫）
+    if (!confirmed) return;
     const backend = backendTerms.split(/\n|,/).map((s) => s.trim()).filter(Boolean);
     const err = await onSave({ primaryKeyword: primaryKeyword.trim(), supportingKeywords: supporting, backendSearchTerms: backend });
     if (err) { setSaveError(err); return; }
     setSaveError(null);
     setEditing(false);
+    setConfirmed(false);
     onSaved?.();
   };
 
@@ -155,9 +160,14 @@ export function KeywordStrategyCard({
             )}
           </details>
 
+          <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+            <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} className="size-4 rounded border-slate-300" data-testid="kw-confirm" />
+            我已核对关键词方案
+          </label>
+
           <div className="mt-3 flex items-center gap-2">
-            <button type="button" data-testid="kw-save" onClick={() => void submit()} className="inline-flex h-8 items-center rounded-lg bg-teal-600 px-3 text-xs font-semibold text-white hover:bg-teal-700">保存关键词方案</button>
-            <button type="button" data-testid="kw-cancel" onClick={() => setEditing(false)} className="inline-flex h-8 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50">取消</button>
+            <button type="button" data-testid="kw-save" disabled={!confirmed} onClick={() => void submit()} className={"inline-flex h-8 items-center rounded-lg px-3 text-xs font-semibold " + (confirmed ? "bg-teal-600 text-white hover:bg-teal-700" : "cursor-not-allowed bg-slate-200 text-slate-400")}>保存关键词方案</button>
+            <button type="button" data-testid="kw-cancel" onClick={() => { setConfirmed(false); setEditing(false); }} className="inline-flex h-8 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50">取消</button>
           </div>
           {(error ?? saveError) ? <p className="mt-2 text-xs text-rose-600" role="alert">{error ?? saveError}</p> : null}
         </div>

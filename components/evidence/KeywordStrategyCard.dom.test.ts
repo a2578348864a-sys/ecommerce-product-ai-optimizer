@@ -37,6 +37,16 @@ class FakeNode {
     this.listeners.set(name, list.filter((item) => item !== fn));
   }
   dispatchEvent(event: FakeEvent): boolean {
+    // 模拟原生行为：checkbox click → 切换 checked。直接改 attribute 绕过 React _valueTracker 的
+    // 实例 setter（否则 tracker 先更新导致 React updateValueIfChanged 检测不到变化，onChange 不触发）；
+    // 随后 click 正常冒泡到 React 根（React 19 checkbox 走 click 路径触发 onChange）。
+    if (this.nodeType === 1 && event.type === "click") {
+      const el = this as unknown as FakeElement;
+      if (el.tagName === "INPUT" && el.type === "checkbox") {
+        if (el.attributes.has("checked")) el.removeAttribute("checked");
+        else el.setAttribute("checked", "");
+      }
+    }
     const chain: FakeNode[] = [];
     let cursor: FakeNode | null = this;
     while (cursor) { chain.push(cursor); cursor = cursor.parentNode; }
@@ -112,6 +122,18 @@ class FakeElement extends FakeNode {
   style: Record<string, string> = {};
   className = "";
   scrollIntoViewCalls = 0;
+  get disabled(): boolean { return this.attributes.has("disabled"); }
+  set disabled(value: boolean) {
+    if (value) this.setAttribute("disabled", "");
+    else this.removeAttribute("disabled");
+  }
+  get checked(): boolean { return this.attributes.has("checked"); }
+  set checked(value: boolean) {
+    if (value) this.setAttribute("checked", "");
+    else this.removeAttribute("checked");
+  }
+  get type(): string { return this.attributes.get("type") ?? ""; }
+  set type(value: string) { this.setAttribute("type", value); }
   get open(): boolean { return this.attributes.has("open"); }
   set open(value: boolean) {
     if (value) this.setAttribute("open", "");
@@ -292,6 +314,10 @@ describe("KeywordStrategyCard", () => {
     const btn = container.querySelector("[data-testid=kw-adjust]") as unknown as FakeElement;
     btn.dispatchEvent(new FakeEvent("click", btn as unknown as FakeNode));
     await flush();
+    // 保存前必须勾选"我已核对关键词方案"（人工确认门）
+    const confirmBox = container.querySelector("[data-testid=kw-confirm]") as unknown as FakeElement;
+    confirmBox.dispatchEvent(new FakeEvent("click", confirmBox as unknown as FakeNode));
+    await flush();
     const save = container.querySelector("[data-testid=kw-save]") as unknown as FakeElement;
     save.dispatchEvent(new FakeEvent("click", save as unknown as FakeNode));
     await flush();
@@ -303,6 +329,9 @@ describe("KeywordStrategyCard", () => {
     await render({ rows: ROWS, productName: PRODUCT, briefPrimary: null, briefEvidenceCount: 10, inListing: false, needsReconfirm: false, onSave: async () => "内容刚在其他位置更新，请刷新后重试。", onSaved: () => {}, rawEvidence: RAW as never });
     const btn = container.querySelector("[data-testid=kw-adjust]") as unknown as FakeElement;
     btn.dispatchEvent(new FakeEvent("click", btn as unknown as FakeNode));
+    await flush();
+    const confirmBox = container.querySelector("[data-testid=kw-confirm]") as unknown as FakeElement;
+    confirmBox.dispatchEvent(new FakeEvent("click", confirmBox as unknown as FakeNode));
     await flush();
     const save = container.querySelector("[data-testid=kw-save]") as unknown as FakeElement;
     save.dispatchEvent(new FakeEvent("click", save as unknown as FakeNode));
@@ -330,5 +359,61 @@ describe("KeywordStrategyCard", () => {
     // 折叠区内的表格仅在 details 打开后出现；默认页面无表格（已由 390 测试覆盖）
     const text = documentInstance.body.textContent;
     expect(text).toContain("查看原始关键词资料");
+  });
+  it("展开编辑器后有确认 checkbox（我已核对关键词方案）", async () => {
+    await render({ rows: ROWS, productName: PRODUCT, briefPrimary: null, briefEvidenceCount: 10, inListing: false, needsReconfirm: false, onSave: async () => null, onSaved: () => {}, rawEvidence: RAW as never });
+    const btn = container.querySelector("[data-testid=kw-adjust]") as unknown as FakeElement;
+    btn.dispatchEvent(new FakeEvent("click", btn as unknown as FakeNode));
+    await flush();
+    const confirmBox = container.querySelector("[data-testid=kw-confirm]") as unknown as FakeElement;
+    expect(confirmBox).not.toBeNull();
+    expect(confirmBox.checked).toBe(false);
+    expect(documentInstance.body.textContent).toContain("我已核对关键词方案");
+  });
+  it("未勾选确认时保存按钮 disabled，点击不调用 onSave/onSaved", async () => {
+    let saved = 0; let savedOk = false;
+    await render({ rows: ROWS, productName: PRODUCT, briefPrimary: null, briefEvidenceCount: 10, inListing: false, needsReconfirm: false, onSave: async () => { saved += 1; return null; }, onSaved: () => { savedOk = true; }, rawEvidence: RAW as never });
+    const btn = container.querySelector("[data-testid=kw-adjust]") as unknown as FakeElement;
+    btn.dispatchEvent(new FakeEvent("click", btn as unknown as FakeNode));
+    await flush();
+    const save = container.querySelector("[data-testid=kw-save]") as unknown as FakeElement;
+    expect(save.disabled).toBe(true);
+    save.dispatchEvent(new FakeEvent("click", save as unknown as FakeNode));
+    await flush();
+    expect(saved).toBe(0);
+    expect(savedOk).toBe(false);
+  });
+  it("勾选后保存按钮启用；点击只调用 onSave 一次，成功后 onSaved 一次并收起", async () => {
+    let saved = 0; let savedOk = false;
+    await render({ rows: ROWS, productName: PRODUCT, briefPrimary: null, briefEvidenceCount: 10, inListing: false, needsReconfirm: false, onSave: async () => { saved += 1; return null; }, onSaved: () => { savedOk = true; }, rawEvidence: RAW as never });
+    const btn = container.querySelector("[data-testid=kw-adjust]") as unknown as FakeElement;
+    btn.dispatchEvent(new FakeEvent("click", btn as unknown as FakeNode));
+    await flush();
+    const confirmBox = container.querySelector("[data-testid=kw-confirm]") as unknown as FakeElement;
+    confirmBox.dispatchEvent(new FakeEvent("click", confirmBox as unknown as FakeNode));
+    await flush();
+    const save = container.querySelector("[data-testid=kw-save]") as unknown as FakeElement;
+    expect(save.disabled).toBe(false);
+    save.dispatchEvent(new FakeEvent("click", save as unknown as FakeNode));
+    await flush();
+    expect(saved).toBe(1);
+    expect(savedOk).toBe(true);
+    expect(container.querySelector("[data-testid=kw-editor]")).toBeNull();
+  });
+  it("取消或重新打开编辑器后确认状态恢复 false", async () => {
+    await render({ rows: ROWS, productName: PRODUCT, briefPrimary: null, briefEvidenceCount: 10, inListing: false, needsReconfirm: false, onSave: async () => null, onSaved: () => {}, rawEvidence: RAW as never });
+    const btn = container.querySelector("[data-testid=kw-adjust]") as unknown as FakeElement;
+    btn.dispatchEvent(new FakeEvent("click", btn as unknown as FakeNode));
+    await flush();
+    const confirmBox = container.querySelector("[data-testid=kw-confirm]") as unknown as FakeElement;
+    confirmBox.dispatchEvent(new FakeEvent("click", confirmBox as unknown as FakeNode));
+    await flush();
+    const cancel = container.querySelector("[data-testid=kw-cancel]") as unknown as FakeElement;
+    cancel.dispatchEvent(new FakeEvent("click", cancel as unknown as FakeNode));
+    await flush();
+    btn.dispatchEvent(new FakeEvent("click", btn as unknown as FakeNode));
+    await flush();
+    const confirmBox2 = container.querySelector("[data-testid=kw-confirm]") as unknown as FakeElement;
+    expect(confirmBox2.checked).toBe(false);
   });
 });

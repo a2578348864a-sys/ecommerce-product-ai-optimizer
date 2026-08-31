@@ -46,3 +46,24 @@ describe("轮 21 Listing 生成依据（服务端安全结果展示）", () => {
     expect(source).toContain("这份历史草稿没有保存生成依据，重新生成后可查看。");
   });
 });
+
+
+describe("V2 capability 展示（最小闭环）", () => {
+  it("展示四态能力文案 + 补资料问题（最多 3 项），且不暗示必须采集竞品", () => {
+    const source = readFileSync(resolve(process.cwd(), "components/listing-handoff/ListingHandoffSection.tsx"), "utf8");
+    expect(source).toContain("listing-capability-badges");
+    expect(source).toContain("listing-capability-copy");
+    expect(source).toContain("listing-capability-questions");
+    expect(source).toContain("仅能整理事实，暂不能生成正式 Listing");
+    expect(source).toContain("可生成 2 条部分草稿（还缺至少 1 个独立卖点组）");
+    expect(source).toContain("可生成 ${capability.targetBulletCount} 条正式卖点");
+    expect(source).toContain("可生成 5 条完整卖点");
+    expect(source).toContain("补资料（最多 3 项）");
+  });
+
+  it("保留旧响应兼容：capability 缺失（undefined）页面不崩溃（仅当存在才渲染）", () => {
+    const source = readFileSync(resolve(process.cwd(), "components/listing-handoff/ListingHandoffSection.tsx"), "utf8");
+    // 渲染条件为 capability 存在 → 旧响应无 capability 时跳过该块
+    expect(source).toContain("{capability ? (");
+  });
+});

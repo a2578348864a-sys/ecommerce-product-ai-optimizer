@@ -73,7 +73,9 @@ describe("Product UI polish v2", () => {
       expect(detailSource).toContain(heading);
     }
     expect(detailSource).toContain("尚未取得");
-    expect(detailSource).toContain("历史未核实草稿，禁止使用。");
+    expect(detailSource).toContain("AI Listing 草稿已生成（未人工核实，暂不可发布）。");
+    expect(detailSource).toContain("发布前需人工确认");
+    expect(detailSource).toContain("前往 Listing Studio 人工核对");
     // 正式详情不再挂载五步推进工作台或技术数据面板。
     expect(detailSource).not.toContain("技术信息与原始数据");
     expect(detailSource).not.toContain("WorkflowStepWorkspace");

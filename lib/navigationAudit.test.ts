@@ -336,7 +336,9 @@ describe("TaskRecordDetail operation overview", () => {
     expect(detailSource).toContain("EvidenceWorkbench");
     expect(detailSource).toContain("人工决定");
     expect(detailSource).toContain("Listing 与商品图片");
-    expect(detailSource).toContain("历史未核实草稿，禁止使用。");
+    expect(detailSource).toContain("AI Listing 草稿已生成（未人工核实，暂不可发布）。");
+    expect(detailSource).toContain("发布前需人工确认");
+    expect(detailSource).toContain("前往 Listing Studio 人工核对");
     expect(detailSource).not.toContain("/prototype");
   });
 });
