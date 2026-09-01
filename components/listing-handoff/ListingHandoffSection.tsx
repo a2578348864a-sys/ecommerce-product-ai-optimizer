@@ -351,6 +351,8 @@ export function ListingHandoffSection({
     prohibitedClaims: 0,
   });
   const [readiness, setReadiness] = useState<ListingStateResponse["data"]["readiness"]>(null);
+  /** 生成反馈合同：load 后的最新 readiness（generate 在 await load() 之后读取，避免闭包旧值） */
+  const readinessRef = useRef<ListingStateResponse["data"]["readiness"]>(null);
   const [capability, setCapability] = useState<ListingStateResponse["data"]["capability"]>(null);
   const [claimPreflight, setClaimPreflight] = useState<ListingStateResponse["data"]["claimPreflight"]>(null);
   /** v2.2.14：每个复制按钮独立的短暂反馈（"已复制 ✓" / "复制失败"） */
@@ -387,6 +389,7 @@ export function ListingHandoffSection({
         setCanGenerate(json.data.canGenerate);
         setFactSummary(json.data.factSummary);
         setReadiness(json.data.readiness ?? null);
+        readinessRef.current = json.data.readiness ?? null;
         setCapability(json.data.capability ?? null);
         setClaimPreflight(json.data.claimPreflight ?? null);
         const resolvedBrief = resolveLoadedListingCreationBrief({
@@ -590,8 +593,27 @@ export function ListingHandoffSection({
       }
       if (mounted.current) {
         if (json.ok && json.data.idempotentReplay) {
-          setNotice({ tone: "info", text: "该请求已成功生成过，未重复调用。" });
-        } else if (json.ok && json.data.safeFallbackApplied) {
+          // 生成反馈合同：幂等重放不是"无事发生"。若关键词方案已确认而当前草稿仍是
+          // 确认前生成的（keywordPlanSource=none），必须向用户说明为何关键词未进入草稿。
+          setStatus(json.data.listingStatus);
+          setRequestId(null);
+          setRetryBody(null);
+          setConflictPending(false);
+          await load();
+          if (mounted.current) {
+            const replayDraft = json.data.draft ?? null;
+            if (replayDraft && replayDraft.keywordPlanSource === "none" && readinessRef.current?.keywordReady) {
+              setNotice({
+                tone: "info",
+                text: "关键词方案已确认，但系统判定生成条件未变化，本次未重新生成：当前草稿仍是确认关键词之前保存的，关键词尚未进入草稿。请在上方商品创作补充中修改任一内容后再点一次生成，关键词即会进入 Listing。",
+              });
+            } else {
+              setNotice({ tone: "info", text: "该请求已成功生成过，未重复调用。" });
+            }
+          }
+          return;
+        }
+        if (json.ok && json.data.safeFallbackApplied) {
           // V2 Listing 稳定落库：AI 输出未通过事实校验 → 系统生成保守草稿（用户可编辑完善）
           setNotice({ tone: "info", text: "AI 优化未通过质量检查，已保留安全基础草稿。" });
         } else if (json.ok) {
@@ -1024,6 +1046,13 @@ export function ListingHandoffSection({
             >
               {submitting ? "生成中…" : "生成 Listing 草稿"}
             </button>
+            {!canGenerate && !submitting && !briefDirty && (!claimPreflight || claimPreflight.pass) ? (
+              <p className="mt-1 text-xs font-semibold text-amber-700" data-testid="generate-disabled-reason">
+                {readiness?.missingForQuality && readiness.missingForQuality.length > 0
+                  ? `生成条件未满足：${readiness.missingForQuality.slice(0, 2).join(" ")}`
+                  : "生成条件未满足（交接状态或资料校验未通过），请核对本页资料或刷新后重试。"}
+              </p>
+            ) : null}
           </div>
         ) : status === "active" ? (
           <div>
@@ -1100,6 +1129,15 @@ export function ListingHandoffSection({
               >
                 {submitting ? "生成中…" : draft?.draftKind === "ai_optimized_listing" ? "重新生成草稿" : "生成 AI 优化草稿"}
               </button>
+              {!canGenerate && !submitting && !briefDirty ? (
+                <p className="mt-1 text-xs font-semibold text-amber-700" data-testid="generate-disabled-reason">
+                  {claimPreflight && !claimPreflight.pass
+                    ? `暂不能生成：${claimPreflight.reason ?? "生成前校验未通过"}`
+                    : readiness?.missingForQuality && readiness.missingForQuality.length > 0
+                      ? `生成条件未满足：${readiness.missingForQuality.slice(0, 2).join(" ")}`
+                      : "生成条件未满足（交接状态或资料校验未通过），请核对本页资料或刷新后重试。"}
+                </p>
+              ) : null}
               <p className="mt-1.5 text-xs text-slate-500">
                 重新生成将替换当前草稿，不影响已确认的商品资料。
               </p>

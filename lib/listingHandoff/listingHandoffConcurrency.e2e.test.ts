@@ -33,8 +33,10 @@ import {
 import { generateCreativeHandoffPreview } from "@/lib/server/productCreativeHandoffPreview";
 import { generateListingDraftFromHandoff, ListingHandoffError } from "@/lib/listingHandoff/listingGenerationService";
 import { createMockListingProvider } from "@/lib/listingHandoff/mockListingProvider";
+import { buildListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
 import { parseListingHandoffBinding } from "@/lib/listingHandoff/listingBinding";
 import { parseProductCreativeHandoff } from "@/lib/productCreativeHandoff";
+import { calculateHandoffFingerprint } from "@/lib/productCreativeHandoff";
 import { buildConfirmableCandidates } from "@/lib/productCreativeHandoffConfirmation";
 import { getSandboxTask } from "@/lib/server/demoSandbox";
 import { getDemoAccessById } from "@/lib/server/demoAccess";
@@ -124,6 +126,43 @@ async function createHandoff(taskId: string, ctx: { mode: string; [k: string]: u
     requestFingerprint: `sha256:${"a".repeat(64)}`,
   });
   return { result, sv };
+}
+
+async function addConfirmedProductFact(taskId: string, fact: { field: string; label: string; value: string }) {
+  const row = await client!.viralAnalysisRecord.findUnique({ where: { id: taskId } });
+  const parsed = JSON.parse(row!.resultJson) as Record<string, any>;
+  const handoff = parsed.creativeHandoff;
+  const version = handoff.versions[handoff.versions.length - 1];
+  version.confirmedFacts.push({
+    factId: "00000000-0000-4000-8000-00000000000a",
+    field: fact.field,
+    label: fact.label,
+    value: fact.value,
+    evidenceTier: "human_confirmed",
+    usageScopes: ["listing", "internal"],
+    sourceRef: {
+      sourceKind: "user_confirmation",
+      sourceField: fact.field,
+      confirmedBy: { mode: "owner", subjectFingerprint: "a1b2c3d4e5f6a7b8" },
+      confirmedAt: NOW,
+      confirmationReference: `confirm:${fact.field}`,
+    },
+    confirmedAt: NOW,
+    confirmedBy: { mode: "owner", subjectFingerprint: "a1b2c3d4e5f6a7b8" },
+  });
+  version.handoffFingerprint = calculateHandoffFingerprint({
+    sourceResearch: version.sourceResearch,
+    productIdentity: version.productIdentity,
+    confirmedFacts: version.confirmedFacts,
+    stableSourceFacts: version.stableSourceFacts,
+    aiCreativeReferences: version.aiCreativeReferences,
+    issues: version.issues,
+    prohibitedClaims: version.prohibitedClaims,
+    creativePreferences: version.creativePreferences,
+    visualReferences: version.visualReferences,
+    humanReviewRequired: version.humanReviewRequired,
+  } as never);
+  await client!.viralAnalysisRecord.update({ where: { id: taskId }, data: { resultJson: JSON.stringify(parsed) } });
 }
 
 async function listingInputFor(taskId: string, ctx: never, requestId: string) {
@@ -460,6 +499,7 @@ describe("PR2-2 Owner 真实 SQLite CAS 并发（第21章）", () => {
     expect(parsedFinal.unknownNamespace).toEqual({ keep: true });
     expect(parsedFinal.listingHandoffBinding).toBeUndefined();
   });
+});
 describe("PR2-2 Visitor 真实 Store 锁并发（第21章）", () => {
   it("V1. Visitor Generate 成功 → Listing + Binding 绑定 Visitor Handoff", async () => {
     const ctx = visitorContext("demo-access-a");
@@ -589,4 +629,66 @@ describe("PR2-2 Visitor 真实 Store 锁并发（第21章）", () => {
     expect(gst("demo-access-a", "sandbox-task-a")).not.toBeNull();
   });
 });
-})
+
+
+// ── 第八轮：Keyword Brief 两阶段语义竞态（锁外指纹 vs 锁内实际语义）──
+describe("Keyword Brief 两阶段语义竞态（第八轮）", () => {
+  it("FP-race：Brief 在锁外读取与锁内生成之间落库 → 语义冲突 409，不得静默生成语义不符草稿", async () => {
+    await createHandoff("task-pr22", ownerContext, REQ);
+    await addConfirmedProductFact("task-pr22", { field: "product_type", label: "商品类型", value: "Synthetic Product" });
+    const provider = createMockListingProvider();
+    const input = await listingInputFor("task-pr22", ownerContext as never, "550e8400-e29b-41d4-a716-446655449001");
+    const genPromise = generateListingDraftFromHandoff("task-pr22", ownerContext as never, input, { provider, providerOptions: { delayMs: 900 } });
+    // 竞态窗口：阶段A已读取（语义=无Brief），Brief 此刻落库
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const brief = buildListingKeywordBrief({
+      primaryKeyword: "Synthetic Product",
+      supportingKeywords: [],
+      backendSearchTerms: [],
+      source: "sellersprite",
+      capturedAt: "2026-08-29T00:00:00.000Z",
+    });
+    if (!brief.ok) throw new Error("brief build failed");
+    const row = await client!.viralAnalysisRecord.findUnique({ where: { id: "task-pr22" } });
+    const parsed = JSON.parse(row!.resultJson) as Record<string, unknown>;
+    parsed.listingKeywordBrief = brief.brief as unknown as Record<string, unknown>;
+    await client!.viralAnalysisRecord.update({ where: { id: "task-pr22" }, data: { resultJson: JSON.stringify(parsed) } });
+    await expect(genPromise).rejects.toMatchObject({ code: "task_result_conflict", status: 409 });
+  });
+
+
+  it("FP-race2：重放预取窗口内 Brief 被移除 → 锁内语义重验证必须 409，不得返回旧稿重放", async () => {
+    await createHandoff("task-pr22", ownerContext, REQ);
+    await addConfirmedProductFact("task-pr22", { field: "product_type", label: "商品类型", value: "Synthetic Product" });
+    const provider = createMockListingProvider();
+    // 1) 无 Brief 首次生成 → binding（语义=无Brief）
+    const input1 = await listingInputFor("task-pr22", ownerContext as never, "550e8400-e29b-41d4-a716-446655449011");
+    const r1 = await generateListingDraftFromHandoff("task-pr22", ownerContext as never, input1, { provider });
+    expect(r1.idempotentReplay).toBe(false);
+    // 2) 保存 Brief（指纹语义应变化）
+    const brief = buildListingKeywordBrief({
+      primaryKeyword: "Synthetic Product",
+      supportingKeywords: [],
+      backendSearchTerms: [],
+      source: "sellersprite",
+      capturedAt: "2026-08-29T00:00:00.000Z",
+    });
+    if (!brief.ok) throw new Error("brief build failed");
+    const writeBrief = async (payload: unknown) => {
+      const row = await client!.viralAnalysisRecord.findUnique({ where: { id: "task-pr22" } });
+      const parsed = JSON.parse(row!.resultJson) as Record<string, unknown>;
+      if (payload === null) delete parsed.listingKeywordBrief;
+      else parsed.listingKeywordBrief = payload as Record<string, unknown>;
+      await client!.viralAnalysisRecord.update({ where: { id: "task-pr22" }, data: { resultJson: JSON.stringify(parsed) } });
+    };
+    await writeBrief(brief.brief as unknown as Record<string, unknown>);
+    // 3) 带新鲜 SV 的重试：阶段A读到 Brief（语义=有Brief）→ delayMs 窗口内移除 Brief → 锁内语义=无Brief
+    const input2 = await listingInputFor("task-pr22", ownerContext as never, "550e8400-e29b-41d4-a716-446655449012");
+    const genPromise = generateListingDraftFromHandoff("task-pr22", ownerContext as never, input2, { provider, providerOptions: { delayMs: 2200 } });
+    // 阶段A（含指纹）已完成后再在可控延迟窗口内移除 Brief。
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    await writeBrief(null);
+    // 锁内语义（无Brief）≠ 锁外指纹语义（有Brief）→ 必须 409，禁止返回旧稿重放
+    await expect(genPromise).rejects.toMatchObject({ code: "task_result_conflict", status: 409 });
+  });
+});

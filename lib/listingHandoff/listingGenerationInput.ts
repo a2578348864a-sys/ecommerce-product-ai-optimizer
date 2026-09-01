@@ -61,8 +61,24 @@ export type ListingGenerationVersions = {
 };
 
 /**
+ * Keyword Brief 幂等语义（第八轮根因修复）：确认 Keyword Brief 会改变生成结果
+ * （keywords/backendSearchTerms/keywordReady/计划 keywordIds），因此其"生成语义"
+ * 必须纳入幂等指纹。仅包含经解析、相关性确认与政策过滤后的有效语义；
+ * capturedAt/报告元数据等非生成语义不参与（不同请求同语义仍幂等）。
+ */
+export type KeywordBriefSemantics = {
+  primaryKeyword: string;
+  supportingKeywords: string[];
+  backendSearchTerms: string[];
+  /** 仅当来源改变生成/证据策略时纳入（auto_suggested 走可追溯词白名单，其余来源行为相同） */
+  source?: "auto_suggested";
+};
+
+/**
  * Listing 幂等语义不仅由事实输入决定，也由 Composer 与生成策略版本决定。
  * 这样规则升级后不会误命中旧版本草稿。
+ * 第八轮：keywordBriefSemantics 仅在存在有效 Brief 时加入哈希对象——
+ * 缺省/为 null 时哈希形状与旧版本完全一致（无 Brief 指纹字节兼容）。
  */
 export function computeListingGenerationFingerprint(
   input: ListingGenerationInput,
@@ -70,12 +86,14 @@ export function computeListingGenerationFingerprint(
     composerVersion: LISTING_COMPOSER_VERSION,
     generationPolicyVersion: LISTING_GENERATION_POLICY_VERSION,
   },
+  keywordBriefSemantics?: KeywordBriefSemantics | null,
 ): string {
   return createHash("sha256")
     .update(JSON.stringify({
       composerVersion: versions.composerVersion,
       generationPolicyVersion: versions.generationPolicyVersion,
       input,
+      ...(keywordBriefSemantics ? { keywordBriefSemantics } : {}),
     }), "utf8")
     .digest("hex");
 }

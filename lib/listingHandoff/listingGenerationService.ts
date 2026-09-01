@@ -7,6 +7,7 @@ import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPre
 import {
   buildListingInputFromCreativeHandoff,
   computeListingGenerationFingerprint,
+  type KeywordBriefSemantics,
   LISTING_COMPOSER_VERSION,
 } from "@/lib/listingHandoff/listingGenerationInput";
 import { withListingBrief, type ListingBrief } from "@/lib/listingHandoff/listingBrief";
@@ -192,6 +193,37 @@ function policyFilteredKeywordBrief<T extends { primaryKeyword: string; supporti
   const acceptedBackend = policyFilterForListing(brief.backendSearchTerms, generationInput);
   const [primaryKeyword, ...supportingKeywords] = acceptedMain;
   return { ...brief, primaryKeyword, supportingKeywords, backendSearchTerms: acceptedBackend };
+}
+
+/**
+ * 第八轮根因修复：有效 Keyword Brief 的"生成语义"规范化（唯一函数，锁外与锁内共用）。
+ * 链路与锁内生成链完全一致：parse → 主词相关度确认（不足 → 语义为空）→ 唯一政策出口过滤（清空 → 语义为空）。
+ * capturedAt/报告元数据等非生成语义在此剔除（同语义不同元数据 → 同指纹，仍幂等）。
+ * 返回 null 等价于"无有效 Brief"（指纹与旧版本字节兼容）。
+ */
+export function effectiveKeywordBriefSemanticsOf(
+  briefRaw: unknown,
+  generationInput: ListingGenerationInput,
+): KeywordBriefSemantics | null {
+  const keywordBrief = parseListingKeywordBrief(briefRaw);
+  if (!keywordBrief) return null;
+  const productNameForRelevance = [
+    generationInput.productFacts.find((f) => f.field === "brand")?.value ?? "",
+    generationInput.productFacts.find((f) => f.field === "series_or_model")?.value ?? "",
+    generationInput.productFacts.find((f) => f.field === "product_type")?.value ?? "",
+  ].filter(Boolean).join(" ");
+  if (productNameForRelevance.trim()) {
+    const best = pickBestKeyword([{ keyword: keywordBrief.primaryKeyword }], productNameForRelevance);
+    if (!best) return null;
+  }
+  const effective = policyFilteredKeywordBrief(keywordBrief, generationInput);
+  if (!effective) return null;
+  return {
+    primaryKeyword: effective.primaryKeyword,
+    supportingKeywords: [...effective.supportingKeywords],
+    backendSearchTerms: [...effective.backendSearchTerms],
+    ...(effective.source === "auto_suggested" ? { source: "auto_suggested" as const } : {}),
+  };
 }
 
 /** Keyword Brief 是 SEO 输入，不是事实来源；最终草稿中的每个 keyword 仍须能通过正式 Claim Evidence。 */
@@ -708,7 +740,10 @@ export async function generateListingDraftFromHandoff(
   } else {
     throw new ListingHandoffError("listing_english_rendering_failed", 422, `事实英文化失败：${renderingResult.message}`);
   }
-  const generationInputFingerprint = computeListingGenerationFingerprint(generationInput);
+  // 第八轮根因修复：确认 Keyword Brief 会改变生成语义（keywords/keywordReady/计划关键词），
+  // 必须纳入幂等指纹；锁内生成链使用同一规范化函数，两阶段语义不一致 → 语义冲突 409。
+  const keywordBriefSemantics = effectiveKeywordBriefSemanticsOf(gateA.keywordBriefRaw, generationInput);
+  const generationInputFingerprint = computeListingGenerationFingerprint(generationInput, undefined, keywordBriefSemantics);
 
   // ── 阶段B：Composition first（锁外，不持锁，不调用 Provider）──
   const generatedAt = new Date().toISOString();
@@ -788,6 +823,14 @@ export async function generateListingDraftFromHandoff(
       const { handoff: handoffC, version: versionC } = validated;
       if (sha256(versionC.handoffFingerprint) !== binding.sourceHandoffFingerprintHash) {
         throw new ListingHandoffError("handoff_stale", 409, "交接内容已经更新，请重新生成。");
+      }
+
+      // ── Keyword Brief 语义重验证（第八轮）：锁内实际语义必须与锁外指纹语义一致 ──
+      // 不一致说明 Brief 在两阶段之间变化：按语义冲突 409（客户端刷新后自动重试），
+      // 禁止静默用旧指纹命中旧草稿重放或保存语义不符的 binding。
+      const lockKeywordBriefSemantics = effectiveKeywordBriefSemanticsOf(current.listingKeywordBrief, generationInput);
+      if (JSON.stringify(lockKeywordBriefSemantics) !== JSON.stringify(keywordBriefSemantics)) {
+        throw new TaskResultJsonMutationError("task_result_conflict", 409, "关键词方案刚发生更新，请刷新后重试。");
       }
 
       // ── 幂等检查（锁内，同 requestId 语义；先于 storageVersion 校验）──

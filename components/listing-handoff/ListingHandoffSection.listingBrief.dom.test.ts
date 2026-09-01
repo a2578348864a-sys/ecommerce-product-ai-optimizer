@@ -1015,3 +1015,189 @@ describe("claimPreflight 三态 UI（Pending 可生成 / 真 blocked 禁用）",
     expect(generateBtn()?.disabled).toBe(true);
   });
 });
+
+// ── 生成"点击无响应"防治：幂等重放必须给出明确原因；禁用必须显示原因；busy/错误/409 恢复合同锁定 ──
+describe("生成点击反馈合同（幂等重放/禁用原因/busy/错误/409 恢复）", () => {
+  /** active 态 + 确认前生成的旧草稿（keywordPlanSource=none）+ 已确认关键词方案 */
+  function activeStateWithStaleKeywordDraft(canGenerate = true) {
+    const state = listingState(brief("A"), { listingStatus: "active", currentHandoffRevision: 2, canGenerate }) as unknown as {
+      data: Record<string, unknown>;
+    };
+    state.data.draft = {
+      generatedAt: "2026-09-01T15:06:04.021Z",
+      source: "deterministic_composition_v1",
+      version: 1,
+      composerVersion: "listing-composer-v1",
+      generationPolicyVersion: "listing-generation-policy-v1",
+      polishApplied: false,
+      polishModel: null,
+      titles: ["ukeetap UTO001 Expandable Cutlery Drawer Organizer"],
+      bullets: ["The Organizer has an expandable compartment design for drawers."],
+      description: "The Organizer fits most medium and large kitchen drawers.",
+      keywords: [],
+      draftKind: "safe_fact_draft",
+      listingUnqualified: false,
+      factSafe: true,
+      copyQuality: true,
+      fallbackApplied: true,
+      fallbackReason: "AI 服务暂时不可用，已保留安全草稿。",
+      providerAttempted: true,
+      providerSucceeded: false,
+      keywordPlanSource: "none",
+      usedKeywordTrace: [],
+      searchOnlyKeywordTrace: [],
+      sellingPoints: ["Expandable design for drawers"],
+      riskNotes: ["商品信息来自已人工确认的事实，所有表述仍需人工复核。"],
+      reviewChecklist: ["请人工核对事实、表达与搜索词后完善。"],
+      blockedClaims: [],
+      complianceWarnings: [],
+      qualityIssues: ["AI 最终草稿未通过 Claim Evidence"],
+    };
+    state.data.keywordBriefSummary = { primaryKeyword: "silverware organizer", source: "sellersprite", backendTermsCount: 0 };
+    (state.data.readiness as { keywordReady: boolean }).keywordReady = true;
+    return state;
+  }
+
+  it("幂等重放且草稿早于关键词确认：必须显示含关键词方案的明确原因，不得只提示未重复调用", async () => {
+    const state = activeStateWithStaleKeywordDraft();
+    const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return jsonResponse({ ok: true, data: { listingStatus: "active", currentHandoffRevision: 2, sourceHandoffRevision: 2, idempotentReplay: true, humanReviewRequired: true, draft: state.data.draft } });
+      }
+      return jsonResponse(state);
+    });
+    globalThis.fetch = fetchMock as typeof globalThis.fetch;
+    const { ListingHandoffSection } = await import("@/components/listing-handoff/ListingHandoffSection");
+    await act(async () => {
+      root = createRootForTest(container as unknown as Element);
+      root.render(createElement(ListingHandoffSection, { taskId: "task-brief-a", refreshSignal: 0 }));
+    });
+    await flush();
+
+    expect(regenerateButton()?.disabled).toBe(false);
+    await clickGenerate(regenerateButton());
+    await flush();
+
+    const posts = fetchMock.mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === "POST");
+    expect(posts).toHaveLength(1);
+    expect(container.textContent).toContain("关键词方案");
+    expect(container.textContent).toContain("未重新生成");
+    expect(container.textContent).toContain("尚未进入草稿");
+  });
+
+  it("canGenerate=false 且无阻断原因时：禁用的生成按钮旁必须显示具体原因", async () => {
+    const state = listingState(brief("A"), { listingStatus: "active", canGenerate: false });
+    const fetchMock = vi.fn(async () => jsonResponse(state));
+    globalThis.fetch = fetchMock as typeof globalThis.fetch;
+    const { ListingHandoffSection } = await import("@/components/listing-handoff/ListingHandoffSection");
+    await act(async () => {
+      root = createRootForTest(container as unknown as Element);
+      root.render(createElement(ListingHandoffSection, { taskId: "task-brief-a", refreshSignal: 0 }));
+    });
+    await flush();
+
+    expect(regenerateButton()?.disabled).toBe(true);
+    const reason = elementByTestId("generate-disabled-reason");
+    expect(reason).not.toBeNull();
+    expect((reason?.textContent ?? "").trim().length).toBeGreaterThan(0);
+  });
+
+  it("busy 期间重复点击：恰好 1 次生成 POST，不重复请求", async () => {
+    let release!: (value: Response) => void;
+    const gate = new Promise<Response>((resolve) => { release = resolve; });
+    let postCount = 0;
+    const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        postCount += 1;
+        return postCount === 1 ? gate : jsonResponse(generateListItemResponse());
+      }
+      return jsonResponse(listingState(brief("A"), { listingStatus: "active" }));
+    });
+    globalThis.fetch = fetchMock as typeof globalThis.fetch;
+    const { ListingHandoffSection } = await import("@/components/listing-handoff/ListingHandoffSection");
+    await act(async () => {
+      root = createRootForTest(container as unknown as Element);
+      root.render(createElement(ListingHandoffSection, { taskId: "task-brief-a", refreshSignal: 0 }));
+    });
+    await flush();
+
+    await clickGenerate(regenerateButton());
+    // busy 合同：pending 期间按钮必须禁用并显示"生成中…"（真实浏览器中 disabled 是防重击第一道防线）
+    expect(regenerateButton()?.disabled).toBe(true);
+    expect(regenerateButton()?.textContent.trim()).toBe("生成中…");
+    release(jsonResponse(generateListItemResponse()));
+    await flush();
+    expect(postCount).toBe(1);
+    expect(regenerateButton()?.disabled).toBe(false);
+  });
+
+  it("生成返回 500：页面显示可见的生成失败提示", async () => {
+    const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return new Response(JSON.stringify({ ok: false, error: { code: "listing_claims_unsupported", message: "组合草稿未通过事实校验" } }), { status: 500, headers: { "content-type": "application/json" } });
+      }
+      return jsonResponse(listingState(brief("A"), { listingStatus: "active" }));
+    });
+    globalThis.fetch = fetchMock as typeof globalThis.fetch;
+    const { ListingHandoffSection } = await import("@/components/listing-handoff/ListingHandoffSection");
+    await act(async () => {
+      root = createRootForTest(container as unknown as Element);
+      root.render(createElement(ListingHandoffSection, { taskId: "task-brief-a", refreshSignal: 0 }));
+    });
+    await flush();
+
+    await clickGenerate(regenerateButton());
+    await flush();
+    expect(container.textContent).toContain("生成失败");
+  });
+
+  it("普通幂等重放（草稿非确认前）：保留未重复调用提示", async () => {
+    const state = activeStateWithStaleKeywordDraft();
+    (state.data.draft as Record<string, unknown>).keywordPlanSource = "manual";
+    (state.data.draft as Record<string, unknown>).keywords = ["silverware organizer"];
+    const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return jsonResponse({ ok: true, data: { listingStatus: "active", currentHandoffRevision: 2, sourceHandoffRevision: 2, idempotentReplay: true, humanReviewRequired: true, draft: state.data.draft } });
+      }
+      return jsonResponse(state);
+    });
+    globalThis.fetch = fetchMock as typeof globalThis.fetch;
+    const { ListingHandoffSection } = await import("@/components/listing-handoff/ListingHandoffSection");
+    await act(async () => {
+      root = createRootForTest(container as unknown as Element);
+      root.render(createElement(ListingHandoffSection, { taskId: "task-brief-a", refreshSignal: 0 }));
+    });
+    await flush();
+
+    await clickGenerate(regenerateButton());
+    await flush();
+    expect(container.textContent).toContain("未重复调用");
+  });
+
+  it("生成 409：提示后自动刷新版本并重试一次成功", async () => {
+    let genCalls = 0;
+    const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        genCalls += 1;
+        if (genCalls === 1) {
+          return new Response(JSON.stringify({ ok: false, error: { code: "task_result_conflict", message: "任务已在其他页面更新，请刷新后重试。" } }), { status: 409, headers: { "content-type": "application/json" } });
+        }
+        return jsonResponse(generateListItemResponse());
+      }
+      return jsonResponse(listingState(brief("A"), { listingStatus: "active" }));
+    });
+    globalThis.fetch = fetchMock as typeof globalThis.fetch;
+    const { ListingHandoffSection } = await import("@/components/listing-handoff/ListingHandoffSection");
+    await act(async () => {
+      root = createRootForTest(container as unknown as Element);
+      root.render(createElement(ListingHandoffSection, { taskId: "task-brief-a", refreshSignal: 0 }));
+    });
+    await flush();
+
+    await clickGenerate(regenerateButton());
+    await flush();
+    await flush();
+    expect(genCalls).toBe(2);
+    expect(container.textContent).toContain("已生成");
+  });
+});

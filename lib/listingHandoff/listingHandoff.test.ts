@@ -12,6 +12,7 @@ import {
 import { buildListingHandoffBinding, parseListingHandoffBinding, computeListingStatus } from "@/lib/listingHandoff/listingBinding";
 import { createMockListingProvider, assertMockInputIsSafe, buildMockAiListingDraftFromInput } from "@/lib/listingHandoff/mockListingProvider";
 import { buildListingPromptFromInput, assertPromptIsSafe } from "@/lib/listingHandoff/listingPrompt";
+import { effectiveKeywordBriefSemanticsOf } from "@/lib/listingHandoff/listingGenerationService";
 import { validateAiListingPackDraft } from "@/lib/aiListingDraft";
 import { filterListingClaims } from "@/lib/listingClaimFilter";
 
@@ -735,7 +736,8 @@ describe("UI 状态（第20章 66-75）", () => {
   });
 
   it("明确标注当前有效 Listing 且不向用户暴露版本号", () => {
-    expect(uiSource).toContain("当前有效 Listing");
+    // 364f551 起当前有效稿的标注文案为"当前草稿：…"（按 draftKind 区分），断言随现行 UI 合同更新
+    expect(uiSource).toContain("当前草稿：");
     expect(uiSource).not.toContain("基于创作交接版本");
     // 版本号只作为生成合同字段，不作为用户可见文案
     expect(uiSource).not.toContain("创作交接版本 {");
@@ -761,5 +763,81 @@ describe("UI 状态（第20章 66-75）", () => {
     expect(uiSource).toContain("onCommitted?.()");
     expect(uiSource).toContain("await load();");
     expect(uiSource).toContain("onCommitted?.()");
+  });
+});
+
+
+// ── Keyword Brief 幂等指纹合同（第八轮）：无 Brief 字节兼容 / 有效 Brief 语义入指纹 / 非语义与过滤空等价无 Brief ──
+describe("Keyword Brief 幂等指纹合同", () => {
+  const versions = { composerVersion: LISTING_COMPOSER_VERSION, generationPolicyVersion: LISTING_GENERATION_POLICY_VERSION };
+  const baseInput = {
+    schema: "listing-generation-input.v1",
+    source: { handoffRevision: 2, researchRevision: 1 },
+    productFacts: [{ field: "brand", label: "品牌", value: "ukeetap" }],
+    stableSourceFacts: [] as Array<{ field: string; label: string; value: string }>,
+    creativeReferences: [] as string[],
+    creativePreferences: {} as Record<string, string>,
+    prohibitedClaims: [] as string[],
+    unknowns: [] as string[],
+    humanReviewRequired: true as const,
+    researchMode: "market_research_only" as const,
+    promotionEligible: false as const,
+  };
+
+  it("T1 无有效 Brief：指纹与旧版本字节兼容（固定锚点）", () => {
+    // 锚点取自根因修复前的旧实现输出（见任务0 probe-fingerprint.mts）
+    expect(computeListingGenerationFingerprint(baseInput as never, versions)).toBe(
+      "dbffd02d29de4508e16c4a01e5b79cf16b70c7e0a2726b931066d47fdc83e6ca",
+    );
+  });
+
+  it("T2 有效 Brief 的 primary/supporting/backend 任一生成语义变化都必须改变指纹", () => {
+    const fp = (sem: unknown) => computeListingGenerationFingerprint(baseInput as never, versions, sem as never);
+    const a = { primaryKeyword: "silverware organizer", supportingKeywords: ["drawer organizer"], backendSearchTerms: [], source: "auto_suggested" };
+    expect(fp(a)).not.toBe(fp({ ...a, primaryKeyword: "utensil organizer" }));
+    expect(fp(a)).not.toBe(fp({ ...a, supportingKeywords: ["kitchen drawer organizer"] }));
+    expect(fp(a)).not.toBe(fp({ ...a, backendSearchTerms: ["cutlery tray"] }));
+  });
+
+  it("T3 非生成语义（capturedAt 等元数据）不得改变指纹：规范化函数必须剔除", () => {
+    const generationInput = { ...baseInput, productFacts: [
+      { field: "brand", label: "品牌", value: "ukeetap" },
+      { field: "product_type", label: "商品类型", value: "Organizer" },
+    ] } as never;
+    const rawA = {
+      schema: "listing-keyword-brief.v1",
+      primaryKeyword: "silverware organizer",
+      supportingKeywords: ["drawer organizer"],
+      backendSearchTerms: [],
+      source: "sellersprite",
+      capturedAt: "2026-08-29T00:00:00.000Z",
+    };
+    const rawB = { ...rawA, capturedAt: "2026-09-09T09:09:09.000Z", reportType: "reverse_asin", asin: "B0XYZ" };
+    const semA = effectiveKeywordBriefSemanticsOf(rawA, generationInput);
+    const semB = effectiveKeywordBriefSemanticsOf(rawB, generationInput);
+    expect(semA).not.toBeNull();
+    expect(semB).toEqual(semA);
+    expect(computeListingGenerationFingerprint(baseInput as never, versions, semA as never))
+      .toBe(computeListingGenerationFingerprint(baseInput as never, versions, semB as never));
+  });
+
+  it("T7 关键词被相关性/政策过滤为空时语义等价于无 Brief", () => {
+    const generationInput = { ...baseInput, productFacts: [
+      { field: "brand", label: "品牌", value: "ukeetap" },
+      { field: "product_type", label: "商品类型", value: "Organizer" },
+    ], creativeContext: { vocInsights: [], aiReferences: [], keywordCandidates: [], competitiveContext: ["competitor B0DIR01: Lifewit Expandable Silverware Drawer Organizer"], sourcingContext: [] } } as never;
+    // 主词含自有品牌 → 相关性/政策门禁后无有效语义
+    const rawOwnBrand = {
+      schema: "listing-keyword-brief.v1",
+      primaryKeyword: "ukeetap organizer",
+      supportingKeywords: ["ukeetap drawer"],
+      backendSearchTerms: [],
+      source: "sellersprite",
+      capturedAt: "2026-08-29T00:00:00.000Z",
+    };
+    const sem = effectiveKeywordBriefSemanticsOf(rawOwnBrand, generationInput);
+    expect(sem).toBeNull();
+    expect(computeListingGenerationFingerprint(baseInput as never, versions, sem as never))
+      .toBe(computeListingGenerationFingerprint(baseInput as never, versions));
   });
 });

@@ -1452,3 +1452,123 @@ describe("无关键词主链合同：无有效 KeywordBrief → 可采用合格 
 
 
 });
+
+
+// ── 第八轮：Keyword Brief 幂等指纹主链合同（Brief 从无→有不得命中旧稿重放）──
+describe("Keyword Brief 幂等指纹主链合同", () => {
+  it("F-lock：相同有效 Brief + 相同输入 → 仍幂等重放（Provider 至多一次）", async () => {
+    const taskId = "sandbox-fp-same-brief";
+    await setupHandoff(taskId, true);
+    await saveBrief(taskId);
+    let providerCalls = 0;
+    const valid = validAiClient();
+    setTaskLinkedAiListingClientForTests(async (input) => { providerCalls += 1; return valid(input); });
+    try {
+      const p1 = await generateCreativeHandoffPreview(taskId, visitorContext());
+      const r1 = await generateListingDraftFromHandoff(taskId, visitorContext(), {
+        requestId: "550e8400-e29b-41d4-a716-446655448001",
+        expectedStorageVersion: p1.gate.storageVersion!,
+        expectedHandoffRevision: p1.gate.currentHandoff!.currentRevision,
+      });
+      expect(r1.idempotentReplay).toBe(false);
+      const p2 = await generateCreativeHandoffPreview(taskId, visitorContext());
+      const r2 = await generateListingDraftFromHandoff(taskId, visitorContext(), {
+        requestId: "550e8400-e29b-41d4-a716-446655448002",
+        expectedStorageVersion: p2.gate.storageVersion!,
+        expectedHandoffRevision: p2.gate.currentHandoff!.currentRevision,
+      });
+      expect(r2.idempotentReplay).toBe(true);
+      expect(providerCalls).toBe(1);
+    } finally {
+      setTaskLinkedAiListingClientForTests(null);
+    }
+  });
+
+  it("F1：Brief 从无→有，新 requestId 不得命中旧草稿重放，必须真实生成含关键词新稿", async () => {
+    const taskId = "sandbox-fp-brief-new";
+    await setupHandoff(taskId, true);
+    const valid = validAiClient();
+    setTaskLinkedAiListingClientForTests(async (input) => valid(input));
+    try {
+      const p1 = await generateCreativeHandoffPreview(taskId, visitorContext());
+      const r1 = await generateListingDraftFromHandoff(taskId, visitorContext(), {
+        requestId: "550e8400-e29b-41d4-a716-446655448011",
+        expectedStorageVersion: p1.gate.storageVersion!,
+        expectedHandoffRevision: p1.gate.currentHandoff!.currentRevision,
+      });
+      expect(r1.idempotentReplay).toBe(false);
+      expect(r1.draft?.keywordPlanSource).toBe("none");
+      await saveBrief(taskId);
+      const p2 = await generateCreativeHandoffPreview(taskId, visitorContext());
+      const r2 = await generateListingDraftFromHandoff(taskId, visitorContext(), {
+        requestId: "550e8400-e29b-41d4-a716-446655448012",
+        expectedStorageVersion: p2.gate.storageVersion!,
+        expectedHandoffRevision: p2.gate.currentHandoff!.currentRevision,
+      });
+      expect(r2.idempotentReplay).toBe(false);
+      expect(r2.draft?.keywordPlanSource).toBe("manual");
+      const adopted = (r2.draft?.usedKeywordTrace ?? []).length + (r2.draft?.searchOnlyKeywordTrace ?? []).length;
+      expect(adopted).toBeGreaterThanOrEqual(1);
+    } finally {
+      setTaskLinkedAiListingClientForTests(null);
+    }
+  });
+
+  it("F2：同 requestId 但 Brief 语义从无→有必须 409 listing_idempotency_conflict，不得覆盖旧请求", async () => {
+    const taskId = "sandbox-fp-same-requestid";
+    await setupHandoff(taskId, true);
+    const valid = validAiClient();
+    setTaskLinkedAiListingClientForTests(async (input) => valid(input));
+    try {
+      const p1 = await generateCreativeHandoffPreview(taskId, visitorContext());
+      await generateListingDraftFromHandoff(taskId, visitorContext(), {
+        requestId: "550e8400-e29b-41d4-a716-446655448021",
+        expectedStorageVersion: p1.gate.storageVersion!,
+        expectedHandoffRevision: p1.gate.currentHandoff!.currentRevision,
+      });
+      await saveBrief(taskId);
+      const p2 = await generateCreativeHandoffPreview(taskId, visitorContext());
+      await expect(generateListingDraftFromHandoff(taskId, visitorContext(), {
+        requestId: "550e8400-e29b-41d4-a716-446655448021",
+        expectedStorageVersion: p2.gate.storageVersion!,
+        expectedHandoffRevision: p2.gate.currentHandoff!.currentRevision,
+      })).rejects.toMatchObject({ code: "listing_idempotency_conflict", status: 409 });
+    } finally {
+      setTaskLinkedAiListingClientForTests(null);
+    }
+  });
+
+  it("F3：确认 Brief 造成 storageVersion 变化后，陈旧请求先 409，刷新后恰一次重试生成非 replay 草稿", async () => {
+    const taskId = "sandbox-fp-stale-sv";
+    await setupHandoff(taskId, true);
+    const valid = validAiClient();
+    setTaskLinkedAiListingClientForTests(async (input) => valid(input));
+    try {
+      const p1 = await generateCreativeHandoffPreview(taskId, visitorContext());
+      const staleSv = p1.gate.storageVersion!;
+      await generateListingDraftFromHandoff(taskId, visitorContext(), {
+        requestId: "550e8400-e29b-41d4-a716-446655448031",
+        expectedStorageVersion: staleSv,
+        expectedHandoffRevision: p1.gate.currentHandoff!.currentRevision,
+      });
+      await saveBrief(taskId);
+      // 陈旧 storageVersion + 新 requestId：必须 409（不得静默 replay 旧稿）
+      await expect(generateListingDraftFromHandoff(taskId, visitorContext(), {
+        requestId: "550e8400-e29b-41d4-a716-446655448032",
+        expectedStorageVersion: staleSv,
+        expectedHandoffRevision: p1.gate.currentHandoff!.currentRevision,
+      })).rejects.toMatchObject({ code: "task_result_conflict", status: 409 });
+      // 刷新后重试：真实生成
+      const p2 = await generateCreativeHandoffPreview(taskId, visitorContext());
+      const r2 = await generateListingDraftFromHandoff(taskId, visitorContext(), {
+        requestId: "550e8400-e29b-41d4-a716-446655448032",
+        expectedStorageVersion: p2.gate.storageVersion!,
+        expectedHandoffRevision: p2.gate.currentHandoff!.currentRevision,
+      });
+      expect(r2.idempotentReplay).toBe(false);
+      expect(r2.draft?.keywordPlanSource).toBe("manual");
+    } finally {
+      setTaskLinkedAiListingClientForTests(null);
+    }
+  });
+});
