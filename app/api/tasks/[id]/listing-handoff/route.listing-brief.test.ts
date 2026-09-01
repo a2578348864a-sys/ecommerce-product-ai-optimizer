@@ -47,7 +47,7 @@ let capturedMutationWriter: string | null = null;
 type CapturedMutate = (c: Record<string, unknown>, s: Readonly<import("@/lib/server/taskResultJsonMutation").TaskResultJsonSnapshot>) => Promise<{ result: Record<string, unknown>; value: Record<string, unknown> }>;
 let capturedMutateCallback: CapturedMutate | null = null;
 
-function gateResult(raw?: unknown, revision = REV) {
+function gateResult(raw?: unknown, revision = REV, keywordBriefRaw?: unknown) {
   return {
     allowed: true,
     reason: "eligible",
@@ -110,7 +110,7 @@ function gateResult(raw?: unknown, revision = REV) {
     storageVersion: { resultJsonHash: "c".repeat(64), updatedAt: NOW },
     listingHandoffBindingRaw: undefined,
     listingDraftRaw: undefined,
-    keywordBriefRaw: undefined,
+    keywordBriefRaw: keywordBriefRaw,
     imageHandoffBindingRaw: undefined,
     imageDraftRaw: undefined,
     imageStudioSelectionRaw: undefined,
@@ -149,6 +149,36 @@ describe("listing-brief save + GET chain", () => {
     expect(JSON.stringify(body.data)).not.toContain('"resultJson":');
     expect(JSON.stringify(body.data)).not.toContain("writer");
     expect(JSON.stringify(body.data)).not.toContain("requestId");
+  });
+
+  it("1b. GET 已确认关键词方案有界投影：≤10 词 / 去重 / 无内部字段", async () => {
+    gateMock.mockResolvedValue(gateResult(LEGAL, REV, {
+      schema: "listing-keyword-brief.v1",
+      primaryKeyword: "drawer organizer",
+      supportingKeywords: ["cutlery tray organizer", "silverware holder", "drawer organizer", "silverware holder"],
+      source: "manual",
+      backendSearchTerms: ["internal-secret-term-1"],
+      capturedAt: "2026-08-27T04:00:00.000Z",
+    }));
+    const res = await GET(req("http://127.0.0.1:3010/api/tasks/" + TASK_ID + "/listing-handoff"), { params: params() });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const summary = body.data.keywordBriefPlanSummary;
+    expect(summary).not.toBeNull();
+    // 词面：主词 + 辅助词去重后 ≤ 10 词；重复词只出现一次
+    expect(Array.isArray(summary.terms)).toBe(true);
+    expect(summary.terms.length).toBeLessThanOrEqual(10);
+    expect(summary.terms.length).toBe(3);
+    expect(summary.terms).toContain("drawer organizer");
+    expect(summary.terms).toContain("cutlery tray organizer");
+    expect(summary.terms).toContain("silverware holder");
+    expect(new Set(summary.terms.map((v: string) => v.toLowerCase())).size).toBe(summary.terms.length);
+    // 有界：不返回 backend 搜索词原文 / 内部 id / 账本字段
+    const raw = JSON.stringify(summary);
+    expect(raw).not.toContain("internal-secret-term-1");
+    expect(raw).not.toContain("backendSearchTerms");
+    expect(raw).not.toContain("provenance");
+    expect(raw).not.toContain("requestId");
   });
 
   it("2. GET 畸形历史值 → 200 且 listingBrief=null", async () => {

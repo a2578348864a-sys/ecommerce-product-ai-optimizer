@@ -256,7 +256,11 @@ const FULL_DRAFT = {
 };
 
 describe("R2 Listing 生成依据（真实行为 fixture）", () => {
-  it("完整草稿展示四组：具体事实/具体关键词/具体研究参考/逐条待确认表达", async () => {
+  // 迁移说明：原用例断言「四组（事实/关键词/研究参考/待确认）」。
+  // 关键词采用状态与待人工确认表达已统一收敛到「发布前核对」卡——同一份数据在两处展示会让用户
+  // 无法判断哪个才是当前正式稿口径。生成依据卡保留它真正负责的两组：事实 + 研究参考。
+  // 意图保持不变：仍然要求展示**具体内容**（不是数量、不是固定说明），安全契约断言全部保留。
+  it("完整草稿展示两组：具体事实/具体研究参考；关键词与待确认改由发布前核对卡承载", async () => {
     const { ListingGenerationBasis } = await import("@/components/listing-handoff/ListingHandoffSection");
     await act(async () => {
       root = createRoot(container as unknown as Element);
@@ -264,19 +268,20 @@ describe("R2 Listing 生成依据（真实行为 fixture）", () => {
     });
     await flush();
     const text = documentInstance.body.textContent;
-    // 四组标题
+    // 两组标题（生成依据的本体）
     expect(text).toContain("最终文案实际命中的已确认商品事实");
-    expect(text).toContain("标题和正文实际采用的关键词");
-      expect(text).toContain("仅用于搜索词，未进入正文");
-      expect(text).toContain("bento box for kids");
     expect(text).toContain("生成时提供给 AI 的研究参考");
-    expect(text).toContain("待人工确认的表达");
+    // 关键词状态与待确认表达不得在此重复展示（唯一口径在发布前核对卡）
+    expect(text).not.toContain("标题和正文实际采用的关键词");
+    expect(text).not.toContain("仅用于搜索词，未进入正文");
+    expect(text).not.toContain("待人工确认的表达");
     // 具体内容（不是数量、不是固定说明）
     expect(text).toContain("材质");
     expect(text).toContain("Stainless Steel");
-    expect(text).toContain("kids water bottle");
     expect(text).toContain("真空保温结构");
-    expect(text).toContain("The dishwasher-safe bottle and lid");
+    // 安全契约：研究参考与事实之外的敏感原文不得外泄到生成依据卡
+    expect(text).not.toContain("The dishwasher-safe bottle and lid");
+    expect(text).not.toContain("kids water bottle");
     // 安全说明（R2 指定文案）
     expect(text).toContain("研究资料只用于定位和表达参考；Listing 硬属性只允许来自已确认商品事实。");
     // 禁止「AI 实际使用」措辞（研究参考只是提供给 AI，Provider 无使用记录）
@@ -508,8 +513,10 @@ describe("ListingPlan.v2 最终状态标签（安全稿与真正不合格稿分�
 });
 
 
-describe("ListingPlan.v2 关键词采用三态（正文采用 / 仅搜索词 诚实分离）", () => {
-    it("红：两组中文标题同时渲染；正文采用组不含搜索词；无内部 id", async () => {
+describe("ListingPlan.v2 关键词采用四态（正文采用 / 仅搜索词 / 未采用 诚实分离）", () => {
+    // 迁移说明：关键词采用状态与待人工确认表达已统一收敛到「发布前核对」卡（见 ListingHandoffSection）。
+    // 生成依据卡只保留事实组 + 研究参考，不得重复关键词分组；此处守护「不在生成依据卡重复展示关键词」的边界。
+    it("红：生成依据卡不再重复展示关键词分组；无内部 id", async () => {
       const { ListingGenerationBasis } = await import("@/components/listing-handoff/ListingHandoffSection");
       await act(async () => {
         root = createRoot(container as unknown as Element);
@@ -517,21 +524,20 @@ describe("ListingPlan.v2 关键词采用三态（正文采用 / 仅搜索词 诚
       });
       await flush();
       const text = documentInstance.body.textContent;
-      expect(text).toContain("标题和正文实际采用的关键词");
-      expect(text).toContain("仅用于搜索词，未进入正文");
-      expect(text).toContain("THERMOS");
-      expect(text).toContain("bento box for kids");
-      // 搜索词不得被当作正文采用展示（bento box 不得出现在正文采用组左侧标题段内）——由分组标题隔离保证
-      const usedSection = text.slice(text.indexOf("标题和正文实际采用的关键词"), text.indexOf("仅用于搜索词，未进入正文"));
-      expect(usedSection).toContain("THERMOS");
-      expect(usedSection).not.toContain("bento box for kids");
+      // 关键词状态唯一口径在发布前核对卡；生成依据卡不得出现关键词分组标题或词面
+      expect(text).not.toContain("标题和正文实际采用的关键词");
+      expect(text).not.toContain("仅用于搜索词，未进入正文");
+      expect(text).not.toContain("THERMOS");
+      expect(text).not.toContain("bento box for kids");
       // 无内部 id
       expect(text).not.toContain("kw:");
       expect(text).not.toContain("runId");
       expect(text).not.toContain("usedKeywordIds");
+      // 生成依据卡本体仍在（事实组）
+      expect(text).toContain("最终文案实际命中的已确认商品事实");
     });
 
-    it("红：仅搜索词（正文采用空）→ 显示诚实空态，不把 search-only 称为正文采用", async () => {
+    it("红：仅搜索词（正文采用空）→ 生成依据卡诚实空态，不把 search-only 称为正文采用", async () => {
       const { ListingGenerationBasis } = await import("@/components/listing-handoff/ListingHandoffSection");
       const onlySearchDraft = {
         ...FULL_DRAFT,
@@ -544,13 +550,15 @@ describe("ListingPlan.v2 关键词采用三态（正文采用 / 仅搜索词 诚
       });
       await flush();
       const text = documentInstance.body.textContent;
-      expect(text).toContain("仅用于搜索词，未进入正文");
-      expect(text).toContain("bento box for kids");
-      // 不得出现「正文实际采用」字样或把搜索词放进正文采用组
+      // 不在生成依据卡重复展示关键词；不得出现「正文实际采用」字样
       expect(text).not.toContain("标题和正文实际采用的关键词");
+      expect(text).not.toContain("仅用于搜索词，未进入正文");
+      expect(text).not.toContain("bento box for kids");
+      // 生成依据卡本体仍在（事实组）
+      expect(text).toContain("最终文案实际命中的已确认商品事实");
     });
 
-    it("红：两组均空 → 关键词区整体诚实空态（不渲染采用词组 nor 仅搜索词组）", async () => {
+    it("红：两组均空 → 生成依据卡不渲染关键词分组", async () => {
       const { ListingGenerationBasis } = await import("@/components/listing-handoff/ListingHandoffSection");
       const emptyKwDraft = { ...FULL_DRAFT, usedKeywordTrace: [], searchOnlyKeywordTrace: [] };
       await act(async () => {

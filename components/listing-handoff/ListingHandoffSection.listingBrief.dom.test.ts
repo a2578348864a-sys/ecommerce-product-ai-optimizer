@@ -1201,3 +1201,241 @@ describe("生成点击反馈合同（幂等重放/禁用原因/busy/错误/409 �
     expect(container.textContent).toContain("已生成");
   });
 });
+
+/* ──────────────────────────────────────────────────────────────
+ * 发布前核对卡：关键词四类互斥 + 待确认表达全文与隔离（红测先行）
+ *
+ * 命题：页面必须一眼区分「确认了什么 / 正文用了什么 / 仅搜索什么 / 没用什么」，
+ * 待确认表达必须全文可见、明确未进入正式字段、且不进入任何复制内容。
+ * 本组用例在实现之前必须真实变红；不得改断言迁就现状。
+ * ────────────────────────────────────────────────────────────── */
+
+const REVIEW_CLAIM_LONG =
+  "The organizer keeps cutlery neatly separated and is backed by a lifetime warranty against cracking under normal household use.";
+const REVIEW_CLAIM_SHORT = "This organizer fits every standard kitchen drawer without measuring.";
+const BODY_TITLE = "Ukeetap Expandable Drawer Organizer for Kitchen Cutlery Storage";
+const BODY_BULLETS = [
+  "The Organizer is built with an expandable multi-compartment design in molded plastic.",
+  "The Organizer stores about 40 to 50 pieces of cutlery.",
+  "The Organizer expands or collapses to the sides according to the drawer width.",
+  "The Organizer is suitable for daily kitchen storage and carrying.",
+  "For care, rinse with clean water and wipe dry.",
+];
+const BODY_DESCRIPTION =
+  "The Organizer is built with an expandable multi-compartment design in molded plastic. It stores about 40 to 50 pieces of cutlery.";
+
+/** 正式草稿夹具：SEO 关键词字段为空（诚实显示未单独生成） */
+function prepublishDraft(overrides: Record<string, unknown> = {}) {
+  return {
+    generatedAt: "2026-09-02T00:00:00.000Z",
+    source: "ai_optimized",
+    version: 1,
+    titles: [BODY_TITLE],
+    bullets: [...BODY_BULLETS],
+    description: BODY_DESCRIPTION,
+    keywords: [],
+    usedKeywordTrace: ["drawer organizer"],
+    searchOnlyKeywordTrace: ["cutlery tray organizer"],
+    humanReviewClaims: [REVIEW_CLAIM_LONG, REVIEW_CLAIM_SHORT],
+    keywordPlanSource: "manual",
+    draftKind: "ai_optimized_listing",
+    providerAttempted: true,
+    providerSucceeded: true,
+    fallbackApplied: false,
+    fallbackReason: null,
+    sellingPoints: [],
+    riskNotes: [],
+    reviewChecklist: [],
+    blockedClaims: [],
+    complianceWarnings: [],
+    listingUnqualified: false,
+    factSafe: true,
+    copyQuality: true,
+    ...overrides,
+  };
+}
+
+/** 已确认关键词方案的有界只读摘要（route 需新增；当前 DTO 只有 primaryKeyword） */
+function keywordPlanSummary(terms: string[]) {
+  return { primaryKeyword: terms[0] ?? "", terms, source: "manual" };
+}
+
+function prepublishState(draft: unknown, planSummary: unknown) {
+  const state = listingState(brief("A"), { listingStatus: "active", currentHandoffRevision: 2 });
+  (state.data as Record<string, unknown>).draft = draft;
+  (state.data as Record<string, unknown>).keywordBriefSummary = {
+    primaryKeyword: "drawer organizer",
+    source: "manual",
+    backendTermsCount: 3,
+  };
+  (state.data as Record<string, unknown>).keywordBriefPlanSummary = planSummary;
+  const readiness = (state.data as Record<string, unknown>).readiness as Record<string, unknown>;
+  readiness.keywordReady = true;
+  return state;
+}
+
+async function mountPrepublish(draft: unknown, planSummary: unknown) {
+  const state = prepublishState(draft, planSummary);
+  globalThis.fetch = vi.fn(async () => jsonResponse(state)) as typeof globalThis.fetch;
+  const { ListingHandoffSection } = await import("@/components/listing-handoff/ListingHandoffSection");
+  await act(async () => {
+    root = createRootForTest(container as unknown as Element);
+    root.render(createElement(ListingHandoffSection, { taskId: "task-prepublish", refreshSignal: 0 }));
+  });
+  await flush();
+}
+
+function testIdText(testId: string): string {
+  return elementByTestId(testId)?.textContent ?? "";
+}
+
+/** 某个分类桶内的关键词 chip 文本（去重前的原始渲染，用于查重） */
+function chipsWithin(testId: string): string[] {
+  const node = elementByTestId(testId);
+  if (!node) return [];
+  return elementsWithin(node, (element) => element.getAttribute("data-testid") === "prepublish-keyword-chip")
+    .map((element) => (element.textContent ?? "").trim())
+    .filter(Boolean);
+}
+
+function reviewClaimTexts(): string[] {
+  return elementsWithin(container, (element) => element.getAttribute("data-testid") === "prepublish-review-claim")
+    .map((element) => (element.textContent ?? "").trim());
+}
+
+function buttonByLabel(label: string): FakeElement | null {
+  return elementsWithin(container, (element) => element.tagName === "BUTTON" && (element.textContent ?? "").includes(label))[0] ?? null;
+}
+
+/** 注入可捕获的剪贴板，用于验证复制内容与待确认表达隔离 */
+function installClipboardCapture(): string[] {
+  const copied: string[] = [];
+  const win = (globalThis as Record<string, unknown>).window as Record<string, unknown>;
+  win.isSecureContext = true;
+  win.navigator = {
+    clipboard: {
+      writeText: async (text: string) => { copied.push(text); },
+    },
+  };
+  return copied;
+}
+
+describe("发布前核对卡：关键词四类互斥与待确认表达透明度（红测）", () => {
+  it("红1：人工方案 3 词而正文只用 1 词 → 不得把整套方案说成已采用", async () => {
+    const plan = keywordPlanSummary(["drawer organizer", "cutlery tray organizer", "silverware holder"]);
+    await mountPrepublish(prepublishDraft(), plan);
+    const card = elementByTestId("listing-prepublish-review");
+    expect(card, "缺少发布前核对卡（data-testid=listing-prepublish-review）").not.toBeNull();
+    const cardText = card?.textContent ?? "";
+    // 未采用的方案词必须显式出现
+    expect(cardText, "未采用词未展示").toContain("silverware holder");
+    expect(testIdText("prepublish-unused-keywords"), "未采用区缺少 silverware holder").toContain("silverware holder");
+    // 未采用区不得混入已采用词
+    expect(testIdText("prepublish-unused-keywords"), "未采用区混入了正文已采用词").not.toContain("drawer organizer");
+    // 首行摘要宣称的已采用数量必须是 1，不得是整套方案的 3
+    expect(testIdText("prepublish-summary"), "首行摘要把整套方案当成已采用").not.toMatch(/采用\s*3\s*个/);
+    expect(testIdText("prepublish-summary"), "首行摘要未给出正文已采用词数量").toMatch(/采用\s*1\s*个/);
+  });
+
+  it("红2：正文采用 / 仅搜索 / 未采用 三类互斥且各自去重", async () => {
+    const plan = keywordPlanSummary(["drawer organizer", "cutlery tray organizer", "silverware holder", "silverware holder"]);
+    await mountPrepublish(
+      prepublishDraft({ searchOnlyKeywordTrace: ["cutlery tray organizer", "cutlery tray organizer"] }),
+      plan,
+    );
+    const body = chipsWithin("prepublish-body-keywords");
+    const search = chipsWithin("prepublish-search-only-keywords");
+    const unused = chipsWithin("prepublish-unused-keywords");
+    expect(body.length, "正文采用词为空").toBeGreaterThan(0);
+    expect(search.length, "仅搜索词为空").toBeGreaterThan(0);
+    expect(unused.length, "未采用词为空").toBeGreaterThan(0);
+    const pairs: Array<[string[], string[], string, string]> = [
+      [body, search, "正文采用", "仅搜索"],
+      [body, unused, "正文采用", "未采用"],
+      [search, unused, "仅搜索", "未采用"],
+    ];
+    for (const [a, b, nameA, nameB] of pairs) {
+      const overlap = a.filter((item) => b.includes(item));
+      expect(overlap, nameA + " 与 " + nameB + " 重复展示：" + overlap.join("、")).toEqual([]);
+    }
+    expect(new Set(body).size, "正文采用词内部重复：" + body.join("、")).toBe(body.length);
+    expect(new Set(search).size, "仅搜索词内部重复：" + search.join("、")).toBe(search.length);
+    expect(new Set(unused).size, "未采用词内部重复：" + unused.join("、")).toBe(unused.length);
+  });
+
+  it("红3：超过 80 字符的待确认表达必须显示全文，不得截断", async () => {
+    expect(REVIEW_CLAIM_LONG.length, "夹具本身必须超过 80 字符").toBeGreaterThan(80);
+    await mountPrepublish(prepublishDraft(), keywordPlanSummary(["drawer organizer"]));
+    const claims = reviewClaimTexts();
+    expect(claims.length, "待确认表达未逐条渲染").toBe(2);
+    expect(claims[0], "长句被截断：" + claims[0]).toContain(REVIEW_CLAIM_LONG);
+    expect(claims[0], "出现省略号截断").not.toContain("...");
+    expect(claims[0]?.endsWith("under normal household use."), "长句尾部缺失：" + claims[0]).toBe(true);
+    expect(claims[1], "短句也应全文展示").toContain(REVIEW_CLAIM_SHORT);
+  });
+
+  it("红4：每条待确认表达必须明确未进入正式标题/五点/描述", async () => {
+    await mountPrepublish(prepublishDraft(), keywordPlanSummary(["drawer organizer"]));
+    const cardText = elementByTestId("listing-prepublish-review")?.textContent ?? "";
+    expect(cardText, "未写明未进入正式标题/五点/描述").toContain("未进入正式标题/五点/描述");
+    expect(cardText, "未写明当前未进入正式Listing").toContain("当前未进入正式Listing");
+    const items = elementsWithin(container, (element) => element.getAttribute("data-testid") === "prepublish-review-item");
+    expect(items.length, "待确认表达未逐条渲染").toBe(2);
+    for (const item of items) {
+      const text = item.textContent ?? "";
+      expect(text, "该条缺少「已被排除」标记：" + text).toContain("已被排除");
+      expect(text, "该条缺少未进入正式字段说明：" + text).toContain("未进入正式标题/五点/描述");
+    }
+  });
+
+  it("红5：待确认表达不得进入复制标题/五点/描述/完整 Listing", async () => {
+    const copied = installClipboardCapture();
+    await mountPrepublish(prepublishDraft(), keywordPlanSummary(["drawer organizer"]));
+    const longProbe = REVIEW_CLAIM_LONG.slice(0, 40);
+    const shortProbe = REVIEW_CLAIM_SHORT.slice(0, 30);
+    for (const label of ["复制标题", "复制五点描述", "复制商品描述", "复制完整 Listing"]) {
+      copied.length = 0;
+      const button = buttonByLabel(label);
+      expect(button, "复制按钮不存在：" + label).not.toBeNull();
+      await act(async () => { button?.dispatchEvent(new FakeEvent("click", button)); });
+      await flush();
+      expect(copied.length, "未触发复制：" + label).toBeGreaterThan(0);
+      for (const text of copied) {
+        expect(text, label + " 混入了待确认长句").not.toContain(longProbe);
+        expect(text, label + " 混入了待确认短句").not.toContain(shortProbe);
+      }
+    }
+  });
+
+  it("红6：真正不合格草稿继续隐藏正式字段与发布前核对卡", async () => {
+    await mountPrepublish(
+      prepublishDraft({ listingUnqualified: true, copyQuality: false, factSafe: false }),
+      keywordPlanSummary(["drawer organizer"]),
+    );
+    expect(elementByTestId("unqualified-listing-draft"), "未显示不合格提示").not.toBeNull();
+    expect(elementByTestId("listing-prepublish-review"), "不合格稿不得展示核对卡").toBeNull();
+    expect(container.textContent, "不合格稿泄露了正式标题").not.toContain(BODY_TITLE);
+  });
+
+  it("红7：页面只保留一张发布前核对卡，不重复展示关键词状态", async () => {
+    await mountPrepublish(prepublishDraft(), keywordPlanSummary(["drawer organizer", "silverware holder"]));
+    const cards = elementsWithin(container, (element) => element.getAttribute("data-testid") === "listing-prepublish-review");
+    expect(cards.length, "发布前核对卡数量不为 1").toBe(1);
+    expect(elementByTestId("listing-human-review-aid"), "旧的「人工审核辅助」卡未删除").toBeNull();
+    expect(container.textContent, "仍存在「人工审核辅助」标题").not.toContain("人工审核辅助");
+    // 关键词状态只在一处展示：生成依据卡不得再重复关键词分组
+    const basis = elementByTestId("listing-generation-basis")?.textContent ?? "";
+    expect(basis, "生成依据卡重复展示了正文采用关键词").not.toContain("标题和正文实际采用的关键词");
+    expect(basis, "生成依据卡重复展示了仅搜索词").not.toContain("仅用于搜索词，未进入正文");
+    // 正式字段仍在
+    expect(container.textContent, "正式标题丢失").toContain(BODY_TITLE);
+    expect(buttonByLabel("复制完整 Listing"), "复制完整 Listing 丢失").not.toBeNull();
+  });
+
+  it("红8：SEO 关键词字段为空时诚实显示未单独生成，不得冒充全部关键词已采用", async () => {
+    await mountPrepublish(prepublishDraft({ keywords: [] }), keywordPlanSummary(["drawer organizer", "silverware holder"]));
+    const cardText = elementByTestId("listing-prepublish-review")?.textContent ?? "";
+    expect(cardText, "未诚实说明 SEO 字段未单独生成").toContain("SEO 字段未单独生成");
+    expect(testIdText("prepublish-unused-keywords"), "未采用词未展示").toContain("silverware holder");
+  });
+});

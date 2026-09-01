@@ -70,6 +70,36 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
+/**
+ * 已确认关键词方案的有界只读摘要（供「发布前核对」卡区分
+ * 「确认了什么 / 正文用了什么 / 仅搜索什么 / 没用什么」）。
+ *
+ * 硬边界：只投影主词与辅助词的**词面**，最多 10 词、每词 60 字符、按大小写无关去重；
+ * 不返回 backend 搜索词原文、内部 id、来源证据、provenance 或任何账本字段。
+ */
+const KEYWORD_PLAN_SUMMARY_MAX_TERMS = 10;
+const KEYWORD_PLAN_SUMMARY_MAX_TERM_LENGTH = 60;
+
+function projectKeywordPlanSummary(
+  brief: { primaryKeyword: string; supportingKeywords: string[]; source: string } | null,
+): { primaryKeyword: string; terms: string[]; source: string } | null {
+  if (!brief) return null;
+  const primaryKeyword = String(brief.primaryKeyword ?? "").trim().slice(0, KEYWORD_PLAN_SUMMARY_MAX_TERM_LENGTH);
+  const seen = new Set<string>();
+  const terms: string[] = [];
+  for (const raw of [primaryKeyword, ...(brief.supportingKeywords ?? [])]) {
+    const value = String(raw ?? "").trim().slice(0, KEYWORD_PLAN_SUMMARY_MAX_TERM_LENGTH);
+    if (!value) continue;
+    const key = value.toLocaleLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    terms.push(value);
+    if (terms.length >= KEYWORD_PLAN_SUMMARY_MAX_TERMS) break;
+  }
+  if (terms.length === 0) return null;
+  return { primaryKeyword, terms, source: String(brief.source ?? "unknown") };
+}
+
 function containsForbiddenKey(value: unknown, depth = 0): string | null {
   if (depth > 12) return null;
   if (Array.isArray(value)) {
@@ -375,6 +405,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         keywordBriefSummary: keywordBrief
           ? { primaryKeyword: keywordBrief.primaryKeyword, source: keywordBrief.source, backendTermsCount: keywordBrief.backendSearchTerms.length }
           : null,
+        // 发布前核对：已确认方案的有界只读词面（≤10 词），无内部账本/证据字段
+        keywordBriefPlanSummary: projectKeywordPlanSummary(keywordBrief),
       },
     });
   } catch (err) {

@@ -102,6 +102,8 @@ type ListingStateResponse = {
     claimPreflight?: { pass: boolean; reasonCode?: string | null; reason: string | null } | null;
     listingBrief?: { schema: "listing-creation-brief.v1"; coreSellingPoint: string; targetAudience: string; useScenario: string; differentiation: string; contentEmphasis: string } | null;
     keywordBriefSummary?: { primaryKeyword: string; source: string; backendTermsCount: number } | null;
+    /** 发布前核对：已确认关键词方案的有界只读词面（≤10 词；无内部账本/证据字段） */
+    keywordBriefPlanSummary?: { primaryKeyword: string; terms: string[]; source: string } | null;
   };
 };
 
@@ -197,6 +199,65 @@ export function keywordPlanDisplayLabel(
   return "尚未确认正式关键词方案";
 }
 
+/* ──────────────────────────────────────────────────────────────
+ * 发布前核对：关键词四类互斥分类（纯函数，可被 DOM 测试直接调用）
+ *
+ * 四类：已确认方案 / 正文已采用 / 仅搜索字段采用 / 当前未采用。
+ * 后三类严格互斥（同一个词只出现在一处），各自内部去重；
+ * 「已确认方案」是方案原文（参考集），用于让用户对照「确认了什么」。
+ *
+ * 硬规则：没有原因数据时只说「未在当前正式字段出现」，不编造拒绝原因。
+ * ────────────────────────────────────────────────────────────── */
+
+export type KeywordPlanSummary = { primaryKeyword: string; terms: string[]; source: string };
+
+export type PrepublishKeywordBuckets = {
+  /** 已确认方案原文（主词 + 辅助词，去重） */
+  confirmedPlan: string[];
+  /** 正文（标题/五点/描述）实际采用 */
+  bodyUsed: string[];
+  /** 仅进入搜索词字段、未进入正文 */
+  searchOnly: string[];
+  /** 已确认但当前未出现在任何正式字段 */
+  unused: string[];
+};
+
+/** 大小写无关去重，保留首次出现顺序 */
+function dedupeTerms(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of values) {
+    const value = String(raw ?? "").trim();
+    if (!value) continue;
+    const key = value.toLocaleLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out;
+}
+
+export function classifyPrepublishKeywords(
+  planSummary: KeywordPlanSummary | null,
+  usedKeywordTrace: string[] | undefined,
+  searchOnlyKeywordTrace: string[] | undefined,
+): PrepublishKeywordBuckets {
+  const bodyUsed = dedupeTerms(usedKeywordTrace ?? []);
+  const bodyKeys = new Set(bodyUsed.map((v) => v.toLocaleLowerCase()));
+  // 仅搜索：先去重，再剔除已经在正文采用中出现过的词（互斥）
+  const searchOnly = dedupeTerms(searchOnlyKeywordTrace ?? []).filter(
+    (v) => !bodyKeys.has(v.toLocaleLowerCase()),
+  );
+  const adoptedKeys = new Set([
+    ...bodyUsed.map((v) => v.toLocaleLowerCase()),
+    ...searchOnly.map((v) => v.toLocaleLowerCase()),
+  ]);
+  const confirmedPlan = dedupeTerms(planSummary?.terms ?? []);
+  // 未采用：已确认方案中当前未出现在任何正式字段的词（无原因数据 → 只陈述事实，不编造原因）
+  const unused = confirmedPlan.filter((v) => !adoptedKeys.has(v.toLocaleLowerCase()));
+  return { confirmedPlan, bodyUsed, searchOnly, unused };
+}
+
 export function ListingGenerationBasis({ draft }: { draft: ListingDraftSafeSummary | null }) {
   if (!draft) return null;
   // R4 契约：先检查 providerAttempted 显式值（true/false 优先于数组空判断）
@@ -236,39 +297,13 @@ export function ListingGenerationBasis({ draft }: { draft: ListingDraftSafeSumma
           </ul>
         </div>
       ) : null}
-      {(draft.usedKeywordTrace ?? []).length > 0 ? (
-        <div className="mt-2">
-          <p className="text-[11px] font-semibold text-slate-500">标题和正文实际采用的关键词</p>
-          <div className="mt-1 flex flex-wrap gap-1">
-            {(draft.usedKeywordTrace ?? []).map((keyword, index) => (
-              <span key={index} className="rounded-full border border-teal-100 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">{keyword}</span>
-            ))}
-          </div>
-        </div>
-      ) : null}
-      {(draft.searchOnlyKeywordTrace ?? []).length > 0 ? (
-        <div className="mt-2">
-          <p className="text-[11px] font-semibold text-slate-500">仅用于搜索词，未进入正文</p>
-          <div className="mt-1 flex flex-wrap gap-1">
-            {(draft.searchOnlyKeywordTrace ?? []).map((keyword, index) => (
-              <span key={index} className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-600">{keyword}</span>
-            ))}
-          </div>
-        </div>
-      ) : null}
+      {/* 关键词采用状态与待人工确认表达已统一收敛到「发布前核对」卡：
+          同一份数据不得在两处展示，否则用户无法判断哪一个才是当前正式稿口径。 */}
       {showAiReferences ? (
         <div className="mt-2">
           <p className="text-[11px] font-semibold text-slate-500">生成时提供给 AI 的研究参考</p>
           <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-slate-600">
             {(draft.researchReferenceTrace ?? []).map((reference, index) => (<li key={index}>{reference}</li>))}
-          </ul>
-        </div>
-      ) : null}
-      {(draft.humanReviewClaims ?? []).length > 0 ? (
-        <div className="mt-2">
-          <p className="text-[11px] font-semibold text-amber-700">待人工确认的表达</p>
-          <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-amber-700">
-            {(draft.humanReviewClaims ?? []).map((claim, index) => (<li key={index}>{claim}</li>))}
           </ul>
         </div>
       ) : null}
@@ -306,6 +341,147 @@ export function ListingSellingPointStrategy({ plan }: { plan: ListingDraftSafeSu
   );
 }
 
+export function ListingPrepublishReview({
+  draft,
+  planSummary,
+}: {
+  draft: ListingDraftSafeSummary;
+  planSummary: KeywordPlanSummary | null;
+}) {
+  const buckets = classifyPrepublishKeywords(
+    planSummary,
+    draft.usedKeywordTrace,
+    draft.searchOnlyKeywordTrace,
+  );
+  const reviewClaims = dedupeTerms(draft.humanReviewClaims ?? []);
+  const seoEmpty = (draft.keywords ?? []).length === 0;
+  const formalReady =
+    draft.listingUnqualified !== true && draft.factSafe === true && draft.copyQuality === true;
+  const chip = (term: string, index: number) => (
+    <span
+      key={index}
+      data-testid="prepublish-keyword-chip"
+      className="rounded-full border border-teal-100 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700"
+    >
+      {term}
+    </span>
+  );
+  return (
+    <div
+      className="rounded-xl border border-slate-200 bg-slate-50/60 p-3"
+      data-testid="listing-prepublish-review"
+    >
+      <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">发布前核对</p>
+
+      {/* 首行：正式稿状态 + 已采用词数量 + 待确认表达数量 */}
+      <p className="mt-1.5 text-xs leading-5 text-slate-700" data-testid="prepublish-summary">
+        正式稿：{formalReady ? "可直接使用（已通过事实安全与文案质量门禁）" : "需人工复核后再使用"}
+        {" · "}正文已采用 {buckets.bodyUsed.length} 个词
+        {" · "}待确认表达 {reviewClaims.length} 条
+      </p>
+
+      {/* 默认可见 1：正文实际采用词 */}
+      <div className="mt-2" data-testid="prepublish-body-keywords">
+        <p className="text-[11px] font-semibold text-slate-500">正文已采用（当前出现在标题/五点/描述）</p>
+        {buckets.bodyUsed.length > 0 ? (
+          <div className="mt-1 flex flex-wrap gap-1">{buckets.bodyUsed.map(chip)}</div>
+        ) : (
+          <p className="mt-1 text-[11px] leading-5 text-slate-500">当前正式字段中未出现关键词方案的词。</p>
+        )}
+        {seoEmpty ? (
+          <p className="mt-1 text-[11px] leading-5 text-slate-500">
+            SEO 字段未单独生成，以上为正文实际采用情况，不代表后台搜索词字段已填写。
+          </p>
+        ) : null}
+      </div>
+
+      {/* 默认可见 2：待人工确认表达（全文、换行、明确隔离） */}
+      <div className="mt-2" data-testid="prepublish-review-warnings">
+        <p className="text-[11px] font-semibold text-amber-700">
+          待人工确认表达（当前未进入正式Listing）
+        </p>
+        {reviewClaims.length > 0 ? (
+          <ul className="mt-1 space-y-1.5">
+            {reviewClaims.map((claim, index) => (
+              <li key={index} data-testid="prepublish-review-item" className="rounded-lg bg-amber-50 px-2 py-1.5">
+                <p data-testid="prepublish-review-claim" className="text-[11px] leading-5 text-amber-900">
+                  {claim}
+                </p>
+                <p className="mt-0.5 text-[11px] leading-5 text-amber-700">
+                  已被排除，当前未进入正式标题/五点/描述。
+                </p>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-1 text-[11px] leading-5 text-teal-700">无待人工确认表达</p>
+        )}
+      </div>
+
+      {/* 展开后：已确认方案 / 仅搜索 / 未采用 */}
+      <details className="mt-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5">
+        <summary className="cursor-pointer text-[11px] font-semibold text-slate-600">
+          展开查看：已确认方案与未采用词
+        </summary>
+
+        <div className="mt-1.5" data-testid="prepublish-confirmed-plan">
+          <p className="text-[11px] font-semibold text-slate-500">已确认方案（人工确认的关键词原文）</p>
+          {buckets.confirmedPlan.length > 0 ? (
+            <div className="mt-1 flex flex-wrap gap-1">{buckets.confirmedPlan.map(chip)}</div>
+          ) : (
+            <p className="mt-1 text-[11px] leading-5 text-slate-500">暂未确认正式关键词方案。</p>
+          )}
+        </div>
+
+        <div className="mt-1.5" data-testid="prepublish-search-only-keywords">
+          <p className="text-[11px] font-semibold text-slate-500">仅搜索字段采用（未进入正文）</p>
+          {buckets.searchOnly.length > 0 ? (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {buckets.searchOnly.map((term, index) => (
+                <span
+                  key={index}
+                  data-testid="prepublish-keyword-chip"
+                  className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-600"
+                >
+                  {term}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-1 text-[11px] leading-5 text-slate-500">无仅进入搜索字段的关键词。</p>
+          )}
+        </div>
+
+        <div className="mt-1.5" data-testid="prepublish-unused-keywords">
+          <p className="text-[11px] font-semibold text-slate-500">
+            当前未采用（已确认，但未出现在当前正式字段）
+          </p>
+          {buckets.unused.length > 0 ? (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {buckets.unused.map((term, index) => (
+                <span
+                  key={index}
+                  data-testid="prepublish-keyword-chip"
+                  className="rounded-full border border-dashed border-slate-300 bg-white px-2 py-0.5 text-xs font-semibold text-slate-500"
+                >
+                  {term}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-1 text-[11px] leading-5 text-teal-700">已确认方案的词均已出现在当前正式字段。</p>
+          )}
+          {buckets.unused.length > 0 ? (
+            <p className="mt-1 text-[11px] leading-5 text-slate-400">
+              未在当前正式字段出现；系统未记录具体拒绝原因，不臆测原因。
+            </p>
+          ) : null}
+        </div>
+      </details>
+    </div>
+  );
+}
+
 export function ListingHandoffSection({
   taskId,
   imageMaterialNeeds = [],
@@ -327,6 +503,8 @@ export function ListingHandoffSection({
   const [handoffEffectiveStatus, setHandoffEffectiveStatus] = useState<string | null>(null);
   const [storageVersion, setStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
   const [draft, setDraft] = useState<ListingDraftSafeSummary | null>(null);
+  /** 发布前核对：已确认关键词方案（服务端有界只读投影，≤10 词） */
+  const [keywordPlanSummary, setKeywordPlanSummary] = useState<KeywordPlanSummary | null>(null);
   const [canGenerate, setCanGenerate] = useState(false);
   const [notice, setNotice] = useState<{ tone: "info" | "error"; text: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -386,6 +564,7 @@ export function ListingHandoffSection({
         setHandoffEffectiveStatus(json.data.handoffEffectiveStatus);
         setStorageVersion(json.data.storageVersion);
         setDraft(json.data.draft);
+        setKeywordPlanSummary(json.data.keywordBriefPlanSummary ?? null);
         setCanGenerate(json.data.canGenerate);
         setFactSummary(json.data.factSummary);
         setReadiness(json.data.readiness ?? null);
@@ -705,7 +884,6 @@ export function ListingHandoffSection({
 
   const renderDraftBody = () => {
     if (!draft) return null;
-    const adoptedKeywords = draft.keywords.length > 0 ? draft.keywords : (draft.usedKeywordTrace ?? []);
     /** v2.2.14：复制按钮（独立"已复制 ✓"/"复制失败"反馈，约 1.8 秒恢复） */
     const copyButton = (key: string, label: string, text: string, isPrimary = false) => {
       const showCopied = copiedButton === key;
@@ -786,41 +964,15 @@ export function ListingHandoffSection({
                 <span key={`k-${i}`} className="rounded-full border border-teal-100 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">{k}</span>
               ))}
             </div>
-          ) : adoptedKeywords.length > 0 ? (
-            <p className="mt-1.5 text-xs leading-5 text-teal-700">
-              正文已采用关键词（SEO 字段未单独生成）：{adoptedKeywords.slice(0, 6).join("、")}
-            </p>
           ) : (
-            <p className="mt-1.5 text-slate-400">暂未生成关键词。</p>
+            <p className="mt-1.5 text-xs leading-5 text-slate-400">
+              暂未生成关键词（SEO 字段未单独生成）。实际采用情况见下方「发布前核对」。
+            </p>
           )}
         </div>
 
-
-        {/* 轮 16 收口：人工审核信息只展示服务端权威结果（不再本地猜测事实级别） */}
-        {draft.bullets.length > 0 ? (() => {
-          const reviewClaims = draft.humanReviewClaims ?? [];
-          const planLabel = keywordPlanDisplayLabel(draft.keywordPlanSource, draft.keywords.length, 0, adoptedKeywords.length);
-          return (
-            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3" data-testid="listing-human-review-aid">
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">人工审核辅助</p>
-              <p className="mt-1.5 text-xs leading-5 text-slate-600">
-                关键词方案：{planLabel}{adoptedKeywords.length > 0 ? "（当前草稿已用：" + adoptedKeywords.slice(0, 6).join("、") + "）" : ""}
-              </p>
-              {reviewClaims.length > 0 ? (
-                <div className="mt-1 text-xs leading-5 text-amber-700">
-                  <p>有 {reviewClaims.length} 条表达需人工确认（服务端判定）：</p>
-                  <ul className="mt-0.5 list-disc pl-4">
-                    {reviewClaims.slice(0, 3).map((claim, idx) => (
-                      <li key={idx} className="truncate">{claim.length > 80 ? claim.slice(0, 80) + "..." : claim}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : (
-                <p className="mt-1 text-xs leading-5 text-teal-700">已确认内容均基于已确认事实；无待人工确认表达。</p>
-              )}
-            </div>
-          );
-        })() : null}
+        {/* 5. 发布前核对：唯一一张卡承载关键词四类分类 + 待确认表达全文与隔离状态 */}
+        <ListingPrepublishReview draft={draft} planSummary={keywordPlanSummary} />
         {/* 图片创作建议：独立区域，不属于 Listing 文本本体（Listing 后台字段不包含此内容） */}
         <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3" data-testid="image-creation-suggestions">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -863,6 +1015,15 @@ export function ListingHandoffSection({
     );
   };
 
+/**
+ * 发布前核对（唯一一张卡）：确认了什么 / 正文用了什么 / 仅搜索什么 / 没用什么
+ * + 待人工确认表达全文与隔离状态。
+ *
+ * 硬约束：
+ * - 待确认表达只在**这里**展示全文，绝不进入标题/五点/描述/关键词/复制内容；
+ * - 没有原因数据时只陈述「未在当前正式字段出现」，不编造拒绝原因；
+ * - 首行给结论，明细走渐进展开（<details>），首屏不平铺。
+ */
   return (
     <section className="mt-5 min-w-0 rounded-2xl border border-slate-200 bg-white p-4" aria-label="Listing 草稿">
       <header className="flex flex-wrap items-center justify-between gap-2">
