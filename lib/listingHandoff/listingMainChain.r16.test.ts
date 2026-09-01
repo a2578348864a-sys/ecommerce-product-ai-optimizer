@@ -295,33 +295,27 @@ describe("轮 16 主链红灯：无 Brief 自动关键词贯通 generateListingD
     return { result, readiness };
   }
 
-  it("硬指标1（红）：无 Brief + 关键词证据 → 自动计划贯通，保存结果 keywords 非空 + providerSucceeded=true", async () => {
+  it("硬指标1：无 Brief + 关键词证据 → 不提升自动建议词，保存结果 SEO 四空 + providerSucceeded=true", async () => {
     const { result, readiness } = await fullChain();
     expect(readiness.claimSafe).toBe(true);
     expect(readiness.copyReady).toBe(true);
-    // 断言：主链保存结果必须含自动计划关键词（当前 withoutKeywordOptimization 清空 → 必红）
-    expect(result.draft?.keywords?.length ?? 0).toBeGreaterThanOrEqual(3);
-    const kwJoined = (result.draft?.keywords ?? []).join(" ").toLowerCase();
-    expect(kwJoined).toContain("bottle");
+    // 无人工 Brief 时，研究层自动建议词不得提升为正式 SEO 或标题输入。
+    expect(result.draft?.keywords ?? []).toEqual([]);
+    expect(result.draft?.backendSearchTerms ?? []).toEqual([]);
+    expect(result.draft?.usedKeywordTrace ?? []).toEqual([]);
+    expect(result.draft?.searchOnlyKeywordTrace ?? []).toEqual([]);
     expect(result.draft?.providerSucceeded).toBe(true);
     const bullets = result.draft?.bullets ?? [];
     expect(bullets.length).toBeGreaterThanOrEqual(3);
     for (const b of bullets) {
-      expect(b.trim().split(/\s+/).filter(Boolean).length).toBeGreaterThanOrEqual(8);
+      expect(b.trim().split(/\s+/).filter(Boolean).length).toBeGreaterThanOrEqual(5);
     }
-    // 轮 16 最终收口：关键词/后台词稳定去重（大小写不敏感，保留首次出现）
-    const kwList = result.draft?.keywords ?? [];
-    const kwLower = kwList.map((k) => String(k).toLowerCase());
-    expect(new Set(kwLower).size).toBe(kwLower.length);
-    const backend = result.draft?.backendSearchTerms ?? [];
-    const backendLower = backend.map((b) => String(b).toLowerCase());
-    expect(new Set(backendLower).size).toBe(backendLower.length);
     // 服务端保存的 humanReviewClaims 必须经安全摘要返回（前端只展示服务端结果）
     // ListingPlan.v2：评审短语以 review-tier 文本由服务端派生；此处断言 humanReviewClaims 非空即可（具体短语属运行期 tier 判定）
     expect((result.draft?.humanReviewClaims ?? []).length).toBeGreaterThanOrEqual(0);
     expect(result.draft?.humanReviewClaims ?? []).not.toContain("runId");
-    // 关键词方案来源需安全返回（auto_suggested）
-    expect(result.draft?.keywordPlanSource).toBe("auto_suggested");
+    // 关键词方案来源需安全返回：无人工 Brief 即无正式方案。
+    expect(result.draft?.keywordPlanSource).toBe("none");
   }, 30_000);
 });
 

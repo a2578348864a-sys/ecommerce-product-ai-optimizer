@@ -1036,6 +1036,38 @@ describe("无关键词主链合同：无有效 KeywordBrief → 可采用合格 
   // 事实偏薄：3 身份 + 2 规格、无功能事实 → readiness.copyReady=false（事实不足），但安全模板句仍可合格
   const THIN_FACT_FIELDS = ["brand", "product_type", "series_or_model", "material", "capacity"];
 
+  it("红：无人工 Keyword Brief 时，自动建议词不得进入正式标题或采用追踪", async () => {
+    const taskId = "sandbox-nk-auto-title-residue";
+    await setupHandoff(taskId, true, {
+      keywordEvidence: {
+        reportType: "SellerSprite Keyword Research",
+        capturedAt: NOW,
+        rows: [
+          { keyword: "kitchen organizer", rowNumber: 1 },
+          { keyword: "silverware organizer", rowNumber: 2 },
+        ],
+      },
+    });
+    setTaskLinkedAiListingClientForTests(async () => { throw { code: "ai_timeout", message: "timed out" }; });
+    try {
+      const p = await generateCreativeHandoffPreview(taskId, visitorContext());
+      const result = await generateListingDraftFromHandoff(taskId, visitorContext(), {
+        requestId: "550e8400-e29b-41d4-a716-446655449901",
+        expectedStorageVersion: p.gate.storageVersion!,
+        expectedHandoffRevision: p.gate.currentHandoff!.currentRevision,
+      });
+      const d = result.draft!;
+      expect(d.keywordPlanSource).toBe("none");
+      expect(d.keywords ?? []).toEqual([]);
+      expect(d.backendSearchTerms ?? []).toEqual([]);
+      expect(d.usedKeywordTrace ?? []).toEqual([]);
+      expect(d.searchOnlyKeywordTrace ?? []).toEqual([]);
+      expect(String(d.titles?.[0] ?? "").toLowerCase()).not.toContain("kitchen");
+    } finally {
+      setTaskLinkedAiListingClientForTests(null);
+    }
+  }, 60_000);
+
   /** 仅确认偏薄事实（无功能事实）→ copyReady=false → Provider 不得被调用（needs_facts 语义保护） */
   async function setupHandoffThinFacts(taskId: string) {
     seedTask(taskId, researchDoc());

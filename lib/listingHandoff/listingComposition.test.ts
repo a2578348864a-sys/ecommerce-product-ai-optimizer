@@ -179,6 +179,115 @@ describe("Organizer 自然文案终局：真实长事实不得套错模板", () 
   });
 });
 
+describe("Listing natural editor v1 红测：真实 Organizer 字段不得输出字段汤或悬空句", () => {
+  const organizerFacts = [
+    { field: "brand", label: "品牌", value: "ukeetap" },
+    { field: "series_or_model", label: "系列/型号", value: "UTO001" },
+    { field: "product_type", label: "商品类型", value: "Organizer" },
+    { field: "material", label: "材质", value: "Plastic" },
+    { field: "color_or_variant", label: "颜色/款式", value: "Silver" },
+    { field: "functional_feature", label: "功能特性", value: "Expandable compartment design, multi-slot structure, molded in one piece from plastic." },
+    { field: "capacity", label: "容量", value: "Can hold approximately 40-50 pieces of common cutlery." },
+    { field: "operation", label: "操作方式", value: "After placing in the drawer, expand or contract to the sides according to the drawer width." },
+    { field: "usage", label: "使用场景", value: "For storing knives, forks, spoons, and other cutlery in a kitchen drawer." },
+    { field: "care", label: "清洁保养", value: "Wipe with a damp cloth; if necessary, clean with warm water and mild detergent." },
+  ];
+
+  const organizerPlan = {
+    primaryKeyword: null,
+    bulletPlans: [
+      { role: "core_outcome", shopperNeed: "功能", featureFactIds: ["functional_feature"] },
+      { role: "pain_relief", shopperNeed: "容量", featureFactIds: ["capacity"] },
+      { role: "use_scenario", shopperNeed: "操作", featureFactIds: ["operation"] },
+      { role: "proof_or_fit", shopperNeed: "用途", featureFactIds: ["usage"] },
+      { role: "ease_of_use", shopperNeed: "保养", featureFactIds: ["care"] },
+    ],
+  } as never;
+
+  it("红：标题不得把产品类型、关键词、材质、颜色排成无标点字段汤", () => {
+    const draft = composeOptimizedListingDraft(input(organizerFacts), organizerPlan, null);
+    expect(draft.titles[0]).not.toMatch(/Organizer kitchen Plastic Silver/i);
+    expect(draft.titles[0]).toMatch(/[,]/);
+  });
+
+  it("红：完整 Organizer 事实不得输出缺冠词大写、悬空 After 或 For care 模板", () => {
+    const draft = composeOptimizedListingDraft(input(organizerFacts), organizerPlan, null);
+    expect(draft.bullets).toHaveLength(5);
+    const text = draft.bullets.join(" ");
+    expect(text).not.toMatch(/(?:includes|has)\s+(?:an?\s+)?Expandable\b/);
+    expect(text).not.toMatch(/^After placing in the drawer,/m);
+    expect(text).not.toMatch(/^For care,\s*Wipe\b/m);
+  });
+
+  it("红：真实英文化 Organizer 计划组不得再次套重复谓语或引导模板", async () => {
+    const facts = [
+      { field: "brand", label: "品牌", value: "ukeetap" },
+      { field: "product_type", label: "商品类型", value: "Organizer" },
+      { field: "material", label: "材质", value: "Plastic" },
+      { field: "dimensions", label: "尺寸", value: "16.5\"D x 21\"W x 1.77\"H" },
+      { field: "weight", label: "重量", value: "0.81 kg" },
+      { field: "included_components", label: "随附组件", value: "1 Expandable Silverware Organizer" },
+      { field: "capacity", label: "容量", value: "可收纳约 40–50 件常用餐具" },
+      { field: "usage", label: "使用场景", value: "厨房抽屉内收纳刀、叉、勺及其他餐具" },
+      { field: "care", label: "清洁保养", value: "可用湿布擦拭，必要时使用温水和中性清洁剂清洁" },
+      { field: "construction", label: "构造/做工", value: "可扩展式分格设计，多隔层结构，塑料一体成型" },
+      { field: "operation", label: "操作方式", value: "放入抽屉后，根据抽屉宽度向两侧展开或收拢" },
+      { field: "compatibility", label: "兼容性", value: "适用于多数中大型厨房抽屉，可根据抽屉空间调整宽度" },
+    ];
+    const li = input(facts);
+    li.englishRenderings = {
+      schema: "listing-english-rendering.v1",
+      renderings: [
+        { factId: "material", field: "material", sourceValue: "Plastic", english: "Plastic" },
+        { factId: "dimensions", field: "dimensions", sourceValue: facts[3].value, english: facts[3].value },
+        { factId: "weight", field: "weight", sourceValue: facts[4].value, english: facts[4].value },
+        { factId: "included_components", field: "included_components", sourceValue: facts[5].value, english: facts[5].value },
+        { factId: "capacity", field: "capacity", sourceValue: facts[6].value, english: "Holds approximately 40-50 pieces of cutlery" },
+        { factId: "usage", field: "usage", sourceValue: facts[7].value, english: "Stores knives, forks, spoons, and other cutlery in a kitchen drawer" },
+        { factId: "care", field: "care", sourceValue: facts[8].value, english: "Wipe with a damp cloth; if necessary, clean with warm water and mild detergent" },
+        { factId: "construction", field: "construction", sourceValue: facts[9].value, english: "Expandable compartment design with multiple slots, molded in one piece from plastic" },
+        { factId: "operation", field: "operation", sourceValue: facts[10].value, english: "After placing the organizer in the drawer, expand or contract it according to the drawer width" },
+        { factId: "compatibility", field: "compatibility", sourceValue: facts[11].value, english: "Fits most medium and large kitchen drawers and adjusts to the available drawer space" },
+      ],
+      generatedAt: null,
+      source: "literal",
+    };
+    const plan = {
+      primaryKeyword: null,
+      bulletPlans: [
+        { role: "core_outcome", shopperNeed: "功能", featureFactIds: ["construction", "material"] },
+        { role: "pain_relief", shopperNeed: "规格", featureFactIds: ["dimensions", "weight", "capacity", "compatibility"] },
+        { role: "use_scenario", shopperNeed: "操作", featureFactIds: ["operation"] },
+        { role: "ease_of_use", shopperNeed: "用途", featureFactIds: ["usage"] },
+        { role: "proof_or_fit", shopperNeed: "保养", featureFactIds: ["care"] },
+      ],
+    } as never;
+    const draft = composeOptimizedListingDraft(li, plan, null);
+    expect(draft.bullets).toHaveLength(5);
+    const text = draft.bullets.join(" ");
+    expect(text).not.toMatch(/includes\s+Expandable\b/i);
+    expect(text).not.toMatch(/opens through its\s+After\b/i);
+    expect(text).not.toMatch(/is suitable for use at\s+For\b/i);
+    expect(text).not.toMatch(/For care,\s*Wipe\b/i);
+  });
+
+  it("红：标题应从已确认事实提取短产品描述，而不是只堆 Organizer/材质/颜色", () => {
+    const draft = composeOptimizedListingDraft(input(organizerFacts), organizerPlan, null);
+    const title = draft.titles[0] ?? "";
+    expect(title).toMatch(/expandable/i);
+    expect(title).toMatch(/cutlery|silverware/i);
+    expect(title).toMatch(/drawer/i);
+    expect(title).not.toMatch(/Can hold|After placing|For storing|Wipe with/i);
+  });
+
+  it("红：描述身份句应使用自然主系表结构，不输出 is an ... product 模板", () => {
+    const draft = composeOptimizedListingDraft(input(organizerFacts), organizerPlan, null);
+    expect(draft.description).toMatch(/The\s+ukeetap\s+UTO001\s+is\s+an\s+organizer/i);
+    expect(draft.description).not.toMatch(/is\s+(?:a|an)\s+ukeetap\s+product/i);
+  });
+
+});
+
 describe("中文事实 English-safe 渲染（V2 关闭假阻断）", () => {
   const CN_FACTS = [
     { field: "brand", label: "品牌", value: "YETI" },

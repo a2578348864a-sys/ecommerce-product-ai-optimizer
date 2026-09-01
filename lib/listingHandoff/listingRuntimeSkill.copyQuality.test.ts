@@ -96,6 +96,26 @@ describe("Copy Quality 红测：坏稿必须判不合格", () => {
   });
 });
 
+describe("Listing natural editor v1 红测：真实截图形态必须被 Copy Quality 拒绝", () => {
+  it("红：字段大写、悬空时间引导和 For care 模板组合不得放行", () => {
+    const r = validateCopyQualityContract({
+      title: "ukeetap UTO001 Organizer kitchen Plastic Silver",
+      bullets: [
+        "The Organizer includes Expandable compartment design, multi-slot structure, molded in one piece from plastic.",
+        "The Organizer can hold approximately 40-50 pieces of everyday cutlery.",
+        "After placing in the drawer, expand or contract to the sides according to the drawer width.",
+        "Use the Organizer for storing knives, forks, spoons, and other cutlery in kitchen drawers.",
+        "For care, Wipe with a damp cloth; clean with warm water and mild detergent if necessary.",
+      ],
+      description: "The UTO001 Organizer is an ukeetap product. The Organizer measures 16.5\"D x 21\"W x 1.77\"H and weighs 0.81 kg.",
+      facts: [],
+      typeLabel: "Organizer",
+    });
+    expect(r.ok, JSON.stringify(r.issues)).toBe(false);
+  });
+});
+
+
 /* ──────────────────────────────────────────────────────────────
  * 结构维度（本轮新增）：句法完整性 / 模板尾 / 句首大写
  *

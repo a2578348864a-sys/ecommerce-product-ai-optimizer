@@ -23,8 +23,7 @@ import { buildDeterministicListingPackDraft, composeControlledBullets, composeOp
 import { RUNTIME_QUALITY_LIMITS, type RuntimeFact, validateRuntimeQualityContract, type RuntimeIssue } from "@/lib/listingHandoff/listingRuntimeSkill";
 import { pickBestKeyword } from "@/lib/research/researchInputQuality";
 import { buildListingReadiness } from "@/lib/listingHandoff/listingReadiness";
-import { parseListingKeywordBrief, buildListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
-import { buildAutoKeywordPlan } from "@/lib/listingHandoff/listingAutoKeywordPlan";
+import { parseListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
 import { extractKnownBrandsFromCompetitorTitles, extractBrandLikeTokensFromKeywords, filterKeywordsForListing, findCompetitorBrandMentions, type KeywordPolicyInput } from "@/lib/listingHandoff/listingKeywordPolicy";
 import { deriveUsedKeywordIds } from "@/lib/listingHandoff/listingKeywordProvenance";
 import { filterBackendSearchTerms } from "@/lib/listingHandoff/listingBackendTermSafety";
@@ -833,29 +832,7 @@ export async function generateListingDraftFromHandoff(
 
       // Quality.1（锁内）：读 keyword brief → readiness → plan → 决定草稿类型
       const keywordBrief = parseListingKeywordBrief(current.listingKeywordBrief);
-      // 无人工 Brief 时从 keywordEvidence 派生 auto_suggested 计划；人工 Brief 存在时人工优先。
-      const autoBrief = keywordBrief
-        ? null
-        : (() => {
-            const keywordPolicy = keywordPolicyInputOf(generationInput);
-            const auto = buildAutoKeywordPlan({
-              keywordCandidates: generationInput.creativeContext?.keywordCandidates ?? [],
-              confirmedFacts: generationInput.productFacts.map((f) => ({ field: f.field, label: f.label, value: f.value })),
-              ownBrand: keywordPolicy.ownBrand,
-              knownBrands: keywordPolicy.knownBrands,
-            });
-            if (!auto.primaryKeyword) return null;
-            const built = buildListingKeywordBrief({
-              primaryKeyword: auto.primaryKeyword,
-              supportingKeywords: auto.supportingKeywords,
-              backendSearchTerms: auto.backendSearchTerms,
-              source: "auto_suggested",
-              capturedAt: new Date().toISOString(),
-              evidenceRef: "ev:keyword:auto_suggested",
-              reportHash: undefined,
-            });
-            return built.ok ? built.brief : null;
-          })();
+      // 无人工 Brief 时不把研究候选词提升为正式 SEO；自动建议只保留在研究资料层。
       // 第1轮：已保存 Brief 主词相关度不足 → 标记"需重新确认"，不进入 effectiveKeywordBrief（数据不删除）
       const productNameForRelevance = [
         generationInput.productFacts.find((f) => f.field === "brand")?.value ?? "",
@@ -869,7 +846,7 @@ export async function generateListingDraftFromHandoff(
           keywordBriefNeedsConfirm = true;
         }
       }
-      const candidateKeywordBrief = keywordBrief && !keywordBriefNeedsConfirm ? keywordBrief : autoBrief;
+      const candidateKeywordBrief = keywordBrief && !keywordBriefNeedsConfirm ? keywordBrief : null;
       // 已保存的手工 Brief 也必须在读取边界经过同一策略，避免持久化路径绕过品牌/风险词门禁。
       const effectiveKeywordBrief = policyFilteredKeywordBrief(candidateKeywordBrief, generationInput);
       // 轮 16：auto_suggested 计划的全部词可追溯到已保存 keywordEvidence（同源安全集），

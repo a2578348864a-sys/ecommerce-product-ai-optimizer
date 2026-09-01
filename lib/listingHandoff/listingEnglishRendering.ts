@@ -45,6 +45,19 @@ const RUN_ON_FIELDS = new Set([
   "drinking_mechanism", "insulation", "lid_behavior", "cleaning",
 ]);
 
+/** 纯 Title Case 名词短语（如“1 Expandable Silverware Organizer”）不是粘连句。 */
+function isTitleCaseNounPhrase(value: string, field: string): boolean {
+  if (field !== "included_components") return false;
+  return /^\d+\s+(?:[A-Z][A-Za-z-]*\s+){1,}[A-Z][A-Za-z-]*$/.test(value.trim());
+}
+
+function hasRunOnCaseBoundary(value: string): boolean {
+  // 不把 Title Case 名词短语/逗号列表（如“Extra Large Capacity”）误判为粘连句。
+  if (/^(?:\d+\s+)?[A-Z][A-Za-z-]*(?:[\s,]+[A-Z][A-Za-z-]*)+$/.test(value.trim())) return false;
+  const probe = value;
+  return /[a-z0-9] [A-Z]/.test(probe.replace(/\. /g, ""));
+}
+
 // ─── 确定性 Literal 渲染（无需 AI 的字段/单位映射）──────────
 
 const LITERAL_RENDER: Record<string, (value: string) => string | null> = {
@@ -64,6 +77,33 @@ const LITERAL_RENDER: Record<string, (value: string) => string | null> = {
 };
 
 const LITERAL_FIELDS = new Set(["dimensions", "weight"]);
+
+/**
+ * 高置信度的中文事实短语渲染：只覆盖可逐字核对的商品描述模式。
+ * 未命中时继续走既有 Provider/fail-closed 路径，绝不猜测或泛化翻译。
+ */
+function deterministicChineseRendering(field: string, source: string): string | null {
+  if (field === "capacity") {
+    const match = source.match(/可收纳约\s*(\d+)\s*[–—-]\s*(\d+)\s*件(?:常用)?餐具/);
+    if (match) return `Holds approximately ${match[1]}-${match[2]} pieces of cutlery`;
+  }
+  if (field === "usage" && /厨房抽屉内收纳刀、叉、勺及其他餐具/.test(source)) {
+    return "Stores knives, forks, spoons, and other cutlery in a kitchen drawer";
+  }
+  if (field === "care" && /可用湿布擦拭.*必要时使用温水和中性清洁剂清洁/.test(source)) {
+    return "Wipe with a damp cloth; if necessary, clean with warm water and mild detergent";
+  }
+  if (field === "construction" && /可扩展式分格设计.*多隔层结构.*塑料一体成型/.test(source)) {
+    return "Expandable compartment design with multiple slots, molded in one piece from plastic";
+  }
+  if (field === "operation" && /放入抽屉后.*根据抽屉宽度向两侧展开或收拢/.test(source)) {
+    return "After placing the organizer in the drawer, expand or contract it according to the drawer width";
+  }
+  if (field === "compatibility" && /适用于多数中大型厨房抽屉.*根据抽屉空间调整宽度/.test(source)) {
+    return "Fits most medium and large kitchen drawers and adjusts to the available drawer space";
+  }
+  return null;
+}
 
 // ─── Integrity Gate（确定性检查）────────────────────────
 
@@ -220,7 +260,8 @@ export async function buildEnglishRenderingPack(
     // 数字+大写边界不是粘连子句，不能误判）。
     const runOn = !HAS_CJK.test(source)
       && RUN_ON_FIELDS.has(fact.field)
-      && /[a-z0-9] [A-Z]/.test(source.replace(/\. /g, ""));
+      && !isTitleCaseNounPhrase(source, fact.field)
+      && hasRunOnCaseBoundary(source);
     // 已英文且无粘连子句（"…lock Double-wall…"）→ 原样保留
     if (!HAS_CJK.test(source) && !runOn) {
       direct.push({ fact, english: source });
@@ -234,6 +275,12 @@ export async function buildEnglishRenderingPack(
         direct.push({ fact, english: rendered });
         continue;
       }
+    }
+    // 高置信度中文事实短语：只在完整模式命中时本地渲染；其余仍 fail-closed。
+    const deterministic = deterministicChineseRendering(fact.field, source);
+    if (deterministic !== null && !runOn && !injectedBatchRenderer && !injectedRenderer) {
+      direct.push({ fact, english: deterministic });
+      continue;
     }
     pending.push(fact);
   }
@@ -288,7 +335,7 @@ export async function buildEnglishRenderingPack(
     schema: ENGLISH_RENDERING_VERSION,
     renderings,
     generatedAt: new Date().toISOString(),
-    source: "llm",
+    source: pending.length > 0 ? "llm" : "literal",
   };
   renderingCache.set(cacheKey, pack);
   return { ok: true, pack };

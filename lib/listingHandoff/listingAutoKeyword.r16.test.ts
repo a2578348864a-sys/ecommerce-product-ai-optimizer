@@ -8,9 +8,9 @@ function fact(field: string, label: string, value: string): ListingGenerationInp
 }
 
 /*
- * 现状红灯（轮 16 任务书）：
- * 1) copyReady=true + 已有 SellerSprite 关键词（keywordCandidates）但无手工 Keyword Brief → 关键词为空/未自动埋词；
- * 2) Etekcity/BELLA 类已有事实只能得到 ≤1 条自然 bullet，不算可用 Listing。
+ * 当前合同（轮 17 终局）：
+ * 1) 研究层 keywordCandidates 没有人工 Keyword Brief 时，只能作为参考，不能提升为正式 SEO；
+ * 2) 事实充分时应继续输出事实安全句，关键词状态与文案状态彼此独立。
  */
 
 function bellFixture(): ListingGenerationInput {
@@ -44,20 +44,16 @@ function bellFixture(): ListingGenerationInput {
   } as never;
 }
 
-describe("轮 16 现状红灯：可用 Listing 直出（先红后绿）", () => {
-  it("红色#1：copyReady + 已有关键词证据、无手工 Brief → 关键词必须实际嵌入（≥1 主词 + ≥2 辅助词），不得为空", () => {
+describe("轮 17 关键词合同：无人工 Brief 不提升自动建议词", () => {
+  it("无手工 Brief + 已有关键词证据 → 正式 SEO 四字段保持为空", () => {
     const input = bellFixture();
     const plan = buildListingPlan(input, null);
     const draft = composeOptimizedListingDraft(input, plan, null);
-    // 轮 16：keywords 字段实际嵌入主词 + ≥2 辅助词（SEO 参考，非 bullet 文本）
-    const kwJoined = (draft.keywords ?? []).join(" ").toLowerCase();
-    expect(kwJoined).toContain("toaster");
-    const embedded = ["toaster", "bread toaster", "2 slice toaster", "extra wide toaster", "stainless steel toaster", "crumb tray toaster"]
-      .filter((k) => kwJoined.includes(k.toLowerCase()));
-    expect(embedded.length).toBeGreaterThanOrEqual(2);
+    expect(draft.keywords ?? []).toEqual([]);
+    expect(draft.backendSearchTerms ?? []).toEqual([]);
   });
 
-  it("红色#2：事实充分 → 输出非空事实句（≥3 词不重复）且未用连续属性段冒充；keywords 嵌入主词+辅助词", () => {
+  it("事实充分 → 输出非空事实句且不以连续属性段冒充，关键词仍保持空态", () => {
     const input = bellFixture();
     const plan = buildListingPlan(input, null);
     const draft = composeOptimizedListingDraft(input, plan, null);
@@ -69,5 +65,7 @@ describe("轮 16 现状红灯：可用 Listing 直出（先红后绿）", () => 
     expect(lower).not.toContain("stainless steel 2 slice");
     expect(draft.titles[0]?.trim().length).toBeGreaterThan(0);
     expect(draft.description.trim().length).toBeGreaterThan(0);
-    expect(draft.keywords.length).toBeGreaterThanOrEqual(1);
-  });});
+    expect(draft.keywords).toEqual([]);
+    expect(draft.backendSearchTerms).toEqual([]);
+  });
+});

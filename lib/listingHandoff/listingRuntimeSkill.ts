@@ -137,6 +137,10 @@ export function validateRuntimeQualityContract(input: RuntimeQualityInput): Runt
   if (brand && exactWordCount(input.title, brand) > 1) {
     issues.push({ target: "title", code: "brand_repeat", message: "标题中品牌词出现了 2 次或以上（不得重复）。" });
   }
+  // 标题结构：长串无标点的字段堆叠不是消费者标题；短标题不受此启发式影响。
+  if (structureTokens(input.title).length >= 6 && !/[,:;|()[\]\-–—]/.test(String(input.title))) {
+    issues.push({ target: "title", code: "template_jargon", message: "标题疑似把多个字段直接堆叠，缺少自然分组标点。" });
+  }
 
   // Bullets
   const bullets = input.bullets ?? [];
@@ -472,6 +476,11 @@ function templateJargonHit(sentence: string): string | null {
   if (s.includes("standardusewiththe")) return "template_jargon";
   if (s.includes("easycleaningmatches")) return "template_jargon";
   if (s.includes("hasacapacityofcanhold") || s.includes("opensthroughitsafter") || s.includes("issuitableforuseatforstoring") || s.includes("forcarewipe")) return "template_jargon";
+  // 通用自然语言结构：完整事实短语不应再被名词模板包裹，时间从句必须带明确对象，
+  // care 引导后的动作保持自然小写。仅按句法形态匹配，不绑定具体商品或整句。
+  if (/\b(?:has|includes)\s+(?:an?\s+)?[A-Z][a-z]{2,}\b/.test(String(sentence))) return "template_jargon";
+  if (/^after\s+placing\s+in\s+the\s+[^,]+,\s*/i.test(String(sentence))) return "template_jargon";
+  if (/^for\s+care,\s*[A-Z][a-z]+\b/.test(String(sentence))) return "template_jargon";
   return null;
 }
 
@@ -512,6 +521,10 @@ export function validateCopyQualityContract(input: CopyQualityInput): CopyQualit
 
   // 结构维度（v2）：描述与五点走同一判定——任何字段漏检都会成为模板尾/病句港湾
   sentenceList(String(input.description ?? "")).forEach((s, index) => {
+    const jargon = templateJargonHit(s);
+    if (jargon) {
+      issues.push({ target: "description", code: jargon, message: "描述第 " + (index + 1) + " 句含结构性模板拼接病句。" });
+    }
     for (const code of structureIssuesOf(s)) {
       issues.push({ target: "description", code, message: "描述第 " + (index + 1) + " 句 " + STRUCTURE_MESSAGE[code] });
     }

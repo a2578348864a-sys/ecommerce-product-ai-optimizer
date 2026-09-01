@@ -151,3 +151,22 @@ describe("历史 Organizer 坏句必须按当前规则重新拒绝", () => {
     expect(verdict.copyQuality).toBe(false);
   });
 });
+
+describe("Listing natural editor v1 历史坏稿重判", () => {
+  it("红：旧标记 pass 的 Organizer 字段套模板快照必须按当前规则拒绝", () => {
+    const verdict = revalidateHistoricalDraftRead({
+      factSafe: true,
+      copyQuality: true,
+      listingUnqualified: false,
+      titles: ["ukeetap UTO001 Organizer kitchen Plastic Silver"],
+      bullets: [
+        "The Organizer includes Expandable compartment design, multi-slot structure, molded in one piece from plastic.",
+        "After placing in the drawer, expand or contract to the sides according to the drawer width.",
+        "For care, Wipe with a damp cloth; clean with warm water and mild detergent if necessary.",
+      ],
+      description: "The UTO001 Organizer is an ukeetap product.",
+    } as Record<string, unknown>);
+    expect(verdict.copyQuality).toBe(false);
+    expect(verdict.listingUnqualified).toBe(true);
+  });
+});

@@ -18,7 +18,7 @@ import {
 const RENDERER = { callCount: 0 };
 
 const CN_FACT_ENGLISH: Record<string, string> = {
-  capacity: "stores about 40 to 50 pieces of cutlery",
+  capacity: "stores multiple types of cutlery",
   usage: "suitable for daily kitchen storage and carrying",
   care: "rinse with clean water and wipe dry",
   construction: "built with stainless steel and plastic structure",
@@ -36,7 +36,7 @@ async function batchRenderer(input: Array<{ factId: string; field: string; sourc
 }
 
 const CN_FACTS = [
-  { factId: "capacity", field: "capacity", sourceValue: "可收纳约 40–50 件常用餐具" },
+  { factId: "capacity", field: "capacity", sourceValue: "可容纳多种餐具" },
   { factId: "usage", field: "usage", sourceValue: "适合日常厨房收纳与外出携带" },
   { factId: "care", field: "care", sourceValue: "可用清水冲洗并擦干" },
   { factId: "construction", field: "construction", sourceValue: "采用不锈钢与塑料组合结构" },
@@ -55,6 +55,33 @@ afterEach(() => {
 });
 
 describe("中文事实批量英文化（单次批量调用合同）", () => {
+  it("Organizer 中文安全事实可由确定性渲染覆盖，Provider 关闭时不进入外部翻译", async () => {
+    const result = await buildEnglishRenderingPack({
+      facts: [
+        { factId: "capacity", field: "capacity", sourceValue: "可收纳约 40–50 件常用餐具" },
+        { factId: "usage", field: "usage", sourceValue: "厨房抽屉内收纳刀、叉、勺及其他餐具" },
+        { factId: "care", field: "care", sourceValue: "可用湿布擦拭，必要时使用温水和中性清洁剂清洁" },
+        { factId: "construction", field: "construction", sourceValue: "可扩展式分格设计，多隔层结构，塑料一体成型" },
+        { factId: "operation", field: "operation", sourceValue: "放入抽屉后，根据抽屉宽度向两侧展开或收拢" },
+        { factId: "compatibility", field: "compatibility", sourceValue: "适用于多数中大型厨房抽屉，可根据抽屉空间调整宽度" },
+        { factId: "included_components", field: "included_components", sourceValue: "1 Expandable Silverware Organizer" },
+        { factId: "functional_feature", field: "functional_feature", sourceValue: "Extra Large Capacity, Expandable, Sturdy, Food Safe, Waterproof" },
+      ],
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.pack.source).toBe("literal");
+      expect(result.pack.renderings).toHaveLength(8);
+      expect(result.pack.renderings.find((r) => r.field === "capacity")?.english).toContain("40-50");
+      expect(result.pack.renderings.find((r) => r.field === "usage")?.english).toContain("kitchen drawer");
+      expect(result.pack.renderings.find((r) => r.field === "care")?.english).toContain("damp cloth");
+      expect(result.pack.renderings.find((r) => r.field === "construction")?.english).toContain("plastic");
+      expect(result.pack.renderings.find((r) => r.field === "operation")?.english).toContain("organizer in the drawer");
+      expect(result.pack.renderings.find((r) => r.field === "compatibility")?.english).toContain("kitchen drawers");
+      expect(result.pack.renderings.find((r) => r.field === "included_components")?.english).toBe("1 Expandable Silverware Organizer");
+    }
+  });
+
   it("6 条中文事实首次调用只触发 1 次批量 renderer 调用", async () => {
     setEnglishBatchRendererForTests(batchRenderer);
     const result = await buildEnglishRenderingPack({ facts: CN_FACTS });

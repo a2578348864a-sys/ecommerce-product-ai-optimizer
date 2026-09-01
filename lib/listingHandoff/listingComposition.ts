@@ -214,11 +214,21 @@ function descriptionIdentitySentence(input: ListingGenerationInput): string {
   const brand = renderingOf(input, "brand");
   const series = renderingOf(input, "series_or_model");
   const type = renderingOf(input, "product_type");
+  const material = renderingOf(input, "material");
+  const hasMeasuredSpec = Boolean(renderingOf(input, "dimensions") || renderingOf(input, "weight"));
   const parts: string[] = [];
   if (series) parts.push(series);
   if (type && (!brand || type.toLowerCase() !== brand.toLowerCase())) parts.push(type);
   if (parts.length === 0) parts.push("product");
   const subject = parts.join(" ");
+  if (brand && material && type && hasMeasuredSpec && series) {
+    const naturalMaterial = material.toLocaleLowerCase();
+    const naturalType = type.toLocaleLowerCase();
+    return "The " + brand + (series ? " " + series : "") + " is " + articleFor(naturalMaterial) + " " + naturalMaterial + " " + naturalType + ".";
+  }
+  if (brand && type && series) {
+    return "The " + brand + (series ? " " + series : "") + " is " + articleFor(type) + " " + type.toLocaleLowerCase() + ".";
+  }
   if (!brand) return "The " + subject + " is a product in this category.";
   return "The " + subject + " is " + articleFor(brand) + " " + brand + " product.";
 }
@@ -326,7 +336,6 @@ export function buildDeterministicListingPackDraft(
 
 import type { ListingPlan } from "@/lib/listingHandoff/listingPlan";
 import type { ListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
-import { buildAutoKeywordPlan } from "@/lib/listingHandoff/listingAutoKeywordPlan";
 
 export type OptimizedListingDraft = {
   titles: string[];
@@ -364,13 +373,31 @@ function isTitleSafeValue(value: string): boolean {
   return true;
 }
 
-function composeOptimizedTitle(input: ListingGenerationInput, plan: ListingPlan): string {
+function shortTitleDescriptors(input: ListingGenerationInput): string[] {
+  const source = ["functional_feature", "construction", "usage", "compatibility"]
+    .map((field) => englishRenderingOf(input, field) ?? "")
+    .join(" ");
+  const descriptors: string[] = [];
+  if (/\bexpandable\b/i.test(source)) descriptors.push("Expandable");
+  if (/\b(?:cutlery|silverware)\b/i.test(source)) descriptors.push(/\bsilverware\b/i.test(source) ? "Silverware" : "Cutlery");
+  if (/\bdrawer\b/i.test(source)) descriptors.push("Drawer");
+  return [...new Set(descriptors)];
+}
+
+function composeOptimizedTitle(input: ListingGenerationInput, plan: ListingPlan, brief: ListingKeywordBrief | null): string {
   // 品牌去重：product_type 渲染值等于品牌（大小写不敏感）时不得重复并入（THERMOS THERMOS / 品牌重复）
   const brand0 = englishRenderingOf(input, "brand");
   const type0 = englishRenderingOf(input, "product_type");
   const identity = ["brand", "series_or_model"].concat(
     type0 && brand0 && type0.toLowerCase() === brand0.toLowerCase() ? [] : ["product_type"],
   ).map((f) => englishRenderingOf(input, f)).filter((v): v is string => v !== null && isTitleSafeValue(v));
+  const typeValue = englishRenderingOf(input, "product_type");
+  const descriptorValues = shortTitleDescriptors(input);
+  if (descriptorValues.length > 0 && typeValue && isTitleSafeValue(typeValue)) {
+    const typeIndex = identity.lastIndexOf(typeValue);
+    if (typeIndex >= 0) identity.splice(typeIndex, 0, ...descriptorValues);
+    else identity.push(...descriptorValues);
+  }
   const specs = ["capacity", "material", "color_or_variant", "quantity_or_pack_size"].filter(
     (f) => f !== "quantity_or_pack_size" || !isTrivialSingleUnitQuantity(f, englishRenderingOf(input, f) ?? ""),
   ).map((f) => englishRenderingOf(input, f)).filter((v): v is string => v !== null && isTitleSafeValue(v));
@@ -378,7 +405,7 @@ function composeOptimizedTitle(input: ListingGenerationInput, plan: ListingPlan)
   // primaryKeyword 合理纳入：标题长度不足目标时，将主词并入高权重位置。
   // R3：无确认事实证据的 keyword（如 "insulated water bottle" 中 insulated）不得并入标题——
   // 否则标题超长且含未确认声明，structured fallback 会因此整体降级。
-  if (plan.primaryKeyword) {
+  if (brief && plan.primaryKeyword) {
     const keyword = plan.primaryKeyword;
     const keywordTokens = keyword.toLocaleLowerCase().split(/\s+/).filter((w) => w.length > 2);
     const leadTokens = lead.toLocaleLowerCase().split(/\s+/).filter((w) => w.length > 2);
@@ -388,11 +415,11 @@ function composeOptimizedTitle(input: ListingGenerationInput, plan: ListingPlan)
     // 计划关键词：全词由已确认事实证明（事实安全）→ 允许自然进入标题一次
     const keywordSafeByFacts = keywordCoveredByFacts && !alreadyCovered && lead.length + keyword.length <= 110;
     if (keywordSafeByFacts && isTitleSafeValue(keyword)) {
-      lead = lead ? lead + " " + keyword : keyword;
+      lead = lead ? lead + ", " + keyword : keyword;
     }
   }
-  const rest = specs.slice(0, 3).join(" ");
-  const title = [lead, rest].filter(Boolean).join(" ");
+  const rest = specs.slice(0, 3).join(", ");
+  const title = [lead, rest].filter(Boolean).join(", ");
   if (!title) {
     const fallback = ["brand", "series_or_model", "product_type", "material", "color_or_variant"]
       .map((field) => englishRenderingOf(input, field))
@@ -580,9 +607,15 @@ function consumerFactPhrase(field: string, value: string): string {
  * 禁止产出 "has a 3 compartments feature" —— 数量/复数前不能加不定冠词。
  */
 function featureObjectFrame(t: string, v: string): string {
+  const cased = consumerFactPhrase("functional_feature", v);
+  const firstWord = cased.trim().split(/\s+/)[0] ?? "";
+  // SoftSip/USB-C 等品牌或技术 token 保留原样；普通 Title Case 名词改为句中自然小写。
+  const phrase = /[a-z][A-Z]/.test(firstWord) || /^[A-Z]{2,}(?:[-_][A-Z0-9]+)*$/.test(firstWord)
+    ? cased
+    : lowerFirstWord(cased);
   return isQuantityOrPluralNoun(v)
-    ? "The " + t + " includes " + v + "."
-    : "The " + t + " has " + articleFor(v) + " " + v + " feature.";
+    ? "The " + t + " includes " + phrase + "."
+    : "The " + t + " features " + phrase + ".";
 }
 
 /** 纯控件名（push button / switch / lever / knob / dial）→ uses-as-control 帧；其余名词机制 → opens-through 帧 */
@@ -607,7 +640,7 @@ function operationObjectFrame(t: string, v: string): string {
 
 const NOUN_SPEC_FRAME_BY_FIELD: Record<string, (t: string, v: string) => string> = {
   material: (t, v) => "The " + t + " is made of " + v + ".",
-  construction: (t, v) => "The " + t + " includes " + v + ".",
+  construction: (t, v) => "The " + t + " has " + articleFor(v) + " " + lowerFirstWord(v) + ".",
   dimensions: (t, v) => "The " + t + " measures " + v + ".",
   weight: (t, v) => "The " + t + " weighs " + v + ".",
   capacity: (t, v) => "The " + t + " has a capacity of " + v + ".",
@@ -615,7 +648,7 @@ const NOUN_SPEC_FRAME_BY_FIELD: Record<string, (t: string, v: string) => string>
   included_components: (t, v) =>
     isQuantityOrPluralNoun(v)
       ? valueContainsTypeLabel(v, t)
-        ? "The included component is " + v + "."
+        ? "The included component is " + consumerFactPhrase("included_components", v) + "."
         : "The " + t + " includes " + v + "."
       : "A " + v + " is included with the " + t + ".",
   quantity_or_pack_size: (t, v) => "The " + t + " comes in a " + v + ".",
@@ -673,8 +706,14 @@ function buildControlledSentence(field: string, rawValue: string, typeLabel: str
     return "The " + typeLabel + " " + lowerFirstWord(value) + ".";
   }
 
-  // After/Before 等从句已带完整祈使主句，原样保留，避免再套 operation 名词帧。
-  if (/^(?:after|before|when|while)\b/i.test(value) && /,\s*[a-z]+\b/i.test(value)) {
+  // 时间引导事实需要明确商品对象；保留原事实从句作为锚点，但先给出明确主语。
+  const placed = value.match(/^after\s+placing\s+in\s+the\s+([^,]+),\s*(.+)$/i);
+  if (placed) {
+    return "The " + typeLabel + " works as follows: After placing in the " + placed[1].trim() + ", " + lowerFirstWord(placed[2].trim()) + ".";
+  }
+  const placedWithObject = value.match(/^after\s+placing\s+(?:the\s+)?[^,]+\s+in\s+the\s+[^,]+,\s*.+$/i);
+  if (placedWithObject) return endWithPeriod(value);
+  if (/^(?:before|when|while)\b/i.test(value) && /,\s*[a-z]+\b/i.test(value)) {
     return endWithPeriod(value);
   }
 
@@ -685,7 +724,9 @@ function buildControlledSentence(field: string, rawValue: string, typeLabel: str
 
   // 1) care / cleaning 的祈使短语 → `For care, {v}.`
   const lead = IMPERATIVE_LEAD_BY_FIELD[field];
-  if (lead && IMPERATIVE_PHRASE_HEADS.has(head)) return lead + ", " + lowerFirstWord(value) + ".";
+  if (lead && IMPERATIVE_PHRASE_HEADS.has(head)) return field === "care" || field === "cleaning"
+    ? value.replace(/^([a-z])/, (_, letter: string) => letter.toUpperCase()) + "."
+    : lead + ", " + lowerFirstWord(value) + ".";
 
   // 2) 分词 / 形容词补语 → `The {t} is {v}.`
   if (COMPLEMENT_PHRASE_HEADS.some((h) => lower.startsWith(h + " "))) {
@@ -693,7 +734,7 @@ function buildControlledSentence(field: string, rawValue: string, typeLabel: str
   }
 
   // 3) 三单谓语开头 → `The {t} {v}.`
-  if (FINITE_PHRASE_HEADS.has(head)) return "The " + typeLabel + " " + value + ".";
+  if (FINITE_PHRASE_HEADS.has(head)) return "The " + typeLabel + " " + lowerFirstWord(value) + ".";
 
   // 4) 名词规格值 → 字段专属真实谓语
   const nounFrame = NOUN_SPEC_FRAME_BY_FIELD[field];
@@ -817,21 +858,8 @@ function composeOptimizedKeywords(input: ListingGenerationInput, brief: ListingK
   backendSearchTerms: string[];
 } {
   if (!brief) {
-    // 轮 16：无手工 Keyword Brief → 从已保存 keywordEvidence 派生 auto_suggested 计划，
-    // 不关闭 SEO 优化；关键词是 SEO 参考，不是商品事实（不进 confirmed facts）。
-    const auto = buildAutoKeywordPlan({
-      keywordCandidates: input.creativeContext?.keywordCandidates ?? [],
-      // 英文渲染值：属性词(材质/容量)匹配已确认事实用英文值（中文原值会漏配）
-      confirmedFacts: input.productFacts.map((f) => ({ field: f.field, label: f.label, value: englishRenderingOf(input, f.field) ?? f.value })),
-      ownBrand: englishRenderingOf(input, "brand") ?? "",
-      knownBrands: [],
-    });
-    const kw: string[] = [];
-    if (auto.primaryKeyword) kw.push(auto.primaryKeyword);
-    for (const s of auto.supportingKeywords) {
-      if (!kw.includes(s)) kw.push(s);
-    }
-    return { keywords: kw.slice(0, 12), backendSearchTerms: auto.backendSearchTerms };
+    // 无人工 Keyword Brief 时，自动建议词只保留在研究资料层，不进入正式 SEO 输出。
+    return { keywords: [], backendSearchTerms: [] };
   }
   const keywords: string[] = [];
   if (brief.primaryKeyword) keywords.push(brief.primaryKeyword);
@@ -859,7 +887,7 @@ export function composeOptimizedListingDraft(
   plan: ListingPlan,
   brief: ListingKeywordBrief | null,
 ): OptimizedListingDraft {
-  const title = composeOptimizedTitle(input, plan);
+  const title = composeOptimizedTitle(input, plan, brief);
   const bullets = composeOptimizedBullets(input, plan);
   const description = composeOptimizedDescription(input);
   const { keywords, backendSearchTerms } = composeOptimizedKeywords(input, brief);

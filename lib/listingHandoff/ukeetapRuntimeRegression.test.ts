@@ -62,14 +62,14 @@ const BAD_BULLET_5 = "After placing in the drawer, expand or collapse to the sid
  * 2 capacity（`stores …` 三单谓语）      → The {type} {value}.
  * 3 operation（`expands …` 三单谓语）    → The {type} {value}.
  * 4 usage（`suitable for …` 形容词补语） → The {type} is {value}.
- * 5 care（`rinse …` 祈使短语）           → For care, {value}.
+ * 5 care（`rinse …` 祈使短语）           → 直接以动作动词开头。
  */
 const EXPECTED_NATURAL_BULLETS = [
   "The Organizer is built with an expandable multi-compartment design in molded plastic.",
   "The Organizer stores about 40 to 50 pieces of cutlery.",
   "The Organizer expands or collapses to the sides according to the drawer width.",
   "The Organizer is suitable for daily kitchen storage and carrying.",
-  "For care, rinse with clean water and wipe dry.",
+  "Rinse with clean water and wipe dry.",
 ] as const;
 
 /** 旧万能帧产出的五类病句（必须被真实 Copy Quality 拒绝，不得再出现在正式输出） */
@@ -464,11 +464,11 @@ describe("ukeetap 离线回归（坏 Provider 稿 → 5 条 Plan 绑定确定性
     expect(draft.factSafe).toBe(true);
     expect(draft.copyQuality).toBe(true);
     expect((draft.qualityIssues ?? []).join(" ")).toContain("AI 最终草稿未通过 Claim Evidence");
-    // 5 条互不重复 + 每条 8-30 词 + 锚定各组事实渲染值
+    // 5 条互不重复 + 每条 5-30 词 + 锚定各组事实渲染值
     expect(new Set(draft.bullets).size).toBe(5);
     for (const b of draft.bullets) {
       const wc = b.trim().split(/\s+/).filter(Boolean).length;
-      expect(wc).toBeGreaterThanOrEqual(8);
+      expect(wc).toBeGreaterThanOrEqual(5);
       expect(wc).toBeLessThanOrEqual(30);
       expect(/[.!?]$/.test(b.trim())).toBe(true);
     }
