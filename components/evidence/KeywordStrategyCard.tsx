@@ -78,12 +78,16 @@ export function KeywordStrategyCard({
         <div className="min-w-0">
           <h4 className="text-sm font-bold text-slate-900">关键词策略</h4>
           <p className="mt-1 text-xs text-slate-500" data-testid="kw-status">
-            状态：{briefPrimary ? (needsReconfirm ? "需重新确认" : "已采用") : "待确认"}
+            {briefPrimary
+              ? `状态：${needsReconfirm ? "需重新确认" : "已确认"}`
+              : briefEvidenceCount > 0
+                ? `已采集${briefEvidenceCount}条关键词，尚未确认方案`
+                : "状态：待确认"}
             {" · "}Listing：{inListing ? "已用于 Listing" : "尚未用于 Listing"}
           </p>
         </div>
         <button type="button" data-testid="kw-adjust" aria-expanded={editing} aria-controls="kw-strategy-editor" onClick={() => (editing ? setEditing(false) : openEditor())} className="inline-flex h-8 shrink-0 items-center rounded-lg bg-teal-600 px-3 text-xs font-semibold text-white hover:bg-teal-700">
-          调整关键词方案
+          {briefPrimary ? "调整关键词方案" : "确认并用于 Listing"}
         </button>
       </div>
 

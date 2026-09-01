@@ -11,6 +11,14 @@ export type CompetitorEntryView = {
   detailBulletsCount?: number;
 };
 
+export function visibleCompetitorEntries<T>(entries: T[], visibleCount = 3): {
+  visible: T[];
+  hidden: T[];
+} {
+  const limit = Math.max(1, Math.floor(visibleCount));
+  return { visible: entries.slice(0, limit), hidden: entries.slice(limit) };
+}
+
 export function CompetitorStrategyCard({
   productName,
   entries,
@@ -39,6 +47,7 @@ export function CompetitorStrategyCard({
   const [asinInput, setAsinInput] = useState("");
   const [noteInput, setNoteInput] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
+  const { visible, hidden } = visibleCompetitorEntries(classified);
 
   const submitAdd = async () => {
     const err = await onAdd({ asin: asinInput.trim(), note: noteInput.trim() });
@@ -63,7 +72,7 @@ export function CompetitorStrategyCard({
       </div>
 
       <ul className="mt-3 space-y-2 text-sm" data-testid="cp-list">
-        {classified.slice(0, 5).map((e) => (
+        {visible.map((e) => (
           <li key={e.asin} className="rounded-lg border border-slate-200 px-3 py-2" data-testid={"cp-item-" + e.asin}>
             <p className="font-semibold text-slate-900">{e.note ?? e.asin}</p>
             <p className="text-xs text-slate-500">
@@ -74,6 +83,20 @@ export function CompetitorStrategyCard({
         ))}
         {classified.length === 0 ? <li className="text-xs text-slate-400">尚未采集竞品。点击「自动采集竞品」开始。</li> : null}
       </ul>
+
+      {hidden.length > 0 ? (
+        <details className="mt-2" data-testid="cp-more-details">
+          <summary className="cursor-pointer text-xs font-semibold text-slate-600">查看全部竞品（另有 {hidden.length} 个）</summary>
+          <ul className="mt-2 space-y-2 text-sm">
+            {hidden.map((e) => (
+              <li key={e.asin} className="rounded-lg border border-slate-200 px-3 py-2" data-testid={"cp-hidden-item-" + e.asin}>
+                <p className="truncate font-semibold text-slate-900" title={e.note ?? e.asin}>{e.note ?? e.asin}</p>
+                <p className="text-xs text-slate-500">{e.asin} · {e.sourceKind === "browser_use" ? "自动采集" : "人工添加"}</p>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
 
       <details className="mt-3" data-testid="cp-manage" open={manageOpen} onToggle={(e) => setManageOpen((e.target as HTMLDetailsElement).open)}>
         <summary className="cursor-pointer text-xs font-medium text-slate-700">管理竞品</summary>

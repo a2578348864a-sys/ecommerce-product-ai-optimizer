@@ -16,6 +16,7 @@ import {
   extractReportSource,
   mergeConfirmedIntoOverview,
   natureForField,
+  compactOverviewItems,
   type ResearchMaterialRow,
 } from "./EvidenceWorkbench";
 import { buildKeywordBriefDraft } from "./keywordBriefDraft";
@@ -66,6 +67,19 @@ const batchResult = {
 };
 
 describe("EvidenceWorkbench extractors", () => {
+  it("商品概览默认只展示8项，其余仍可展开查看", () => {
+    const items = Array.from({ length: 12 }, (_, index) => ({
+      field: `field-${index}`,
+      label: `字段${index}`,
+      value: `值${index}`,
+      nature: "snapshot" as const,
+    }));
+    const compact = compactOverviewItems(items);
+    expect(compact.visible).toHaveLength(8);
+    expect(compact.hidden).toHaveLength(4);
+    expect([...compact.visible, ...compact.hidden]).toEqual(items);
+  });
+
   it("extracts overview items with metricNature and estimate labeling", () => {
     const items = extractOverviewItems(batchResult);
     expect(items.find((item) => item.field === "asin")?.value).toBe("B0TEST0001");

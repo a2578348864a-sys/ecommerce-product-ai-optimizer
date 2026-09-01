@@ -475,14 +475,25 @@ function NatureBadge({ nature }: { nature: MetricNature }) {
   );
 }
 
+/** 默认只展示身份、市场和规格摘要，其余字段仍可在“查看全部”中展开。 */
+export function compactOverviewItems(items: WorkbenchOverviewItem[], visibleCount = 8): {
+  visible: WorkbenchOverviewItem[];
+  hidden: WorkbenchOverviewItem[];
+} {
+  const limit = Math.max(1, Math.floor(visibleCount));
+  return { visible: items.slice(0, limit), hidden: items.slice(limit) };
+}
+
 function OverviewGrid({ items }: { items: WorkbenchOverviewItem[] }) {
   if (items.length === 0) {
     return <p className="text-sm text-slate-500">暂无商品概览数据（来源未绑定 SellerSprite 批次）。</p>;
   }
+  const { visible, hidden } = compactOverviewItems(items);
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-      {items.map((item) => (
-        <div key={item.field} className="rounded-xl border border-slate-200 bg-white p-3">
+    <>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" data-testid="overview-visible-grid">
+        {visible.map((item) => (
+          <div key={item.field} className="rounded-xl border border-slate-200 bg-white p-3">
           <div className="flex items-center justify-between gap-1">
             <p className="text-xs font-medium text-slate-500">{item.label}</p>
             <NatureBadge nature={item.nature} />
@@ -493,9 +504,27 @@ function OverviewGrid({ items }: { items: WorkbenchOverviewItem[] }) {
           {item.nature === "estimate" && (
             <p className="mt-0.5 text-[11px] text-amber-600">第三方估算，非平台后台数据</p>
           )}
-        </div>
-      ))}
-    </div>
+          </div>
+        ))}
+      </div>
+      {hidden.length > 0 ? (
+        <details className="mt-3" data-testid="overview-more-details">
+          <summary className="cursor-pointer text-xs font-semibold text-slate-600">查看全部商品事实（{hidden.length} 项）</summary>
+          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3" data-testid="overview-hidden-grid">
+            {hidden.map((item) => (
+              <div key={item.field} className="rounded-xl border border-slate-200 bg-white p-3">
+                <div className="flex items-center justify-between gap-1">
+                  <p className="text-xs font-medium text-slate-500">{item.label}</p>
+                  <NatureBadge nature={item.nature} />
+                </div>
+                <p className="mt-1 truncate text-sm font-semibold text-slate-900" title={item.raw ?? item.value}>{item.value}</p>
+                {item.nature === "estimate" ? <p className="mt-0.5 text-[11px] text-amber-600">第三方估算，非平台后台数据</p> : null}
+              </div>
+            ))}
+          </div>
+        </details>
+      ) : null}
+    </>
   );
 }
 
@@ -831,41 +860,24 @@ useEffect(() => {
             已收集{researchStatus.collectedLabels.join("、")}等资料；可继续补充其他 资料，或在下方生成 AI 研究摘要。
           </p>
         ) : null}
-        <ul className="mt-2 grid gap-1.5 text-sm sm:grid-cols-2">
-          {materialRows.map((row) => (
-            <li key={row.key} className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2">
-              <span className="text-slate-700">{row.label}{row.detail ? <span className="ml-1 text-xs text-slate-400">（{row.detail}）</span> : null}</span>
-              {row.key === "productBasics" && row.state === "待补" ? (
-                <a
-                  href="#fact-candidate-review"
-                  className="inline-flex items-center gap-1 rounded-lg border border-indigo-300 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
-                  data-testid="cta-product-basics"
-                >
-                  补充商品事实 →
-                </a>
-              ) : row.key === "browser" && row.state === "待补" ? (
-                <a
-                  href="#workbench-browser-evidence"
-                  className="inline-flex items-center gap-1 rounded-lg border border-indigo-300 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
-                  data-testid="cta-browser-collect"
-                >
-                  采集 Amazon 页面 →
-                </a>
-              ) : (
-                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                  row.state === "已有"
-                    ? "bg-teal-50 text-teal-700"
-                    : row.state === "可选"
-                      ? "bg-slate-100 text-slate-500"
-                      : "bg-amber-50 text-amber-700"
-                }`}>
-                  {row.state}
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
-        <p className="mt-2 text-xs text-slate-400">下方各区可直接补充资料；确认保存后，这里的状态会自动更新。</p>
+        <details className="mt-2" data-testid="research-material-details">
+          <summary className="cursor-pointer text-xs font-semibold text-slate-600">查看各资料区状态（{materialRows.filter((row) => row.state === "已有").length} 项已有）</summary>
+          <ul className="mt-2 grid gap-1.5 text-sm sm:grid-cols-2">
+            {materialRows.map((row) => (
+              <li key={row.key} className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2">
+                <span className="text-slate-700">{row.label}{row.detail ? <span className="ml-1 text-xs text-slate-400">（{row.detail}）</span> : null}</span>
+                {row.key === "productBasics" && row.state === "待补" ? (
+                  <a href="#fact-candidate-review" className="inline-flex items-center gap-1 rounded-lg border border-indigo-300 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100" data-testid="cta-product-basics">补充商品事实 →</a>
+                ) : row.key === "browser" && row.state === "待补" ? (
+                  <a href="#workbench-browser-evidence" className="inline-flex items-center gap-1 rounded-lg border border-indigo-300 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100" data-testid="cta-browser-collect">采集 Amazon 页面 →</a>
+                ) : (
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${row.state === "已有" ? "bg-teal-50 text-teal-700" : row.state === "可选" ? "bg-slate-100 text-slate-500" : "bg-amber-50 text-amber-700"}`}>{row.state}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-slate-400">下方各区可直接补充资料；确认保存后，这里的状态会自动更新。</p>
+        </details>
       </section>
 
       {/* V3 UX Closure：Fact Candidate Review（商品基础资料待补时的就地补充入口） */}

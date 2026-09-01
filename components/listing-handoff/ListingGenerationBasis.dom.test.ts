@@ -625,9 +625,21 @@ describe("LISTING_HISTORICAL_DRAFT_READ_GUARD DOM：历史坏快照经读取边�
 });
 
 describe("关键词空态与来源状态一致", () => {
+  it("有研究关键词证据但未形成 Brief 时，不得显示无效方案空态", async () => {
+    const { keywordPlanDisplayLabel } = await import("@/components/listing-handoff/ListingHandoffSection");
+    expect(keywordPlanDisplayLabel("none", 0, 10)).toContain("已采集10条关键词");
+    expect(keywordPlanDisplayLabel("none", 0, 10)).toContain("尚未确认方案");
+    expect(keywordPlanDisplayLabel("none", 0, 10)).not.toContain("暂无有效关键词方案");
+  });
+
   it("红：auto_suggested 但没有实际关键词时不得显示‘已自动使用关键词资料’", async () => {
     const { keywordPlanDisplayLabel } = await import("@/components/listing-handoff/ListingHandoffSection");
     expect(keywordPlanDisplayLabel("auto_suggested", 0)).not.toBe("已自动使用关键词资料");
     expect(keywordPlanDisplayLabel("auto_suggested", 0)).toContain("未采用");
+  });
+
+  it("有实际关键词命中轨迹时，即使正式 keywords 字段为空也应诚实显示已采用", async () => {
+    const { keywordPlanDisplayLabel } = await import("@/components/listing-handoff/ListingHandoffSection");
+    expect(keywordPlanDisplayLabel("manual", 0, 0, 2)).toBe("已使用人工关键词方案");
   });
 });

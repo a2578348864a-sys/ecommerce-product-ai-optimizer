@@ -271,11 +271,13 @@ describe("KeywordStrategyCard", () => {
     expect(container.querySelector("[data-testid=kw-editor]")).toBeNull();
     expect(container.querySelector("table")).toBeNull();
   });
-  it("摘要显示待确认状态与推荐主词（相关词，非首行宽词）", async () => {
+  it("有关键词证据但未确认 Brief 时，明确提示已采集数量与确认动作", async () => {
     await render({ rows: ROWS, productName: PRODUCT, briefPrimary: null, briefEvidenceCount: 10, inListing: false, needsReconfirm: false, onSave: async () => null, onSaved: () => {}, rawEvidence: RAW as never });
     const text = documentInstance.body.textContent;
     expect(text).toContain("关键词策略");
-    expect(text).toContain("状态：待确认");
+    expect(text).toContain("已采集10条关键词，尚未确认方案");
+    expect(text).toContain("确认并用于 Listing");
+    expect(text).not.toContain("状态：待确认");
     expect(text).toContain("thermos for hot food kids");
     expect(text).not.toContain("lunch box");
   });
@@ -346,7 +348,7 @@ describe("KeywordStrategyCard", () => {
   });
   it("按钮有中文可访问名称", async () => {
     await render({ rows: ROWS, productName: PRODUCT, briefPrimary: null, briefEvidenceCount: 10, inListing: false, needsReconfirm: false, onSave: async () => null, onSaved: () => {}, rawEvidence: RAW as never });
-    expect(documentInstance.body.textContent).toContain("调整关键词方案");
+    expect(documentInstance.body.textContent).toContain("确认并用于 Listing");
   });
   it("原始报表折叠内表格容器有局部横向滚动（overflow-x-auto）", async () => {
     await render({ rows: ROWS, productName: PRODUCT, briefPrimary: null, briefEvidenceCount: 10, inListing: false, needsReconfirm: false, onSave: async () => null, onSaved: () => {}, rawEvidence: RAW as never });

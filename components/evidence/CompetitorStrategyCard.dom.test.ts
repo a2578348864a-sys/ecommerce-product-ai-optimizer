@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
+import { visibleCompetitorEntries } from "@/components/evidence/CompetitorStrategyCard";
 
 /* ── 竞品策略卡 真实 DOM 行为测试（第2轮） ── */
 
@@ -238,6 +239,12 @@ const ENTRIES = [
   { asin: "B0D3", note: "Glass Storage Containers", sourceKind: "browser_use" as const, addedAt: "2026-08-03", detailBulletsCount: 2 },
 ];
 describe("CompetitorStrategyCard", () => {
+  it("默认只展示3个竞品，其余保持在可展开详情中", () => {
+    const result = visibleCompetitorEntries(["a", "b", "c", "d", "e"]);
+    expect(result.visible).toEqual(["a", "b", "c"]);
+    expect(result.hidden).toEqual(["d", "e"]);
+  });
+
   async function render(card: Parameters<typeof import("@/components/evidence/CompetitorStrategyCard").CompetitorStrategyCard>[0]) {
     const { CompetitorStrategyCard } = await import("@/components/evidence/CompetitorStrategyCard");
     await act(async () => {

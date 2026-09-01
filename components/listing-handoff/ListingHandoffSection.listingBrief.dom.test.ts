@@ -411,6 +411,21 @@ afterEach(async () => {
 });
 
 describe("Listing 创作补充表单（真实 DOM）", () => {
+  it("状态与可选创作方向默认收起，首屏不平铺诊断和五个输入框", async () => {
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify(listingState(brief("compact"))), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })) as typeof globalThis.fetch;
+    const { ListingHandoffSection } = await import("@/components/listing-handoff/ListingHandoffSection");
+    await act(async () => {
+      root = createRootForTest(container as unknown as Element);
+      root.render(createElement(ListingHandoffSection, { taskId: "task-compact", refreshSignal: 0 }));
+    });
+    await flush();
+    expect(elementByTestId("listing-support-details")?.hasAttribute("open")).toBe(false);
+    expect(elementByTestId("listing-diagnostics")).toBeNull();
+  });
+
   it("首次 GET 仅请求一次并把服务端五字段回填到表单", async () => {
     const incoming = brief("A");
     const fetchMock = vi.fn(async (_input: string | URL | Request) => new Response(JSON.stringify(listingState(incoming)), {

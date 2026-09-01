@@ -182,13 +182,19 @@ export function listingDraftStatusLabel({
   return "已有草稿";
 }
 
-export function keywordPlanDisplayLabel(source: ListingDraftSafeSummary["keywordPlanSource"], keywordCount: number): string {
-  if (keywordCount > 0) {
+export function keywordPlanDisplayLabel(
+  source: ListingDraftSafeSummary["keywordPlanSource"],
+  keywordCount: number,
+  evidenceCount = 0,
+  usedKeywordCount = 0,
+): string {
+  if (keywordCount > 0 || usedKeywordCount > 0) {
     return source === "manual" ? "已使用人工关键词方案" : source === "auto_suggested" ? "已自动使用关键词资料" : "暂无有效关键词方案";
   }
   if (source === "manual") return "人工关键词方案已提供，但当前草稿未采用关键词";
   if (source === "auto_suggested") return "关键词资料已加载，但当前草稿未采用关键词";
-  return "暂无有效关键词方案";
+  if (evidenceCount > 0) return `已采集${evidenceCount}条关键词，尚未确认方案`;
+  return "尚未确认正式关键词方案";
 }
 
 export function ListingGenerationBasis({ draft }: { draft: ListingDraftSafeSummary | null }) {
@@ -677,6 +683,7 @@ export function ListingHandoffSection({
 
   const renderDraftBody = () => {
     if (!draft) return null;
+    const adoptedKeywords = draft.keywords.length > 0 ? draft.keywords : (draft.usedKeywordTrace ?? []);
     /** v2.2.14：复制按钮（独立"已复制 ✓"/"复制失败"反馈，约 1.8 秒恢复） */
     const copyButton = (key: string, label: string, text: string, isPrimary = false) => {
       const showCopied = copiedButton === key;
@@ -757,6 +764,10 @@ export function ListingHandoffSection({
                 <span key={`k-${i}`} className="rounded-full border border-teal-100 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">{k}</span>
               ))}
             </div>
+          ) : adoptedKeywords.length > 0 ? (
+            <p className="mt-1.5 text-xs leading-5 text-teal-700">
+              正文已采用关键词（SEO 字段未单独生成）：{adoptedKeywords.slice(0, 6).join("、")}
+            </p>
           ) : (
             <p className="mt-1.5 text-slate-400">暂未生成关键词。</p>
           )}
@@ -766,12 +777,12 @@ export function ListingHandoffSection({
         {/* 轮 16 收口：人工审核信息只展示服务端权威结果（不再本地猜测事实级别） */}
         {draft.bullets.length > 0 ? (() => {
           const reviewClaims = draft.humanReviewClaims ?? [];
-          const planLabel = keywordPlanDisplayLabel(draft.keywordPlanSource, draft.keywords.length);
+          const planLabel = keywordPlanDisplayLabel(draft.keywordPlanSource, draft.keywords.length, 0, adoptedKeywords.length);
           return (
             <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3" data-testid="listing-human-review-aid">
               <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">人工审核辅助</p>
               <p className="mt-1.5 text-xs leading-5 text-slate-600">
-                关键词方案：{planLabel}{draft.keywords.length > 0 ? "（当前草稿已用：" + draft.keywords.slice(0, 6).join("、") + "）" : ""}
+                关键词方案：{planLabel}{adoptedKeywords.length > 0 ? "（当前草稿已用：" + adoptedKeywords.slice(0, 6).join("、") + "）" : ""}
               </p>
               {reviewClaims.length > 0 ? (
                 <div className="mt-1 text-xs leading-5 text-amber-700">
@@ -843,13 +854,6 @@ export function ListingHandoffSection({
             {listingDraftStatusLabel(draft ?? {})}
           </span>
         )}
-        {draft ? (
-          <div className="flex flex-wrap gap-1.5 text-[11px] font-semibold">
-            <span className={`rounded-full px-2 py-0.5 ${draft.factSafe ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`} data-testid="fact-safe-status">事实安全：{draft.factSafe ? "通过" : "未通过"}</span>
-            <span className={`rounded-full px-2 py-0.5 ${draft.copyQuality ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`} data-testid="copy-quality-status">文案质量：{draft.copyQuality ? "通过" : "未通过"}</span>
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600" data-testid="draft-kind-status">{listingDraftStatusLabel(draft)}</span>
-          </div>
-        ) : null}
       </header>
 
       {notice ? (
@@ -875,59 +879,36 @@ export function ListingHandoffSection({
             当前研究记录缺少可用于 Listing 的商品事实，请先补充并确认商品资料。
           </p>
         ) : null}
-        {status === null ? (
-          <p aria-busy="true">加载中…</p>
-        ) : (
-          <div className="mt-1 flex flex-wrap gap-2 text-xs font-semibold" data-testid="listing-readiness-badges">
-            <span className={`rounded-full px-2.5 py-1 ${readiness?.claimSafe ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
-              Claim Safety：{readiness?.claimSafe ? "通过" : "未通过"}
-            </span>
-            <span className={`rounded-full px-2.5 py-1 ${readiness?.copyReady ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>
-              优化 Listing：{readiness?.copyReady ? "可生成" : "暂不可生成"}
-            </span>
-            <span className={`rounded-full px-2.5 py-1 ${readiness?.keywordReady ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>
-              关键词资料：{readiness?.keywordReady ? "已满足" : "未提供（当前可生成文案，不进行关键词优化）"}
-            </span>
-            {readiness && !readiness.copyReady && readiness.missingForQuality.length > 0 ? (
-              <span
-                className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-800"
-                data-testid="listing-missing-quality"
-                title={readiness.missingForQuality.join("；")}
-              >
-                生成高质量 Listing 还缺：{readiness.missingForQuality.join("；")}
-              </span>
+        {draft ? (
+          <details className="mt-2" data-testid="listing-diagnostics">
+            <summary className="cursor-pointer text-xs font-semibold text-slate-600">查看生成状态与资料详情</summary>
+            <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-semibold">
+              <span className={`rounded-full px-2 py-0.5 ${draft.factSafe ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`} data-testid="fact-safe-status">事实安全：{draft.factSafe ? "通过" : "未通过"}</span>
+              <span className={`rounded-full px-2 py-0.5 ${draft.copyQuality ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`} data-testid="copy-quality-status">文案质量：{draft.copyQuality ? "通过" : "未通过"}</span>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600" data-testid="draft-kind-status">{listingDraftStatusLabel(draft)}</span>
+            </div>
+            {status === null ? <p aria-busy="true">加载中…</p> : (
+              <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold" data-testid="listing-readiness-badges">
+                <span className={`rounded-full px-2.5 py-1 ${readiness?.claimSafe ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>Claim Safety：{readiness?.claimSafe ? "通过" : "未通过"}</span>
+                <span className={`rounded-full px-2.5 py-1 ${readiness?.copyReady ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>优化 Listing：{readiness?.copyReady ? "可生成" : "暂不可生成"}</span>
+                <span className={`rounded-full px-2.5 py-1 ${readiness?.keywordReady ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>关键词资料：{readiness?.keywordReady ? "已满足" : "尚未确认正式方案"}</span>
+                {readiness && !readiness.copyReady && readiness.missingForQuality.length > 0 ? <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-800" data-testid="listing-missing-quality" title={readiness.missingForQuality.join("；")}>生成高质量 Listing 还缺：{readiness.missingForQuality.join("；")}</span> : null}
+              </div>
+            )}
+            {capability ? (
+              <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold" data-testid="listing-capability-badges">
+                <span className={`rounded-full px-2.5 py-1 ${capability.canCallProvider ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"}`} data-testid="listing-capability-copy">
+                  {capability.level === "full_draft" ? "可生成 5 条完整卖点" : capability.level === "standard_draft" ? `可生成 ${capability.targetBulletCount} 条正式卖点` : capability.level === "partial_draft" ? "可生成 2 条部分草稿（还缺至少 1 个独立卖点组）" : "仅能整理事实，暂不能生成正式 Listing"}
+                </span>
+                {capability.suggestedQuestions.length > 0 ? <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-800" data-testid="listing-capability-questions" title={capability.suggestedQuestions.join("；")}>补资料（最多 3 项）：{capability.suggestedQuestions.join("；")}</span> : null}
+              </div>
             ) : null}
-          </div>
-        )}
-        {capability ? (
-          <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold" data-testid="listing-capability-badges">
-            <span
-              className={`rounded-full px-2.5 py-1 ${
-                capability.canCallProvider ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"
-              }`}
-              data-testid="listing-capability-copy"
-            >
-              {capability.level === "full_draft"
-                ? "可生成 5 条完整卖点"
-                : capability.level === "standard_draft"
-                  ? `可生成 ${capability.targetBulletCount} 条正式卖点`
-                  : capability.level === "partial_draft"
-                    ? "可生成 2 条部分草稿（还缺至少 1 个独立卖点组）"
-                    : "仅能整理事实，暂不能生成正式 Listing"}
-            </span>
-            {capability.suggestedQuestions.length > 0 ? (
-              <span
-                className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-800"
-                data-testid="listing-capability-questions"
-                title={capability.suggestedQuestions.join("；")}
-              >
-                补资料（最多 3 项）：{capability.suggestedQuestions.join("；")}
-              </span>
-            ) : null}
-          </div>
+          </details>
         ) : null}
         {status !== null && status !== "legacy_unbound" ? (
-          <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3" data-testid="listing-creation-brief" data-brief-dirty={briefDirty}>
+          <details className="rounded-xl border border-slate-200 bg-slate-50" data-testid="listing-support-details">
+            <summary className="cursor-pointer px-3 py-3 text-sm font-bold text-slate-800">可选：补充创作方向</summary>
+            <fieldset className="border-t border-slate-200 p-3" data-testid="listing-creation-brief" data-brief-dirty={briefDirty}>
             <legend className="px-1 text-sm font-bold text-slate-800">商品创作补充（可选）</legend>
             <p className="mt-1 text-xs leading-5 text-slate-600">
               用于帮助AI理解营销方向，不代表已验证商品事实。不会写入已确认事实，也不会放宽 Claim Safety。
@@ -993,7 +974,8 @@ export function ListingHandoffSection({
                 请先保存商品创作补充，再生成 Listing 草稿。
               </p>
             ) : null}
-          </fieldset>
+            </fieldset>
+          </details>
         ) : null}
         {status === null ? (
           <p aria-busy="true">加载中…</p>
