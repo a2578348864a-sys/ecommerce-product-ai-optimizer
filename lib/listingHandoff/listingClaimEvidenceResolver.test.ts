@@ -597,3 +597,212 @@ describe("消费者自然句窄受控语法（body/mechanism/control + from/thro
     });
   }
 });
+
+describe("care 分号子句与 Claim Evidence 兼容（CE-Closure）", () => {
+  const CARE_EN = "Wipe with a damp cloth; if necessary, clean with warm water and mild detergent";
+  const CARE_ZH = "可用湿布擦拭，必要时使用温水和中性清洁剂清洁";
+  const careInput = (extra: Array<{ field: string; label: string; value: string }> = []): ListingGenerationInput => {
+    const facts = [
+      { field: "product_type", label: "商品类型", value: "Organizer" },
+      { field: "care", label: "清洁保养", value: CARE_ZH },
+      ...extra,
+    ];
+    return baseInput({
+      productFacts: facts as ListingGenerationInput["productFacts"],
+      englishRenderings: {
+        schema: "listing-english-rendering.v1",
+        renderings: facts.map((f) => ({ factId: f.field, field: f.field, sourceValue: f.value, english: f.field === "care" ? CARE_EN : f.value })),
+        generatedAt: "2026-09-02T00:00:00.000Z",
+        source: "literal" as const,
+      },
+    });
+  };
+  const draftOf = (bullets: string[], description = "d"): AiListingPackDraft =>
+    baseDraft({ bullets, description });
+
+  it("CLS1 修前红：care 分号句被 splitSegments 切成两段 → unclassified_factual_claim（降级 safe_fact_draft）", () => {
+    // 真实红证据：两段均无完整 evidence 值且含祈使动词 → 拒绝
+    const result = verifyListingClaims(
+      draftOf(["Wipe with a damp cloth; if necessary, clean with warm water and mild detergent."]),
+      careInput(),
+    );
+    // 修复后：同 factRef 分号子句逐字继承 → 放行
+    expect(listingClaimsHaveEvidence(result), JSON.stringify(result.unsupportedClaims)).toBe(true);
+    expect(result.unsupportedClaims).toEqual([]);
+  });
+
+  it("CLS2 阶段B编辑后同样通过（编辑不改变 factRefs）", () => {
+    const result = verifyListingClaims(
+      draftOf(["Wipe with a damp cloth; if necessary, clean with warm water and mild detergent."]),
+      careInput(),
+    );
+    expect(listingClaimsHaveEvidence(result)).toBe(true);
+  });
+
+  it("CLS3 反例：Food Safe / Waterproof / Sturdy / 1 Count 仍失败", () => {
+    const result = verifyListingClaims(
+      draftOf(["The Organizer is Food Safe and Waterproof and Sturdy and 1 Count."]),
+      careInput(),
+    );
+    expect(listingClaimsHaveEvidence(result), JSON.stringify(result.unsupportedClaims)).toBe(false);
+  });
+
+  it("CLS4 反例：ideal / perfect 无证据词仍失败", () => {
+    const result = verifyListingClaims(
+      draftOf(["The Organizer is ideal and perfect for you."]),
+      careInput(),
+    );
+    expect(listingClaimsHaveEvidence(result), JSON.stringify(result.unsupportedClaims)).toBe(false);
+  });
+
+  it("CLS5 反例：两个不同事实机械拼接（care 值未完整出现）仍失败", () => {
+    const result = verifyListingClaims(
+      draftOf(["Wipe with a damp cloth; rinse the lid."]),
+      careInput(),
+    );
+    expect(listingClaimsHaveEvidence(result), JSON.stringify(result.unsupportedClaims)).toBe(false);
+  });
+
+  it("CLS6 反例：跨字段借用（care 值只在描述，五点中片段）仍失败", () => {
+    const result = verifyListingClaims(
+      draftOf(["Wipe with a damp cloth."], "Wipe with a damp cloth; if necessary, clean with warm water and mild detergent."),
+      careInput(),
+    );
+    expect(listingClaimsHaveEvidence(result), JSON.stringify(result.unsupportedClaims)).toBe(false);
+  });
+
+  it("CLS7 反例：care 值完整出现 + 新收益词挂靠事实主体 → 新段仍失败", () => {
+    // 纯中性句 "It is ideal for you." 属既有中性通道边界（无事实信号→中性允许，由 Copy Quality 兜底）；
+    // 本反例验证：新收益词挂靠事实主体（The Organizer is ideal...）时 CE 必须拒绝（unclassified_factual_claim）。
+    const result = verifyListingClaims(
+      draftOf(["Wipe with a damp cloth; if necessary, clean with warm water and mild detergent. The Organizer is ideal for you."]),
+      careInput(),
+    );
+    expect(listingClaimsHaveEvidence(result), JSON.stringify(result.unsupportedClaims)).toBe(false);
+  });
+
+  it("CLS8 反例：仅借分号同形但值不同（另一事实）仍失败", () => {
+    const result = verifyListingClaims(
+      draftOf(["Wipe with a damp cloth; if necessary, clean with warm water and mild detergent. Wipe with a dry cloth."]),
+      careInput(),
+    );
+    // "Wipe with a dry cloth" 无证据 → 拒绝
+    expect(listingClaimsHaveEvidence(result), JSON.stringify(result.unsupportedClaims)).toBe(false);
+  });
+
+  it("CLS9 反例：去掉 care factRef（无该事实）→ care 句必须失败", () => {
+    const noCare = baseInput({
+      productFacts: [{ field: "product_type", label: "商品类型", value: "Organizer" }] as ListingGenerationInput["productFacts"],
+      englishRenderings: { schema: "listing-english-rendering.v1", renderings: [], generatedAt: "2026-09-02T00:00:00.000Z", source: "literal" as const },
+    });
+    const result = verifyListingClaims(
+      draftOf(["Wipe with a damp cloth; if necessary, clean with warm water and mild detergent."]),
+      noCare,
+    );
+    expect(listingClaimsHaveEvidence(result), JSON.stringify(result.unsupportedClaims)).toBe(false);
+    expect(result.unsupportedClaims[0].reason).toBe("unclassified_factual_claim");
+  });
+
+  it("CLS10 反例：care 值注入新数值（12 hours）→ 必须失败", () => {
+    const bad = baseInput({
+      productFacts: [
+        { field: "product_type", label: "商品类型", value: "Organizer" },
+        { field: "care", label: "清洁保养", value: "可用湿布擦拭，必要时使用温水和中性清洁剂清洁" },
+      ] as ListingGenerationInput["productFacts"],
+      englishRenderings: {
+        schema: "listing-english-rendering.v1",
+        renderings: [
+          { factId: "product_type", field: "product_type", sourceValue: "Organizer", english: "Organizer" },
+          { factId: "care", field: "care", sourceValue: "可用湿布擦拭，必要时使用温水和中性清洁剂清洁", english: "Wipe with a damp cloth; if necessary, clean with warm water and mild detergent. It keeps clean for 12 hours." },
+        ],
+        generatedAt: "2026-09-02T00:00:00.000Z",
+        source: "literal" as const,
+      },
+    });
+    const result = verifyListingClaims(
+      draftOf(["Wipe with a damp cloth; if necessary, clean with warm water and mild detergent. It keeps clean for 12 hours."]),
+      bad,
+    );
+    expect(listingClaimsHaveEvidence(result), JSON.stringify(result.unsupportedClaims)).toBe(false);
+  });
+
+  it("CLS11 反例：care 值注入 ideal（挂事实主体）→ 必须失败", () => {
+    const result = verifyListingClaims(
+      draftOf(["Wipe with a damp cloth; if necessary, clean with warm water and mild detergent. The Organizer is ideal for you."]),
+      careInput(),
+    );
+    expect(listingClaimsHaveEvidence(result), JSON.stringify(result.unsupportedClaims)).toBe(false);
+  });
+});
+
+/* ──────────────────────────────────────────────────────────────
+ * 反4 表驱动红测：semicolonSubclauseEvidence 的「逐字等于」安全边界
+ *
+ * 安全规则（现有实现）：仅当 claim 段精确等于同一已确认事实的某个分号子句
+ * （normalize 后逐字相等、子句 ≥3 有效词），且完整事实值原文出现在同字段文本，
+ * 才继承该 factRef。
+ *
+ * 本组矩阵：精确子句必须通过；部分关键词 / 相似句 / 同字段任意句 / 追加词 /
+ * 机械拼接必须全部失败。
+ * 若把实现放宽为「同字段即继承」或「substring 即继承」，本组负例必须真实变红。
+ * ────────────────────────────────────────────────────────────── */
+
+describe("反4：分号子句继承安全边界矩阵（放宽实现必须真实红）", () => {
+  const CARE_EN = "Wipe with a damp cloth; if necessary, clean with warm water and mild detergent";
+  const CARE_ZH = "可用湿布擦拭，必要时使用温水和中性清洁剂清洁";
+  const makeInput = (extra: Array<{ field: string; label: string; value: string }> = []): ListingGenerationInput => {
+    const facts = [
+      { field: "product_type", label: "商品类型", value: "Organizer" },
+      { field: "care", label: "清洁保养", value: CARE_ZH },
+      ...extra,
+    ];
+    return baseInput({
+      productFacts: facts as ListingGenerationInput["productFacts"],
+      englishRenderings: {
+        schema: "listing-english-rendering.v1",
+        renderings: facts.map((f) => ({
+          factId: f.field,
+          field: f.field,
+          sourceValue: f.value,
+          english: f.field === "care" ? CARE_EN : f.value,
+        })),
+        generatedAt: "2026-09-02T00:00:00.000Z",
+        source: "literal" as const,
+      },
+    });
+  };
+  const draftOf = (bullets: string[], description = "d"): AiListingPackDraft =>
+    baseDraft({ bullets, description });
+
+  const MATRIX: Array<{ name: string; bullet: string; input: ListingGenerationInput; expectSupported: boolean }> = [
+    // ── 正例：字段文本含完整值原文（分号整句）→ 切出的每个子句段逐字继承同一 factRef ──
+    { name: "P1 精确子句继承（完整值整句，两子句各自命中）", bullet: "Wipe with a damp cloth; if necessary, clean with warm water and mild detergent.", input: makeInput(), expectSupported: true },
+    // ── 负例：跨字段借用（值完整存在于 care 事实，但本字段文本无完整值原文；子句词面不得从别处借）──
+    { name: "N8 跨字段借用（本字段仅子句词面，无完整值原文）→ 必须拒绝", bullet: "Wipe with a damp cloth.", input: makeInput(), expectSupported: false },
+    // ── 负例：部分关键词（子句的子串但不是整句逐字）──
+    { name: "N1 子集词面（缺 mild detergent）→ 必须拒绝", bullet: "If necessary, clean with warm water.", input: makeInput(), expectSupported: false },
+    // ── 负例：相似句（换词/换序/加冠词）──
+    { name: "N2 相似句（with→using）→ 必须拒绝", bullet: "Wipe using a damp cloth.", input: makeInput(), expectSupported: false },
+    { name: "N3 相似句（加 a mild）→ 必须拒绝", bullet: "If necessary, clean with warm water and a mild detergent.", input: makeInput(), expectSupported: false },
+    // ── 负例：同字段任意句（字段确有 care 值，但句子不是任何子句）──
+    { name: "N4 同字段任意句（care 字段存在但句非子句）→ 必须拒绝", bullet: "Follow all care instructions before first use.", input: makeInput(), expectSupported: false },
+    // ── 负例：子句 + 追加内容（超出证据值范围）──
+    { name: "N5 精确子句 + 追加词（thoroughly）→ 必须拒绝", bullet: "Wipe with a damp cloth thoroughly.", input: makeInput(), expectSupported: false },
+    { name: "N6 第二子句 + 追加收益声明（and it stays fresh）→ 必须拒绝", bullet: "If necessary, clean with warm water and mild detergent and it stays fresh.", input: makeInput(), expectSupported: false },
+    // ── 负例：两个事实机械拼接（分号两侧来自不同事实）──
+    { name: "N7 机械拼接（care 子句 + 无证据段）→ 必须拒绝", bullet: "Wipe with a damp cloth. The Organizer keeps silverware organized.", input: makeInput(), expectSupported: false },
+  ];
+
+  for (const c of MATRIX) {
+    it((c.expectSupported ? "绿：" : "红：") + c.name, () => {
+      const result = verifyListingClaims(draftOf([c.bullet]), c.input);
+      if (c.expectSupported) {
+        expect(listingClaimsHaveEvidence(result), JSON.stringify(result.unsupportedClaims)).toBe(true);
+        expect(result.unsupportedClaims).toEqual([]);
+      } else {
+        expect(listingClaimsHaveEvidence(result), "被放宽实现错误放行：" + c.bullet).toBe(false);
+        expect(result.unsupportedClaims.length).toBeGreaterThan(0);
+      }
+    });
+  }
+});

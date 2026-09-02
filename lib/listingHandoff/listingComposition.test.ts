@@ -1084,10 +1084,20 @@ describe("消费者自然英语精确合同（字段标签式拼接禁用）", (
 
     expect(cap.capability).toMatchObject({ level: "full_draft", supportedBulletCount: 5, targetBulletCount: 5, canCallProvider: true });
     expect(plan.bulletPlans.flatMap((bp) => bp.featureFactIds)).not.toContain("quantity_or_pack_size");
-    expect(opt.bullets).toEqual([
+    // 阶段A受控原句合同
+    const { bullets: stageABullets } = composeControlledBullets(li, plan);
+    expect(stageABullets).toEqual([
       "The Water Bottle is made of plastic.",
       "The Water Bottle measures 5 in.",
       "The Water Bottle opens through its latch mechanism.",
+      "The Water Bottle is suitable for use at home.",
+      "A lid is included with the Water Bottle.",
+    ]);
+    // 阶段B最终输出合同（代词平滑与节奏优化）
+    expect(opt.bullets).toEqual([
+      "The Water Bottle is made of plastic.",
+      "The Water Bottle measures 5 in.",
+      "It opens through its latch mechanism.",
       "The Water Bottle is suitable for use at home.",
       "A lid is included with the Water Bottle.",
     ]);

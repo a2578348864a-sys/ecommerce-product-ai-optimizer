@@ -14,6 +14,7 @@
 import type { AiListingPackDraft } from "@/lib/aiListingDraft";
 import { buildSafeFactSentences, type RuntimeFact, RUNTIME_QUALITY_LIMITS } from "@/lib/listingHandoff/listingRuntimeSkill";
 import { isTrivialSingleUnitQuantity } from "@/lib/listingHandoff/listingCapabilityV2";
+import { applyStageBToBullets, editDescriptionForCoherence, type OperatedFact } from "@/lib/listingHandoff/listingOperatorCopy";
 import {
   LISTING_COMPOSER_VERSION,
   LISTING_GENERATION_POLICY_VERSION,
@@ -243,6 +244,11 @@ function composeDescription(input: ListingGenerationInput): string {
   const sentences: string[] = [];
   sentences.push(descriptionIdentitySentence(input));
   const typeLabel = typeLabelOf(input);
+  const comp = englishRenderingOf(input, "compatibility");
+  if (comp) {
+    const s = buildControlledSentence("compatibility", comp, typeLabel);
+    if (s && !sentences.includes(s)) sentences.push(s);
+  }
   const dimensions = renderingOf(input, "dimensions");
   const weight = renderingOf(input, "weight");
   if (dimensions && weight) {
@@ -334,7 +340,7 @@ export function buildDeterministicListingPackDraft(
  * 仍只使用已确认事实；禁止引入未确认 benefit/功能/性能。
  */
 
-import type { ListingPlan } from "@/lib/listingHandoff/listingPlan";
+import type { ListingPlan, ListingPlanRole } from "@/lib/listingHandoff/listingPlan";
 import type { ListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
 
 export type OptimizedListingDraft = {
@@ -776,6 +782,8 @@ function planBulletCandidates(
 /** 受控组合结果：合格句 + fail-closed 记录（质量不足，供调用方判定是否降级） */
 export type ControlledBulletsResult = {
   bullets: string[];
+  /** 每条受控句实际锚定的事实（与 bullets 一一对应；供阶段B编辑器构建 factRefs） */
+  factRefsByBullet: Array<Array<{ field: string; value: string }>>;
   /** 形态不可识别或不足词数而被跳过的事实（质量不足记录；不参与凑句） */
   unrenderable: Array<{ field: string; value: string; reason: string }>;
 };
@@ -790,6 +798,7 @@ export function composeControlledBullets(
 ): ControlledBulletsResult {
   const typeLabel = typeLabelOf(input);
   const bullets: string[] = [];
+  const factRefsByBullet: Array<Array<{ field: string; value: string }>> = [];
   const unrenderable: Array<{ field: string; value: string; reason: string }> = [];
   for (const bp of plan.bulletPlans) {
     const candidates = planBulletCandidates(input, bp.featureFactIds);
@@ -829,29 +838,42 @@ export function composeControlledBullets(
         continue;
       }
       bullets.push(sentence);
+      factRefsByBullet.push([{ field: picked.field, value: picked.value }]);
       rendered = true;
       break;
     }
     unrenderable.push(...groupFailures);
   }
-  return { bullets: bullets.slice(0, 5), unrenderable };
+  return { bullets: bullets.slice(0, 5), factRefsByBullet, unrenderable };
 }
 
 function composeOptimizedBullets(input: ListingGenerationInput, plan: ListingPlan): string[] {
   // v2：计划必须真实驱动生成——绝不无差别退回 composeBullets。
   // 关键词只出现在标题（主词一次）与 Keywords 字段；正文不内嵌关键词词面
   // （市场词可能越过 Claim Evidence 允许表 → 保 claim 安全零风险）。
-  const { bullets } = composeControlledBullets(input, plan);
+  const { bullets, factRefsByBullet } = composeControlledBullets(input, plan);
   // 受控句 ≥1 条即采用（即使 <3 条——模板回退句含 "for ... use" 模板尾，违反无模板尾合同）；
   // 仅受控句为 0（全部 fail-closed）时才退回既有安全模板路径（旧行为）。
   if (bullets.length === 0) {
     return composeBullets(input);
   }
-  return bullets.slice(0, 5);
+  // 阶段B：运营文案编辑（仅语序/句式/冠词/大小写/标点；factRefs 逐句相等；
+  // 任何一句无法安全编辑时只回退该句（保留阶段A原句），不丢整稿）。
+  const sliced = bullets.slice(0, 5);
+  const factMap: Array<OperatedFact[]> = [];
+  const roles: Array<ListingPlanRole | undefined> = [];
+  for (let i = 0; i < sliced.length; i += 1) {
+    factMap.push(factRefsByBullet[i] ?? []);
+    roles.push(plan.bulletPlans[i]?.role);
+  }
+  const edited = applyStageBToBullets(sliced, factMap, roles);
+  return edited.bullets;
 }
 function composeOptimizedDescription(input: ListingGenerationInput): string {
-  // R6：与默认描述同规则——安全模板完整句（身份+事实句+规格句），禁止碎片拼接
-  return composeDescription(input);
+  // R6：受控完整句描述（身份 + 规格/适配句，禁止碎片拼接）
+  const base = composeDescription(input);
+  // 阶段B：描述段落连贯性编辑（只重排已有句序；规格句后置；factRefs 不变）
+  return editDescriptionForCoherence(base).text;
 }
 function composeOptimizedKeywords(input: ListingGenerationInput, brief: ListingKeywordBrief | null): {
   keywords: string[];

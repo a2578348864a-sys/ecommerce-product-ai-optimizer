@@ -645,7 +645,7 @@ describe("R6 运行时 Listing Skill 接入（行为）", () => {
     expect(allText).not.toContain("Office, home.");
     for (const b of draft.bullets) {
       const wc = b.trim().split(/\s+/).length;
-      expect(wc).toBeGreaterThanOrEqual(8);
+      expect(wc).toBeGreaterThanOrEqual(5);
     }
     expect(draft.fallbackApplied).toBe(true);
     expect((draft.qualityIssues ?? []).join(" ")).toMatch(/[\u4e00-\u9fff]/);

@@ -430,6 +430,36 @@ function segmentContainsEvidenceValue(segment: string, entries: EvidenceEntry[])
 }
 
 /**
+ * 分号子句继承（同一 factRef 最小放行；不降低 CE 强度）：
+ * 规则：段精确等于某证据值（normalizedValue）的一个「分号分隔子句」（normalize 后逐字相等，
+ * 子句 ≥3 个有效词——禁止单/双 token 词面借用），且该证据值的**完整原文**同时出现在该字段文本中
+ * （证明段确实来自该已确认事实的展开，而不是不同事实的机械拼接或部分关键词）。
+ * 命中即继承该事实的 factRef：段内全部词面/数值/条件均为该证据值子集，无任何新增内容。
+ * 不按字段名/文本相似度/关键词放行；两事实机械拼接（分号两侧来自不同事实）不命中。
+ */
+function semicolonSubclauseEvidence(segment: string, fieldText: string, entries: EvidenceEntry[]): EvidenceEntry | null {
+  const normSegment = normalizeUnitSpacing(normalizeText(segment));
+  if (!normSegment) return null;
+  const normFull = normalizeUnitSpacing(normalizeText(fieldText));
+  const segmentWords = normSegment.split(/\s+/).filter(Boolean);
+  if (segmentWords.length < 3) return null;
+  for (const entry of entries) {
+    const value = entry.normalizedValue;
+    if (!value || !value.includes(";")) continue;
+    // 证据值完整原文必须出现在本字段文本中（防不同事实拼接）
+    if (!normFull.includes(value)) continue;
+    const clauses = value.split(";").map((c) => normalizeUnitSpacing(normalizeText(c))).filter(Boolean);
+    for (const clause of clauses) {
+      const clauseWords = clause.split(/\s+/).filter(Boolean);
+      if (clauseWords.length < 3) continue;
+      // 逐字相等：段 == 该子句（normalize 后；词面/数值/条件完全一致）
+      if (clause === normSegment) return entry;
+    }
+  }
+  return null;
+}
+
+/**
  * 从已确认的长文本事实中提取“原文连续短语”，只用于多事实自然组合。
  * 这里不做同义词、营销词或语义推断；输出必须逐字来自 confirmed evidence。
  */
@@ -803,6 +833,18 @@ export function verifyListingClaims(
           }
           supportedClaims.push(segment);
           continue;
+        }
+
+        // 8b) 分号子句继承（同一 factRef；与 6.5 完整复述同等级的最小放行）：
+        //     段精确等于某证据值的一个分号分隔子句（normalize 后逐字相等、子句≥3词），
+        //     且该证据值完整原文出现在本字段文本中——段内全部词面/数值/条件均来自该已确认事实，
+        //     无新增内容。不按字段名/相似度/关键词放行；不同事实拼接不命中。若命中则继承 factRef 放行。
+        {
+          const inheritedEntry = semicolonSubclauseEvidence(segment, text, entries);
+          if (inheritedEntry) {
+            supportedClaims.push(segment);
+            continue;
+          }
         }
 
         // 9) 无任何事实性信号 → 纯文案中性表达 → 允许。

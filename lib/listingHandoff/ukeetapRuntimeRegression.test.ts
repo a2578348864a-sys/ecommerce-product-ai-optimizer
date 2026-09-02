@@ -56,18 +56,29 @@ const UKEETAP_RENDERINGS: Record<string, string> = {
 const BAD_BULLET_5 = "After placing in the drawer, expand or collapse to the sides according to the drawer width for standard use with this product every day.";
 
 /**
- * 精确自然句合同（本轮）：确定性兜底必须逐字符产出这 5 条。
+ * 阶段A受控原句合同：未经过阶段B编辑前的原始受控句
+ */
+const STAGE_A_CONTROLLED_BULLETS = [
+  "The Organizer is built with an expandable multi-compartment design in molded plastic.",
+  "The Organizer stores about 40 to 50 pieces of cutlery.",
+  "The Organizer expands or collapses to the sides according to the drawer width.",
+  "The Organizer is suitable for daily kitchen storage and carrying.",
+  "Rinse with clean water and wipe dry.",
+] as const;
+
+/**
+ * 精确自然句合同（阶段B运营文案输出）：确定性兜底必须逐字符产出这 5 条。
  * 每条由「字段 + 英文 rendering 短语形态」唯一确定，rendering 原文 verbatim 嵌入（事实锚点不丢）：
  * 1 construction（`built with …` 分词补语）→ The {type} is {value}.
  * 2 capacity（`stores …` 三单谓语）      → The {type} {value}.
- * 3 operation（`expands …` 三单谓语）    → The {type} {value}.
+ * 3 operation（`expands …` 三单谓语）    → This {type} {value}（阶段B句首去重优化）.
  * 4 usage（`suitable for …` 形容词补语） → The {type} is {value}.
  * 5 care（`rinse …` 祈使短语）           → 直接以动作动词开头。
  */
 const EXPECTED_NATURAL_BULLETS = [
   "The Organizer is built with an expandable multi-compartment design in molded plastic.",
   "The Organizer stores about 40 to 50 pieces of cutlery.",
-  "The Organizer expands or collapses to the sides according to the drawer width.",
+  "This Organizer expands or collapses to the sides according to the drawer width.",
   "The Organizer is suitable for daily kitchen storage and carrying.",
   "Rinse with clean water and wipe dry.",
 ] as const;
@@ -377,7 +388,7 @@ describe("ukeetap 离线回归（坏 Provider 稿 → 5 条 Plan 绑定确定性
       hasBlockingIssue: false,
     });
     const plan = buildListingPlanFromCapability(build.input, null, evalResult.capability);
-    const { composeOptimizedListingDraft } = await import("@/lib/listingHandoff/listingComposition");
+    const { composeOptimizedListingDraft, composeControlledBullets } = await import("@/lib/listingHandoff/listingComposition");
     // 注入渲染后的输入（生成链等价：manualConfirmed 中文值 → batch renderer 英文）
     const renderedInput = {
       ...build.input,
@@ -386,6 +397,10 @@ describe("ukeetap 离线回归（坏 Provider 稿 → 5 条 Plan 绑定确定性
         value: UKEETAP_RENDERINGS[f.field] ?? f.value,
       })),
     };
+    // 阶段A受控句合同断言
+    const controlled = composeControlledBullets(renderedInput, plan);
+    expect(controlled.bullets).toEqual([...STAGE_A_CONTROLLED_BULLETS]);
+    // 阶段B最终输出合同断言
     const optimized = composeOptimizedListingDraft(renderedInput, plan, null);
     const { verifyListingClaims } = await import("@/lib/listingHandoff/listingClaimEvidenceResolver");
     const verification = verifyListingClaims({ ...optimized, sellingPoints: [], riskNotes: [], complianceWarnings: [], blockedClaims: [], reviewChecklist: [] } as never, renderedInput);
