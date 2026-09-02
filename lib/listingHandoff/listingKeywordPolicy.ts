@@ -99,6 +99,48 @@ export function findCompetitorBrandMentions(
   return matches;
 }
 
+/* ── R2 关键词形态门禁：句子型/谓语开头/标点垃圾词不得进入正式关键词 ──
+ *
+ * 关键词是 2–6 词自然名词短语；Amazon 正式关键词字段禁止句子。
+ * 只拒绝「句子形态」输入：句末/句中句子标点、明显谓语开头（含情态动词原形）、
+ * 以及超过自然短语上限的明显超长串。绝不按词面猜品牌、不杀 2–6 词自然名词短语。
+ * 判定完全基于英文短语形态，不含任何商品/品牌/类型字符串特判。
+ */const SENTENCE_LEAD_WORDS = new Set([
+  // 情态/助动词（后接动词才像句子；can opener 类名词产品名不在此集合）
+  "can", "could", "will", "would", "should", "must", "may", "does", "did",
+  // 三单现在时与无歧义原形谓语（词面即动词形态，不可能是纯名词短语开头）
+  "is", "are", "was", "were", "has", "have",
+  "holds", "hold", "keeps", "keep", "stores", "store", "carries", "carry",
+  "contains", "contain", "includes", "include", "features", "feature", "comes", "come",
+  "fits", "fit", "expands", "expand", "extends", "extend", "contracts", "contract",
+  "collapses", "collapse", "folds", "fold", "unfolds", "unfold", "adjusts", "adjust",
+  "organizes", "organize", "separates", "separate", "divides", "divide",
+  "accommodates", "accommodate", "arranges", "arrange", "protects", "protect",
+  "supports", "support", "offers", "offer", "provides", "provide", "allows", "allow",
+  "works", "work", "measures", "measure", "weighs", "weigh", "makes", "make",
+  "prevents", "prevent", "reduces", "reduce", "resists", "resist", "requires", "require",
+  "opens", "open", "closes", "close", "slides", "slide", "stands", "stand", "hangs", "hang",
+]);
+/** 明显超长（> 10 词）串几乎不可能是类目关键词，按句子型拒绝 */
+const MAX_KEYWORD_WORDS = 10;
+const SENTENCE_PUNCT = /[.!?]/;
+const PHRASE_SEPARATOR = /[,;]/;
+
+/** 返回句子形态原因；null = 形态合规（可继续走分类策略） */
+function sentenceLikeReason(keyword: string): string | null {
+  const kw = String(keyword ?? "").trim();
+  if (!kw) return null;
+  // 正式关键词字段不得含句末标点或句内逗号/分号（句子分隔符）
+  if (SENTENCE_PUNCT.test(kw) || PHRASE_SEPARATOR.test(kw)) return "sentence_like";
+  const tokens = kw.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return null;
+  if (tokens.length > MAX_KEYWORD_WORDS) return "sentence_like";
+  // 明显谓语开头：仅当整串 >= 5 词才按谓语拒（3-4 词如 "carry water bottle"
+  // 是 Amazon 后端词里常见的省略功能短语，不得误杀）
+  if (tokens.length >= 5 && SENTENCE_LEAD_WORDS.has(tokens[0])) return "sentence_like";
+  return null;
+}
+
 /** 唯一出口：排序稳定、保序去重；人工方案没有绕过入口。 */
 export function filterKeywordsForListing(
   keywords: string[],
@@ -115,6 +157,12 @@ export function filterKeywordsForListing(
     const key = norm(kw);
     if (seen.has(key)) continue;
     seen.add(key);
+    const sentenceReason = sentenceLikeReason(kw);
+    if (sentenceReason) {
+      // 句子型垃圾词即使写进人工 Brief 也不得进入正式关键词（R2 关键词卫生）
+      rejected.push({ keyword: kw, reason: sentenceReason });
+      continue;
+    }
     const cat = classifyKeyword(kw, input);
     if (cat === "competitor_brand" || cat === "unknown_brand" || cat === "risk") {
       // 人工 Brief 也不能绕过竞品品牌、未知品牌与风险词。

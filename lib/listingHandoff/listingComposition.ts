@@ -14,6 +14,12 @@
 import type { AiListingPackDraft } from "@/lib/aiListingDraft";
 import { buildSafeFactSentences, type RuntimeFact, RUNTIME_QUALITY_LIMITS } from "@/lib/listingHandoff/listingRuntimeSkill";
 import { isTrivialSingleUnitQuantity } from "@/lib/listingHandoff/listingCapabilityV2";
+import {
+  extractBrandLikeTokensFromKeywords,
+  extractKnownBrandsFromCompetitorTitles,
+  filterKeywordsForListing,
+  type KeywordPolicyInput,
+} from "@/lib/listingHandoff/listingKeywordPolicy";
 import { applyStageBToBullets, editDescriptionForCoherence, type OperatedFact } from "@/lib/listingHandoff/listingOperatorCopy";
 import {
   LISTING_COMPOSER_VERSION,
@@ -875,6 +881,24 @@ function composeOptimizedDescription(input: ListingGenerationInput): string {
   // 阶段B：描述段落连贯性编辑（只重排已有句序；规格句后置；factRefs 不变）
   return editDescriptionForCoherence(base).text;
 }
+/**
+ * R2：组合层关键词策略输入（与 listingGenerationService.keywordPolicyInputOf 同源逻辑；
+ * 保证纯组合函数在被独立调用/测试时也执行同一唯一出口，不依赖调用方预先过滤）。
+ */
+function keywordPolicyInputForComposition(input: ListingGenerationInput): KeywordPolicyInput {
+  const ownBrand = String(input.productFacts.find((f) => f.field === "brand")?.value ?? "").trim();
+  const titles = (input.creativeContext?.competitiveContext ?? []).map((entry) =>
+    typeof entry === "string" ? entry : String((entry as { note?: string }).note ?? ""),
+  );
+  const candidates = (input.creativeContext?.keywordCandidates ?? []).map((k) =>
+    typeof k === "string" ? k : String((k as { keyword?: string }).keyword ?? ""),
+  );
+  const known = new Set<string>();
+  for (const b of extractKnownBrandsFromCompetitorTitles(titles, { ownBrand })) known.add(b);
+  for (const b of extractBrandLikeTokensFromKeywords(candidates, { ownBrand })) known.add(b);
+  return { ownBrand, knownBrands: [...known] };
+}
+
 function composeOptimizedKeywords(input: ListingGenerationInput, brief: ListingKeywordBrief | null): {
   keywords: string[];
   backendSearchTerms: string[];
@@ -883,23 +907,18 @@ function composeOptimizedKeywords(input: ListingGenerationInput, brief: ListingK
     // 无人工 Keyword Brief 时，自动建议词只保留在研究资料层，不进入正式 SEO 输出。
     return { keywords: [], backendSearchTerms: [] };
   }
-  const keywords: string[] = [];
-  if (brief.primaryKeyword) keywords.push(brief.primaryKeyword);
-  for (const s of brief.supportingKeywords) {
-    if (!keywords.includes(s)) keywords.push(s);
-  }
-  // 补充身份词（品牌/类型组合），但去重
-  const brand = englishRenderingOf(input, "brand");
-  const type = englishRenderingOf(input, "product_type");
-  // 品牌==类型（THERMOS THERMOS）不得生成词内重复组合词
-  if (brand && type && brand.toLowerCase() !== type.toLowerCase() && !keywords.includes(`${brand} ${type}`)) keywords.push(`${brand} ${type}`);
-  const materialV = englishRenderingOf(input, "material");
-  const capacityV = englishRenderingOf(input, "capacity");
-  if (type && materialV && !keywords.includes(materialV + " " + type) && keywords.length < 12) keywords.push(materialV + " " + type);
-  if (type && capacityV && !keywords.includes(capacityV + " " + type) && keywords.length < 12) keywords.push(capacityV + " " + type);
+  // R2：正式关键词只能是「人工确认并保存的 Brief 词」经唯一策略出口过滤后的子集。
+  // 组合器不再自拼 品牌/材质/容量 + 产品名 的合成词，也不允许句子型垃圾词混入；
+  // primary/supporting 按 Brief 原顺序经策略保序去重（own_brand 仅标题资格、竞品/风险/句子型一律拒绝）。
+  const policyInput = keywordPolicyInputForComposition(input);
+  const accepted = filterKeywordsForListing(
+    [brief.primaryKeyword, ...brief.supportingKeywords],
+    policyInput,
+  ).accepted;
+  const backend = filterKeywordsForListing(brief.backendSearchTerms, policyInput).accepted;
   return {
-    keywords: keywords.slice(0, 12),
-    backendSearchTerms: brief.backendSearchTerms,
+    keywords: accepted.slice(0, 12),
+    backendSearchTerms: backend.slice(0, 50),
   };
 }
 

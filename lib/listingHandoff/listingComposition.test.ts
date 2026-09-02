@@ -1134,3 +1134,112 @@ describe("消费者自然英语精确合同（字段标签式拼接禁用）", (
     }
   });
 });
+
+describe("R2 关键词卫生：正式关键词只能是已确认 Brief 的子集（红）", () => {
+  it("红：composeOptimizedListingDraft 不得自拼 品牌/材质/容量+产品名，keywords 必须恰为 Brief 词", () => {
+    const facts = [
+      { field: "brand", label: "品牌", value: "ukeetap" },
+      { field: "product_type", label: "商品类型", value: "Organizer" },
+      { field: "material", label: "材质", value: "Plastic" },
+      { field: "capacity", label: "容量", value: "Holds approximately 40-50 pieces of common cutlery." },
+    ];
+    const brief = {
+      primaryKeyword: "drawer organizer",
+      supportingKeywords: ["kitchen drawer organizer"],
+      backendSearchTerms: [],
+    } as never;
+    const draft = composeOptimizedListingDraft(input(facts), { primaryKeyword: null, bulletPlans: [] } as never, brief);
+    // 正式关键词只来自人工确认 Brief；不得出现 材质/容量句/品牌 + Organizer 的合成词或句尾机械追加
+    expect(draft.keywords).toEqual(["drawer organizer", "kitchen drawer organizer"]);
+    for (const k of draft.keywords) {
+      expect(k.split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(6);
+      // 去拼接守卫：不得以材质值/容量句开头拼出 "Plastic Organizer" / "Holds ... Organizer" 类合成词
+      expect(k.toLowerCase().startsWith("plastic ")).toBe(false);
+      expect(k.toLowerCase().startsWith("holds approximately")).toBe(false);
+    }
+  });
+
+  it("红：keywords 必须能全部通过关键词策略出口（无竞品/风险/句子型词）", () => {
+    const facts = [
+      { field: "brand", label: "品牌", value: "ukeetap" },
+      { field: "product_type", label: "商品类型", value: "Organizer" },
+      { field: "material", label: "材质", value: "Plastic" },
+      { field: "capacity", label: "容量", value: "Holds approximately 40-50 pieces of common cutlery." },
+    ];
+    const brief = {
+      primaryKeyword: "drawer organizer",
+      supportingKeywords: ["kitchen drawer organizer", "Holds approximately 40-50 pieces of common cutlery Organizer"],
+      backendSearchTerms: [],
+    } as never;
+    const draft = composeOptimizedListingDraft(input(facts), { primaryKeyword: null, bulletPlans: [] } as never, brief);
+    // 句子型垃圾词即便出现在 Brief 里也不能进入正式关键词
+    expect(draft.keywords).not.toContain("Holds approximately 40-50 pieces of common cutlery Organizer");
+  });
+});
+
+describe("R2 关键词卫生通用性：Organizer / Bottle / Tumbler 三类夹具（锁定）", () => {
+  const cases: Array<{ type: string; material: string; capacity: string }> = [
+    { type: "Organizer", material: "Plastic", capacity: "Holds approximately 40-50 pieces of common cutlery" },
+    { type: "Bottle", material: "Stainless Steel", capacity: "24 oz" },
+    { type: "Tumbler", material: "Plastic", capacity: "16 oz" },
+  ];
+  for (const c of cases) {
+    it(`${c.type}: 正式关键词恰为 Brief 通过策略的子集（无自拼词/无句子垃圾）`, () => {
+      const facts = [
+        { field: "brand", label: "品牌", value: "ukeetap" },
+        { field: "product_type", label: "商品类型", value: c.type },
+        { field: "material", label: "材质", value: c.material },
+        { field: "capacity", label: "容量", value: c.capacity },
+      ];
+      const brief = {
+        primaryKeyword: "drawer organizer",
+        supportingKeywords: ["kitchen drawer organizer", c.capacity + " " + c.type, "Can hold about " + c.capacity.toLowerCase()],
+        backendSearchTerms: [c.capacity + " " + c.type, "drawer organizer"],
+      } as never;
+      const draft = composeOptimizedListingDraft(input(facts), { primaryKeyword: null, bulletPlans: [] } as never, brief);
+      for (const k of draft.keywords) {
+        expect(k.split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(6);
+        expect(k.toLowerCase().startsWith(c.material.toLowerCase() + " ")).toBe(false);
+        expect(k.toLowerCase().startsWith("can hold")).toBe(false);
+        expect(k.toLowerCase().startsWith("holds approximately")).toBe(false);
+      }
+      expect(draft.keywords).toContain("drawer organizer");
+      expect(draft.keywords).toContain("kitchen drawer organizer");
+      // backend 同走唯一策略出口：句子型词被拒；合法名词短语保留
+      for (const t of draft.backendSearchTerms) {
+        expect(t.toLowerCase().startsWith("can hold")).toBe(false);
+        expect(t.toLowerCase().startsWith("holds approximately")).toBe(false);
+      }
+      expect(draft.backendSearchTerms).toContain("drawer organizer");
+    });
+  }
+});
+
+describe("R2 源单位保持：0.81 kg 不得被擅自换算（锁定）", () => {
+  it("重量事实渲染为 weighs 0.81 kg，正式文案不含任何 lb/盎司换算值", async () => {
+    const li = input([
+      { field: "brand", label: "品牌", value: "ukeetap" },
+      { field: "product_type", label: "商品类型", value: "Tumbler" },
+      { field: "material", label: "材质", value: "Plastic" },
+      { field: "weight", label: "重量", value: "0.81 kg" },
+      { field: "operation", label: "操作方式", value: "Push Button" },
+      { field: "usage", label: "使用场景", value: "Kitchen counter" },
+      { field: "care", label: "清洁保养", value: "wipe with a damp cloth" },
+    ]);
+    const { evaluateListingCapabilityFromPolicy } = await import("@/lib/listingHandoff/listingCapabilityEvaluation");
+    const { buildListingPlanFromCapability } = await import("@/lib/listingHandoff/listingPlan");
+    const cap = evaluateListingCapabilityFromPolicy({
+      input: li,
+      confirmedFacts: li.productFacts.map((f) => ({ field: f.field, value: f.value, evidenceTier: "human_confirmed", sourceRef: { sourceKind: "user_confirmation" } })),
+      extraProhibitedTerms: [],
+      hasBlockingIssue: false,
+    });
+    const plan = buildListingPlanFromCapability(li, null, cap.capability);
+    const opt = composeOptimizedListingDraft(li, plan, null);
+    const corpus = [opt.titles[0], ...opt.bullets, opt.description].join(" ");
+    expect(corpus).toContain("0.81 kg");
+    expect(corpus.toLowerCase()).not.toContain("1.8 lb");
+    expect(corpus.toLowerCase()).not.toContain(" lb");
+    expect(corpus.toLowerCase()).not.toContain("28.6 oz");
+  });
+});

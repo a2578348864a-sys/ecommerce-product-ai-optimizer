@@ -161,3 +161,38 @@ describe("品牌标记单侧提取精确合同（listing-keyword-policy.v2）", 
     expect(knownBrands).not.toContain("safe");
   });
 });
+
+describe("R2 关键词形态：句子型/动词开头/句末标点/机械追加产品名的词必须被拒（红）", () => {
+  it("红：句子型垃圾词不得进入正式关键词（当前会被当 long_tail 放行）", () => {
+    const input = { ownBrand: "ukeetap", knownBrands: [] as string[] };
+    const sentenceLike = [
+      "Holds approximately 40-50 pieces of cutlery Organizer",
+      "Can hold about 40-50 pieces of common cutlery",
+      "Expand or contract to fit the drawer width",
+      "Plastic organizer with expandable compartments, Organizer",
+      "This is a kitchen drawer organizer for cutlery.",
+    ];
+    for (const s of sentenceLike) {
+      const r = filterKeywordsForListing([s], input);
+      expect(r.accepted, `句子型词应被拒: ${s}`).toEqual([]);
+    }
+  });
+
+  it("不误杀 2-6 词自然名词短语（作为实现约束，始终应通过）", () => {
+    const input = { ownBrand: "ukeetap", knownBrands: [] as string[] };
+    const natural = ["drawer organizer", "kitchen drawer organizer", "silverware organizer", "expandable drawer organizer"];
+    const r = filterKeywordsForListing(natural, input);
+    expect(r.accepted).toEqual(natural);
+  });
+
+  it("风险词/竞品品牌即便出现在 Brief 也不得进入正式关键词（锁定）", () => {
+    const input = { ownBrand: "ukeetap", knownBrands: ["stanley"] as string[] };
+    const r = filterKeywordsForListing(
+      ["best seller organizer", "guaranteed organizer", "stanley cup", "drawer organizer"],
+      input,
+    );
+    expect(r.accepted).toEqual(["drawer organizer"]);
+    expect(r.rejected).toContainEqual({ keyword: "best seller organizer", reason: "risk" });
+    expect(r.rejected).toContainEqual({ keyword: "stanley cup", reason: "competitor_brand" });
+  });
+});
