@@ -2,6 +2,7 @@
 
 > **结项结论状态**: **`PROJECT_001_READY_TO_FREEZE`**  
 > **冻结时间戳**: 2026-09-04 01:15 (UTC+8)  
+> **最终本地冻结更新**: 2026-09-04 04:1x (UTC+8) — Image Studio Fact Authority 收口与真实 Image Provider E2E 完成后重新固化（详见 §3 / §3.1 / §7 / §8.1）。
 > **迭代声明**: 当前版本已完成全部既定目标的开发、收口、验收与审计，即刻执行项目代码基线冻结；**后续任何新需求均视为下一代新迭代，不属于本次结项范围**。
 
 ---
@@ -37,13 +38,22 @@
 | 维度 | 基线配置与具体哈希 | 状态核对 |
 | :--- | :--- | :---: |
 | **Git 分支** | `feature/v4.1-ui-productization` | 正常 |
-| **冻结 Commit SHA (HEAD)** | `1d5763723c66ea4e77c2ba0e14974f050a1bf563` | 完全匹配 |
-| **远端 Feature 分支 SHA** | `1d5763723c66ea4e77c2ba0e14974f050a1bf563` (`origin/feature/v4.1-ui-productization`) | 完全匹配 (ahead=0, behind=0) |
-| **Commit Subject** | `Fix Listing copy quality false passes` | 恰为 1 次原子提交 |
-| **Working Tree 状态** | Tracked dirty: 0, Staged: 0 | 纯净无污染 |
-| **本地服务运行端口** | `127.0.0.1:3005` (Next.js 生产运行时) | HTTP 200 { ok: true } |
-| **生产运行 BUILD_ID** | `UujEhedQ5-XiD1F07m_90` | 与磁盘产物 100% 匹配 |
-| **服务进程 PID** | `30208` | 单一监听守护进程 |
+| **冻结 Commit SHA (HEAD)** | `427b28c8140593335b99eeb4ce1cff0224e959cd` | 完全匹配 |
+| **Commit Subject** | `Fix Image Studio fact authority conflicts` | 自 `1d576372` 起经 Reconcile / Image Studio 系列原子提交演进后的最终业务基线 |
+| **本地 main SHA** | `427b28c8140593335b99eeb4ce1cff0224e959cd` | == HEAD |
+| **远端 main / feature SHA** | `427b28c8140593335b99eeb4ce1cff0224e959cd`（origin/main 与 origin/feature/v4.1-ui-productization） | 四方一致 (ahead=0, behind=0) |
+| **Working Tree 状态** | Tracked dirty: 0, Staged: 0, Untracked: 0 | 纯净无污染 |
+| **本地服务运行端口** | `127.0.0.1:3005`（`npm run start:local` 本地运行时） | HTTP 200 |
+| **生产运行 BUILD_ID** | `-qYNrNL8lHGBllTHrp3P0` | 与磁盘产物 100% 匹配 |
+| **服务进程 PID** | `18320` | 单一监听守护进程 |
+| **本地运行模式** | 读取 `.env.local` 正式配置（`IMAGE_PROVIDER_MODE=real`）；凭证不入库、不写入本文档 | Image Provider 可用 |
+
+### 3.1 Image Studio 最终状态（真实 Provider E2E 已验证）
+
+- **Fact Authority 收口**：Research Human Confirmed Facts 为当前商品事实最高权威；历史 Creative Handoff confirmedFacts 已降级为「当次创作实际使用快照」（历史/审计），不再参与当前事实覆盖竞争；
+- **真实 Image Provider**：`IMAGE_PROVIDER_MODE=real`（OpenAI 兼容 Image API，`gpt-image-2`）已配置，并经项目 Provider Preflight 校验（Base 主机白名单通过）；
+- **真实 E2E 已验证**：用户已于本地 3005 亲自完成真实图片生成 —— 研究事实（Human Confirmed Facts）→ Prompt（仅当前权威事实进入事实层）→ 真实 Provider → 图片结果，端到端验证通过；
+- **Listing**：Listing 输出仍属**待人工复核草稿**，不声明自动发布/自动上架。
 
 ---
 
@@ -99,9 +109,9 @@
 
 ## 7. 证据不足项声明（诚实边界）
 
-1. **真实付费 Provider 在生产环境的并发表现**：
-   受限于“未经授权禁止调用付费 API”红线，审计全程在 Mock 模式与服务端配额门禁下进行。真实第三方 Provider（DeepSeek / OpenAI）的实时网络响应与扣费链路需由用户挂载密钥后验证；
-2. **Native 1688 插件对最新 1688 页面 DOM 的实时抓取**：
+1. **真实 Image Provider 生产链路**：已于 2026-09-04 由用户亲自完成真实图片生成（研究事实 → Prompt → 真实 Provider → 图片结果），E2E 验证通过；实时网络响应/扣费经一次性真实调用验证（用户亲自确认成功）。
+2. **文本/Listing 侧真实网络与扣费链路的批量/并发表现**：Listing 文本真实 Provider 的批量与并发表现仍需在后续迭代由用户授权另行验证；当前 Listing 输出保持「待人工复核草稿」语义。
+3. **Native 1688 插件对最新 1688 页面 DOM 的实时抓取**：
    本地桥接守护进程离线，未抓取实时动态页面。
 
 ---
@@ -111,8 +121,8 @@
 ### 8.1 主数据库 (`prisma/dev.db`) 冻结指纹
 - **文件路径**: `D:/Workspace/projects/project-001-跨境电商AI工具/电商工具/prisma/dev.db`
 - **文件大小**: `9,674,752` 字节 (约 9.22 MB)
-- **修改时间 (mtime)**: `2026-09-03T16:55:06.969Z`
-- **SHA-256 校验和**: `F3703BE41581D02DFE4BE2B361FDF57ABA02995AE98E8089563D9A41C610AEE3`
+- **修改时间 (mtime)**: `2026-09-03T20:02:46.288Z`（本地 2026-09-04 04:02:46 +08:00）
+- **SHA-256 校验和**: `4B25BF25170EA02CEEA5A8048774B49E2CAB2080F14B33C6A2003DDFD80828FD`
 - **记录总量**:
   - `ViralAnalysisRecord` (商品研究任务): 2 条
   - `OpportunityCandidate` (候选商品): 2 条
@@ -121,7 +131,7 @@
   - `ListingCopyHistory` (历史草稿快照): 7 条
   - `V4ResearchRun` (研究运行实例): 14 条
   - `V4FactRecord` (原子事实记录): 2 条
-- **数据安全性**: 审计与冻结全流程只读，业务写入增量为 **0**。
+- **数据安全性**: 该指纹为**最终真实 Image Provider E2E 验证完成后的本地业务数据库基线**（含用户真实图片生成产生的预期业务写入，如 organizer 任务 Creative Handoff revision 3 与 Image Draft / Image Handoff 快照）。此后冻结只读，不再尝试回退旧 SHA。
 
 ### 8.2 当前未跟踪资产说明
 执行 `git status --short` 仅包含一项既有用户资产：
