@@ -799,16 +799,21 @@ describe("Listing 创作补充表单（真实 DOM）", () => {
     expect(saveStatus()?.textContent).toContain("创作补充已保存");
   });
 
-  it("Ready 未保存：编辑后生成按钮禁用、未保存警告可见、无生成 POST（generate 内部防线拦截点击）", async () => {
+  it("Ready 未保存：编辑后生成按钮不禁用，点击自动触发 save→generate 流程", async () => {
     const fetchCalls: { method: string; body: Record<string, unknown> | null }[] = [];
+    const incoming = brief("A");
+    const edited = { ...incoming, coreSellingPoint: "未保存编辑" };
     const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
       if (init?.method === "POST") {
         const body = JSON.parse(String(init.body)) as Record<string, unknown>;
         fetchCalls.push({ method: "POST", body });
+        if (body.action === "save_listing_brief") {
+          return jsonResponse(saveListingBriefData({ schema: "listing-creation-brief.v1", ...edited }));
+        }
         return jsonResponse(generateListItemResponse());
       }
       fetchCalls.push({ method: "GET", body: null });
-      return jsonResponse(listingState(brief("A")));
+      return jsonResponse(listingState(incoming));
     });
     globalThis.fetch = fetchMock as typeof globalThis.fetch;
     const { ListingHandoffSection } = await import("@/components/listing-handoff/ListingHandoffSection");
@@ -825,25 +830,31 @@ describe("Listing 创作补充表单（真实 DOM）", () => {
     expect(warning).not.toBeNull();
     expect(warning?.textContent).toContain("请先保存商品创作补充，再生成 Listing 草稿。");
     expect(generateButton()).not.toBeNull();
-    expect(generateButton()?.disabled).toBe(true);
+    expect(generateButton()?.disabled, "dirty 时生成按钮不被静默禁用").toBe(false);
 
     await clickGenerate(generateButton());
     await flush();
-    expect(fetchCalls.filter((call) => call.method === "POST")).toHaveLength(0);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain("请先保存商品创作补充，再生成 Listing 草稿。");
+    const postCalls = fetchCalls.filter((call) => call.method === "POST");
+    expect(postCalls).toHaveLength(2);
+    expect(postCalls[0].body?.action).toBe("save_listing_brief");
+    expect(postCalls[1].body?.action).toBeUndefined();
   });
 
-  it("已有草稿（active）未保存：重新生成按钮禁用、警告可见、无重新生成 POST", async () => {
+  it("已有草稿（active）未保存：重新生成按钮不禁用，点击自动触发 save→generate", async () => {
     const fetchCalls: { method: string; body: Record<string, unknown> | null }[] = [];
+    const incoming = brief("A");
+    const edited = { ...incoming, targetAudience: "未保存编辑-已有草稿" };
     const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
       if (init?.method === "POST") {
         const body = JSON.parse(String(init.body)) as Record<string, unknown>;
         fetchCalls.push({ method: "POST", body });
+        if (body.action === "save_listing_brief") {
+          return jsonResponse(saveListingBriefData({ schema: "listing-creation-brief.v1", ...edited }));
+        }
         return jsonResponse(generateListItemResponse());
       }
       fetchCalls.push({ method: "GET", body: null });
-      return jsonResponse(listingState(brief("A"), { listingStatus: "active" }));
+      return jsonResponse(listingState(incoming, { listingStatus: "active" }));
     });
     globalThis.fetch = fetchMock as typeof globalThis.fetch;
     const { ListingHandoffSection } = await import("@/components/listing-handoff/ListingHandoffSection");
@@ -856,13 +867,15 @@ describe("Listing 创作补充表单（真实 DOM）", () => {
 
     expect(regenerateButton()).not.toBeNull();
     await setTextareaValue(briefTextareas()[1], "未保存编辑-已有草稿");
-    expect(regenerateButton()?.disabled).toBe(true);
+    expect(regenerateButton()?.disabled, "dirty 时重新生成按钮不禁用").toBe(false);
     expect(unsavedWarning()?.textContent).toContain("请先保存商品创作补充，再生成 Listing 草稿。");
 
     await clickGenerate(regenerateButton());
     await flush();
-    expect(fetchCalls.filter((call) => call.method === "POST")).toHaveLength(0);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const postCalls = fetchCalls.filter((call) => call.method === "POST");
+    expect(postCalls).toHaveLength(2);
+    expect(postCalls[0].body?.action).toBe("save_listing_brief");
+    expect(postCalls[1].body?.action).toBeUndefined();
   });
 
   it("保存成功后再生成：GET→save POST→generate POST 时序，generate 仅携带保存响应五字段", async () => {
@@ -914,16 +927,18 @@ describe("Listing 创作补充表单（真实 DOM）", () => {
     expect(JSON.stringify(generatePost)).not.toContain("保存前旧值");
   });
 
-  it("保存成功后再编辑未保存：生成重新禁用，新值不进入任何生成请求", async () => {
+  it("保存成功后再编辑未保存：生成按钮不禁用，点击自动保存新值并进入生成请求", async () => {
     const incoming = brief("A");
     const firstSaved = { ...brief("A"), coreSellingPoint: "第一次保存值" };
+    const secondSaved = { ...firstSaved, targetAudience: "未保存新值" };
     const posts: Record<string, unknown>[] = [];
     const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
       if (init?.method === "POST") {
         const body = JSON.parse(String(init.body)) as Record<string, unknown>;
         posts.push(body);
         if (body.action === "save_listing_brief") {
-          return jsonResponse(saveListingBriefData({ schema: "listing-creation-brief.v1", ...firstSaved }));
+          const isSecond = (body.listingBrief as { targetAudience?: string })?.targetAudience === "未保存新值";
+          return jsonResponse(saveListingBriefData({ schema: "listing-creation-brief.v1", ...(isSecond ? secondSaved : firstSaved) }));
         }
         return jsonResponse(generateListItemResponse());
       }
@@ -945,14 +960,14 @@ describe("Listing 创作补充表单（真实 DOM）", () => {
 
     await setTextareaValue(briefTextareas()[1], "未保存新值");
     expect(elementByTestId("listing-creation-brief")?.getAttribute("data-brief-dirty")).toBe("true");
-    expect(generateButton()?.disabled).toBe(true);
+    expect(generateButton()?.disabled, "再编辑未保存时不禁用生成按钮").toBe(false);
     expect(unsavedWarning()).not.toBeNull();
 
     await clickGenerate(generateButton());
     await flush();
-    expect(posts.filter((body) => body.action === undefined)).toHaveLength(0);
-    expect(JSON.stringify(posts)).not.toContain("未保存新值");
-    expect(fetchMock).toHaveBeenCalledTimes(2); // GET + save POST，无生成 POST
+    const gens = posts.filter((body) => body.action === undefined);
+    expect(gens).toHaveLength(1);
+    expect((gens[0].listingBrief as { targetAudience?: string })?.targetAudience).toBe("未保存新值");
   });
 });
 
@@ -1468,5 +1483,300 @@ describe("HISTORICAL_KEYWORD_READ_GUARD：历史过滤提示 UI（单条、可�
     );
     expect(elementByTestId("prepublish-keywords-filter-notice"), "干净草稿不应出现过滤提示").toBeNull();
     expect(chipsWithin("prepublish-body-keywords").length, "正文采用词 chips 消失").toBeGreaterThan(0);
+  });
+});
+
+/** R2「生成点击编排」董事会合同：一次点击必须启动正确流程（dirty→save→generate）或显示明确原因。 */
+describe("生成点击编排（R2：dirty 自动保存后生成；失败/冲突不生成）", () => {
+  const bodyText = () => container.textContent ?? "";
+
+  async function mountGen(taskId: string, fetchMock: (input: string | URL | Request, init?: RequestInit) => Promise<Response>) {
+    globalThis.fetch = fetchMock as typeof globalThis.fetch;
+    const { ListingHandoffSection } = await import("@/components/listing-handoff/ListingHandoffSection");
+    await act(async () => {
+      root = createRootForTest(container as unknown as Element);
+      root.render(createElement(ListingHandoffSection, { taskId, refreshSignal: 0 }));
+    });
+    await flush();
+  }
+
+  function postBody(init?: RequestInit): Record<string, unknown> {
+    return JSON.parse(String(init?.body)) as Record<string, unknown>;
+  }
+
+  it("R2-1 dirty 点击生成不得静默：自动 save 成功→generate，一次点击各一次 POST", async () => {
+    const incoming = brief("A");
+    const edited = { ...incoming, coreSellingPoint: "R2未保存的卖点" };
+    const order: string[] = [];
+    const fetchMock = vi.fn(async (_i: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        const body = postBody(init);
+        if (body.action === "save_listing_brief") {
+          order.push("save");
+          return jsonResponse(saveListingBriefData({ schema: "listing-creation-brief.v1", ...edited }, { resultJsonHash: "s".repeat(64), currentHandoffRevision: 9 }));
+        }
+        order.push("generate");
+        return jsonResponse(generateListItemResponse());
+      }
+      order.push("get");
+      return jsonResponse(listingState(incoming));
+    });
+    await mountGen("r2-1", fetchMock);
+    await setTextareaValue(briefTextareas()[0], "R2未保存的卖点");
+    expect(elementByTestId("listing-creation-brief")?.getAttribute("data-brief-dirty")).toBe("true");
+    await clickGenerate(generateButton());
+    await flush();
+    expect(order, "dirty 点击后必须真实发生 save→generate，而不是静默").toEqual(["get", "save", "generate", "get"]);
+  });
+
+  it("R2-2 无 dirty 点击生成：0 次 save、恰好 1 次 generate", async () => {
+    const incoming = brief("A");
+    const order: string[] = [];
+    const fetchMock = vi.fn(async (_i: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        order.push(postBody(init).action === "save_listing_brief" ? "save" : "generate");
+        return jsonResponse(generateListItemResponse());
+      }
+      order.push("get");
+      return jsonResponse(listingState(incoming));
+    });
+    await mountGen("r2-2", fetchMock);
+    expect(elementByTestId("listing-creation-brief")?.getAttribute("data-brief-dirty")).toBe("false");
+    await clickGenerate(generateButton());
+    await flush();
+    expect(order.filter((x) => x === "save").length, "无 dirty 时不得出现 save POST").toBe(0);
+    expect(order.filter((x) => x === "generate").length, "无 dirty 时应恰好一次 generate POST").toBe(1);
+  });
+
+  it("R2-3 generate 必须直接使用 save 响应的 storageVersion/handoffRevision", async () => {
+    const incoming = brief("A");
+    const edited = { ...incoming, useScenario: "R2场景-v3" };
+    const generatePosts: Record<string, unknown>[] = [];
+    const fetchMock = vi.fn(async (_i: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        const body = postBody(init);
+        if (body.action === "save_listing_brief") {
+          return jsonResponse(saveListingBriefData({ schema: "listing-creation-brief.v1", ...edited }, { resultJsonHash: "z".repeat(64), updatedAt: "2026-08-27T00:00:02.000Z", currentHandoffRevision: 13 }));
+        }
+        generatePosts.push(body);
+        return jsonResponse(generateListItemResponse());
+      }
+      return jsonResponse(listingState(incoming));
+    });
+    await mountGen("r2-3", fetchMock);
+    await setTextareaValue(briefTextareas()[2], "R2场景-v3");
+    await clickGenerate(generateButton());
+    await flush();
+    expect(generatePosts.length, "dirty 点击后应有 generate POST").toBe(1);
+    const gen = generatePosts[0];
+    expect((gen.expectedStorageVersion as { resultJsonHash?: string })?.resultJsonHash, "generate 必须使用 save 响应新 hash").toBe("z".repeat(64));
+    expect(gen.expectedHandoffRevision, "generate 必须使用 save 响应新 revision").toBe(13);
+    expect((gen.listingBrief as { useScenario?: string })?.useScenario, "generate 携带 save 成功后的五字段").toBe("R2场景-v3");
+  });
+
+  it("R2-4a save 500：必须真实尝试一次 save、0 次 generate、保留输入与旧稿并显示明确失败", async () => {
+    const incoming = brief("A");
+    const posts: Record<string, unknown>[] = [];
+    const fetchMock = vi.fn(async (_i: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        posts.push(postBody(init));
+        return new Response(JSON.stringify({ error: { code: "save_failed", message: "模拟保存失败" } }), { status: 500, headers: { "content-type": "application/json" } });
+      }
+      return jsonResponse(listingState(incoming));
+    });
+    await mountGen("r2-4a", fetchMock);
+    await setTextareaValue(briefTextareas()[0], "输入要保留");
+    await clickGenerate(generateButton());
+    await flush();
+    const saveAttempts = posts.filter((p) => (p as { action?: string }).action === "save_listing_brief");
+    expect(saveAttempts.length, "save 失败也应真实尝试一次保存（不得静默跳过）").toBe(1);
+    expect(posts.filter((p) => (p as { action?: string }).action === undefined).length, "save 失败后不得 generate").toBe(0);
+    expect(elementByTestId("listing-creation-brief")?.getAttribute("data-brief-dirty"), "失败后输入仍 dirty").toBe("true");
+    expect(briefTextareas()[0].value, "失败后输入保留").toBe("输入要保留");
+    const status = elementByTestId("listing-brief-save-status")?.textContent ?? "";
+    expect(status, "save 失败提示可见").toContain("保存失败");
+  });
+
+  it("R2-4b save 409：0 次 generate、输入保留、显示冲突并刷新版本", async () => {
+    const incoming = brief("A");
+    const order: string[] = [];
+    const fetchMock = vi.fn(async (_i: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        order.push("save");
+        return new Response(JSON.stringify({ error: { code: "task_result_conflict", message: "revision conflict" } }), { status: 409, headers: { "content-type": "application/json" } });
+      }
+      order.push("get");
+      return jsonResponse(listingState(incoming));
+    });
+    await mountGen("r2-4b", fetchMock);
+    await setTextareaValue(briefTextareas()[1], "冲突时输入保留");
+    await clickGenerate(generateButton());
+    await flush();
+    expect(order.filter((x) => x === "save").length, "409 应来自真实 save 尝试").toBe(1);
+    expect(order.filter((x) => x === "generate").length, "409 后 0 次 generate").toBe(0);
+    expect(elementByTestId("listing-creation-brief")?.getAttribute("data-brief-dirty"), "409 后输入仍 dirty 保留").toBe("true");
+    expect(briefTextareas()[1].value, "409 后输入内容保留").toBe("冲突时输入保留");
+    expect(bodyText(), "409 冲突提示可见").toContain("已保留你的输入");
+  });
+
+  it("R2-4c save network error：真实尝试 save、0 generate、输入保留并显示失败", async () => {
+    const incoming = brief("A");
+    const posts: Record<string, unknown>[] = [];
+    const fetchMock = vi.fn(async (_i: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        posts.push(postBody(init));
+        throw new TypeError("network down");
+      }
+      return jsonResponse(listingState(incoming));
+    });
+    await mountGen("r2-4c", fetchMock);
+    await setTextareaValue(briefTextareas()[0], "网络错误输入保留");
+    await clickGenerate(generateButton());
+    await flush();
+    expect(posts.filter((p) => (p as { action?: string }).action === "save_listing_brief").length, "网络错误也需真实尝试一次保存").toBe(1);
+    expect(posts.filter((p) => (p as { action?: string }).action === undefined).length, "网络错误不得 generate").toBe(0);
+    expect(briefTextareas()[0].value, "网络错误输入保留").toBe("网络错误输入保留");
+    const status = elementByTestId("listing-brief-save-status")?.textContent ?? "";
+    expect(status, "网络错误保存失败提示可见").toContain("保存失败");
+  });
+
+  it("R2-5 双击只产生一组流程（save 1 + generate 1），不重复 POST", async () => {
+    const incoming = brief("A");
+    const edited = { ...incoming, coreSellingPoint: "双击卖点" };
+    const posts: Record<string, unknown>[] = [];
+    const fetchMock = vi.fn(async (_i: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        const body = postBody(init);
+        posts.push(body);
+        await new Promise((r) => setTimeout(r, 5));
+        if ((body as { action?: string }).action === "save_listing_brief") {
+          return jsonResponse(saveListingBriefData({ schema: "listing-creation-brief.v1", ...edited }));
+        }
+        return jsonResponse(generateListItemResponse());
+      }
+      return jsonResponse(listingState(incoming));
+    });
+    await mountGen("r2-5", fetchMock);
+    await setTextareaValue(briefTextareas()[0], "双击卖点");
+    const button = generateButton();
+    if (!button) throw new Error("生成按钮不存在");
+    await act(async () => {
+      button.dispatchEvent(new FakeEvent("click", button));
+      button.dispatchEvent(new FakeEvent("click", button));
+    });
+    await flush();
+    const saves = posts.filter((p) => (p as { action?: string }).action === "save_listing_brief");
+    const gens = posts.filter((p) => (p as { action?: string }).action === undefined);
+    expect(saves.length, "双击最多一次 save").toBe(1);
+    expect(gens.length, "双击最多一次 generate").toBe(1);
+  });
+
+  it("R2-6 双击期间的提交状态立即可见（非静默）", async () => {
+    const incoming = brief("A");
+    const edited = { ...incoming, coreSellingPoint: "进行中卖点" };
+    let release!: (value: Response) => void;
+    const gate = new Promise<Response>((r) => { release = r; });
+    const fetchMock = vi.fn(async (_i: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        const body = postBody(init);
+        if ((body as { action?: string }).action === "save_listing_brief") {
+          return gate; // 挂起保存，观察按钮状态与提示
+        }
+        return jsonResponse(generateListItemResponse());
+      }
+      return jsonResponse(listingState(incoming));
+    });
+    await mountGen("r2-6", fetchMock);
+    await setTextareaValue(briefTextareas()[0], "进行中卖点");
+    await clickGenerate(generateButton());
+    await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+    const text = elementByTestId("listing-brief-save")?.textContent ?? "";
+    expect(text, "保存挂起时应立即可见「保存中…」").toContain("保存中");
+    release(jsonResponse(saveListingBriefData({ schema: "listing-creation-brief.v1", ...edited })));
+    await flush();
+  });
+
+  it("R2-7 generate 500：保留旧稿、显示明确失败、不再触发额外流程", async () => {
+    const st = listingState(brief("A"), { listingStatus: "active" });
+    (st.data as unknown as { draft: unknown }).draft = {
+      draftKind: "structured_listing_draft", source: "deterministic_composition_v1", version: 1, composerVersion: "x",
+      generationPolicyVersion: "p", polishApplied: false, polishModel: null, generatedAt: "2026-08-27T00:00:00.000Z",
+      listingUnqualified: false, factSafe: true, copyQuality: true,
+      titles: ["OLD TITLE"], bullets: ["OLD_BULLET_KEEP"], description: "old description", keywords: [],
+      backendSearchTerms: [], usedKeywordTrace: [], searchOnlyKeywordTrace: [],
+      sellingPoints: [], sellingPointPlan: [], qualityIssues: [], rejectedListingSentences: [],
+      riskNotes: [], complianceWarnings: [], blockedClaims: [], reviewChecklist: [],
+    };
+    const posts: Record<string, unknown>[] = [];
+    const fetchMock = vi.fn(async (_i: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        posts.push(postBody(init));
+        return new Response(JSON.stringify({ error: { code: "generate_failed", message: "boom-gen" } }), { status: 500, headers: { "content-type": "application/json" } });
+      }
+      return jsonResponse(st);
+    });
+    await mountGen("r2-7", fetchMock);
+    expect(regenerateButton(), "active 草稿应展示重新生成按钮").not.toBeNull();
+    await clickGenerate(regenerateButton());
+    await flush();
+    expect(posts.filter((p) => (p as { action?: string }).action === undefined).length, "generate 失败也需真实尝试一次").toBe(1);
+    expect(posts.filter((p) => (p as { action?: string }).action === "save_listing_brief").length, "generate 失败不触发 save").toBe(0);
+    expect(bodyText(), "generate 失败提示明确可见").toContain("生成失败：boom-gen");
+    expect(bodyText(), "generate 失败后旧稿保留").toContain("OLD_BULLET_KEEP");
+  });
+
+  it("R2-8 canGenerate=false：0 POST 且原因可见", async () => {
+    const postCalls: unknown[] = [];
+    const fetchMock = vi.fn(async (_i: string | URL | Request, init?: RequestInit) => {
+      if ((init?.method ?? "GET") === "POST") postCalls.push(init);
+      return jsonResponse(listingState(brief("A"), { canGenerate: false }));
+    });
+    await mountGen("r2-8", fetchMock);
+    const reason = elementByTestId("generate-disabled-reason");
+    expect(generateButton()?.disabled, "硬性 canGenerate=false 时按钮禁用").toBe(true);
+    expect(reason, "禁用原因结构可见").not.toBeNull();
+    expect(reason?.textContent ?? "", "禁用原因有文案").not.toBe("");
+    await clickGenerate(generateButton());
+    await flush();
+    expect(postCalls.length, "硬性禁用时 0 POST").toBe(0);
+  });
+
+  it("R2-9 卸载后完成异步不写 state（无异常）", async () => {
+    const incoming = brief("A");
+    const edited = { ...incoming, coreSellingPoint: "卸载卖点" };
+    let release!: (value: Response) => void;
+    const gate = new Promise<Response>((r) => { release = r; });
+    const fetchMock = vi.fn(async (_i: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        const body = postBody(init);
+        if ((body as { action?: string }).action === "save_listing_brief") {
+          return gate;
+        }
+        return jsonResponse(generateListItemResponse());
+      }
+      return jsonResponse(listingState(incoming));
+    });
+    await mountGen("r2-9", fetchMock);
+    await setTextareaValue(briefTextareas()[0], "卸载卖点");
+    await clickGenerate(generateButton());
+    await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+    await act(async () => { root?.unmount(); root = null; });
+    release(jsonResponse(saveListingBriefData({ schema: "listing-creation-brief.v1", ...edited })));
+    await flush();
+    expect(true, "卸载后异步落定不抛异常、不 setState").toBe(true);
+  });
+
+  it("R2-10 generate 网络异常：catch 必须展示「网络异常，请重试。」，不得静默吞掉", async () => {
+    const incoming = brief("A");
+    const fetchMock = vi.fn(async (_i: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        throw new Error("Network disconnected");
+      }
+      return jsonResponse(listingState(incoming));
+    });
+    await mountGen("r2-10", fetchMock);
+    await clickGenerate(generateButton());
+    await flush();
+    expect(container.textContent, "网络异常必须在页面显示明确提示").toContain("网络异常，请重试。");
   });
 });

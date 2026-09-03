@@ -510,6 +510,7 @@ export function ListingHandoffSection({
   const [canGenerate, setCanGenerate] = useState(false);
   const [notice, setNotice] = useState<{ tone: "info" | "error"; text: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const generatingRef = useRef(false);
   /** 轮 15：首次 409 后进入自动恢复（版本刷新后自动重试一次；复用轮 14 冲突决策） */
   const [conflictPending, setConflictPending] = useState(false);
   const lastConflictVersionRef = useRef<string | null>(null);
@@ -645,14 +646,22 @@ export function ListingHandoffSection({
   }, []);
 
   /** 保存创作补充：save_listing_brief POST（六字段；全空 → listingBrief:null；409 保留输入并刷新版本，不自动重试） */
-  const saveListingBrief = useCallback(async () => {
-    if (briefSaveState === "saving") return;
+  const saveListingBrief = useCallback(async (): Promise<{
+    ok: boolean;
+    storageVersion: { resultJsonHash: string; updatedAt: string } | null;
+    handoffRevision: number | null;
+    listingBrief: ListingBriefForm | null;
+    errorKind?: "network" | "conflict" | "error" | "aborted";
+  }> => {
+    if (briefSaveState === "saving") {
+      return { ok: false, storageVersion: null, handoffRevision: null, listingBrief: null, errorKind: "aborted" };
+    }
     if (!storageVersion || handoffRevision === null) {
-      setBriefSaveState("error");
-      return;
+      if (mounted.current) setBriefSaveState("error");
+      return { ok: false, storageVersion: null, handoffRevision: null, listingBrief: null, errorKind: "error" };
     }
     const brief = listingBriefRef.current;
-    const hasBriefContent = Object.values(brief).some((value) => value.trim().length > 0);
+    const hasBriefContent = Object.values(brief).some((value) => typeof value === "string" && value.trim().length > 0);
     const body = {
       action: "save_listing_brief",
       requestId: createBrowserUuid(),
@@ -661,30 +670,34 @@ export function ListingHandoffSection({
       confirmed: true,
       listingBrief: hasBriefContent ? brief : null,
     };
-    setBriefSaveState("saving");
+    if (mounted.current) setBriefSaveState("saving");
     try {
       const res = await fetch(`${"/api/tasks"}/${encodeURIComponent(taskId)}/listing-handoff`, {
         method: "POST",
         headers: buildAccessHeaders(),
         body: JSON.stringify(body),
       });
-      if (!mounted.current) return;
+      if (!mounted.current) {
+        return { ok: false, storageVersion: null, handoffRevision: null, listingBrief: brief, errorKind: "aborted" };
+      }
       if (res.status === 409) {
         // 409：保留用户输入；刷新服务端版本（storageVersion/handoffRevision），后续由用户再次点击
         setBriefSaveState("conflict");
         await load({ preserveBriefEdits: true });
-        return;
+        return { ok: false, storageVersion: null, handoffRevision: null, listingBrief: brief, errorKind: "conflict" };
       }
       if (!res.ok) {
         // 400/500：不得改动 editing/saved，不清空字段
         setBriefSaveState("error");
-        return;
+        return { ok: false, storageVersion: null, handoffRevision: null, listingBrief: brief, errorKind: "error" };
       }
       const json = (await res.json()) as SaveListingBriefResponse;
-      if (!mounted.current) return;
+      if (!mounted.current) {
+        return { ok: false, storageVersion: null, handoffRevision: null, listingBrief: brief, errorKind: "aborted" };
+      }
       if (!json.ok) {
         setBriefSaveState("error");
-        return;
+        return { ok: false, storageVersion: null, handoffRevision: null, listingBrief: brief, errorKind: "error" };
       }
       // 成功后以响应 listingBrief 为准（复用现有归一化入口）；同步 editing/saved 双 ref 与双 state 及版本
       const resolved = resolveLoadedListingCreationBrief({
@@ -700,54 +713,79 @@ export function ListingHandoffSection({
       setStorageVersion(json.data.storageVersion);
       setHandoffRevision(json.data.currentHandoffRevision);
       setBriefSaveState("success");
+      return {
+        ok: true,
+        storageVersion: json.data.storageVersion,
+        handoffRevision: json.data.currentHandoffRevision,
+        listingBrief: resolved.editing,
+      };
     } catch {
       if (mounted.current) setBriefSaveState("error");
+      return { ok: false, storageVersion: null, handoffRevision: null, listingBrief: brief, errorKind: "network" };
     }
   }, [storageVersion, handoffRevision, taskId, load, briefSaveState]);
 
   const generate = useCallback(async () => {
-    if (submitting || handoffRevision === null || !canGenerate) return;
-    // 内部防线：未保存的商品创作补充禁止生成（不依赖按钮 disabled），在任何请求构造之前拦截
-    if (briefDirty) {
-      setNotice({ tone: "error", text: "请先保存商品创作补充，再生成 Listing 草稿。" });
-      return;
-    }
-    const nextRequestId = requestId ?? createBrowserUuid();
-    let effectiveSv = storageVersion;
-    if (!effectiveSv) {
-      // storageVersion 直取（首次加载或 409 后）— 从本 Route 自己的 GET 获取，不依赖其他 API
-      try {
-        const svRes = await fetch(`${"/api/tasks"}/${encodeURIComponent(taskId)}/listing-handoff`, {
-          headers: buildAccessHeaders(),
-        });
-        const svJson = (await svRes.json()) as ListingStateResponse;
-        if (svRes.ok && svJson.ok && svJson.data.storageVersion) {
-          effectiveSv = svJson.data.storageVersion;
-          setStorageVersion(effectiveSv);
-        }
-      } catch {
-        effectiveSv = null;
-      }
-    }
-    if (!effectiveSv) {
-      setNotice({ tone: "error", text: "无法获取最新存储版本，请刷新后重试。" });
-      return;
-    }
-    const hasListingBrief = Object.values(listingBrief).some((value) => value.trim().length > 0);
-    const body = {
-      requestId: nextRequestId,
-      expectedStorageVersion: effectiveSv,
-      expectedHandoffRevision: handoffRevision,
-      confirmed: true,
-      ...(hasListingBrief ? { listingBrief } : {}),
-    };
+    if (generatingRef.current) return;
+    if (submitting || !canGenerate) return;
+    generatingRef.current = true;
     setSubmitting(true);
+
+    let currentBody: Record<string, unknown> | null = null;
     try {
+      let effectiveSv = storageVersion;
+      let effectiveRev = handoffRevision;
+      let effectiveBrief = listingBriefRef.current;
+
+      // 如果有未保存修改，一次点击自动执行 save → generate
+      if (briefDirty) {
+        const saveRes = await saveListingBrief();
+        if (!saveRes.ok) {
+          return;
+        }
+        effectiveSv = saveRes.storageVersion;
+        effectiveRev = saveRes.handoffRevision;
+        if (saveRes.listingBrief) {
+          effectiveBrief = saveRes.listingBrief;
+        }
+      }
+
+      if (!effectiveSv) {
+        try {
+          const svRes = await fetch(`${"/api/tasks"}/${encodeURIComponent(taskId)}/listing-handoff`, {
+            headers: buildAccessHeaders(),
+          });
+          const svJson = (await svRes.json()) as ListingStateResponse;
+          if (svRes.ok && svJson.ok && svJson.data.storageVersion) {
+            effectiveSv = svJson.data.storageVersion;
+            if (mounted.current) setStorageVersion(effectiveSv);
+          }
+        } catch {
+          effectiveSv = null;
+        }
+      }
+      if (!effectiveSv || effectiveRev === null) {
+        if (mounted.current) {
+          setNotice({ tone: "error", text: "无法获取最新存储版本，请刷新后重试。" });
+        }
+        return;
+      }
+      const nextRequestId = requestId ?? createBrowserUuid();
+      const hasListingBrief = Object.values(effectiveBrief).some((value) => typeof value === "string" && value.trim().length > 0);
+      const body = {
+        requestId: nextRequestId,
+        expectedStorageVersion: effectiveSv,
+        expectedHandoffRevision: effectiveRev,
+        confirmed: true,
+        ...(hasListingBrief ? { listingBrief: effectiveBrief } : {}),
+      };
+      currentBody = body;
       const res = await fetch(`${"/api/tasks"}/${encodeURIComponent(taskId)}/listing-handoff`, {
         method: "POST",
         headers: buildAccessHeaders(),
         body: JSON.stringify(body),
       });
+      if (!mounted.current) return;
       if (res.status === 409) {
         const json = (await res.json()) as { error?: { code?: string; message?: string } };
         handleConflict(conflictPending);
@@ -819,12 +857,15 @@ export function ListingHandoffSection({
     } catch {
       if (mounted.current) {
         setNotice({ tone: "error", text: "网络异常，请重试。" });
-        setRetryBody(body as unknown as Record<string, unknown>);
+        if (currentBody) {
+          setRetryBody(currentBody);
+        }
       }
     } finally {
+      generatingRef.current = false;
       if (mounted.current) setSubmitting(false);
     }
-  }, [submitting, handoffRevision, canGenerate, requestId, taskId, status, load, handleConflict, storageVersion, onCommitted, listingBrief, conflictPending, briefDirty]);
+  }, [submitting, handoffRevision, canGenerate, requestId, taskId, status, load, handleConflict, storageVersion, onCommitted, conflictPending, briefDirty, saveListingBrief]);
 
   const retrySameRequest = useCallback(async () => {
     if (!retryBody || !requestId || submitting) return;
@@ -1208,13 +1249,13 @@ export function ListingHandoffSection({
             <button
               type="button"
               data-testid="generate-listing-draft"
-              disabled={!canGenerate || submitting || briefDirty}
+              disabled={!canGenerate || submitting}
               onClick={() => void generate()}
               className={BTN_CLASS}
             >
               {submitting ? "生成中…" : "生成 Listing 草稿"}
             </button>
-            {!canGenerate && !submitting && !briefDirty && (!claimPreflight || claimPreflight.pass) ? (
+            {!canGenerate && !submitting && (!claimPreflight || claimPreflight.pass) ? (
               <p className="mt-1 text-xs font-semibold text-amber-700" data-testid="generate-disabled-reason">
                 {readiness?.missingForQuality && readiness.missingForQuality.length > 0
                   ? `生成条件未满足：${readiness.missingForQuality.slice(0, 2).join(" ")}`
@@ -1290,14 +1331,14 @@ export function ListingHandoffSection({
             <div className="mt-3">
               <button
                 type="button"
-                disabled={!canGenerate || submitting || briefDirty}
+                disabled={!canGenerate || submitting}
                 onClick={() => void generate()}
                 className={BTN_SECONDARY_CLASS}
                 data-testid="regenerate-listing-draft"
               >
                 {submitting ? "生成中…" : draft?.draftKind === "ai_optimized_listing" ? "重新生成草稿" : "生成 AI 优化草稿"}
               </button>
-              {!canGenerate && !submitting && !briefDirty ? (
+              {!canGenerate && !submitting ? (
                 <p className="mt-1 text-xs font-semibold text-amber-700" data-testid="generate-disabled-reason">
                   {claimPreflight && !claimPreflight.pass
                     ? `暂不能生成：${claimPreflight.reason ?? "生成前校验未通过"}`
@@ -1320,7 +1361,7 @@ export function ListingHandoffSection({
             {renderDraftBody()}
             <button
               type="button"
-              disabled={!canGenerate || submitting || briefDirty}
+              disabled={!canGenerate || submitting}
               onClick={() => void generate()}
               className={BTN_CLASS}
             >
