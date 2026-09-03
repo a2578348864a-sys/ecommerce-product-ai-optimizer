@@ -7,6 +7,13 @@ export type AiListingDraftSource =
   | "deterministic_composition_v1"
   | "deterministic_composition_with_polish";
 
+/** 内部审计附录：逐句 factRefs（仅内部审计；消费者 DTO 必须剥离） */
+export type ListingFactRefsAudit = {
+  titles: string[][];
+  bullets: string[][];
+  description: string[][];
+};
+
 export type AiListingPackDraft = {
   source: AiListingDraftSource;
   version: number;
@@ -32,6 +39,8 @@ export type AiListingPackDraft = {
   complianceWarnings: string[];
   blockedClaims: string[];
   reviewChecklist: string[];
+  /** 内部审计附录（可选；schema 校验后透传，消费者字段不导出） */
+  factRefsAudit?: ListingFactRefsAudit;
 };
 
 export type AiListingDraftValidationResult =
@@ -91,6 +100,33 @@ function visibleDraftText(draft: Pick<AiListingPackDraft, "titles" | "bullets" |
     ...draft.riskNotes,
     ...draft.reviewChecklist,
   ].join(" ");
+}
+
+/** 有界 factRefsAudit schema：仅允许 titles/bullets/description 三键，每组句数组有界、引用有界、无未知键。 */
+function parseFactRefsAudit(value: unknown): ListingFactRefsAudit | null {
+  if (value === undefined) return undefined as unknown as ListingFactRefsAudit | null;
+  if (!isRecord(value)) return null;
+  const keys = Object.keys(value);
+  if (keys.some((k) => k !== "titles" && k !== "bullets" && k !== "description")) return null;
+  const out: { titles?: string[][]; bullets?: string[][]; description?: string[][] } = {};
+  const BOUNDS: Array<[string, number]> = [["titles", 3], ["bullets", 5], ["description", 5]];
+  for (const [key, maxGroups] of BOUNDS) {
+    const v = value[key];
+    if (v === undefined) continue;
+    if (!Array.isArray(v) || v.length > maxGroups) return null;
+    const groups: string[][] = [];
+    for (const g of v) {
+      if (!Array.isArray(g) || g.length > 32) return null;
+      const refs: string[] = [];
+      for (const r of g) {
+        if (typeof r !== "string" || r.trim().length === 0 || r.length > 80) return null;
+        refs.push(r.trim());
+      }
+      groups.push(refs);
+    }
+    (out as Record<string, string[][]>)[key] = groups;
+  }
+  return out as ListingFactRefsAudit;
 }
 
 export function validateAiListingPackDraft(input: unknown): AiListingDraftValidationResult {
@@ -183,6 +219,11 @@ export function validateAiListingPackDraft(input: unknown): AiListingDraftValida
     return fail("AI Listing draft usedFactIds must be an array with at most 50 items.");
   }
 
+  const factRefsAudit = parseFactRefsAudit(input.factRefsAudit);
+  if (input.factRefsAudit !== undefined && !factRefsAudit) {
+    return fail("AI Listing draft factRefsAudit is invalid or exceeds bounds.");
+  }
+
   const draft: AiListingPackDraft = {
     source: input.source,
     version,
@@ -202,6 +243,7 @@ export function validateAiListingPackDraft(input: unknown): AiListingDraftValida
     ...(backendSearchTerms ? { backendSearchTerms } : {}),
     ...(draftKind ? { draftKind } : {}),
     ...(usedFactIds ? { usedFactIds } : {}),
+    ...(factRefsAudit ? { factRefsAudit } : {}),
     sellingPoints,
     riskNotes,
     complianceWarnings,

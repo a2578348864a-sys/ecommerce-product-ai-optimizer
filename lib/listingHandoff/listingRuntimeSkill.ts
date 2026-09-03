@@ -1,3 +1,4 @@
+import { detectSingleUnitSelfSentence } from "@/lib/listingHandoff/listingCapabilityV2";
 /**
  * Listing 运行时 Skill（R6 closure）
  *
@@ -534,6 +535,9 @@ export function validateCopyQualityContract(input: CopyQualityInput): CopyQualit
     if (HOLLOW_TAIL_PATTERN.test(b)) {
       issues.push({ target: "bullets", code: "hollow_tail", message: "Bullet " + (index + 1) + " 以 and more / etc. 等空洞尾收尾，不含信息量。" });
     }
+    if (detectSingleUnitSelfSentence(b, String(typeLabel || String(input.title ?? "") || ""))) {
+      issues.push({ target: "bullets", code: "trivial_single_item", message: "Bullet " + (index + 1) + " 是“单件商品自身”被当成随附组件（数量 1 且与商品类型同义），无消费者选择价值。" });
+    }
     // 结构维度（v2）：句法完整性 / 模板尾 / 句首大写
     for (const code of structureIssuesOf(b)) {
       issues.push({ target: "bullets", code, message: "Bullet " + (index + 1) + " " + STRUCTURE_MESSAGE[code] });
@@ -602,7 +606,6 @@ export function validateCopyQualityContract(input: CopyQualityInput): CopyQualit
     for (const b of bullets) bodySentences.push(...sentenceList(b));
     bodySentences.push(...sentenceList(String(input.description ?? "")));
     const bodyLowerWords = new Set(bodySentences.join(" ").toLowerCase().split(/[^a-z]+/).filter(Boolean));
-    const typeLabelWords = new Set(String(typeLabel ?? "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));
     const capCounts = new Map<string, number>();
     for (const sentence of bodySentences) {
       const words = String(sentence).split(/\s+/);
@@ -610,7 +613,6 @@ export function validateCopyQualityContract(input: CopyQualityInput): CopyQualit
         const raw = words[wi].replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, "");
         if (wi === 0 || raw.length < 2) continue;
         if (!/^[A-Z][a-z]+$/.test(raw)) continue;
-        if (typeLabelWords.has(raw.toLowerCase())) continue; // typeLabel 词：AI/历史稿可作产品名大写，不判
         capCounts.set(raw, (capCounts.get(raw) ?? 0) + 1);
       }
     }

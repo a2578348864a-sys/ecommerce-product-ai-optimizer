@@ -12,6 +12,7 @@
 import { describe, expect, it } from "vitest";
 import {
   evaluateListingCapability,
+  isTrivialSingleUnitSelfReference,
   claimGroupOfField,
   isTrivialSingleUnitQuantity,
   CORE_CLAIM_GROUPS,
@@ -401,5 +402,37 @@ describe("1 Count 不形成正式卖点（Capability 层隔离）", () => {
     });
     expect(r.eligibleGroups.map((g) => g.group)).not.toContain("core_function_operation");
     expect(r.supportedBulletCount).toBe(1);
+  });
+});
+
+describe("低价值单件自身事实（第八版合同）", () => {
+  it("included_components 与商品身份同义且数量=1 → 不可渲染", () => {
+    expect(isTrivialSingleUnitSelfReference("included_components", "1 Expandable Silverware Organizer", "organizer")).toBe(true);
+    expect(isTrivialSingleUnitSelfReference("included_components", "1 plastic organizer", "organizer")).toBe(true);
+    expect(isTrivialSingleUnitSelfReference("included_components", "1 Count", "organizer")).toBe(true);
+    expect(isTrivialSingleUnitSelfReference("quantity_or_pack_size", "1 Count", "tumbler")).toBe(true);
+  });
+  it("真配件、多件套、组合装保持可渲染", () => {
+    expect(isTrivialSingleUnitSelfReference("included_components", "Lid", "tumbler")).toBe(false);
+    expect(isTrivialSingleUnitSelfReference("included_components", "Brush and Adapter", "mixer")).toBe(false);
+    expect(isTrivialSingleUnitSelfReference("included_components", "2 Trays", "organizer")).toBe(false);
+    expect(isTrivialSingleUnitSelfReference("included_components", "2-pack", "organizer")).toBe(false);
+    expect(isTrivialSingleUnitSelfReference("included_components", "organizer tray", "organizer")).toBe(false);
+  });
+  it("Organizer 夹具：单件自身不进 eligibleGroups，care_cleaning 在", () => {
+    const facts: ListingCapabilityFact[] = [
+      { factId: "brand", field: "brand", value: "ukeetap", tier: "verified" },
+      { factId: "product_type", field: "product_type", value: "Organizer", tier: "verified" },
+      { factId: "material", field: "material", value: "Plastic", tier: "verified" },
+      { factId: "capacity", field: "capacity", value: "40-50 pieces of cutlery", tier: "verified" },
+      { factId: "functional_feature", field: "functional_feature", value: "Expandable design with multiple compartments", tier: "verified" },
+      { factId: "usage", field: "usage", value: "stores knives forks and spoons in a kitchen drawer", tier: "verified" },
+      { factId: "included_components", field: "included_components", value: "1 Expandable Silverware Organizer", tier: "verified" },
+      { factId: "care", field: "care", value: "wipe clean with a damp cloth", tier: "verified" },
+    ];
+    const result = evaluateListingCapability({ facts });
+    const groups = result.eligibleGroups.map((g) => g.group);
+    expect(groups).not.toContain("package_contents");
+    expect(groups).toContain("care_cleaning");
   });
 });

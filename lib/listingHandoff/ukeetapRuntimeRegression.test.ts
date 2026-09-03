@@ -66,7 +66,7 @@ const STAGE_A_CONTROLLED_BULLETS = [
   "The organizer stores about 40 to 50 pieces of cutlery.",
   "After placing the organizer in the drawer, expand or collapse it to the sides according to the drawer width.",
   "The organizer is suitable for daily kitchen storage and carrying.",
-  "The included component is 1 expandable silverware organizer.",
+  "Rinse with clean water and wipe dry.",
 ] as const;
 
 /**
@@ -83,7 +83,7 @@ const EXPECTED_NATURAL_BULLETS = [
   "The organizer stores about 40 to 50 pieces of cutlery.",
   "After placing the organizer in the drawer, expand or collapse it to the sides according to the drawer width.",
   "The organizer is suitable for daily kitchen storage and carrying.",
-  "The included component is 1 expandable silverware organizer.",
+  "Rinse with clean water and wipe dry.",
 ] as const;
 
 /** 旧万能帧产出的五类病句（必须被真实 Copy Quality 拒绝，不得再出现在正式输出） */
@@ -177,6 +177,7 @@ function confirmableFacts(): Array<{ field: string; value: string }> {
 async function setupHandoff(taskId: string, options: {
   includeProhibitedFact?: boolean;
   includeRuntimeEnglishFacts?: boolean;
+  englishAccessory?: string; // 真实配件值（单件自身不应凑组；需要配件组的用例应给真配件）
 } = {}) {
   seedTask(taskId, researchDoc());
   const p1 = await generateCreativeHandoffPreview(taskId, visitorContext());
@@ -200,7 +201,7 @@ async function setupHandoff(taskId: string, options: {
     { field: "construction" as const, value: "采用可扩展式设计，多隔层结构" },
     { field: "operation" as const, value: "放入抽屉后，根据抽屉宽度向两侧展开或收拢" },
     { field: "compatibility" as const, value: "适用于多数中等尺寸抽屉" },
-    { field: "included_components" as const, value: "1 Expandable Silverware Organizer" },
+    { field: "included_components" as const, value: options.englishAccessory ?? "1 Expandable Silverware Organizer" },
     ...(options.includeRuntimeEnglishFacts
       ? [
           { field: "color_or_variant" as const, value: "Silver" },
@@ -302,7 +303,7 @@ describe("ukeetap 离线回归（坏 Provider 稿 → 5 条 Plan 绑定确定性
 
   it("真实英文化失败形态：排除无法英文化的中文事实后仍用安全英文事实继续生成", async () => {
     const taskId = "sandbox-ukeetap-rendering-provider-failed";
-    await setupHandoff(taskId, { includeRuntimeEnglishFacts: true });
+    await setupHandoff(taskId, { includeRuntimeEnglishFacts: true, englishAccessory: "Cleaning Brush" });
     setEnglishBatchRendererForTests(async () => []); // 复现真实 Provider 未返回可用英文化结果
     const providerInputs: Parameters<TaskLinkedAiListingClient>[0][] = [];
     const provider = vi.fn(async (input: Parameters<TaskLinkedAiListingClient>[0]) => {

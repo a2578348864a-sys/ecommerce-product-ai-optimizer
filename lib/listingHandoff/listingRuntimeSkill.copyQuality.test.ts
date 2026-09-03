@@ -539,3 +539,57 @@ describe("V2 Copy Quality：异常大写/机械and/重复主语/空洞尾句/标
     expect(r2.issues.some((i) => i.code === "title_clause"), JSON.stringify(r2.issues)).toBe(true);
   });
 });
+
+describe("单件自身句 Copy Quality 兜底与大小写（第十版）", () => {
+  const base = {
+    title: "ukeetap UTO001 Expandable Silverware Organizer",
+    description: "The ukeetap UTO001 is a plastic silverware organizer.",
+    cannotSay: [],
+    facts: [
+      { factId: "product_type", field: "product_type", label: "类型", value: "Organizer" },
+      { factId: "included_components", field: "included_components", label: "随附", value: "1 Expandable Silverware Organizer" },
+    ],
+    bulletPlans: [],
+    typeLabel: "organizer",
+  };
+  it("漏过上游的单件自身句被 Copy Quality 独立拒绝", () => {
+    const result = validateCopyQualityContract({ ...base, bullets: [
+      "Molded in one piece from plastic, the organizer has an expandable compartment design.",
+      "The organizer holds approximately 40-50 pieces of cutlery.",
+      "The organizer stores knives, forks, and spoons in a kitchen drawer.",
+      "Wipe clean with a damp cloth when needed.",
+      "The included component is 1 expandable silverware organizer.",
+    ] });
+    const codes = result.issues.map((i) => i.code);
+    expect(codes).toContain("trivial_single_item");
+    expect(result.ok).toBe(false);
+  });
+  it("真配件句不被误杀", () => {
+    const result = validateCopyQualityContract({ ...base, bullets: [
+      "The organizer has an expandable compartment design for drawers.",
+      "The organizer holds approximately 40-50 pieces of cutlery.",
+      "The organizer stores knives, forks, and spoons in a kitchen drawer.",
+      "A removable lid is included with the organizer.",
+      "Wipe clean with a damp cloth when needed.",
+    ] });
+    expect(result.issues.map((i) => i.code)).not.toContain("trivial_single_item");
+  });
+  it("品牌式 CamelCase 不误杀，普通商品名系统性大写被拦截", () => {
+    const camel = validateCopyQualityContract({ ...base, bullets: [
+      "The organizer works with the SoftSip lid family for daily use.",
+      "The organizer holds approximately 40-50 pieces of cutlery.",
+      "The organizer stores knives, forks, and spoons in a kitchen drawer.",
+      "Wipe clean with a damp cloth when needed.",
+      "The organizer keeps the SoftSip area tidy on the countertop.",
+    ] });
+    expect(camel.issues.map((i) => i.code)).not.toContain("abnormal_capitalization");
+    const abnormal = validateCopyQualityContract({ ...base, bullets: [
+      "The Organizer has an expandable compartment design with multiple slots.",
+      "The Organizer holds approximately 40-50 pieces of cutlery.",
+      "The Organizer stores knives, forks, and spoons in a kitchen drawer.",
+      "Wipe the Organizer clean with a damp cloth when needed.",
+      "The Organizer fits most medium and large kitchen drawers.",
+    ] });
+    expect(abnormal.issues.map((i) => i.code)).toContain("abnormal_capitalization");
+  });
+});

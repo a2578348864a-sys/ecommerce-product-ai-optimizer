@@ -348,3 +348,35 @@ describe("V2 历史旧pass稿按新合同重判：异常大写+机械拼接+重�
     expect(summary?.description, "不合格旧稿不得展示正式描述").toBe("");
   });
 });
+
+describe("单件自身旧稿历史重判（第十版）", () => {
+  it("旧标记 pass 的单件自身 B5 旧稿读取时判不合格", () => {
+    const snapshot = {
+      draftKind: "structured_listing_draft",
+      humanReviewRequired: true,
+      generatedAt: "2026-09-03T10:23:20.589Z",
+      source: "deterministic_composition_v1",
+      version: 1,
+      composerVersion: "listing-composer-v1",
+      generationPolicyVersion: "listing-generation-policy-v1",
+      polishApplied: false,
+      polishModel: null,
+      titles: ["ukeetap UTO001 Expandable Silverware Organizer, Plastic, Silver"],
+      bullets: [
+        "Molded in one piece from plastic, the organizer has an expandable compartment design with multiple slots.",
+        "The organizer holds approximately 40-50 pieces of cutlery.",
+        "After placing the organizer in the drawer, expand or contract it according to the drawer width.",
+        "The organizer stores knives, forks, spoons, and other cutlery in a kitchen drawer.",
+        "The included component is 1 expandable silverware organizer.",
+      ],
+      description: "The ukeetap UTO001 is a plastic organizer. It has an expandable compartment design with multiple slots. The organizer fits most medium and large kitchen drawers and adjusts to the available drawer space. It measures 16.5\"D x 21\"W x 1.77\"H and weighs 0.81 kg.",
+      keywords: [],
+      factSafe: true,
+      copyQuality: true,
+      listingUnqualified: false,
+      draftKindSafe: undefined,
+    };
+    const verdict = revalidateHistoricalDraftRead(snapshot);
+    expect(verdict.listingUnqualified).toBe(true);
+  });
+});

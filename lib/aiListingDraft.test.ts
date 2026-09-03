@@ -2,6 +2,29 @@ import { describe, expect, it } from "vitest";
 import { buildMockAiListingDraft, validateAiListingPackDraft } from "@/lib/aiListingDraft";
 import { filterListingClaims } from "@/lib/listingClaimFilter";
 
+describe("factRefsAudit 有界 schema（第十版）", () => {
+  const SMALL_AUDIT = {
+    titles: [["brand", "product_type"]],
+    bullets: [["material"], ["capacity"], ["functional_feature"], ["usage"], ["care"]],
+    description: [["brand", "material"], ["construction"]],
+  };
+  it("有界 factRefsAudit 校验通过并透传", () => {
+    const input = { ...validDraft(), factRefsAudit: SMALL_AUDIT };
+    const result = validateAiListingPackDraft(input);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect((result.data as unknown as Record<string, unknown>).factRefsAudit).toEqual(SMALL_AUDIT);
+  });
+  it("超界（句组过多/单引用超长）被拒绝", () => {
+    const big = { titles: Array.from({ length: 30 }, () => ["brand"]), bullets: [["material"]], description: [["brand"]] };
+    expect(validateAiListingPackDraft({ ...validDraft(), factRefsAudit: big }).ok).toBe(false);
+    const longRefs = { titles: [["x".repeat(400)]], bullets: [["material"]], description: [["brand"]] };
+    expect(validateAiListingPackDraft({ ...validDraft(), factRefsAudit: longRefs }).ok).toBe(false);
+  });
+  it("非法形状被拒绝", () => {
+    expect(validateAiListingPackDraft({ ...validDraft(), factRefsAudit: { titles: "nope", bullets: [], description: [] } }).ok).toBe(false);
+  });
+});
+
 function validDraft() {
   return buildMockAiListingDraft({
     productName: "Desktop Phone Stand",

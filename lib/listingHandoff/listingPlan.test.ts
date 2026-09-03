@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildListingPlan, safeListingPlanSummary } from "./listingPlan";
+import { buildListingPlan, safeListingPlanSummary, buildListingPlanFromCapability } from "./listingPlan";
+import { evaluateListingCapability, type ListingCapabilityFact } from "@/lib/listingHandoff/listingCapabilityV2";
 import type { ListingGenerationInput } from "@/lib/listingHandoff/listingGenerationInput";
 import type { ListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
 
@@ -173,5 +174,27 @@ describe("ListingPlan Copy Quality 红测", () => {
     const need = plan.bulletPlans[0]?.shopperNeed ?? "";
     expect(need).toContain("日常");
     expect(need).not.toMatch(/[a-zA-Z]s[a-zA-Z]/);
+  });
+});
+
+describe("单件自身不占计划组（第八版）", () => {
+  it("Organizer：plan 五组含 care，不含 package_contents", () => {
+    const facts: ListingCapabilityFact[] = [
+      { factId: "brand", field: "brand", value: "ukeetap", tier: "verified" },
+      { factId: "product_type", field: "product_type", value: "Organizer", tier: "verified" },
+      { factId: "material", field: "material", value: "Plastic", tier: "verified" },
+      { factId: "capacity", field: "capacity", value: "40-50 pieces of cutlery", tier: "verified" },
+      { factId: "functional_feature", field: "functional_feature", value: "Expandable design with multiple compartments", tier: "verified" },
+      { factId: "usage", field: "usage", value: "stores knives forks and spoons in a kitchen drawer", tier: "verified" },
+      { factId: "included_components", field: "included_components", value: "1 Expandable Silverware Organizer", tier: "verified" },
+      { factId: "care", field: "care", value: "wipe clean with a damp cloth", tier: "verified" },
+    ];
+    const capability = evaluateListingCapability({ facts });
+    const input = { schema: "listing-generation-input.v1", source: { handoffRevision: 2, researchRevision: 1 }, productFacts: facts.map((f) => ({ field: f.field, label: f.field, value: f.value })), stableSourceFacts: [], creativeReferences: [], creativePreferences: {}, prohibitedClaims: [], unknowns: [], humanReviewRequired: true, researchMode: "market_research_only", promotionEligible: false };
+    const plan = buildListingPlanFromCapability(input as never, null, capability);
+    const groups = plan.bulletPlans.map((b) => (b as { claimGroup: string }).claimGroup);
+    expect(groups).toContain("care_cleaning");
+    expect(groups).not.toContain("package_contents");
+    expect(groups).toHaveLength(5);
   });
 });

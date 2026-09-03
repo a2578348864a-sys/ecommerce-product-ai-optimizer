@@ -733,7 +733,9 @@ describe("跨模块：Composition 正式输出必须整体通过权威 Runtime Q
     expect(corpus).toContain("plastic");
     expect(corpus).toContain("silver");
     expect(corpus).toContain('16.5"d x 21"w x 1.77"h');
-    expect(corpus).toContain("expandable silverware organizer");
+    // 单件商品自身（1 Expandable Silverware Organizer）不再是随附组件卖点；正式五点不含 included-component 句
+    expect(corpus).not.toContain("included component");
+    expect(corpus).not.toContain("silverware organizer");
     expect(corpus).not.toContain("food safe");
     expect(corpus).not.toContain("waterproof");
     expect(corpus).not.toContain("sturdy");

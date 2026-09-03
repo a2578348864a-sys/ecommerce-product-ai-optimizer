@@ -149,6 +149,96 @@ export function isTrivialSingleUnitQuantity(field: string, value: string): boole
   return norm === "1 count" || norm === "1 ct" || norm === "1ct";
 }
 
+/** 归一化 token：小写、去两端非字母数字、拆空格；不做词干，仅做单复数去尾 s。 */
+function identityTokensOf(text: string): string[] {
+  return String(text ?? "")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .map((w) => w.replace(/'s$/i, "").replace(/s$/i, ""))
+    .filter((w) => w.length > 1 || /^\d+$/.test(w));
+}
+
+const SINGLE_UNIT_WORDS = new Set(["count", "ct", "pc", "pcs", "piece", "pieces", "set", "pack", "bundle", "box", "bag", "kit", "unit", "units", "ea"]);
+const RELATION_WORDS = new Set(["with", "for", "plus", "including", "and", "or", "includes", "incl"]);
+
+function parseSingleQuantity(tokens: string[]): { count: number | null; nextIndex: number } {
+  const head = tokens[0];
+  if (!head) return { count: null, nextIndex: 0 };
+  const numMatch = /^(\d+)$/.exec(head);
+  if (numMatch) return { count: Number(numMatch[1]), nextIndex: 1 };
+  const pkMatch = /^(\d+)-(?:pack|pcs?|ct|count|set|piece|pieces)$/.exec(head);
+  if (pkMatch) return { count: Number(pkMatch[1]), nextIndex: 1 };
+  if (head === "one" || head === "a" || head === "an") return { count: 1, nextIndex: 1 };
+  return { count: null, nextIndex: 0 };
+}
+
+/**
+ * 低价值"单件自身"事实（通用判定，无商品词表、不用动态正则拼商品值）：
+ * included_components / quantity_or_pack_size 的"1 个 + 与商品类型同义名词短语"（如
+ * "1 Expandable Silverware Organizer" 之于 Organizer）是商品自身而不是配件，无消费者选择价值。
+ * 判定（全部按词形/结构）：
+ *   1) 数量解析：前导数量=1（1/one/a/an 或 2-pack 拆出 2）→ 继续；数量>=2/multipack → 非单件自身；
+ *   2) 剥单位/容器词（count/ct/pc/piece/set/pack/kit/unit…）；剩空 → 单件默认（true）；
+ *   3) 含 with/for/plus/including/and/or 等配件关系词 → 真附件/组合（false）；
+ *   4) 类型中心核对：typeLabel 的有义词都在短语中，且短语末位语义 token 与 typeLabel 末位相同
+ *      （即"修饰语 + 类型"形态，"type ... X"或独立名词则不是）。
+ */
+export function isTrivialSingleUnitSelfReference(field: string, value: string, typeLabel: string): boolean {
+  const f = String(field ?? "").trim();
+  if (f !== "included_components" && f !== "quantity_or_pack_size") return false;
+  const tokens = identityTokensOf(value);
+  if (tokens.length === 0) return false;
+  const { count, nextIndex } = parseSingleQuantity(tokens);
+  if (count !== null && count !== 1) return false;
+  let rest = tokens.slice(nextIndex).filter((w) => !SINGLE_UNIT_WORDS.has(w));
+  if (rest.length === 0) return true;
+  if (rest.some((w) => RELATION_WORDS.has(w))) return false;
+  const typeTokens = identityTokensOf(typeLabel).filter((w) => !RELATION_WORDS.has(w));
+  if (typeTokens.length === 0) return false;
+  const allIncluded = typeTokens.every((t) => rest.includes(t));
+  if (!allIncluded) return false;
+  return rest[rest.length - 1] === typeTokens[typeTokens.length - 1];
+}
+
+/** 单件自身句的两种规范消费者句式 → 提取被包含组件的名词短语；非该句式返回 null。 */
+function extractIncludedPhrase(sentence: string): string | null {
+  const s = String(sentence ?? "").trim();
+  const m1 = /^the included component is (.+?)[.!]?$/i.exec(s);
+  if (m1) return m1[1].trim();
+  const m2 = /^a (.+?) is included with the/i.exec(s);
+  if (m2) return m2[1].trim();
+  return null;
+}
+
+/**
+ * 通用句式级判定（供 Copy Quality 兜底与历史旧稿重判复用同一底层规则）：
+ * "The included component is 1 {…}" / "A {…} is included with the …" 句中被包含组件
+ * 若为"数量=1/无数量 + 无 with/for 关系 + 与身份文本同义（双向词集覆盖其一 + 末位命中）"
+ * → 单件自身句。
+ * identityText 可为 typeLabel（copyQuality）或快照 title 首段（历史重判）。
+ */
+export function detectSingleUnitSelfSentence(sentence: string, identityText: string): boolean {
+  const content = extractIncludedPhrase(sentence);
+  if (!content) return false;
+  const contentTokens = identityTokensOf(content);
+  if (contentTokens.length === 0) return false;
+  const { count, nextIndex } = parseSingleQuantity(contentTokens);
+  if (count !== null && count !== 1) return false;
+  const rest = contentTokens.slice(nextIndex).filter((w) => !SINGLE_UNIT_WORDS.has(w));
+  if (rest.length === 0) return true;
+  if (rest.some((w) => RELATION_WORDS.has(w))) return false;
+  // 身份文本取首段（title 首个逗号前 = 品牌/型号/类型段；typeLabel 无逗号即整体）
+  const identityTokens = identityTokensOf(String(identityText ?? "").split(/[,;|]/)[0])
+    .filter((w) => !RELATION_WORDS.has(w));
+  if (identityTokens.length === 0) return false;
+  const restSet = new Set(rest);
+  const identitySet = new Set(identityTokens);
+  const identityInRest = identityTokens.every((t) => restSet.has(t));
+  const restInIdentity = rest.every((w) => identitySet.has(w));
+  if (!identityInRest && !restInIdentity) return false;
+  return identitySet.has(rest[rest.length - 1]);
+}
+
 /**
  * 判定事实能支撑几条 Bullet（纯函数）。
  * @param input.facts 已经 listingClaimPolicy 裁决的事实（tier 已定）
@@ -161,13 +251,17 @@ export function evaluateListingCapability(input: {
   const facts = input?.facts ?? [];
   const hasBlockingIssue = input?.hasBlockingIssue === true;
 
-  // 1) 按组收集 verified 非空事实（去重 factId）
+  // 身份类型（verified product_type）用于"单件自身"语义判定（无类型则保守放行）
+  const productTypeValue = facts.find((f) => f.tier === "verified" && String(f.field ?? "").trim() === "product_type")?.value ?? "";
+
+  // 1) 按组收集 verified 非空事实（去重 factId）；package_contents 的单件自身事实不占用组名额
   const groupToFactIds = new Map<ClaimGroupName, Set<string>>();
   const seen = new Set<string>();
   for (const fact of facts) {
     if (!isSafeRenderableFact(fact)) continue;
     const group = claimGroupOfField(fact.field);
     if (!group) continue;
+    if (group === "package_contents" && productTypeValue && isTrivialSingleUnitSelfReference(fact.field, fact.value, productTypeValue)) continue;
     if (seen.has(fact.factId)) continue;
     seen.add(fact.factId);
     if (!groupToFactIds.has(group)) groupToFactIds.set(group, new Set());
