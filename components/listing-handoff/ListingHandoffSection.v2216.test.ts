@@ -20,7 +20,7 @@ describe("v2.2.16 Listing Studio creation brief UI", () => {
     }
     expect(source).toContain("setRequestId(null)");
     expect(source).toContain("setRetryBody(null)");
-    expect(source).toContain("...(hasListingBrief ? { listingBrief } : {})");
+    expect(source).toContain("...(hasListingBrief ? { listingBrief: effectiveBrief } : {})");
   });
 });
 
@@ -34,7 +34,7 @@ describe("轮 21 Listing 生成依据（服务端安全结果展示）", () => {
     expect(source).toContain("最终文案实际命中的已确认商品事实");
     expect(source).toContain("最终文案实际采用的关键词");
     expect(source).toContain("生成时提供给 AI 的研究参考");
-    expect(source).toContain("待人工确认的表达");
+    expect(source).toContain("待人工确认表达");
   });
   it("前端不重判事实等级：依据块无自行分类/门禁逻辑", () => {
     const source = readFileSync(resolve(process.cwd(), "components/listing-handoff/ListingHandoffSection.tsx"), "utf8");
