@@ -25,15 +25,6 @@
 
 ---
 
-## 🖼️ 产品界面速览
-
-<div align="center">
-  <img src="docs/v4.1/evidence/d-formal-v2/showcase3-home-1440.png" alt="轻选工作台首页" width="95%" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" />
-  <p><em>轻选工作台主控台：把多源市场数据收敛为清晰的证据集与人机决策流</em></p>
-</div>
-
----
-
 ## 🎯 核心设计哲学：证据不等于事实（Evidence ≠ Fact）
 
 在真实跨境电商上架中，AI 最致命的缺陷是**把外部推测、竞品夸大和买家主观情绪当成了本商品的物理规格**。  
