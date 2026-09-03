@@ -254,12 +254,13 @@ function validAiClient(): TaskLinkedAiListingClient {
     // description 两句自然段：只使用真实已确认事实值（禁止凭空收益词），句法区别于五点避免 bullet_concat
     const capWord = capV ? `${capV} capacity and ` : "";
     const conWord = conV ? conV : `a ${String(matV).toLowerCase()} body`;
+    const fallbackValue = String(nonIdentityUsed[0]?.entry?.value ?? ""); // 事实派生兜底（禁凭空词）
     const detailFirst = capWord
       ? `This water bottle has a ${capWord}${conWord}.`
-      : `This water bottle is made of ${String(matV || descFirst).toLowerCase()}.`;
+      : `This water bottle is made of ${String(matV || fallbackValue).toLowerCase()}.`;
     const detailSecond = careV
       ? "Rinse the removable parts by hand or load them into the top rack of a dishwasher."
-      : `It stores up to ${capV || descFirst} of water in a compact form.`;
+      : `It stores up to ${capV || fallbackValue} of water in a compact form.`;
     const description = `${detailFirst} ${detailSecond}`;
 
     const brief = input.keywordBrief ?? null;
