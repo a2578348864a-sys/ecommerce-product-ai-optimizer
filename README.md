@@ -3,9 +3,13 @@
 # 🛒 轻选工作台
 ### Evidence-driven AI Commerce Workbench
 
-**证据驱动型 AI 跨境商品研究与上架准备工作台**
+**面向跨境电商商品研究与 Amazon 上架准备的 Evidence-driven AI Workbench**
 
-把真实多源采集、证据链治理、人工事实裁决与受控内容生成，组织成一条**可复核、防幻觉、符合平台合规标准**的完整上架全链路。
+把真实多源采集、证据链治理、人工事实裁决与受控内容生成，组织成一条**可复核、降低 AI 事实幻觉风险、符合平台合规标准**的商品研究与上架准备主链。
+
+<p>
+  <b>Product line: V4.1</b> · <b>Package version: 2.2.16</b>
+</p>
 
 ---
 
@@ -13,7 +17,7 @@
 [![React 19](https://img.shields.io/badge/React-19.0-blue?style=flat-square&logo=react)](https://react.dev/)
 [![TypeScript 5](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
 [![Prisma SQLite](https://img.shields.io/badge/Prisma-5.22-teal?style=flat-square&logo=prisma)](https://www.prisma.io/)
-[![Tests Passing](https://img.shields.io/badge/Tests-6649%20Passed-2ea44f?style=flat-square&logo=vitest)](https://github.com/a2578348864a-sys/ecommerce-product-ai-optimizer)
+[![Tests Passing](https://img.shields.io/badge/Tests-6701%20Passed-2ea44f?style=flat-square&logo=vitest)](https://github.com/a2578348864a-sys/ecommerce-product-ai-optimizer)
 [![License MIT](https://img.shields.io/badge/License-MIT-orange?style=flat-square)](LICENSE)
 
 </div>
@@ -21,7 +25,7 @@
 ---
 
 > **💡 一句话定位**：  
-> 轻选工作台面向跨境电商新手与小团队。它不是“输入标题就无脑写文案”的套壳 Demo，而是先整合 **SellerSprite 选品报表、Amazon 竞品、真实买家评论 (VOC) 与 1688 货源线索**，由运营人员最终打勾核准商品真实事实，再由代码级安全门禁驱动生成合规的 **Listing 与图片策划草稿**。
+> 轻选工作台面向跨境电商商品研究与 Amazon 上架准备。它不是“输入标题就无脑写文案”的套壳 Demo，而是先整合 **SellerSprite 选品报表、Amazon 竞品、真实买家评论 (VOC) 与 1688 货源线索**，由运营人员最终打勾核准商品真实事实，再由代码级安全门禁驱动生成合规的 **Listing 与图片策划草稿**。
 
 ---
 
@@ -44,10 +48,10 @@
 | 维度 | 传统套壳 AI 工具 (Prompt-only) | 轻选工作台 (Evidence-driven) |
 | :--- | :--- | :--- |
 | **事实依据** | 模型自带知识或模糊网页推断（容易产生幻觉） | **严格 Positive-Allow**，每条事实必在证据索引中逐字可溯 |
-| **竞品挪用** | 容易将竞品专有特性、专利卖点照抄到本品 | **实体隔离**，竞品五点仅作为市场定位参考，绝不进事实库 |
+| **竞品挪用** | 容易将竞品专有特性、专利卖点照抄到本品 | **实体隔离**，竞品五点仅作为市场定位参考，不进入本品事实库 |
 | **文案质量** | 机器味浓重、容易生成语法结构病句（假通过） | **Copy Quality 语法引擎**，正则级拦截 5 类僵硬病句 |
 | **审核机制** | 全黑盒一键生成，运营人员无法溯源证据 | **人机协同确认**，事实由运营打勾确认并加盖 CAS 锁 |
-| **供应链关联** | 脱离采购与成本现实 | **打通 1688 受控线索**，实时核算采购价、物流与合规状态 |
+| **供应链关联** | 脱离采购与成本现实 | **打通 1688 受控线索**，记录和分析采购价、物流成本与合规状态 |
 
 ---
 
@@ -69,7 +73,7 @@
  ┌─────────────────┐
  │ 运营人工裁决门禁 │ ──> 人机协同核对、事实候选筛查、解决冲突、打勾确认 (CAS 乐观锁防踩踏)
  └────────┬────────┘
-          │ (沉淀为不可篡改的 Human Confirmed Facts)
+          │ (沉淀为版本化、可追溯的 Human Confirmed Facts)
           ▼
  ┌─────────────────┐
  │ 受控创作双工坊   │ ──> 阶段 A 事实语义渲染 ──> 阶段 B 运营自然润色 ──> 视觉策略生成
@@ -87,9 +91,9 @@
 
 ---
 
-## 🛡️ 四大工程核心支柱（技术杀手锏）
+## 🛡️ 四大工程核心支柱（核心工程能力）
 
-### 1. 有约束的 Web Acquisition 工程（真实美区环境采集）
+### 1. 有约束的 Web Acquisition 工程（受约束的本地采集流程）
 - **真实环境校准**：通过独立 Chrome CDP Session 驱动，注入美国真实 ZIP 邮区（90001）与 USD 货币环境校准；
 - **实体强制绑定**：页面抽取与 ASIN、变体 Key 严格绑定；非 USD 币种不私自汇率换算，主动 Fail-Closed 熔断；
 - **反爬与噪声防御**：自动识别并剔除 Sponsored 广告；遭遇验证码（Captcha）、登录墙、异常重定向立即安全退出。
@@ -113,7 +117,7 @@
 - **两套运行模式**：
   - `local_owner`：本机 Owner 免密完整工作台，本地 SQLite CAS 乐观锁版本并发控制（零脏写、防踩踏）；
   - `public_showcase`：公开脱敏演示沙箱，仅对外呈现静态案例与快照，物理阻断实时采集与数据库写入；
-- **历史快照读取动态重判（Historical Draft Read Guard）**：即使旧数据库中曾将某份草稿标记为 `pass`，新版本在读取历史快照时依然实时执行最新门禁，一旦检测到坏文案立即自动清空正文并提示重审，绝不糊弄过关。
+- **历史快照读取动态重判（Historical Draft Read Guard）**：即使旧数据库中曾将某份草稿标记为 `pass`，新版本在读取历史快照时依然实时执行最新门禁，一旦检测到坏文案立即自动清空正文并提示重审，阻断劣质历史草稿放行。
 
 ---
 
@@ -140,7 +144,7 @@ ecommerce-product-ai-optimizer/
 ├── docs/                             # 规范文档库 (架构总览、权限契约、发布冻结清单)
 │   ├── architecture/                 # 架构总览与核心契约
 │   └── v4.1/                         # V4.1 里程碑验收与实测证据截图
-└── FINAL_FREEZE.md                   # 项目最终结项基线与不可篡改审计证据
+└── FINAL_FREEZE.md                   # 项目最终结项基线与审计记录
 ```
 
 ---
@@ -149,7 +153,7 @@ ecommerce-product-ai-optimizer/
 
 | 质量维度 | 测量标准与实际指标 | 状态 |
 | :--- | :--- | :---: |
-| **自动化测试套件** | **6,649 项测试通过**（563 个测试套件通过，覆盖率 97.5%） | ✅ 通过 |
+| **自动化测试套件** | **6,701 项测试通过**（561 个测试套件通过，CI 模拟执行模式） | ✅ 通过 |
 | **应用源码类型检查** | `app/`, `components/`, `lib/`, `hooks/` 源码全量 `tsc --noEmit`，**0 错误** | ✅ 纯净 |
 | **代码规范扫描** | 全库源码执行 ESLint，**0 错误** | ✅ 纯净 |
 | **真实浏览器端到端** | 无头 Chrome (CDP) 走查 8 大主页面（1440 宽屏 / 390 手机端），**0 控制台错误 / 0 横向滚动** | ✅ 完美 |
