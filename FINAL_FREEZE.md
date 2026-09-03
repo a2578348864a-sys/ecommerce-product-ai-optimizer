@@ -35,23 +35,24 @@
 
 ## 3. 代码版本与运行服务基线
 
-### 3.1 双基线声明（业务冻结基线 vs 仓库最终 HEAD）
+### 3.1 双基线声明（Business Functional Freeze vs Repository Freeze Reference）
 
 1. **业务功能冻结基线 (Business Functional Freeze Baseline)**:
    - **Commit SHA**: `427b28c8140593335b99eeb4ce1cff0224e959cd`
    - **Commit Subject**: `Fix Image Studio fact authority conflicts`
    - **含义**: 这是当前 V4.1 最后一次业务功能与业务逻辑代码修改。
-2. **当前仓库最终 HEAD (Repository Final HEAD)**:
-   - **Commit SHA**: 以本轮最终一致性收口 Commit 为准（包含自 427b28c 起的文档对齐、自述文件排版、CI 测试排除项微调及图片清理）。
-   - **注意**: 严禁将 427b28c 混淆表述为“当前最新 HEAD”。
+2. **仓库最终冻结基准 (Repository Freeze Reference)**:
+   - **Git Tag**: `project-001-v4.1-final`
+   - **权威定义**: 最终仓库冻结版本以 `project-001-v4.1-final` Git Tag 指向的 Commit 为权威。
+   - **包含范围**: 包含业务功能冻结后的文档对齐、自述文件排版、CI 运行环境与测试用例收口。
 
-| 维度 | 基线配置与具体哈希 | 状态核对 |
+| 维度 | 基线配置与具体标识 | 状态核对 |
 | :--- | :--- | :---: |
 | **Git 分支** | `feature/v4.1-ui-productization` 与 `main` 双向对齐 | 正常 |
 | **业务功能冻结 Commit** | `427b28c8140593335b99eeb4ce1cff0224e959cd` | 业务终态 |
-| **仓库最终冻结 HEAD** | 动态对齐（本轮一致性提交） | 四方一致 |
-| **本地 main / feature SHA** | 四方一致 | 完全匹配 |
-| **远端 main / feature SHA** | 四方一致 | ahead=0, behind=0 |
+| **最终仓库冻结 Reference** | Git Tag `project-001-v4.1-final` | 权威基准 |
+| **本地 main / feature SHA** | 完全一致（由 Tag 固化指向） | 完全匹配 |
+| **远端 main / feature SHA** | 完全一致（由 Tag 固化指向） | ahead=0, behind=0 |
 | **Working Tree 状态** | Tracked dirty: 0, Staged: 0, Untracked: 0 | 纯净无污染 |
 | **本地服务运行端口** | `127.0.0.1:3005`（`npm run start:local` 本地运行时） | HTTP 200 |
 | **生产运行 BUILD_ID** | `-qYNrNL8lHGBllTHrp3P0` | 与磁盘产物 100% 匹配 |

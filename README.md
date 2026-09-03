@@ -17,7 +17,7 @@
 [![React 19](https://img.shields.io/badge/React-19.0-blue?style=flat-square&logo=react)](https://react.dev/)
 [![TypeScript 5](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
 [![Prisma SQLite](https://img.shields.io/badge/Prisma-5.22-teal?style=flat-square&logo=prisma)](https://www.prisma.io/)
-[![Tests Passing](https://img.shields.io/badge/Tests-6701%20Passed-2ea44f?style=flat-square&logo=vitest)](https://github.com/a2578348864a-sys/ecommerce-product-ai-optimizer)
+[![CI](https://github.com/a2578348864a-sys/ecommerce-product-ai-optimizer/actions/workflows/ci.yml/badge.svg)](https://github.com/a2578348864a-sys/ecommerce-product-ai-optimizer/actions/workflows/ci.yml)
 [![License MIT](https://img.shields.io/badge/License-MIT-orange?style=flat-square)](LICENSE)
 
 </div>
