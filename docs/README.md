@@ -1,11 +1,12 @@
 # 文档索引
 
-当前文档与历史文档已分离。**本文档为仓库文档入口**。
+当前文档、当前产品线工程证据与历史文档已分离。**本文档为仓库文档入口**。
 
 ## 当前文档（权威）
 
 | 文档 | 内容 |
 | --- | --- |
+| [V4.1 文档导航](v4.1/README.md) | 当前商品研究工作台产品化、Listing/VOC 收口与正式浏览器验收证据索引 |
 | [快速开始](getting-started/installation.md) | 安装、数据库初始化、启动开发服务器 |
 | [配置说明](guides/configuration.md) | 环境变量与 Provider 配置 |
 | [工作流说明](guides/workflow.md) | 核心业务工作流 |
@@ -17,8 +18,14 @@
 | [初始部署](deployment/initial-deploy.md) | 阿里云初始部署、Nginx、PM2 说明 |
 | [参与贡献](development/contributing.md) | 贡献约定 |
 
+## V4.1 工程证据
+
+`docs/v4.1/` 保留 V4.1 产品化过程中大量 `*_PROGRESS.md`、`*_BLOCKED.md` 和浏览器截图。它们用于工程追溯，不适合作为新读者入口。
+
+请统一从 [V4.1 文档导航](v4.1/README.md) 进入；当前 UI 截图优先看 `docs/v4.1/evidence/d-formal-v2/`。
+
 ## 历史文档（Archived / Not authoritative）
 
-`docs/archive/` 存放开发历史：阶段报告、执行记录、早期设计、历史发布说明。**仅供参考追溯，不代表当前系统状态**；当前实现以代码、测试与上方当前文档为准。
+`docs/archive/` 存放更早阶段的开发历史：阶段报告、执行记录、早期设计、历史发布说明。**仅供参考追溯，不代表当前系统状态**；当前实现以代码、测试与上方当前文档为准。
 
 > ⚠️ 注意：旧文档中引用的 `docs/AUTH_AND_QUOTA_CONTRACT.md`、`docs/PRODUCTION_RUNBOOK.md` 等路径，现位于 `docs/architecture/` 与 `docs/deployment/`。
