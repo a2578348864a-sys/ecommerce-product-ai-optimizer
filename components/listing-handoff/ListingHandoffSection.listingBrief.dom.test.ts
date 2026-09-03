@@ -1664,6 +1664,9 @@ describe("生成点击编排（R2：dirty 自动保存后生成；失败/冲突�
       button.dispatchEvent(new FakeEvent("click", button));
       button.dispatchEvent(new FakeEvent("click", button));
     });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
     await flush();
     const saves = posts.filter((p) => (p as { action?: string }).action === "save_listing_brief");
     const gens = posts.filter((p) => (p as { action?: string }).action === undefined);

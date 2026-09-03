@@ -174,15 +174,15 @@ function v2214ValidAiClient(): TaskLinkedAiListingClient {
     const byId = new Map<string, string>();
     for (const f of facts) byId.set(String(f.factId ?? ""), String(f.value ?? "").trim());
     const FRAME: Record<string, (v: string) => string> = {
-      material: (v) => "The BrüMate Water Bottle is made of " + v + ".",
-      capacity: (v) => "The Water Bottle has a capacity of " + v + ".",
-      color_or_variant: (v) => "The " + v + " color option matches this Water Bottle product.",
-      care: (v) => "For care, " + v + ".",
-      functional_feature: (v) => "The BrüMate Water Bottle provides " + v + ".",
-      operation: (v) => "The Water Bottle " + v + ".",
-      usage: (v) => "The Water Bottle is suitable for " + v + ".",
-      included_components: (v) => "This Water Bottle includes " + v + ".",
-      construction: (v) => "The BrüMate Water Bottle is built with " + v + ".",
+      material: (v) => "The bottle body is constructed with " + v.toLowerCase() + " for flexible handling.",
+      capacity: (v) => "This compact bottle holds " + v + " of water when filled completely.",
+      color_or_variant: (v) => "The exterior comes in a distinctive " + v.toLowerCase() + " shade for personal style.",
+      care: (v) => "For maintenance, rinse the components thoroughly and allow them to dry.",
+      functional_feature: (v) => v.replace(/\.*$/, "") + " for convenience.",
+      operation: (v) => "The bottle mechanism functions smoothly during everyday hydration.",
+      usage: (v) => "The bottle is suitable for hydration during travel or work.",
+      included_components: (v) => "This package includes the original drinking straw accessory.",
+      construction: (v) => "The bottle frame is built with durable components for daily use.",
     };
     const bullets: string[] = [];
     const usedFactIds: string[] = [];
@@ -190,16 +190,13 @@ function v2214ValidAiClient(): TaskLinkedAiListingClient {
       for (const id of (bp.featureFactIds ?? [])) {
         const v = byId.get(String(id));
         if (!v) continue;
-        const frame = FRAME[String(id)] ?? ((val: string) => "The Water Bottle features " + val + ".");
+        const frame = FRAME[String(id)] ?? ((val: string) => "The bottle features " + val + " for everyday convenience.");
         bullets.push(frame(v));
         if (!usedFactIds.includes(String(id))) usedFactIds.push(String(id));
         break;
       }
     });
-    const descFacts = facts.filter((f) => f.field === "material" || f.field === "capacity");
-    const description = descFacts.length >= 2
-      ? "This Water Bottle provides the BrüMate brand." + " The " + descFacts[0].field.replace(/_/g, " ") + " value of this product is " + String(descFacts[0].value ?? "").trim() + "."
-      : "This Water Bottle provides the BrüMate brand. The capacity value of this product is 18oz.";
+    const description = "This water bottle is constructed with silicone and provides an 18oz capacity. It offers a red finish designed for convenient daily hydration.";
     return {
       title: "BrüMate Silicone Water Bottle, 18oz, red",
       bullets,
@@ -311,8 +308,6 @@ describe("v2.2.14 无 Keyword Brief AI 路径", () => {
       });
       expect(calls).toBe(1);
       expect(result.listingSaved).toBe(true);
-      // 迁移语义说明：旧 Mock 病句被新结构门禁拒绝走 fallback；现 Plan-aware 自然句通过全部门禁
-      // → AI 稿真实成功（ai_optimized_listing）；无 brief 时 riskNotes 提示未进行关键词优化。
       expect(result.draft?.draftKind).toBe("ai_optimized_listing");
       expect(result.draft?.providerAttempted).toBe(true);
       expect(result.draft?.providerSucceeded).toBe(true);
@@ -423,13 +418,12 @@ describe("v2.2.16 BrüMate Listing Brief Golden Case", () => {
       expect(result.draft?.providerAttempted).toBe(true);
       expect(result.draft?.providerSucceeded).toBe(false);
       expect(result.draft?.fallbackApplied).toBe(true);
-      expect(result.draft?.draftKind).toBe("structured_listing_draft");
+      expect(result.draft?.draftKind).toBe("safe_fact_draft");
       expect(result.draft?.keywords).toEqual([]);
       expect(result.draft?.backendSearchTerms).toEqual([]);
-      // R3.1：英文渲染后无中文句号；brief 隔离已由 capturedInput.facts 断言覆盖。
-      // R3.2：bullets 为功能事实英文渲染（每条独立），规格事实进 description。
-      expect(result.draft?.bullets.length).toBeGreaterThanOrEqual(1);
-      expect(result.draft?.description).not.toBe(result.draft?.titles[0]);
+      // R6：确认事实不足以组成至少 3 条合格句 → listingUnqualified=true，bullets 安全清空
+      expect(result.draft?.bullets).toEqual([]);
+      expect(result.draft?.listingUnqualified).toBe(true);
 
       const handoff = preview.gate.currentHandoff!;
       const version = handoff.versions[handoff.versions.length - 1]!;
@@ -463,7 +457,8 @@ describe("v2.2.16 BrüMate Listing Brief Golden Case", () => {
         facts: input.input.productFacts.map((f) => ({ factId: f.field, field: f.field, label: f.label, value: String(f.value ?? "").trim() })),
         usedFactIds: input.input.productFacts.map((f) => f.field),
       });
-      expect(quality.ok, JSON.stringify(quality.issues)).toBe(true);
+      // R6：确认事实不足以组成至少 3 条合格句时 listingUnqualified=true，Quality 合同预期未通过
+      expect(quality.ok).toBe(false);
     } finally {
       setTaskLinkedAiListingClientForTests(null);
     }

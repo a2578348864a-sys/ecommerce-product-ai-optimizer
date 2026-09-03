@@ -28,6 +28,7 @@ import {
 } from "@/lib/productResearchRecord";
 import type { TaskResultJsonDatabase } from "@/lib/server/taskResultJsonMutation";
 import { createOrAppendCreativeHandoff, CreativeHandoffPersistenceError } from "@/lib/server/productCreativeHandoffPersistence";
+import { FactAuthorityError } from "@/lib/productCreativeHandoffFactAuthority";
 import { generateCreativeHandoffPreview } from "@/lib/server/productCreativeHandoffPreview";
 import { buildConfirmableCandidates } from "@/lib/productCreativeHandoffConfirmation";
 import { FACT_CANDIDATES_SCHEMA } from "@/lib/factCandidates";
@@ -304,6 +305,6 @@ describe("PHASE 1 — Research Confirmed Facts → Listing Bridge（e2e）", () 
       selectedFactCandidateIds: [],
       manualConfirmedFacts: [{ field: "material", value: "Plastic" }],
       requestFingerprint: `sha256:${"c".repeat(64)}`,
-    })).rejects.toBeInstanceOf(CreativeHandoffPersistenceError);
+    })).rejects.toBeInstanceOf(FactAuthorityError);
   });
 });

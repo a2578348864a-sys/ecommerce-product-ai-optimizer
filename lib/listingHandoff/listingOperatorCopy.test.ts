@@ -384,9 +384,14 @@ describe("反向验证（六大失败与破坏路径）", () => {
     const path = await import("path");
     const fs = await import("fs");
     const os = await import("os");
+    const devDbPath = path.resolve(process.cwd(), "prisma/dev.db");
+    if (!fs.existsSync(devDbPath)) {
+      // CI 环境无本地开发主库 dev.db，安全跳过本地任务实测
+      return;
+    }
     // 主库只读复制到仓库外隔离目录（禁止写主库：prisma 单例在 import 时读 DATABASE_URL）
     const ceIsoDir = fs.mkdtempSync(path.join(os.tmpdir(), "ce-closure-db-"));
-    fs.copyFileSync(path.resolve(process.cwd(), "prisma/dev.db"), path.join(ceIsoDir, "iso-dev.db"));
+    fs.copyFileSync(devDbPath, path.join(ceIsoDir, "iso-dev.db"));
     process.env.DATABASE_URL = `file:${path.join(ceIsoDir, "iso-dev.db").replaceAll("\\", "/")}`;
     const { generateListingDraftFromHandoff } = await import("@/lib/listingHandoff/listingGenerationService");
     const { generateCreativeHandoffPreview } = await import("@/lib/server/productCreativeHandoffPreview");
