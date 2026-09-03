@@ -236,6 +236,8 @@ function installGlobals() {
     document: documentInstance,
     sessionStorage: null,
     HTMLIFrameElement: class HTMLIFrameElement {},
+    setTimeout: (() => 0) as unknown as typeof setTimeout,
+    clearTimeout: (() => 0) as unknown as typeof clearTimeout,
   };
 }
 
@@ -1437,5 +1439,34 @@ describe("发布前核对卡：关键词四类互斥与待确认表达透明度�
     const cardText = elementByTestId("listing-prepublish-review")?.textContent ?? "";
     expect(cardText, "未诚实说明 SEO 字段未单独生成").toContain("SEO 字段未单独生成");
     expect(testIdText("prepublish-unused-keywords"), "未采用词未展示").toContain("silverware holder");
+  });
+});
+
+describe("HISTORICAL_KEYWORD_READ_GUARD：历史过滤提示 UI（单条、可见、无过滤时不出现）", () => {
+  it("草稿带 historicalKeywordFilteredNotice → 恰好显示一条提示，且含固定诊断文案", async () => {
+    await mountPrepublish(
+      prepublishDraft({
+        keywords: ["drawer organizer", "kitchen drawer organizer"],
+        usedKeywordTrace: ["drawer organizer"],
+        searchOnlyKeywordTrace: ["kitchen drawer organizer"],
+        historicalKeywordFilteredNotice: "旧草稿关键词已按当前规则过滤，重新生成后可持久化新版结果。",
+      }),
+      keywordPlanSummary(["drawer organizer", "kitchen drawer organizer"]),
+    );
+    const notice = elementByTestId("prepublish-keywords-filter-notice");
+    expect(notice, "缺少历史关键词过滤提示（data-testid=prepublish-keywords-filter-notice）").not.toBeNull();
+    const text = notice?.textContent ?? "";
+    expect(text, "提示文案不符").toContain("已按当前规则过滤");
+    const matches = elementsWithin(container, (el) => el.getAttribute("data-testid") === "prepublish-keywords-filter-notice");
+    expect(matches.length, "历史过滤提示重复出现").toBe(1);
+  });
+
+  it("干净草稿（无 notice）→ 不渲染提示，关键词 chips 正常", async () => {
+    await mountPrepublish(
+      prepublishDraft({ keywords: ["drawer organizer", "kitchen drawer organizer"] }),
+      keywordPlanSummary(["drawer organizer"]),
+    );
+    expect(elementByTestId("prepublish-keywords-filter-notice"), "干净草稿不应出现过滤提示").toBeNull();
+    expect(chipsWithin("prepublish-body-keywords").length, "正文采用词 chips 消失").toBeGreaterThan(0);
   });
 });

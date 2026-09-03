@@ -13,7 +13,7 @@ import {
 } from "@/lib/server/demoGuard";
 import { bindProviderCallStartBoundary } from "@/lib/server/aiClient";
 import type { AccessContext } from "@/lib/server/accessPassword";
-import { generateListingDraftFromHandoff, ListingHandoffError, draftSafeSummary, type ListingDraftSafeSummary } from "@/lib/listingHandoff/listingGenerationService";
+import { generateListingDraftFromHandoff, ListingHandoffError, draftSafeSummary, deriveKeywordPolicyInputForRead, type ListingDraftSafeSummary, type HistoricalKeywordReadContext } from "@/lib/listingHandoff/listingGenerationService";
 import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPreview";
 import { computeListingStatus, parseListingHandoffBinding, type ListingStatus } from "@/lib/listingHandoff/listingBinding";
 import { TaskResultJsonMutationError } from "@/lib/server/taskResultJsonMutation";
@@ -199,13 +199,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     // 从 Gate 的 storageVersion 读取草稿（无需额外数据库读）
     const storageVersion = gate.storageVersion;
     let binding = null;
+    // HISTORICAL_KEYWORD_READ_GUARD：草稿在 keywordBrief 解析后带读取上下文一次性投影；此处只记录存在性
+    const rawListingDraftPresent = gate.listingDraftRaw !== undefined;
     let draft: ListingDraftSafeSummary | null = null;
     let listingStatus: ListingStatus = "ready";
     let staleReasonCode: string | null = null;
-
-    if (gate.listingDraftRaw !== undefined) {
-      draft = draftSafeSummary(gate.listingDraftRaw);
-    }
 
     // Handoff 有效状态（stale/revoked/active 语义）
     const handoffEffectiveStatus = handoff
@@ -267,7 +265,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         }]
       : [];
 
-    const staleDraftPresent = listingStatus === "stale" && draft !== null;
+    const staleDraftPresent = listingStatus === "stale" && rawListingDraftPresent;
 
     // V2：capability 安全评估（与生成服务同源 adapter；同输入同输出）——必须在 canGenerate 之前计算。
     // 安全边界：仅返回 level/supportedBulletCount/targetBulletCount/canCallProvider/hasIdentity/isBlocked/
@@ -351,6 +349,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const { buildListingReadiness } = await import("@/lib/listingHandoff/listingReadiness");
     const { parseListingKeywordBrief } = await import("@/lib/listingHandoff/listingKeywordBrief");
     const keywordBrief = parseListingKeywordBrief(gate.keywordBriefRaw);
+    // HISTORICAL_KEYWORD_READ_GUARD：真实 GET 必须传入当前 Brief + 策略上下文，历史草稿 keywords 按当前规则投影
+    if (rawListingDraftPresent) {
+      const confirmedFacts = handoff?.versions?.[handoff.versions.length - 1]?.confirmedFacts ?? [];
+      const brandFact = confirmedFacts.find((fact) => String((fact as { field?: string }).field ?? "") === "brand") as { value?: string | number } | undefined;
+      const creative = gate.creativeContext as {
+        competitiveContext?: Array<{ note?: string } | string>;
+        keywordCandidates?: Array<{ keyword?: string } | string>;
+      } | null | undefined;
+      const readCtx: HistoricalKeywordReadContext | null = keywordBrief
+        ? {
+            brief: keywordBrief,
+            policyInput: deriveKeywordPolicyInputForRead(
+              String(brandFact?.value ?? "").trim(),
+              (creative?.competitiveContext ?? []) as unknown[],
+              (creative?.keywordCandidates ?? []) as unknown[],
+            ),
+          }
+        : null;
+      draft = draftSafeSummary(gate.listingDraftRaw, readCtx);
+    }
     const listingBriefParsed = buildListingBrief(gate.listingCreationBriefRaw);
     const readiness = handoff
       ? buildListingReadiness({

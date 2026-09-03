@@ -62,6 +62,8 @@ type ListingDraftSafeSummary = {
     claimMode: string;
     cannotSay: string[];
   }>;
+  /** HISTORICAL_KEYWORD_READ_GUARD：历史草稿关键词按当前规则过滤后的固定中文提示（仅在过滤发生时返回） */
+  historicalKeywordFilteredNotice?: string;
 };
 
 type ListingStateResponse = {
@@ -969,6 +971,11 @@ export function ListingHandoffSection({
               暂未生成关键词（SEO 字段未单独生成）。实际采用情况见下方「发布前核对」。
             </p>
           )}
+          {draft.historicalKeywordFilteredNotice ? (
+            <p data-testid="prepublish-keywords-filter-notice" className="mt-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs leading-5 text-amber-800">
+              {draft.historicalKeywordFilteredNotice}
+            </p>
+          ) : null}
         </div>
 
         {/* 5. 发布前核对：唯一一张卡承载关键词四类分类 + 待确认表达全文与隔离状态 */}

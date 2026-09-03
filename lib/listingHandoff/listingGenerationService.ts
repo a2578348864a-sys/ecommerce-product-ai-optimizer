@@ -104,6 +104,33 @@ export type ListingDraftSafeSummary = {
     claimMode: string;
     cannotSay: string[];
   }>;
+  /** HISTORICAL_KEYWORD_READ_GUARD：历史草稿 keywords/backendSearchTerms 按当前 Brief+Policy 投影时被过滤后
+   *  返回的固定中文提示（有界；只在发生过滤且正文保留时非空；不含脏词原文/内部数据）。 */
+  historicalKeywordFilteredNotice?: string;
+};
+
+/** HISTORICAL_KEYWORD_READ_GUARD：读取投影所需上下文（当前有效 Brief + 关键词策略上下文）。 */
+export type HistoricalKeywordReadContext = {
+  /** 当前已确认 Keyword Brief；null = 无有效 Brief（投影为空）。 */
+  brief: {
+    primaryKeyword: string;
+    supportingKeywords: string[];
+    backendSearchTerms: string[];
+  } | null;
+  policyInput: KeywordPolicyInput;
+};
+
+/** HISTORICAL_KEYWORD_READ_GUARD：历史草稿关键词投影结果（纯函数返回；绝不含脏词原文）。 */
+export type HistoricalKeywordProjection = {
+  keywords: string[];
+  backendSearchTerms: string[];
+  /** 被当前规则过滤掉的候选数量（有界；仅计数） */
+  filteredCount: number;
+  /** 固定中文诊断；未发生过滤时为 null */
+  notice: string | null;
+  /** 由投影后字段 + 最终正文重新计算（不信任持久化旧 trace） */
+  usedKeywordTrace: string[];
+  searchOnlyKeywordTrace: string[];
 };
 
 export type ListingGenerateResult = {
@@ -180,6 +207,31 @@ function keywordPolicyInputOf(generationInput: ListingGenerationInput): KeywordP
 
 function policyFilterForListing(keywords: string[], generationInput: ListingGenerationInput): string[] {
   return filterKeywordsForListing(keywords, keywordPolicyInputOf(generationInput)).accepted;
+}
+
+/**
+ * HISTORICAL_KEYWORD_READ_GUARD：读取侧策略上下文构建（纯函数；只读上下文，不读库）。
+ * ownBrand 来自任务已确认事实的 brand；竞品品牌/关键词候选来自研究 Creative Context 参考层。
+ * 与 keywordPolicyInputOf(generationInput) 同源推导，仅输入形状不同（GET 无完整 GenerationInput）。
+ */
+export function deriveKeywordPolicyInputForRead(
+  ownBrand: string,
+  competitorNotes: ReadonlyArray<unknown>,
+  keywordCandidateEntries: ReadonlyArray<unknown>,
+): KeywordPolicyInput {
+  const titles = competitorNotes.map((entry) =>
+    typeof entry === "string" ? entry : String((entry as { note?: string }).note ?? ""),
+  );
+  const candidates = keywordCandidateEntries.map((k) =>
+    typeof k === "string" ? k : String((k as { keyword?: string }).keyword ?? ""),
+  );
+  return {
+    ownBrand: String(ownBrand ?? "").trim(),
+    knownBrands: dedupeTerms([
+      ...extractKnownBrandsFromCompetitorTitles(titles, { ownBrand }),
+      ...extractBrandLikeTokensFromKeywords(candidates, { ownBrand }),
+    ]),
+  };
 }
 
 /** 读取边界也执行关键词策略：手工保存的 Brief 不能凭持久化路径绕过竞品/风险词过滤。 */
@@ -405,15 +457,36 @@ export function revalidateHistoricalDraftRead(value: Record<string, unknown>): H
   return { factSafe, copyQuality, listingUnqualified, reason, rejected };
 }
 
-export function draftSafeSummary(value: unknown): ListingDraftSafeSummary | null {
+export function draftSafeSummary(value: unknown, keywordContext?: HistoricalKeywordReadContext | null): ListingDraftSafeSummary | null {
   if (!isRecord(value) || !isHandoffListedDraftShape(value)) return null;
   const readGuard = revalidateHistoricalDraftRead(value);
   const BLOCKED_EMPTY = readGuard.listingUnqualified;
   const titlesOut = BLOCKED_EMPTY ? [] : safeStringArray(value.titles).slice(0, 3);
   const bulletsOut = BLOCKED_EMPTY ? [] : safeStringArray(value.bullets).slice(0, 5);
   const descriptionOut = BLOCKED_EMPTY ? "" : safeString(value.description);
-  const keywordsOut = BLOCKED_EMPTY ? [] : safeStringArray(value.keywords).slice(0, 12);
-  const backendOut = BLOCKED_EMPTY ? [] : (Array.isArray(value.backendSearchTerms) ? value.backendSearchTerms.filter((item): item is string => typeof item === "string").slice(0, 50) : undefined);
+  let keywordsOut = BLOCKED_EMPTY ? [] : safeStringArray(value.keywords).slice(0, 12);
+  let backendOut = BLOCKED_EMPTY ? [] : (Array.isArray(value.backendSearchTerms) ? value.backendSearchTerms.filter((item): item is string => typeof item === "string").slice(0, 50) : undefined);
+  let usedKeywordTraceOut: string[] | undefined = Array.isArray(value.usedKeywordTrace)
+    ? value.usedKeywordTrace.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        .map((item) => item.trim().slice(0, 120))
+        .slice(0, 20)
+    : undefined;
+  let searchOnlyKeywordTraceOut: string[] | undefined = Array.isArray(value.searchOnlyKeywordTrace)
+    ? value.searchOnlyKeywordTrace.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        .map((item) => item.trim().slice(0, 120))
+        .slice(0, 20)
+    : undefined;
+  let historicalKeywordFilteredNotice: string | undefined;
+  // HISTORICAL_KEYWORD_READ_GUARD：显式传入读取上下文（含 brief=null）即按当前 Brief+Policy 投影（无 Brief → 空）；
+  // 未提供上下文参数（旧调用）保持既有复制行为以兼容旧调用方。
+  if (!BLOCKED_EMPTY && keywordContext !== undefined) {
+    const proj = projectHistoricalKeywordsForRead(value, keywordContext);
+    keywordsOut = proj.keywords;
+    backendOut = proj.backendSearchTerms;
+    usedKeywordTraceOut = proj.usedKeywordTrace;
+    searchOnlyKeywordTraceOut = proj.searchOnlyKeywordTrace;
+    historicalKeywordFilteredNotice = proj.notice ?? undefined;
+  }
   const sellingPointsOut = BLOCKED_EMPTY ? [] : safeStringArray(value.sellingPoints).slice(0, 6);
   return {
     generatedAt: safeString(value.generatedAt),
@@ -438,16 +511,9 @@ export function draftSafeSummary(value: unknown): ListingDraftSafeSummary | null
           .map((item) => ({ label: item.label.slice(0, 80), value: item.value.slice(0, 200) }))
           .slice(0, 30)
       : undefined,
-    usedKeywordTrace: Array.isArray(value.usedKeywordTrace)
-      ? value.usedKeywordTrace.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-          .map((item) => item.trim().slice(0, 120))
-          .slice(0, 20)
-      : undefined,
-    searchOnlyKeywordTrace: Array.isArray(value.searchOnlyKeywordTrace)
-      ? value.searchOnlyKeywordTrace.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-          .map((item) => item.trim().slice(0, 120))
-          .slice(0, 20)
-      : undefined,
+    usedKeywordTrace: usedKeywordTraceOut,
+    searchOnlyKeywordTrace: searchOnlyKeywordTraceOut,
+    historicalKeywordFilteredNotice,
     researchReferenceTrace: value.providerAttempted === true
       ? (Array.isArray(value.researchReferenceTrace)
           ? value.researchReferenceTrace.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
@@ -644,6 +710,89 @@ export function deriveKeywordAdoptionTrace(
     else if (searchSet.has(key)) searchOnlyKeywordTrace.push(kw);
   }
   return { usedKeywordTrace: usedKeywordTrace.slice(0, 20), searchOnlyKeywordTrace: searchOnlyKeywordTrace.slice(0, 20) };
+}
+
+/** 规范化键：小写 + 多空格折叠（仅用于去重/交集比较，不重写展示原文） */
+function keywordNorm(value: string): string {
+  return String(value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+/**
+ * HISTORICAL_KEYWORD_READ_GUARD：历史草稿 keywords/backendSearchTerms 读取投影（纯函数）。
+ * - 历史正式关键词 = 持久化值 ∩ 当前已确认 Brief 词集合 ∩ 当前 Keyword Policy 通过集合；
+ * - 无有效 Brief → keywords/backend 均为空（历史无方案即不展示搜索优化词）；
+ * - keywords 与 backend 各自保序去重（大小写/多空格归一比较，保留首次出现原文，多空格折叠为单空格）；
+ * - used/searchOnly trace 由投影后字段与最终正文重新计算（deriveKeywordAdoptionTrace 语义），不信任旧 trace；
+ * - 只返回被过滤计数与固定中文诊断，绝不回传脏词原文；
+ * - 不修改传入对象；不读库；同输入同输出。
+ */
+const HISTORICAL_KEYWORD_FILTER_NOTICE =
+  "旧草稿关键词已按当前规则过滤，重新生成后可持久化新版结果。";
+
+export function projectHistoricalKeywordsForRead(
+  value: Record<string, unknown>,
+  context: HistoricalKeywordReadContext | null,
+): HistoricalKeywordProjection {
+  const brief = context?.brief ?? null;
+  if (!brief || !String(brief.primaryKeyword ?? "").trim()) {
+    return { keywords: [], backendSearchTerms: [], filteredCount: 0, notice: null, usedKeywordTrace: [], searchOnlyKeywordTrace: [] };
+  }
+
+  const policyAccepted = new Set<string>(
+    filterKeywordsForListing(
+      [...(Array.isArray(value.keywords) ? value.keywords : []), ...(Array.isArray(value.backendSearchTerms) ? value.backendSearchTerms : [])]
+        .filter((item): item is string => typeof item === "string"),
+      context!.policyInput,
+    ).accepted.map(keywordNorm),
+  );
+  const mainBriefNorms = new Set<string>([brief.primaryKeyword, ...(brief.supportingKeywords ?? [])].map(keywordNorm).filter(Boolean));
+  const backendBriefNorms = new Set<string>((brief.backendSearchTerms ?? []).map(keywordNorm).filter(Boolean));
+
+  const projectList = (rawList: unknown, allowedNorms: Set<string>, max: number): { out: string[]; dropped: number } => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    if (!Array.isArray(rawList)) return { out, dropped: 0 };
+    let distinct = 0;
+    for (const raw of rawList) {
+      if (typeof raw !== "string") continue;
+      const norm = keywordNorm(raw);
+      if (!norm || seen.has(norm)) continue;
+      seen.add(norm);
+      distinct += 1;
+      if (out.length >= max) continue;
+      if (!allowedNorms.has(norm) || !policyAccepted.has(norm)) continue;
+      out.push(String(raw).trim().replace(/\s+/g, " "));
+    }
+    return { out, dropped: Math.max(0, distinct - out.length) };
+  };
+
+  const kw = projectList(value.keywords, mainBriefNorms, 12);
+  const backend = projectList(value.backendSearchTerms, backendBriefNorms, 50);
+  const filteredCount = kw.dropped + backend.dropped;
+  const notice = filteredCount > 0 ? HISTORICAL_KEYWORD_FILTER_NOTICE : null;
+
+  // trace 由投影后搜索字段 + 最终正文重算（与生成侧 deriveKeywordAdoptionTrace 同语义）
+  const titles = safeStringArray(value.titles).slice(0, 3);
+  const bullets = safeStringArray(value.bullets).slice(0, 5);
+  const description = safeString(value.description) ?? "";
+  const pseudoPlan = {
+    primaryKeyword: brief.primaryKeyword,
+    supportingKeywords: brief.supportingKeywords ?? [],
+    backendSearchTerms: brief.backendSearchTerms ?? [],
+  } as ListingPlan;
+  const trace = deriveKeywordAdoptionTrace(
+    pseudoPlan,
+    [...titles, ...bullets, description],
+    [...kw.out, ...backend.out],
+  );
+  return {
+    keywords: kw.out,
+    backendSearchTerms: backend.out,
+    filteredCount,
+    notice,
+    usedKeywordTrace: trace.usedKeywordTrace,
+    searchOnlyKeywordTrace: trace.searchOnlyKeywordTrace,
+  };
 }
 
 export async function generateListingDraftFromHandoff(

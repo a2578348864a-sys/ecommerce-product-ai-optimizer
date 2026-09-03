@@ -401,3 +401,69 @@ describe("listing-brief save + GET chain", () => {
     expect(unknown.ok).toBe(false);
   });
 });
+describe("HISTORICAL_KEYWORD_READ_GUARD：route GET 用当前 Brief 投影历史草稿关键词", () => {
+  const DIRTY_RAW = {
+    draftKind: "structured_listing_draft",
+    humanReviewRequired: true,
+    generatedAt: "2026-08-26T00:00:00.000Z",
+    source: "deterministic_composition_v1",
+    version: 1,
+    composerVersion: "listing-composer-v1",
+    generationPolicyVersion: "listing-generation-policy-v1",
+    polishApplied: false,
+    polishModel: null,
+    titles: ["ukeetap UTO001 Drawer Organizer Plastic Silver"],
+    bullets: [
+      "The Organizer is built with an expandable multi-compartment design.",
+      "The Organizer stores about 40 to 50 pieces of cutlery.",
+      "This drawer organizer expands to the drawer width.",
+      "The Organizer is suitable for daily kitchen storage.",
+      "For care, wipe with a damp cloth.",
+    ],
+    description: "The ukeetap UTO001 is a plastic organizer. It fits most medium kitchen drawers.",
+    keywords: ["drawer organizer", "kitchen drawer organizer", "Plastic Organizer", "Holds approximately 40-50 pieces of cutlery Organizer"],
+    backendSearchTerms: ["drawer organizer", "plastic organizer caddy"],
+    sellingPoints: ["x"],
+    providerAttempted: false,
+    providerSucceeded: false,
+    fallbackApplied: false,
+    factSafe: true,
+    copyQuality: true,
+    listingUnqualified: false,
+  };
+  const CURRENT_BRIEF = {
+    schema: "listing-keyword-brief.v1",
+    primaryKeyword: "silverware organizer",
+    supportingKeywords: ["drawer organizer", "kitchen drawer organizer"],
+    backendSearchTerms: ["drawer organizer"],
+    source: "sellersprite",
+    capturedAt: "2026-08-27T04:00:00.000Z",
+  };
+
+  it("GET 历史脏草稿：keywords 只保留当前 Brief 合法词、正文保留、提示可见、无脏词原文", async () => {
+    gateMock.mockResolvedValue({ ...gateResult(LEGAL, REV, CURRENT_BRIEF), listingDraftRaw: DIRTY_RAW });
+    const res = await GET(req("http://127.0.0.1:3010/api/tasks/" + TASK_ID + "/listing-handoff"), { params: params() });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const draft = body.data.draft;
+    expect(draft).not.toBeNull();
+    expect(draft.keywords).toEqual(["drawer organizer", "kitchen drawer organizer"]);
+    expect(draft.backendSearchTerms).toEqual(["drawer organizer"]);
+    expect(draft.bullets.length).toBe(5);
+    expect(draft.listingUnqualified).toBe(false);
+    expect(draft.historicalKeywordFilteredNotice).toContain("已按当前规则过滤");
+    const draftDump = JSON.stringify(draft);
+    expect(draftDump).not.toContain("Plastic Organizer");
+    expect(draftDump).not.toContain("Holds approximately");
+    expect(draftDump).not.toContain("resultJsonHash");
+  });
+
+  it("GET 无有效 Brief：历史 keywords/backend 投影为空", async () => {
+    gateMock.mockResolvedValue({ ...gateResult(LEGAL, REV, undefined), listingDraftRaw: DIRTY_RAW });
+    const res = await GET(req("http://127.0.0.1:3010/api/tasks/" + TASK_ID + "/listing-handoff"), { params: params() });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.draft.keywords).toEqual([]);
+    expect(body.data.draft.backendSearchTerms).toEqual([]);
+  });
+});

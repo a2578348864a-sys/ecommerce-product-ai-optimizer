@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { revalidateHistoricalDraftRead, draftSafeSummary } from "@/lib/listingHandoff/listingGenerationService";
+import {
+  draftSafeSummary,
+  projectHistoricalKeywordsForRead,
+  revalidateHistoricalDraftRead,
+  type HistoricalKeywordReadContext,
+} from "@/lib/listingHandoff/listingGenerationService";
 
 /** 构建一个历史旧坏快照（无 factSafe/copyQuality, bullets 含坏句） */
 function badSnapshot() {
@@ -168,5 +173,138 @@ describe("Listing natural editor v1 历史坏稿重判", () => {
     } as Record<string, unknown>);
     expect(verdict.copyQuality).toBe(false);
     expect(verdict.listingUnqualified).toBe(true);
+  });
+});
+
+describe("HISTORICAL_KEYWORD_READ_GUARD：历史草稿关键词按当前 Brief+Policy 投影（红→绿）", () => {
+  const DIRTY_KEYWORDS = [
+    "drawer organizer",
+    "kitchen drawer organizer",
+    "Plastic Organizer",
+    "Holds approximately 40-50 pieces of cutlery Organizer",
+  ];
+  const DIRTY_BACKEND = ["drawer organizer", "plastic organizer caddy", "Holds about 40-50 Organizer"];
+  const BODY_BULLETS = [
+    "The Organizer is built with an expandable multi-compartment design.",
+    "The Organizer stores about 40 to 50 pieces of cutlery.",
+    "This drawer organizer expands to the drawer width.",
+    "The Organizer is suitable for daily kitchen storage.",
+    "For care, wipe with a damp cloth.",
+  ];
+  const BODY_TITLE = "ukeetap UTO001 Drawer Organizer Plastic Silver";
+  const BODY_DESC = "The ukeetap UTO001 is a plastic organizer. It fits most medium kitchen drawers. The Organizer weighs 0.81 kg.";
+  const BRIEF = {
+    primaryKeyword: "drawer organizer",
+    supportingKeywords: ["kitchen drawer organizer"],
+    backendSearchTerms: ["drawer organizer"],
+  };
+  const POLICY: HistoricalKeywordReadContext = {
+    brief: BRIEF,
+    policyInput: { ownBrand: "ukeetap", knownBrands: [] },
+  };
+
+  function dirtySnapshot(overrides: Record<string, unknown> = {}) {
+    return {
+      draftKind: "structured_listing_draft",
+      humanReviewRequired: true,
+      generatedAt: "2026-08-26T00:00:00.000Z",
+      source: "deterministic_composition_v1",
+      version: 1,
+      composerVersion: "listing-composer-v1",
+      generationPolicyVersion: "listing-generation-policy-v1",
+      polishApplied: false,
+      polishModel: null,
+      titles: [BODY_TITLE],
+      bullets: [...BODY_BULLETS],
+      description: BODY_DESC,
+      keywords: [...DIRTY_KEYWORDS],
+      backendSearchTerms: [...DIRTY_BACKEND],
+      usedKeywordTrace: ["Plastic Organizer", "silverware organizer"],
+      searchOnlyKeywordTrace: ["kitchen drawer organizer"],
+      sellingPoints: ["x"],
+      providerAttempted: false,
+      providerSucceeded: false,
+      fallbackApplied: false,
+      factSafe: true,
+      copyQuality: true,
+      listingUnqualified: false,
+      ...overrides,
+    };
+  }
+
+  it("红1：历史旧pass草稿 keywords 仍泄漏 2 条 Brief 外垃圾词 → 投影只保留当前 Brief 词", () => {
+    const summary = draftSafeSummary(dirtySnapshot(), POLICY);
+    expect(summary?.keywords).toEqual(["drawer organizer", "kitchen drawer organizer"]);
+    for (const bad of ["Plastic Organizer", "Holds approximately 40-50 pieces of cutlery Organizer"]) {
+      expect(summary?.keywords).not.toContain(bad);
+    }
+  });
+
+  it("红2：大小写/多空格归一去重，保序保留首次出现", () => {
+    const raw = dirtySnapshot({
+      keywords: ["  Drawer   Organizer ", "kitchen drawer organizer", "kitchen   drawer organizer", "Drawer Organizer"],
+    });
+    const proj = projectHistoricalKeywordsForRead(raw, POLICY);
+    expect(proj.keywords).toEqual(["Drawer Organizer", "kitchen drawer organizer"]);
+  });
+
+  it("红3：backendSearchTerms 必须是当前 Brief backend 集合子集", () => {
+    const raw = dirtySnapshot({ backendSearchTerms: ["drawer organizer", "plastic organizer caddy", "Holds about 40-50 Organizer"] });
+    const proj = projectHistoricalKeywordsForRead(raw, POLICY);
+    expect(proj.backendSearchTerms).toEqual(["drawer organizer"]);
+  });
+
+  it("红4：无有效 Brief → 历史 keywords/backend 全部为空", () => {
+    const summary = draftSafeSummary(dirtySnapshot(), { brief: null, policyInput: POLICY.policyInput });
+    expect(summary?.keywords).toEqual([]);
+    expect(summary?.backendSearchTerms).toEqual([]);
+  });
+
+  it("红5：used/searchOnly trace 由正文+投影字段重算，不信任旧 trace，且互斥", () => {
+    const raw = dirtySnapshot(); // 旧 trace 故意污染
+    const summary = draftSafeSummary(raw, POLICY);
+    const used = summary?.usedKeywordTrace ?? [];
+    const searchOnly = summary?.searchOnlyKeywordTrace ?? [];
+    expect(used).toContain("drawer organizer");
+    expect(used).not.toContain("Plastic Organizer");
+    expect(searchOnly).toContain("kitchen drawer organizer");
+    const overlap = used.filter((item) => searchOnly.includes(item));
+    expect(overlap).toEqual([]);
+  });
+
+  it("红6：只因关键词被过滤 → 合格正文保留、listingUnqualified=false", () => {
+    const summary = draftSafeSummary(dirtySnapshot(), POLICY);
+    expect(summary?.listingUnqualified).toBe(false);
+    expect(summary?.bullets).toEqual([...BODY_BULLETS]);
+    expect(summary?.description).toBe(BODY_DESC);
+    expect(summary?.titles).toEqual([BODY_TITLE]);
+  });
+
+  it("红7：警告有界且不含脏词原文/内部 hash", () => {
+    const summary = draftSafeSummary(dirtySnapshot(), POLICY);
+    const notice = summary?.historicalKeywordFilteredNotice;
+    expect(notice).toBeTruthy();
+    expect(notice?.length ?? 0).toBeLessThan(200);
+    expect(notice).toContain("已按当前规则过滤");
+    const dump = JSON.stringify(summary);
+    expect(dump).not.toContain("Plastic Organizer");
+    expect(dump).not.toContain("Holds approximately");
+    expect(dump).not.toContain("resultJsonHash");
+    expect(/[0-9a-f]{64}/.test(dump)).toBe(false);
+  });
+
+  it("红8：GET 投影纯函数不得修改输入对象（深比较）", () => {
+    const snap = dirtySnapshot();
+    const before = JSON.stringify(snap);
+    draftSafeSummary(snap, POLICY);
+    projectHistoricalKeywordsForRead(snap, POLICY);
+    expect(JSON.stringify(snap)).toBe(before);
+  });
+
+  it("红9：干净草稿（全部为 Brief 词）不产生过滤提示", () => {
+    const clean = dirtySnapshot({ keywords: ["drawer organizer", "kitchen drawer organizer"], backendSearchTerms: ["drawer organizer"] });
+    const summary = draftSafeSummary(clean, POLICY);
+    expect(summary?.keywords).toEqual(["drawer organizer", "kitchen drawer organizer"]);
+    expect(summary?.historicalKeywordFilteredNotice).toBeUndefined();
   });
 });
