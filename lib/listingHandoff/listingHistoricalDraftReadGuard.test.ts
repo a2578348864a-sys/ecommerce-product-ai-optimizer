@@ -379,4 +379,39 @@ describe("单件自身旧稿历史重判（第十版）", () => {
     const verdict = revalidateHistoricalDraftRead(snapshot);
     expect(verdict.listingUnqualified).toBe(true);
   });
+
+  it("旧标记 pass 但含五类假通过病句（如 opens through its ... mechanism / suitable for use at daily）的旧稿读取时判不合格", () => {
+    const badSnapshotWithPassFlags = {
+      draftKind: "structured_listing_draft",
+      humanReviewRequired: true,
+      generatedAt: "2026-09-03T10:23:20.589Z",
+      source: "deterministic_composition_v1",
+      version: 1,
+      composerVersion: "listing-composer-v1",
+      generationPolicyVersion: "listing-generation-policy-v1",
+      polishApplied: false,
+      polishModel: null,
+      titles: ["Owala FreeSip Water Bottle, 24 oz, Stainless Steel, Very, Very Dark"],
+      bullets: [
+        "The water bottle is made of stainless steel.",
+        "The water bottle measures 3.24\"W x 10.68\"H.",
+        "It opens through its push-button open with built-in straw for upright sipping mechanism.",
+        "This water bottle is suitable for use at daily hydration at home or office.",
+        "A FreeSip spout with built-in straw and push-button lid is included with the water bottle.",
+      ],
+      description: "The Owala FreeSip is a stainless steel water bottle. It has double-wall vacuum insulation. The water bottle fits cup holder-friendly base. It measures 3.24\"W x 10.68\"H and weighs 13.6 oz.",
+      keywords: [],
+      factSafe: true,
+      copyQuality: true,
+      listingUnqualified: false,
+    };
+    const verdict = revalidateHistoricalDraftRead(badSnapshotWithPassFlags as Record<string, unknown>);
+    expect(verdict.copyQuality).toBe(false);
+    expect(verdict.listingUnqualified).toBe(true);
+
+    const summary = draftSafeSummary(badSnapshotWithPassFlags);
+    expect(summary?.listingUnqualified).toBe(true);
+    expect(summary?.bullets).toEqual([]);
+    expect(summary?.description).toBe("");
+  });
 });

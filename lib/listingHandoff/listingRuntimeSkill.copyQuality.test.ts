@@ -592,4 +592,129 @@ describe("单件自身句 Copy Quality 兜底与大小写（第十版）", () =>
     ] });
     expect(abnormal.issues.map((i) => i.code)).toContain("abnormal_capitalization");
   });
+
+  describe("False-Pass 专项红测：五类病句必须被 Copy Quality 主动拒绝", () => {
+    const FP_FACTS = [
+      { factId: "brand", field: "brand", label: "品牌", value: "Owala" },
+      { factId: "product_type", field: "product_type", label: "商品类型", value: "Water Bottle" },
+      { factId: "operation", field: "operation", label: "操作", value: "push-button open with built-in straw for upright sipping" },
+      { factId: "usage", field: "usage", label: "使用场景", value: "daily hydration at home or office" },
+      { factId: "compatibility", field: "compatibility", label: "兼容性", value: "cup holder-friendly base" },
+      { factId: "functional_feature", field: "functional_feature", label: "功能特性", value: "MagSlider lid with magnetic slide mechanism" },
+      { factId: "usage2", field: "usage", label: "使用场景", value: "daily commuting and office desk use" },
+      { factId: "color", field: "color_or_variant", label: "颜色", value: "Very, Very Dark" },
+    ];
+
+    it("红1: opens through its ... mechanism 动词机制套壳必须被拒绝", () => {
+      const r = validateCopyQualityContract({
+        title: "Owala FreeSip Water Bottle",
+        bullets: [
+          "It opens through its push-button open with built-in straw for upright sipping mechanism.",
+          "Double-wall vacuum insulation keeps liquids cold for hours.",
+          "A leakproof lid seals tightly for everyday travel.",
+        ],
+        description: "A quality water bottle for everyday use. It has a durable finish.",
+        facts: FP_FACTS,
+        typeLabel: "Water Bottle",
+      });
+      expect(r.ok).toBe(false);
+      expect(r.issues.some((i) => i.code === "template_jargon" || i.code === "nested_mechanism")).toBe(true);
+    });
+
+    it("红2: suitable for use at daily... / use at ... use 介词错误与口吃必须被拒绝", () => {
+      const r1 = validateCopyQualityContract({
+        title: "Owala FreeSip Water Bottle",
+        bullets: [
+          "This water bottle is suitable for use at daily hydration at home or office.",
+          "Double-wall vacuum insulation keeps liquids cold for hours.",
+          "Hand wash only for optimal maintenance.",
+        ],
+        description: "A quality water bottle for everyday use. It has a durable finish.",
+        facts: FP_FACTS,
+        typeLabel: "Water Bottle",
+      });
+      expect(r1.ok).toBe(false);
+      expect(r1.issues.some((i) => i.code === "template_jargon" || i.code === "invalid_usage_phrase")).toBe(true);
+
+      const r2 = validateCopyQualityContract({
+        title: "YETI Rambler Tumbler",
+        bullets: [
+          "This tumbler is suitable for use at daily commuting and office desk use.",
+          "Double-wall vacuum insulation keeps liquids cold for hours.",
+          "Dishwasher safe parts make cleaning simple.",
+        ],
+        description: "A quality tumbler for everyday use. It has a durable finish.",
+        facts: FP_FACTS,
+        typeLabel: "Tumbler",
+      });
+      expect(r2.ok).toBe(false);
+      expect(r2.issues.some((i) => i.code === "template_jargon" || i.code === "invalid_usage_phrase")).toBe(true);
+    });
+
+    it("红3: [product] fits ... base 主客体倒置必须被拒绝", () => {
+      const r = validateCopyQualityContract({
+        title: "Owala FreeSip Water Bottle",
+        bullets: [
+          "The water bottle fits cup holder-friendly base.",
+          "Double-wall vacuum insulation keeps liquids cold for hours.",
+          "Hand wash only for optimal maintenance.",
+        ],
+        description: "A quality water bottle for everyday use. It has a durable finish.",
+        facts: FP_FACTS,
+        typeLabel: "Water Bottle",
+      });
+      expect(r.ok).toBe(false);
+      expect(r.issues.some((i) => i.code === "template_jargon" || i.code === "part_fit_inversion")).toBe(true);
+    });
+
+    it("红4: features MagSlider lid 裸奔无冠词必须被拒绝", () => {
+      const r = validateCopyQualityContract({
+        title: "YETI Rambler Tumbler",
+        bullets: [
+          "It features MagSlider lid with magnetic slide mechanism.",
+          "Double-wall vacuum insulation keeps liquids cold for hours.",
+          "Dishwasher safe parts make cleaning simple.",
+        ],
+        description: "A quality tumbler for everyday use. It has a durable finish.",
+        facts: FP_FACTS,
+        typeLabel: "Tumbler",
+      });
+      expect(r.ok).toBe(false);
+      expect(r.issues.some((i) => i.code === "template_jargon" || i.code === "missing_determiner")).toBe(true);
+    });
+
+    it("红5: 描述中出现上述五类病句同样必须被拒绝", () => {
+      const r = validateCopyQualityContract({
+        title: "Owala FreeSip Water Bottle",
+        bullets: [
+          "The water bottle is made of stainless steel.",
+          "Double-wall vacuum insulation keeps liquids cold for hours.",
+          "Hand wash only for optimal maintenance.",
+        ],
+        description: "The Owala FreeSip is a stainless steel water bottle. It has double-wall vacuum insulation. The water bottle fits cup holder-friendly base. It measures 3.24\"W x 10.68\"H.",
+        facts: FP_FACTS,
+        typeLabel: "Water Bottle",
+      });
+      expect(r.ok).toBe(false);
+      expect(r.issues.some((i) => i.target === "description" && (i.code === "template_jargon" || i.code === "part_fit_inversion"))).toBe(true);
+    });
+
+    it("红6: 合法自然句与 Very, Very Dark 不得被误伤", () => {
+      const r = validateCopyQualityContract({
+        title: "Owala FreeSip Water Bottle, 24 oz, Stainless Steel, Very, Very Dark",
+        bullets: [
+          "The water bottle is made of stainless steel with a Very, Very Dark finish.",
+          "Double-wall vacuum insulation keeps liquids cold for hours.",
+          "The water bottle has a cup holder-friendly base for convenient travel.",
+          "It features a MagSlider lid with a magnetic slide mechanism.",
+          "This water bottle is designed for daily hydration at home or in the office.",
+        ],
+        description: "The Owala FreeSip is a stainless steel water bottle with double-wall insulation. The water bottle has a cup holder-friendly base. It measures 3.24\"W x 10.68\"H and weighs 13.6 oz.",
+        facts: FP_FACTS,
+        typeLabel: "Water Bottle",
+      });
+      expect(r.ok).toBe(true);
+      expect(r.issues).toEqual([]);
+    });
+  });
 });

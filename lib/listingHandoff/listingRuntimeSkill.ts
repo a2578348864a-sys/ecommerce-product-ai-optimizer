@@ -489,6 +489,17 @@ function templateJargonHit(sentence: string): string | null {
   if (s.includes("standardusewiththe")) return "template_jargon";
   if (s.includes("easycleaningmatches")) return "template_jargon";
   if (s.includes("hasacapacityofcanhold") || s.includes("opensthroughitsafter") || s.includes("issuitableforuseatforstoring") || s.includes("forcarewipe")) return "template_jargon";
+  // 假通过闭环：动作机制套壳/重复（opens through its ... open / double mechanism）
+  if (/\bopens\s+through\s+its\b[^.]*\bopen\b/i.test(sentence)) return "template_jargon";
+  if (/\bthrough\s+its\b[^.]*\bmechanism\b[^.]*\bmechanism\b/i.test(sentence)) return "template_jargon";
+  // 假通过闭环：场景介词错误与口吃（suitable for use at daily... / use at daily / for use at ... use）
+  if (/\bsuitable\s+for\s+use\s+at\s+(?:daily|everyday|outdoor|indoor|commuting|hydration|general)\b/i.test(sentence)) return "template_jargon";
+  if (/\buse\s+at\s+daily\b/i.test(sentence)) return "template_jargon";
+  if (/\bfor\s+use\s+at\b[^.]*\buse\b/i.test(sentence)) return "template_jargon";
+  // 假通过闭环：商品兼容性主客体倒置（把自身底座/部件当外部容器 fits ... base）
+  if (/\bfits\s+(?:[a-z0-9-]+\s+)*(?:base|foot|feet|handle|lid|strap|construction|design|profile)\b/i.test(sentence)) return "template_jargon";
+  // 假通过闭环：单数可数普通名词在谓语后裸奔无冠词（features MagSlider lid 无 a/an/the）
+  if (/\b(?:features|includes|has)\s+(?!a\b|an\b|the\b|this\b|its\b|some\b)[A-Z][A-Za-z0-9'-]*\s+(?:lid|cap|straw|spout|handle|strap|button|switch|mechanism|compartment|base|tray|insert|divider|pocket|zipper|lock|loop|clip|ring|gasket|seal|indicator|valve|dispenser|filter|basket|screen|tray|towel|cup)\b/i.test(sentence)) return "template_jargon";
   // 通用自然语言结构：完整事实短语不应再被名词模板包裹，时间从句必须带明确对象，
   // care 引导后的动作保持自然小写。仅按句法形态匹配，不绑定具体商品或整句。
   if (/\b(?:has|includes)\s+(?:an?\s+)?[A-Z][a-z]{2,}\b/.test(String(sentence))) return "template_jargon";

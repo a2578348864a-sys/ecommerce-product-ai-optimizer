@@ -641,6 +641,24 @@ function consumerFactPhrase(field: string, value: string): string {
  * 其余用 `has a {v} feature.`。
  * 禁止产出 "has a 3 compartments feature" —— 数量/复数前不能加不定冠词。
  */
+const COUNTABLE_FEATURE_HEADS = /\b(?:lid|cap|straw|spout|handle|strap|button|switch|mechanism|compartment|base|tray|insert|divider|pocket|zipper|lock|loop|clip|ring|gasket|seal|indicator|valve|dispenser|filter|basket|screen|cup)\b/i;
+const UNCOUNTABLE_MATERIALS = /\b(?:stainless\s+steel|steel|plastic|bamboo|glass|ceramic|silicone|rubber|foam|aluminum|wood|metal|insulation|finish|lining|coating|mesh)\b/i;
+
+function featureNeedsArticle(phrase: string): boolean {
+  const trimmed = phrase.trim();
+  if (/^(?:a|an|the|this|that|these|those|its)\s+/i.test(trimmed)) return false;
+  if (/^\d+\b/.test(trimmed)) return false;
+  if (isQuantityOrPluralNoun(trimmed)) return false;
+  if (UNCOUNTABLE_MATERIALS.test(phraseHeadWord(trimmed)) || UNCOUNTABLE_MATERIALS.test(trimmed.split(/\s+/).pop() || "")) {
+    return false;
+  }
+  return COUNTABLE_FEATURE_HEADS.test(trimmed);
+}
+
+/**
+ * 功能类名词值 → 数量/复数用 `includes {v}.`（"includes 3 compartments"），
+ * 其余用 `has/features a {v}`（单数可数名词补自然冠词，专名/复数/不可数不加）。
+ */
 function featureObjectFrame(t: string, v: string): string {
   const cased = consumerFactPhrase("functional_feature", v);
   const firstWord = cased.trim().split(/\s+/)[0] ?? "";
@@ -648,9 +666,11 @@ function featureObjectFrame(t: string, v: string): string {
   const phrase = /[a-z][A-Z]/.test(firstWord) || /^[A-Z]{2,}(?:[-_][A-Z0-9]+)*$/.test(firstWord)
     ? cased
     : lowerFirstWord(cased);
-  return isQuantityOrPluralNoun(v)
-    ? "The " + t + " includes " + phrase + "."
-    : "The " + t + " features " + phrase + ".";
+  if (isQuantityOrPluralNoun(v)) {
+    return "The " + t + " includes " + phrase + ".";
+  }
+  const art = featureNeedsArticle(phrase) ? articleFor(phrase) + " " : "";
+  return "The " + t + " features " + art + phrase + ".";
 }
 
 /** 纯控件名（push button / switch / lever / knob / dial）→ uses-as-control 帧；其余名词机制 → opens-through 帧 */
@@ -659,18 +679,23 @@ const PURE_CONTROL_NAMES = /^(?:push|press|slide|flip|toggle)?\s*(?:button|switc
 /**
  * 操作类名词值 → 消费者自然句。
  * 1) 纯控件名（Push Button）→ `uses a {v} as a control.`；
- * 2) 其余机制名（Latch / Step pedal mechanism）→ `opens through its {v} mechanism.`
- * 禁止产出 "has a push-button opening operation" / "opens with a Latch operation."（字段标签拼接）。
- * 不用 works with：works with 命中 Claim Evidence 的兼容性高风险类别（无兼容性事实时会被拒）。
+ * 2) 复杂动作/机制短语（如 push-button open with built-in straw for upright sipping）→ features a {v}；
+ * 3) 简短机制名（Latch / Step pedal mechanism）→ `opens through its {v} mechanism.`
+ * 禁止产出 "opens through its push-button open with built-in straw for upright sipping mechanism" 双重套壳。
  */
 function operationObjectFrame(t: string, v: string): string {
-  if (PURE_CONTROL_NAMES.test(String(v).trim())) {
-    return "The " + t + " uses " + articleFor(v) + " " + v + " as a control.";
+  const trimmed = String(v).trim();
+  if (PURE_CONTROL_NAMES.test(trimmed)) {
+    return "The " + t + " uses " + articleFor(trimmed) + " " + trimmed + " as a control.";
+  }
+  if (/\b(?:open|opening|operat|with\s+built-in|straw\s+for)\b/i.test(trimmed) && !/^(?:latch|lever|pedal|step)\b/i.test(trimmed)) {
+    const art = featureNeedsArticle(trimmed) || /^[A-Z]/.test(trimmed) ? articleFor(trimmed) + " " : "";
+    return "The " + t + " features " + art + trimmed + ".";
   }
   // 值已含 mechanism（Step pedal mechanism / sliding sip lid mechanism）则不再重复追加
-  return /\bmechanism\b/i.test(String(v))
-    ? "The " + t + " opens through its " + v + "."
-    : "The " + t + " opens through its " + v + " mechanism.";
+  return /\bmechanism\b/i.test(trimmed)
+    ? "The " + t + " opens through its " + trimmed + "."
+    : "The " + t + " opens through its " + trimmed + " mechanism.";
 }
 
 const NOUN_SPEC_FRAME_BY_FIELD: Record<string, (t: string, v: string) => string> = {
@@ -687,8 +712,27 @@ const NOUN_SPEC_FRAME_BY_FIELD: Record<string, (t: string, v: string) => string>
         : "The " + t + " includes " + v + "."
       : "A " + v + " is included with the " + t + ".",
   quantity_or_pack_size: (t, v) => "The " + t + " comes in a " + v + ".",
-  compatibility: (t, v) => "The " + t + " fits " + v + ".",
-  usage: (t, v) => "The " + t + " is suitable for use at " + v + ".",
+  compatibility: (t, v) => {
+    const trimmed = String(v).trim();
+    if (/\b(?:base|foot|feet|handle|construction|design|profile)\b/i.test(trimmed) && !/^(?:fits?|compatible\s+with)\b/i.test(trimmed)) {
+      const art = featureNeedsArticle(trimmed) ? articleFor(trimmed) + " " : "";
+      return "The " + t + " has " + art + lowerFirstWord(trimmed) + ".";
+    }
+    if (/^fits?\b/i.test(trimmed)) {
+      return "The " + t + " " + lowerFirstWord(trimmed) + ".";
+    }
+    return "The " + t + " fits " + lowerFirstWord(trimmed) + ".";
+  },
+  usage: (t, v) => {
+    const trimmed = String(v).trim();
+    if (/^(?:for|during|in|on)\b/i.test(trimmed)) {
+      return "The " + t + " is suitable " + lowerFirstWord(trimmed) + ".";
+    }
+    if (/^(?:daily|everyday|outdoor|indoor|commuting|hydration|travel|office|home\s+and|gym|workout|running)\b/i.test(trimmed) || /\buse$/i.test(trimmed)) {
+      return "The " + t + " is suitable for " + lowerFirstWord(trimmed) + ".";
+    }
+    return "The " + t + " is suitable for use at " + lowerFirstWord(trimmed) + ".";
+  },
   // 功能类字段：值本身即可作 features / uses 的宾语，不再套 "has a X feature / operation"
   // （"has a 3 compartments feature" / "has a push-button opening operation" 均非自然英文）。
   functional_feature: (t, v) =>
@@ -748,9 +792,9 @@ function buildControlledSentence(field: string, rawValue: string, typeLabel: str
     return "The " + nounLabel + " works as follows: After placing in the " + placed[1].trim() + ", " + lowerFirstWord(placed[2].trim()) + ".";
   }
   const placedWithObject = value.match(/^after\s+placing\s+(?:the\s+)?[^,]+\s+in\s+the\s+[^,]+,\s*.+$/i);
-  if (placedWithObject) return endWithPeriod(value);
+  if (placedWithObject) return endWithPeriod(value.replace(/^([a-z])/, (_, letter: string) => letter.toUpperCase()));
   if (/^(?:before|when|while)\b/i.test(value) && /,\s*[a-z]+\b/i.test(value)) {
-    return endWithPeriod(value);
+    return endWithPeriod(value.replace(/^([a-z])/, (_, letter: string) => letter.toUpperCase()));
   }
 
   // For storing/For organizing 等用途短语需要一个真实动作主语；保留事实短语本身作为锚点。

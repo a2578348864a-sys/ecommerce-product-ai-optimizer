@@ -1439,4 +1439,196 @@ describe("V2 运营编辑合同：普通名词小写/配件优先/描述结构�
     expect(summary, "消费者摘要应为非空（草稿形状需完整）").not.toBeNull();
     expect(summary === null || !("factRefsAudit" in summary), "消费者摘要泄露审计字段").toBe(true);
   });
+
+  describe("三商品跨形态泛化能力闭环（Organizer / Bottle / Tumbler）", () => {
+    const GENERAL_FIXTURES = [
+      {
+        name: "Organizer",
+        facts: [
+          { field: "brand", label: "品牌", value: "ukeetap" },
+          { field: "series_or_model", label: "系列/型号", value: "UTO001" },
+          { field: "product_type", label: "商品类型", value: "Organizer" },
+          { field: "material", label: "材质", value: "Plastic" },
+          { field: "color_or_variant", label: "颜色", value: "Silver" },
+          { field: "dimensions", label: "尺寸", value: "16.5\"D x 21\"W x 1.77\"H" },
+          { field: "weight", label: "重量", value: "0.81 kg" },
+          { field: "capacity", label: "容量", value: "holds approximately 40-50 pieces of cutlery" },
+          { field: "usage", label: "使用场景", value: "stores knives, forks, spoons, and other cutlery in a kitchen drawer" },
+          { field: "care", label: "清洁保养", value: "wipe with a damp cloth; if necessary, clean with warm water and mild detergent" },
+          { field: "construction", label: "构造", value: "an expandable compartment design with multiple slots, molded in one piece from plastic" },
+          { field: "operation", label: "操作方式", value: "after placing the organizer in the drawer, expand or contract it according to the drawer width" },
+          { field: "compatibility", label: "兼容性", value: "fits most medium and large kitchen drawers and adjusts to the available drawer space" },
+          { field: "included_components", label: "随附组件", value: "1 expandable silverware organizer" },
+          { field: "package_quantity", label: "数量/包装", value: "1 Count" },
+        ],
+      },
+      {
+        name: "Bottle",
+        facts: [
+          { field: "brand", label: "品牌", value: "Owala" },
+          { field: "series_or_model", label: "系列/型号", value: "FreeSip" },
+          { field: "product_type", label: "商品类型", value: "Water Bottle" },
+          { field: "material", label: "材质", value: "Stainless Steel" },
+          { field: "color_or_variant", label: "颜色", value: "Very, Very Dark" },
+          { field: "dimensions", label: "尺寸", value: "3.24\"W x 10.68\"H" },
+          { field: "weight", label: "重量", value: "13.6 oz" },
+          { field: "capacity", label: "容量", value: "24 oz" },
+          { field: "usage", label: "使用场景", value: "daily hydration at home or office" },
+          { field: "care", label: "清洁保养", value: "hand wash the bottle and removable lid only" },
+          { field: "functional_feature", label: "功能特性", value: "convenient carry loop doubles as a lock" },
+          { field: "construction", label: "结构", value: "double-wall vacuum insulation" },
+          { field: "operation", label: "操作", value: "push-button open with built-in straw for upright sipping" },
+          { field: "compatibility", label: "兼容性", value: "cup holder-friendly base" },
+          { field: "included_components", label: "随附组件", value: "FreeSip spout with built-in straw and push-button lid" },
+          { field: "package_quantity", label: "数量/包装", value: "1 Count" },
+        ],
+      },
+      {
+        name: "Tumbler",
+        facts: [
+          { field: "brand", label: "品牌", value: "YETI" },
+          { field: "series_or_model", label: "系列/型号", value: "Rambler" },
+          { field: "product_type", label: "商品类型", value: "Tumbler" },
+          { field: "material", label: "材质", value: "Stainless Steel" },
+          { field: "color_or_variant", label: "颜色", value: "Black" },
+          { field: "dimensions", label: "尺寸", value: "3.5\"W x 6.88\"H" },
+          { field: "weight", label: "重量", value: "0.9 lb" },
+          { field: "capacity", label: "容量", value: "20 oz" },
+          { field: "usage", label: "使用场景", value: "daily commuting and office desk use" },
+          { field: "care", label: "清洁保养", value: "dishwasher safe" },
+          { field: "functional_feature", label: "功能特性", value: "MagSlider lid with magnetic slide mechanism" },
+          { field: "construction", label: "构造", value: "double-wall vacuum insulation" },
+          { field: "compatibility", label: "兼容性", value: "fits standard car cup holders" },
+          { field: "included_components", label: "随附组件", value: "MagSlider lid" },
+          { field: "package_quantity", label: "数量/包装", value: "1 Count" },
+        ],
+      },
+    ];
+
+    for (const fx of GENERAL_FIXTURES) {
+      it(`${fx.name}: 标题、五点、描述与附录通过全部八项判卷合同与三大门禁`, async () => {
+        const { evaluateListingCapabilityFromPolicy } = await import("@/lib/listingHandoff/listingCapabilityEvaluation");
+        const { buildListingPlanFromCapability } = await import("@/lib/listingHandoff/listingPlan");
+        const { verifyListingClaims, listingClaimsHaveEvidence } = await import("@/lib/listingHandoff/listingClaimEvidenceResolver");
+        const { validateCopyQualityContract } = await import("@/lib/listingHandoff/listingRuntimeSkill");
+
+        const li = input(fx.facts);
+        const cap = evaluateListingCapabilityFromPolicy({
+          input: li,
+          confirmedFacts: li.productFacts.map((f) => ({ field: f.field, value: f.value, evidenceTier: "human_confirmed", sourceRef: { sourceKind: "user_confirmation" } })),
+          extraProhibitedTerms: [],
+          hasBlockingIssue: false,
+        });
+        const plan = buildListingPlanFromCapability(li, null, cap.capability);
+        const draft = composeOptimizedListingDraft(li, plan, null);
+        const fullText = [...draft.titles, ...draft.bullets, draft.description, ...draft.keywords].join("\n");
+
+        // 1. 标题
+        const title = draft.titles[0];
+        const titleWords = title.split(/\s+/).length;
+        expect(titleWords).toBeGreaterThanOrEqual(4);
+        expect(titleWords).toBeLessThanOrEqual(20);
+        expect(title.endsWith(".")).toBe(false);
+        expect(title.endsWith("...")).toBe(false);
+
+        // 2. 五点
+        expect(draft.bullets.length).toBeGreaterThanOrEqual(3);
+        expect(draft.bullets.length).toBeLessThanOrEqual(5);
+        expect(new Set(draft.bullets).size).toBe(draft.bullets.length);
+        for (const b of draft.bullets) {
+          const wc = b.trim().split(/\s+/).filter(Boolean).length;
+          expect(wc).toBeGreaterThanOrEqual(5);
+          expect(wc).toBeLessThanOrEqual(30);
+          expect(/[.!?]$/.test(b)).toBe(true);
+        }
+        expect(draft.factRefsAudit?.bullets.length).toBe(draft.bullets.length);
+
+        // 3. 大小写
+        const brandFact = fx.facts.find((f) => f.field === "brand")?.value;
+        const modelFact = fx.facts.find((f) => f.field === "series_or_model")?.value;
+        if (brandFact) expect(title).toContain(brandFact);
+        if (modelFact) expect(title).toContain(modelFact);
+
+        // 4. 重复主语与机械句型
+        const openings = draft.bullets.map((b) => {
+          const tokens = b.toLowerCase().match(/[a-z][a-z'-]*/g) ?? [];
+          return tokens.slice(0, 2).join(" ");
+        });
+        const counts: Record<string, number> = {};
+        for (const o of openings) counts[o] = (counts[o] || 0) + 1;
+        for (const c of Object.values(counts)) expect(c).toBeLessThan(3);
+        const bodyText = [...draft.bullets, draft.description].join(" ");
+        expect(/\band\s+is\b/i.test(bodyText)).toBe(false);
+        expect(/\bFor\s+care\b/i.test(bodyText)).toBe(false);
+
+        // 5. 描述
+        const descSentences = draft.description.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0);
+        expect(descSentences.length).toBeGreaterThanOrEqual(2);
+        expect(descSentences.length).toBeLessThanOrEqual(5);
+        const bulletsSet = new Set(draft.bullets.map((b) => b.trim().toLowerCase().replace(/[.!?]+$/, "")));
+        for (const s of descSentences) {
+          expect(bulletsSet.has(s.trim().toLowerCase().replace(/[.!?]+$/, ""))).toBe(false);
+        }
+
+        // 6. 规格守恒
+        const dimsFact = fx.facts.find((f) => f.field === "dimensions")?.value;
+        const weightFact = fx.facts.find((f) => f.field === "weight")?.value;
+        if (dimsFact) expect(fullText).toContain(dimsFact);
+        if (weightFact) expect(fullText).toContain(weightFact);
+
+        // 7. 风险词
+        expect(/\b(food\s*safe|bpa[\s-]*free|waterproof|sturdy|guarantee[ds]?|ideal|perfect|1\s*count)\b/i.test(fullText)).toBe(false);
+
+        // 8. 关键词空
+        expect(draft.keywords).toEqual([]);
+        expect(draft.backendSearchTerms).toEqual([]);
+
+        // 9. 拒绝五类假通过病句 (False-Pass Rejection)
+        // ① opens through its ... mechanism 套壳
+        expect(fullText).not.toMatch(/opens\s+through\s+its\b/i);
+        // ② suitable for use at 错误介词 / 口吃 use at ... use
+        expect(fullText).not.toMatch(/suitable\s+for\s+use\s+at\b/i);
+        expect(fullText).not.toMatch(/use\s+at\s+daily\b/i);
+        // ③ [product] fits ... base 主客体倒置
+        expect(fullText).not.toMatch(/\bfits\s+(?:[a-z-]+\s+)*base\b/i);
+        // ④ features MagSlider lid 裸奔无冠词
+        expect(fullText).not.toMatch(/\bfeatures\s+MagSlider\s+lid\b/);
+
+        // 门禁：Claim Evidence
+        const fakeDraft: any = {
+          titles: draft.titles,
+          bullets: draft.bullets,
+          description: draft.description,
+          keywords: draft.keywords,
+          source: "deterministic_composition_v1",
+          version: 1,
+          generatedAt: new Date().toISOString(),
+          model: "test",
+          composerVersion: "v1",
+          generationPolicyVersion: "v1",
+          polishApplied: false,
+          polishModel: null,
+          humanReviewRequired: true,
+          sellingPoints: draft.bullets,
+          riskNotes: [],
+          complianceWarnings: [],
+          blockedClaims: [],
+          reviewChecklist: [],
+        };
+        const ceRes = verifyListingClaims(fakeDraft, li);
+        expect(listingClaimsHaveEvidence(ceRes)).toBe(true);
+
+        // 门禁：Copy Quality
+        const cqRes = validateCopyQualityContract({
+          title: draft.titles[0],
+          bullets: draft.bullets,
+          description: draft.description,
+          facts: fx.facts.map((f) => ({ factId: f.field, field: f.field, label: f.label, value: f.value })),
+          typeLabel: fx.name,
+          cannotSay: ["leakproof", "bpa-free"],
+        });
+        expect(cqRes.ok).toBe(true);
+      });
+    }
+  });
 });

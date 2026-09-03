@@ -158,10 +158,8 @@ export function classifySyntax(sentence: string): SentenceSyntax {
 /** 句首形态的规范键（用于节奏去重：相同句首形态最多出现 2 次）。 */
 export function openingKeyOf(sentence: string): string {
   const s = String(sentence ?? "").trim();
-  const m = s.match(/^([A-Za-z][a-z]*\s+(?:the\s+)?(?:[a-z]+\s+)?(?:is|are|was|were|has|have|includes?|features?|measures?|weighs?|fits?|comes?|works?)\b)/i);
-  if (m) return m[1].replace(/\s+/g, " ").toLowerCase();
-  const m2 = s.match(/^([A-Za-z][a-z]*[^,.]{0,20})/);
-  return (m2 ? m2[1] : s.slice(0, 12)).toLowerCase();
+  const tokens = s.toLowerCase().match(/[a-z][a-z'-]*/g) ?? [];
+  return tokens.slice(0, 2).join(" ");
 }
 
 /** 获取句子的主语形态类型（the-noun, it, this-noun, other） */
@@ -200,7 +198,7 @@ function applyOpeningVariant(
     if (prev1 !== "it" && !consecutiveIt) {
       // The <Subject> <verb> → It <verb>（严格锚定动词，绝不制造悬空句）
       const itVar = sentence.replace(
-        /^The\s+[A-Za-z][A-Za-z ]*?(?=\s+(?:is|has|includes?|measures?|weighs?|fits|features?|can|works?|opens?|uses?|comes?|holds?)\b)/i,
+        /^The\s+[A-Za-z][A-Za-z ]*?(?=\s+(?:is|has|includes?|measures?|weighs?|fits?|features?|can|works?|opens?|uses?|comes?|holds?|stores?|expands?|adjusts?)\b)/i,
         "It"
       ).replace(/\s{2,}/g, " ").trim();
       if (itVar !== sentence) return itVar;
