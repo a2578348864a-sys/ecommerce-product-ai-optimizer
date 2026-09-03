@@ -117,8 +117,9 @@ export function ImageStudioClient({ taskId = "" }: { taskId?: string }) {
     return (
       <div data-testid="image-studio-task-flow" className="studio-main-flow">
         {progressRail}
-        <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700" data-testid="image-mode-task-linked">
-          来自研究记录（TASK-LINKED）· 商品身份 / 事实 / 参考图来自研究确认
+        <div className="mb-3 flex max-w-full flex-wrap items-center gap-x-2 gap-y-0.5 rounded-2xl border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold leading-5 text-indigo-700" data-testid="image-mode-task-linked">
+          <span className="whitespace-nowrap">来自研究记录（TASK-LINKED）</span>
+          <span>商品身份 / 事实 / 参考图来自研究确认</span>
         </div>
         <TaskStudioPreparation taskId={taskId} kind="image" onReadyChange={handleTaskReady} onCommitted={handleHandoffCommitted}>
           <div className="surface-card p-4" data-testid="image-studio-task-mode">

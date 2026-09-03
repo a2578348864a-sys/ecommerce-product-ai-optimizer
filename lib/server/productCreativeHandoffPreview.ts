@@ -60,6 +60,7 @@ import { evaluateHandoffStatus } from "@/lib/productCreativeHandoffStatus";
 import { buildCreativeContextFromResearch } from "@/lib/creativeContextBuilder";
 import { getFactCandidates } from "@/lib/factCandidates";
 import { mapResearchConfirmedToHandoff, RESEARCH_TO_LISTING_FIELD_MAP } from "@/lib/canonicalFactMapping";
+import { buildReferenceConflicts } from "@/lib/productCreativeHandoffFactAuthority";
 import { loadCandidateSourceMeta } from "@/lib/server/candidateSourceMeta";
 import type {
   ProductCreativeHandoffCandidate,
@@ -178,6 +179,16 @@ export type CreativeHandoffPreview = {
     alreadyImported: boolean;
   };
   blockingCodes?: string[];
+  /** V4 Fact Authority：研究侧当前人工确认事实（Human Confirmed Facts 唯一权威；只读展示，不入选择集） */
+  currentConfirmedFacts?: Array<{ field: string; label: string; value: string | number; sourceKind: string }>;
+  /** V4 Fact Authority：参考资料层（含参考图候选快照值）与权威事实差异（软提示；不阻断视觉参考确认） */
+  referenceConflicts?: Array<{
+    field: string;
+    label: string;
+    confirmedValue: string | number;
+    referenceValue: string | number;
+    resolution: "use_confirmed_fact";
+  }>;
   expectedResearchRevision?: number;
   expectedCurrentHandoffRevision?: number;
   storageVersion?: { resultJsonHash: string; updatedAt: string };
@@ -766,6 +777,43 @@ export async function checkCreativeHandoffGate(
 
 // ─── Preview ──────────────────────────────────────────────
 
+/**
+ * V4 Fact Authority 投影：研究侧当前人工确认事实（权威只读）+ 参考资料层冲突（软提示）。
+ * authority 与 references 均只读展示；referenceConflicts 不得用于阻止视觉参考确认。
+ */
+function projectFactAuthority(gate: CreativeHandoffGateResult): {
+  currentConfirmedFacts: CreativeHandoffPreview["currentConfirmedFacts"];
+  referenceConflicts: CreativeHandoffPreview["referenceConflicts"];
+  authorityFields: Set<string>;
+} {
+  const authority = (gate.workbenchConfirmedFacts ?? []).map((f) => ({ field: f.field, label: f.label, value: f.value }));
+  const authorityFields = new Set(authority.map((f) => f.field));
+  const references = (gate.candidate?.stableSourceFacts ?? []).map((f) => ({
+    field: f.field,
+    label: f.label,
+    value: f.value,
+    sourceKind: f.sourceRef.sourceKind,
+  }));
+  const conflicts = buildReferenceConflicts({ authority, references });
+  const displayValue = (value: string | number | boolean | string[]): string | number =>
+    typeof value === "number" ? value : String(value);
+  return {
+    currentConfirmedFacts: authority.length > 0
+      ? (gate.workbenchConfirmedFacts ?? []).map((f) => ({ field: f.field, label: f.label, value: f.value, sourceKind: f.sourceKind }))
+      : undefined,
+    referenceConflicts: conflicts.length > 0
+      ? conflicts.map((c) => ({
+          field: c.field,
+          label: c.label,
+          confirmedValue: displayValue(c.confirmedValue),
+          referenceValue: displayValue(c.referenceValue),
+          resolution: "use_confirmed_fact" as const,
+        }))
+      : undefined,
+    authorityFields,
+  };
+}
+
 export async function generateCreativeHandoffPreview(
   taskId: string,
   context: AccessContext,
@@ -775,12 +823,15 @@ export async function generateCreativeHandoffPreview(
   // 无人工确认事实：返回来源层信息（stable/AI/issues）+ confirmable 候选，不可创建
   if (!gate.allowed && gate.reason === "no_confirmed_facts" && gate.evidenceLayers) {
     const layers = gate.evidenceLayers;
+    const authorityNow = projectFactAuthority(gate);
     const degradedRevision = gate.candidate?.sourceResearch.researchRevision ?? 1;
     const degradedSelection = (prefix: string, id: string) =>
       makeSelectionId(context.mode === "owner" ? "owner" : "visitor", taskId, degradedRevision, prefix, id);
     // Fix.5: 降级分支复用与正常 eligible 分支完全相同的候选构造（同一函数、同一 selectionId 作用域）
     const degradedConfirmables = gate.candidate
-      ? buildConfirmableCandidates(gate.candidate.stableSourceFacts).map((c) => ({
+      ? buildConfirmableCandidates(gate.candidate.stableSourceFacts)
+          .filter((c) => !authorityNow.authorityFields.has(c.field))
+          .map((c) => ({
           selectionId: degradedSelection("confirm", c.selectionKey),
           canonicalField: c.field,
           displayValue: typeof c.value === "string" ? c.value.slice(0, 200) : String(c.value).slice(0, 200),
@@ -800,6 +851,8 @@ export async function generateCreativeHandoffPreview(
         researchFingerprint: "",
       },
       candidateFactOptions: [],
+      ...(authorityNow.currentConfirmedFacts ? { currentConfirmedFacts: authorityNow.currentConfirmedFacts } : {}),
+      referenceConflicts: authorityNow.referenceConflicts,
       confirmableFactCandidates: degradedConfirmables,
       stableSourceFacts: layers
         .filter((e): e is Extract<typeof e, { evidenceTier: "source_snapshot" }> => e.evidenceTier === "source_snapshot")
@@ -853,6 +906,7 @@ export async function generateCreativeHandoffPreview(
   const subjectKind = context.mode === "owner" ? "owner" : "visitor";
   const researchRevision = gate.candidate.sourceResearch.researchRevision;
   const selection = (prefix: string, id: string) => makeSelectionId(subjectKind, taskId, researchRevision, prefix, id);
+  const authorityNow = projectFactAuthority(gate);
 
   const preview: CreativeHandoffPreview = {
     eligibility: "eligible",
@@ -863,6 +917,8 @@ export async function generateCreativeHandoffPreview(
       // P1-2 fix: Safe fingerprint, NOT candidateId
       researchFingerprint: safeFingerprint(gate.candidate.sourceResearch.candidateId),
     },
+    ...(authorityNow.currentConfirmedFacts ? { currentConfirmedFacts: authorityNow.currentConfirmedFacts } : {}),
+    referenceConflicts: authorityNow.referenceConflicts,
     candidateFactOptions: gate.candidate.confirmedFacts.map((f: ProductCreativeHandoffConfirmedFact) => ({
       selectionId: selection("fact", f.factId),
       field: f.field,
@@ -870,7 +926,9 @@ export async function generateCreativeHandoffPreview(
       valueSummary: typeof f.value === "string" ? f.value.slice(0, 200) : String(f.value).slice(0, 200),
     })),
     // Fix.4: 可人工确认候选（仅 stable 层 human_confirmation_required_for_claim）
-    confirmableFactCandidates: buildConfirmableCandidates(gate.candidate.stableSourceFacts).map((c) => ({
+    confirmableFactCandidates: buildConfirmableCandidates(gate.candidate.stableSourceFacts)
+      .filter((c) => !authorityNow.authorityFields.has(c.field))
+      .map((c) => ({
       selectionId: selection("confirm", c.selectionKey),
       canonicalField: c.field,
       displayValue: typeof c.value === "string" ? c.value.slice(0, 200) : String(c.value).slice(0, 200),

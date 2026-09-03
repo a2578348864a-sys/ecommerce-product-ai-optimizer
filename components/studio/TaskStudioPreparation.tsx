@@ -14,6 +14,7 @@ import {
 import { ImageScenePresetPicker } from "@/components/image-studio/ImageScenePresetPicker";
 import { ListingFactSupplementPanel } from "@/components/studio/ListingFactSupplementPanel";
 import { useSessionDraft } from "@/lib/client/useSessionDraft";
+import { authorityCounts } from "@/lib/productCreativeHandoffFactAuthority";
 import {
   DEFAULT_STUDIO_IMAGE_CREATIVE_INTENT,
   resolveStudioImageCreativeIntent,
@@ -149,10 +150,12 @@ function friendlyError(error: ApiError) {
   if (["handoff_stale", "research_gate_failed", "invalid_handoff_candidate"].includes(error.code)) {
     return "当前研究资料已失效或尚未达到创作条件，请回到研究记录补充后重试。";
   }
+  if (error.code === "manual_fact_research_authority") {
+    // 研究侧已人工确认的字段，创作侧不允许覆盖（规则见 V4 Fact Authority）
+    return error.message || "该商品事实已被研究人工确认，创作侧不修改已确认事实；如需修改请返回商品研究查看并修改。";
+  }
   if (error.code === "confirmed_fact_conflict") {
-    // 同一商品事实（如品牌/系列/型号/材质）在研究中已被确认并给出了值；
-    // 创作侧必须保留研究确认值，不能覆盖为不同值（friendly 提示真实原因）
-    return "「研究已确认该商品事实并给出值」与「你填写/选择的另一个值」冲突——请保留研究确认值后重新确认；如需修改请先回研究记录调整。";
+    return "同一商品事实存在多个值。请保留研究已确认值；如需修改该事实请返回商品研究，修改并重新人工确认后回来继续。";
   }
   if (error.code === "network_error") return "网络连接异常，请稍后重试。";
   return error.message || "创作资料读取失败，请稍后重试。";
@@ -217,6 +220,30 @@ export function TaskStudioPreparation({
     () => buildPreparationFactOptions(preview),
     [preview],
   );
+  // V4 Fact Authority：研究侧人工确认事实（Human Confirmed Facts 唯一权威；只读展示，不进入选择集）
+  const currentAuthority = useMemo(
+    () => preview?.currentConfirmedFacts ?? [],
+    [preview?.currentConfirmedFacts],
+  );
+  const authorityFieldSet = useMemo(
+    () => new Set(currentAuthority.map((fact) => fact.field)),
+    [currentAuthority],
+  );
+  // Image Studio 可勾选的仅为研究未覆盖的来源快照候选：研究已确认字段直接以权威值呈现，不重复确认
+  const selectableFactOptions = useMemo(
+    () => (kind === "image" ? factOptions.filter((option) => !authorityFieldSet.has(option.field)) : factOptions),
+    [factOptions, kind, authorityFieldSet],
+  );
+  // 参考资料层与权威事实差异（软提示；不阻断参考图使用）
+  const referenceConflicts = useMemo(() => preview?.referenceConflicts ?? [], [preview?.referenceConflicts]);
+  // V4R 唯一权威统计口径：全页「已确认商品事实 / 待确认候选」只出自同一权威 DTO
+  const authoritySummary = useMemo(
+    () => authorityCounts({
+      currentConfirmedFacts: preview?.currentConfirmedFacts,
+      confirmableFactCandidates: preview?.confirmableFactCandidates,
+    }),
+    [preview?.currentConfirmedFacts, preview?.confirmableFactCandidates],
+  );
   const visualOptions = useMemo(
     () => preview?.visualReferenceCandidates ?? [],
     [preview?.visualReferenceCandidates],
@@ -254,11 +281,11 @@ export function TaskStudioPreparation({
   useEffect(() => {
     if (!preview) return;
     setSelectedFacts((current) => current.length > 0
-      ? current.filter((id) => factOptions.some((option) => option.selectionId === id))
+      ? current.filter((id) => selectableFactOptions.some((option) => option.selectionId === id))
       : // 默认仅选可进入创作的商品事实（排除 market_signal），且同 canonical field 只取首个候选，
         // 避免同 field 多候选全选导致后端 field 唯一性冲突（422）
-        defaultPreparationSelection(factOptions));
-  }, [preview, factOptions]);
+        defaultPreparationSelection(selectableFactOptions));
+  }, [preview, selectableFactOptions]);
 
   // 视觉参考候选默认勾选尚未批准者（已批准的保持展示态，不重复提交）
   useEffect(() => {
@@ -339,6 +366,9 @@ export function TaskStudioPreparation({
       prohibitedClaims: detail.prohibitedClaims?.length ?? 0,
     };
     const listingFactsMissing = kind === "listing" && listingFactSummary.listingEligibleFacts === 0;
+    // V4R：创作侧人工补充事实 = 当前快照中研究权威未覆盖、具人为确认来源的字段（独立展示，不与研究事实混淆）
+    const authorityFieldNames = new Set((preview?.currentConfirmedFacts ?? []).map((f) => f.field));
+    const supplementalFacts = (detail?.confirmedFacts ?? []).filter((fact) => !authorityFieldNames.has(fact.field));
     return (
       <div data-testid="task-studio-authoritative-mode">
         <section className="surface-card mb-4 border-teal-200 bg-teal-50/50 p-4">
@@ -355,6 +385,22 @@ export function TaskStudioPreparation({
             <span className="rounded-full bg-white px-2.5 py-1">最终人工复核：必须</span>
           </div>
         </section>
+        {/* V4R：创作侧人工补充事实（独立面板；有则显示，无则不显示空面板） */}
+        {supplementalFacts.length > 0 ? (
+          <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50/60 p-3" data-testid="studio-supplemental-facts">
+            <p className="text-sm font-bold text-sky-900">创作侧人工补充事实</p>
+            <p className="mt-0.5 text-xs leading-5 text-slate-500">
+              Studio-confirmed supplemental facts：创作侧人工补充并确认、研究侧当前无同字段的事实。若研究后续确认同字段，将自动以研究值替代，此处旧值仅留在历史快照。
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {supplementalFacts.map((fact) => (
+                <span key={fact.field} className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
+                  {FACT_LABELS[fact.field] ?? fact.label}：{String(fact.value)}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
         {/* V3 Evidence → Creative Context Bridge：创作参考资料摘要（§51，authoritative 模式也展示） */}
         {preview?.creativeContextSummary ? (
           <div className="mb-4 rounded-xl border border-teal-100 bg-teal-50/50 p-3" data-testid="creative-context-summary">
@@ -492,9 +538,20 @@ export function TaskStudioPreparation({
     && preview.expectedResearchRevision
     && preview.storageVersion
     && preview.expectedCurrentHandoffRevision !== undefined
-    && selectedFacts.length > 0
+    && (selectedFacts.length > 0 || (kind === "image" && selectedVisuals.length > 0))
     && confirmed,
   );
+
+  /** V4 Fact Authority：冲突面板「仍作为视觉参考使用」——确保已勾选待批准参考图并提示事实采用权威值 */
+  function stillUseVisualAsReference() {
+    if (!preview) return;
+    setSelectedVisuals((current) => current.length > 0
+      ? current
+      : (preview.visualReferenceCandidates ?? [])
+          .filter((candidate) => candidate.approvedForReference !== true)
+          .map((candidate) => candidate.selectionId));
+    setVisualNotice("参考资料与已确认事实不一致不会阻止参考图使用：生成时将采用研究已确认事实值，参考资料值不进入 Prompt 事实层。");
+  }
 
   /** 权威模式：单独批准商品参考图（复用 createOrAppendCreativeHandoff 写入链，不绕过服务端） */
   async function confirmVisualReference() {
@@ -582,8 +639,8 @@ export function TaskStudioPreparation({
             以下均来自商品研究阶段保存的证据；除「已确认商品事实」外，其余只作参考，不自动成为事实声明。
           </p>
           <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-slate-700">
-            <span className="rounded-full bg-white px-2.5 py-1">已确认商品事实：{preview.creativeContextSummary.counts.confirmedFacts}</span>
-            <span className="rounded-full bg-white px-2.5 py-1">待确认候选：{preview.creativeContextSummary.counts.confirmableCandidates}</span>
+            <span className="rounded-full bg-white px-2.5 py-1">已确认商品事实：{authoritySummary.confirmedFacts}</span>
+            <span className="rounded-full bg-white px-2.5 py-1">待确认候选：{authoritySummary.confirmableCandidates}</span>
             <span className="rounded-full bg-white px-2.5 py-1">VOC 洞察：{preview.creativeContextSummary.counts.vocInsights}</span>
             <span className="rounded-full bg-white px-2.5 py-1">关键词候选：{preview.creativeContextSummary.counts.keywordCandidates}</span>
             <span className="rounded-full bg-white px-2.5 py-1">竞品参考：{preview.creativeContextSummary.counts.competitiveInsights}</span>
@@ -606,11 +663,65 @@ export function TaskStudioPreparation({
         </div>
       ) : null}
 
-      {factOptions.length > 0 ? (
+      {/* V4 Fact Authority：研究侧人工确认事实（唯一权威，只读；自动用于创作，不需再次确认） */}
+      {currentAuthority.length > 0 ? (
+        <div className="mt-4 rounded-xl border border-teal-200 bg-teal-50/60 p-3" data-testid="authority-confirmed-facts">
+          <p className="text-sm font-bold text-teal-900">当前已确认商品事实（Human Confirmed Facts · 研究人工确认）</p>
+          <p className="mt-0.5 text-xs leading-5 text-slate-500">以下为商品研究阶段人工确认的当前事实，将自动用于创作；不再要求你在创作页重复确认。</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {currentAuthority.map((fact) => (
+              <span key={`${fact.field}:${String(fact.value)}`} className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
+                {FACT_LABELS[fact.field] ?? fact.label}：{String(fact.value)}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* V4 Fact Authority：参考资料层与已确认事实不一致 —— 软提示，不阻断视觉参考使用 */}
+      {referenceConflicts.length > 0 ? (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/70 p-3" data-testid="fact-reference-conflicts" role="note">
+          <p className="text-sm font-bold text-amber-900">参考资料与当前已确认商品事实不一致</p>
+          <p className="mt-0.5 text-xs leading-5 text-amber-800">
+            生成时继续使用研究已确认事实值；参考资料中的其他值仅作参考保留，不会进入 Prompt 事实层，也不会覆盖商品事实。
+          </p>
+          <ul className="mt-2 space-y-1.5">
+            {referenceConflicts.map((conflict) => (
+              <li key={`${conflict.field}:${String(conflict.referenceValue)}`} className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs leading-5 text-slate-700">
+                <span className="font-bold text-slate-900">{FACT_LABELS[conflict.field] ?? conflict.label}</span>
+                <span className="ml-2">已确认事实值：<strong className="text-teal-700">{String(conflict.confirmedValue)}</strong></span>
+                <span className="ml-2">参考资料记录值：<span className="text-amber-700">{String(conflict.referenceValue)}</span></span>
+                <span className="mt-0.5 block text-slate-500">处理：使用已确认事实值 {String(conflict.confirmedValue)}；参考资料值不进入 Prompt 事实层。</span>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {kind === "image" ? (
+              <button
+                type="button"
+                onClick={() => stillUseVisualAsReference()}
+                className="inline-flex h-9 items-center rounded-xl bg-teal-600 px-3.5 text-sm font-semibold text-white hover:bg-teal-700"
+              >
+                仍作为视觉参考使用
+              </button>
+            ) : null}
+            <Link
+              href={`/tasks/${encodeURIComponent(taskId)}`}
+              className="inline-flex h-9 items-center rounded-xl border border-slate-300 bg-white px-3.5 text-sm font-semibold text-slate-700"
+            >
+              返回商品研究查看事实
+            </Link>
+          </div>
+        </div>
+      ) : null}
+
+      {selectableFactOptions.length > 0 ? (
         <fieldset className="mt-5">
-          <legend className="text-sm font-bold text-slate-900">已确认商品事实</legend>
+          <legend className="text-sm font-bold text-slate-900">
+            {authorityFieldSet.size > 0 ? "可确认的来源快照事实（研究未确认项）" : "已确认商品事实"}
+          </legend>
           <div className="mt-2 grid gap-2 md:grid-cols-2">
-            {factOptions.map((option) => (
+            {selectableFactOptions.map((option) => (
               <label key={option.selectionId} className="flex gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm leading-6 text-slate-700">
                 <input
                   type="checkbox"
@@ -619,7 +730,7 @@ export function TaskStudioPreparation({
                     const field = option.field;
                     setSelectedFacts((current) => {
                       // 同 canonical field 单选：选择时取消同 field 其它候选（防后端 field 唯一性冲突 422）
-                      const sameFieldIds = factOptions
+                      const sameFieldIds = selectableFactOptions
                         .filter((o) => o.field === field && o.selectionId !== option.selectionId)
                         .map((o) => o.selectionId);
                       const withoutSameField = current.filter((id) => !sameFieldIds.includes(id));
@@ -636,7 +747,7 @@ export function TaskStudioPreparation({
         </fieldset>
       ) : (
         <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-800">
-          当前没有可确认的商品事实，请先回到研究记录补充并完成人工决定。
+          当前没有可确认的来源快照事实；研究已确认事实会自动用于创作，无需再次勾选。如需补充新事实或修改已确认事实，请先回到商品研究处理。
         </p>
       )}
 

@@ -30,6 +30,7 @@ import { resolveVisualReferenceSelectionIds, buildApprovedVisualReference } from
 import { parseCandidateResearchContext } from "@/lib/candidateResearchContext";
 import { getFactCandidates } from "@/lib/factCandidates";
 import { mapResearchConfirmedToHandoff } from "@/lib/canonicalFactMapping";
+import { resolveAuthoritativeFactSnapshot } from "@/lib/productCreativeHandoffFactAuthority";
 import { adaptResearchContextForHandoff } from "@/lib/server/researchContextAdapter";
 import { loadCandidateSourceMeta } from "@/lib/server/candidateSourceMeta";
 import {
@@ -390,12 +391,16 @@ export async function createOrAppendCreativeHandoff(
             confirmedAt: now,
           })
         : { facts: [], skipped: [] };
-      const effectiveConfirmed = mergeConfirmedProductFacts({
-        existing: existingConfirmedFacts,
+      // V4 Fact Authority：Human Confirmed Facts（研究侧 factCandidates）为当前事实唯一权威源。
+      // 旧 handoff 快照值只作历史（previousSnapshot 在 research 未覆盖的 field 才继承），
+      // 不与最新研究事实做覆盖竞争；本轮 stable 勾选撞 research field → 忽略（reference conflict）；
+      // manual 撞 research field → manual_fact_research_authority（回研究修改）。不再抛 confirmed_fact_conflict。
+      const effectiveConfirmed = resolveAuthoritativeFactSnapshot({
+        previousSnapshot: existingConfirmedFacts,
         selected: conversion.confirmedFacts,
         manual: manualConfirmed,
         research: researchBridge.facts,
-      });
+      }).facts;
       // 跨层排他：无论新确认或继承，stable 必须剔除 confirmed 已占用的 field
       const confirmedFieldSet = new Set(effectiveConfirmed.map((f) => f.field));
       const finalCandidate: ProductCreativeHandoffCandidate = {

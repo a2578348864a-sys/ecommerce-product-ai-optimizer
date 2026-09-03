@@ -97,6 +97,16 @@ export type CreativeHandoffPreview = {
     present: boolean;
     alreadyImported: boolean;
   };
+  /** V4 Fact Authority：研究侧当前人工确认事实（Human Confirmed Facts 唯一权威；只读展示，不入选择集） */
+  currentConfirmedFacts?: { field: string; label: string; value: string | number; sourceKind: string }[];
+  /** V4 Fact Authority：参考资料层与权威事实差异（软提示；不阻断视觉参考确认） */
+  referenceConflicts?: {
+    field: string;
+    label: string;
+    confirmedValue: string | number;
+    referenceValue: string | number;
+    resolution: "use_confirmed_fact";
+  }[];
   /** V3 Evidence → Creative Context Bridge：研究 Evidence 参考层安全摘要（§51） */
   creativeContextSummary?: {
     counts: {

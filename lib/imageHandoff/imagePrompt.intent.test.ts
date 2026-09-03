@@ -248,3 +248,40 @@ describe("Custom + Outdoor/Travel Provider Request Dry-run（无真实调用）"
     expect(prompt).toContain("outdoor/travel environment");
   });
 });
+
+// ── V4 Fact Authority：Prompt 事实层只允许当前研究已确认值 ──────────────
+describe("V4 Fact Authority — Prompt 事实层门禁", () => {
+  function factSection(prompt: string): string {
+    const start = prompt.indexOf("=== 已确认商品事实 ===");
+    const end = prompt.indexOf("===", start + "=== 已确认商品事实 ===".length);
+    return start >= 0 ? prompt.slice(start, end < 0 ? prompt.length : end) : "";
+  }
+
+  it("接受7: 事实层只含当前权威 40oz；旧快照/参考值 30oz 不得进入事实层", () => {
+    const input = baseInput({
+      productFacts: [{ field: "capacity", label: "容量", value: "40 oz" }],
+      // 旧值仅以参考资料形式出现（如图片来源快照附带的说明文本）
+      approvedVisualReferences: [{
+        referenceFingerprint: "f6d3762f2185bc93",
+        summary: "current product reference image (reference note: capacity 30 oz in legacy snapshot)",
+        selectionId: "visual-ref:1082dd9b82821765ffbd0242",
+        approvedAt: "2026-08-17T19:32:52.367Z",
+      }],
+      compositionReferences: ["legacy snapshot states 30 oz (reference only)"],
+    });
+    const prompt = buildImagePromptFromInput(input);
+    const facts = factSection(prompt);
+    expect(facts).toContain("40 oz");
+    expect(facts).not.toContain("30 oz");
+    // 事实层之外仍保留"参考层非事实"约束文本
+    expect(prompt).toContain("Never turn any reference into product appearance, attribute, certification, performance, or text claim");
+  });
+
+  it("无泄漏断言通过（内部标记不进入 prompt）", () => {
+    const input = baseInput({ productFacts: [{ field: "capacity", label: "容量", value: "40 oz" }] });
+    const prompt = buildImagePromptFromInput(input);
+    expect(prompt).toBeTruthy();
+    expect(prompt).not.toContain("sourceRef");
+    expect(prompt).not.toContain("resultJson");
+  });
+});
