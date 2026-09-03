@@ -64,6 +64,27 @@ export function buildFactRefs(facts: OperatedFact[]): Record<string, string> {
   return refs;
 }
 
+/**
+ * V2 不变量：数字串、单位/限定词（only/not/up to/approximately 等闭合语义词）在句级编辑后
+ * 必须原样保留；新增非闭类词也判失败。仅判定词面与词性，与商品无关。
+ */
+export function stageBSentenceInvariantOk(before: string, after: string): boolean {
+  const tokenize = (text: string) => String(text).toLowerCase().split(/[^a-z0-9\u00c0-\u024f'’/.-]+/).filter(Boolean);
+  const beforeTokens = tokenize(before);
+  const afterTokens = new Set(tokenize(after));
+  for (const w of beforeTokens) {
+    if (/\d/.test(w) && !afterTokens.has(w)) return false;
+  }
+  const INVARIANT_QUALIFIERS = new Set(["only", "not", "no", "never", "up", "approximately", "about", "around", "max", "maximum", "min", "minimum", "per", "daily", "weekly"]);
+  for (const w of beforeTokens) {
+    if (INVARIANT_QUALIFIERS.has(w) && !afterTokens.has(w)) return false;
+  }
+  for (const w of afterTokens) {
+    if (!beforeTokens.includes(w) && !CLOSED_GRAMMAR_WORDS.has(w)) return false;
+  }
+  return true;
+}
+
 export function wordSetOf(text: string): Set<string> {
   const out = new Set<string>();
   for (const raw of String(text).toLowerCase().split(/[^a-z0-9\u00c0-\u024f'’/-]+/)) {
@@ -104,6 +125,8 @@ function guardedEdit(
   const afterWords = wordSetOf(edited);
   if (JSON.stringify(afterRefs) !== JSON.stringify(beforeRefs)) return null;
 
+  // V2：数字/单位/限定词句级不变量（丢数/丢单位/丢限定词 → 保险丝熔断回退）
+  if (!stageBSentenceInvariantOk(sentence, edited)) return null;
   // 严禁引入非白名单闭类词的任何新词
   for (const w of afterWords) {
     if (CLOSED_GRAMMAR_WORDS.has(w)) continue;

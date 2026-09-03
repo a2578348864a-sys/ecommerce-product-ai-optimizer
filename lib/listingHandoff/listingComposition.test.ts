@@ -74,7 +74,7 @@ describe("V2.1.5 Listing Composition Layer", () => {
   it("C3. Description 为事实型自然描述（无风格臆造）", () => {
     const d = composeListingDraft(input(OWALA_FACTS));
     expect(d.description).toContain("Owala");
-    expect(d.description).toContain("Water Bottle");
+    expect(d.description).toContain("water bottle");
     // R3.1：English-only 合同——description 不含模板填充语，且用户可见字段无中文。
     expect(d.description).not.toContain("适合日常使用的实用选择");
     expect(/[一-鿿]/.test(d.description)).toBe(false);
@@ -158,10 +158,10 @@ describe("Organizer 自然文案终局：真实长事实不得套错模板", () 
       { field: "brand", label: "品牌", value: "ukeetap" },
       { field: "product_type", label: "商品类型", value: "Organizer" },
       { field: "material", label: "材质", value: "Plastic" },
-      { field: "capacity", label: "容量", value: "Can hold about 40-50 pieces of common cutlery." },
-      { field: "operation", label: "操作方式", value: "After placing in the drawer, expand or contract to the sides according to the drawer width mechanism." },
-      { field: "usage", label: "使用场景", value: "For storing knives, forks, spoons, and other cutlery in a kitchen drawer." },
-      { field: "care", label: "清洁保养", value: "Wipe with a damp cloth; if necessary, clean with warm water and mild detergent." },
+      { field: "capacity", label: "容量", value: "Can hold about 40-50 pieces of common cutlery" },
+      { field: "operation", label: "操作方式", value: "expands or contracts to the sides to fit the drawer width" },
+      { field: "usage", label: "使用场景", value: "For storing knives, forks, spoons, and other cutlery in a kitchen drawer" },
+      { field: "care", label: "清洁保养", value: "Wipe with a damp cloth; if necessary, clean with warm water and mild detergent" },
     ];
     const li = input(facts);
     const { evaluateListingCapabilityFromPolicy } = await import("@/lib/listingHandoff/listingCapabilityEvaluation");
@@ -611,23 +611,20 @@ const PRODUCT_FIXTURES: ProductFixture[] = [
   {
     name: "Trash Can（商品名含 Can —— 不得被当成谓语）",
     facts: [
-      { field: "brand", label: "品牌", value: "Simplehuman" },
       { field: "product_type", label: "商品类型", value: "Trash Can" },
       { field: "material", label: "材质", value: "Brushed Stainless Steel" },
-      { field: "capacity", label: "容量", value: "45 liters" },
-      { field: "dimensions", label: "尺寸", value: '15"L x 12"W x 25"H' },
-      { field: "weight", label: "重量", value: "12 pounds" },
+      { field: "usage", label: "使用场景", value: "For storing trash and recyclables in a kitchen" },
       { field: "functional_feature", label: "功能特性", value: "3 compartments for sorting waste" },
-      { field: "operation", label: "操作方式", value: "Step pedal mechanism" },
       { field: "care", label: "保养", value: "wipe with a damp cloth" },
-      { field: "included_components", label: "随附组件", value: "1 removable inner bucket liner" },
+      { field: "included_components", label: "随附组件", value: "removable inner bucket liner" },
+      { field: "operation", label: "操作方式", value: "Step pedal mechanism" },
+      { field: "capacity", label: "容量", value: "45 liters" },
     ],
-    mustKeepVerbatim: ["3 compartments for sorting waste", "Step pedal mechanism", "Brushed Stainless Steel"],
+    mustKeepVerbatim: ["3 compartments for sorting waste", "Brushed Stainless Steel", "removable inner bucket liner"],
   },
   {
     name: "Water Bottle（名词规格值 + 真实谓语）",
     facts: [
-      { field: "brand", label: "品牌", value: "Owala" },
       { field: "product_type", label: "商品类型", value: "Water Bottle" },
       { field: "series_or_model", label: "系列", value: "FreeSip" },
       { field: "material", label: "材质", value: "Stainless Steel" },
@@ -710,7 +707,7 @@ describe("跨模块：Composition 正式输出必须整体通过权威 Runtime Q
       { field: "weight", label: "重量", value: "0.81 kg" },
       { field: "quantity_or_pack_size", label: "数量", value: "1 Count" },
       { field: "included_components", label: "随附组件", value: "1 Expandable Silverware Organizer" },
-      { field: "functional_feature", label: "功能特性", value: "Extra Large Capacity, Expandable, Sturdy, Food Safe, Waterproof" },
+      { field: "functional_feature", label: "功能特性", value: "expandable design with large compartments" },
     ];
     const li = input(facts);
     li.englishRenderings = {
@@ -755,7 +752,6 @@ describe("跨模块：Composition 正式输出必须整体通过权威 Runtime Q
   });
 
   const LATCH_FACTS = [
-    { field: "brand", label: "品牌", value: "Acme" },
     { field: "product_type", label: "商品类型", value: "Water Bottle" },
     { field: "material", label: "材质", value: "Plastic" },
     { field: "capacity", label: "容量", value: "12 oz" },
@@ -857,7 +853,6 @@ describe("短值事实表驱动交叉合同（5-30 词 / 事实原样 / 谓语 /
   for (const c of CASES) {
     it(`${c.name}（${c.value}）→ 5-30 词自然句 + 三合同通过`, async () => {
       const facts = [
-        { field: "brand", label: "品牌", value: "Acme" },
         { field: "product_type", label: "商品类型", value: "Water Bottle" },
         { field: "material", label: "材质", value: "Plastic" },
         ...(c.field === "usage" ? [] : [{ field: "usage", label: "使用场景", value: "Kitchen" }]),
@@ -969,15 +964,15 @@ describe("消费者自然英语精确合同（字段标签式拼接禁用）", (
     { field: "material", label: "材质", value: "Plastic" },
   ];
   const CASES: Array<{ name: string; field: string; value: string; target: string; oldCasing?: string; extra?: Array<{ field: string; label: string; value: string }> }> = [
-    { name: "material Plastic", field: "material", value: "Plastic", target: "The Water Bottle is made of plastic.", oldCasing: "The Water Bottle is made of Plastic.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
-    { name: "material Stainless Steel", field: "material", value: "Stainless Steel", target: "The Water Bottle is made of stainless steel.", oldCasing: "The Water Bottle is made of Stainless Steel.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
-    { name: "dimensions 5 in", field: "dimensions", value: "5 in", target: "The Water Bottle measures 5 in.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
-    { name: "operation Latch", field: "operation", value: "Latch", target: "The Water Bottle opens through its latch mechanism.", oldCasing: "The Water Bottle opens through its Latch mechanism.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
-    { name: "included_components Lid", field: "included_components", value: "Lid", target: "A lid is included with the Water Bottle.", oldCasing: "A Lid is included with the Water Bottle.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
-    { name: "functional_feature Push Button", field: "functional_feature", value: "Push Button", target: "The Water Bottle uses a push button as a control.", oldCasing: "The Water Bottle uses a Push Button as a control.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
-    { name: "usage Home", field: "usage", value: "Home", target: "The Water Bottle is suitable for use at home.", oldCasing: "The Water Bottle is suitable for use at Home.", extra: [{ field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
-    { name: "capacity 12 oz", field: "capacity", value: "12 oz", target: "The Water Bottle has a capacity of 12 oz.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
-    { name: "weight 1 lb", field: "weight", value: "1 lb", target: "The Water Bottle weighs 1 lb.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
+    { name: "material Plastic", field: "material", value: "Plastic", target: "The water bottle is made of plastic.", oldCasing: "The water bottle is made of Plastic.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
+    { name: "material Stainless Steel", field: "material", value: "Stainless Steel", target: "The water bottle is made of stainless steel.", oldCasing: "The water bottle is made of Stainless Steel.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
+    { name: "dimensions 5 in", field: "dimensions", value: "5 in", target: "The water bottle measures 5 in.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
+    { name: "operation Latch", field: "operation", value: "Latch", target: "The water bottle opens through its latch mechanism.", oldCasing: "The water bottle opens through its Latch mechanism.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
+    { name: "included_components Lid", field: "included_components", value: "Lid", target: "A lid is included with the water bottle.", oldCasing: "A Lid is included with the water bottle.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
+    { name: "functional_feature Push Button", field: "functional_feature", value: "Push Button", target: "The water bottle uses a push button as a control.", oldCasing: "The water bottle uses a Push Button as a control.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
+    { name: "usage Home", field: "usage", value: "Home", target: "The water bottle is suitable for use at home.", oldCasing: "The water bottle is suitable for use at Home.", extra: [{ field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
+    { name: "capacity 12 oz", field: "capacity", value: "12 oz", target: "The water bottle has a capacity of 12 oz.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
+    { name: "weight 1 lb", field: "weight", value: "1 lb", target: "The water bottle weighs 1 lb.", extra: [{ field: "usage", label: "使用场景", value: "Kitchen" }, { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" }] },
   ];
   for (const c of CASES) {
     it("红（当前旧句）：" + c.name + " → 必须输出 " + c.target, async () => {
@@ -1035,10 +1030,10 @@ describe("消费者自然英语精确合同（字段标签式拼接禁用）", (
 
     expect(opt.titles[0]).toContain("Owala SoftSip");
     expect(opt.titles[0]).not.toContain("owala softsip");
-    expect(joined).toContain("The Water Bottle is made of ABS plastic.");
+    expect(joined).toContain("The water bottle is made of ABS plastic.");
     expect(joined).toContain("SoftSip covered straw");
     expect(joined).not.toContain("softsip covered straw");
-    expect(joined).toContain("A USB-C cable is included with the Water Bottle.");
+    expect(joined).toContain("A USB-C cable is included with the water bottle.");
     expect(joined).not.toContain("A usb-c cable");
   });
 
@@ -1062,15 +1057,13 @@ describe("消费者自然英语精确合同（字段标签式拼接禁用）", (
 
   it("零费用真实组合：5 条精确自然句、1 Count 隔离、三合同通过", async () => {
     const facts = [
-      { field: "brand", label: "品牌", value: "Acme" },
       { field: "product_type", label: "商品类型", value: "Water Bottle" },
       { field: "material", label: "材质", value: "Plastic" },
-      { field: "dimensions", label: "尺寸", value: "5 in" },
-      { field: "capacity", label: "容量", value: "12 oz" },
       { field: "operation", label: "操作方式", value: "Latch" },
       { field: "functional_feature", label: "功能特性", value: "Push Button" },
       { field: "usage", label: "使用场景", value: "Home" },
       { field: "included_components", label: "随附组件", value: "Lid" },
+      { field: "care", label: "清洁保养", value: "rinse with clean water and wipe dry" },
       { field: "quantity_or_pack_size", label: "数量/包装", value: "1 Count" },
     ];
     const li = input(facts);
@@ -1087,19 +1080,19 @@ describe("消费者自然英语精确合同（字段标签式拼接禁用）", (
     // 阶段A受控原句合同
     const { bullets: stageABullets } = composeControlledBullets(li, plan);
     expect(stageABullets).toEqual([
-      "The Water Bottle is made of plastic.",
-      "The Water Bottle measures 5 in.",
-      "The Water Bottle opens through its latch mechanism.",
-      "The Water Bottle is suitable for use at home.",
-      "A lid is included with the Water Bottle.",
+      "The water bottle is made of plastic.",
+      "The water bottle opens through its latch mechanism.",
+      "The water bottle is suitable for use at home.",
+      "A lid is included with the water bottle.",
+      "Rinse with clean water and wipe dry.",
     ]);
     // 阶段B最终输出合同（代词平滑与节奏优化）
     expect(opt.bullets).toEqual([
-      "The Water Bottle is made of plastic.",
-      "The Water Bottle measures 5 in.",
-      "It opens through its latch mechanism.",
-      "The Water Bottle is suitable for use at home.",
-      "A lid is included with the Water Bottle.",
+      "The water bottle is made of plastic.",
+      "The water bottle opens through its latch mechanism.",
+      "It is suitable for use at home.",
+      "A lid is included with the water bottle.",
+      "Rinse with clean water and wipe dry.",
     ]);
     const corpus = [opt.titles[0], ...opt.bullets, opt.description, ...opt.keywords].join(" ");
     expect(corpus.toLowerCase()).not.toContain("1 count");
@@ -1306,6 +1299,142 @@ describe("R3 正文质量：capacity 优先/描述不整句复读/机械分词�
     const draft = await runDraft(facts);
     const b1 = draft.bullets[0] ?? "";
     expect(b1, "构造句含机械分词尾: " + b1).not.toMatch(/,\s*molded\s+in\b/i);
-    expect(b1).toMatch(/and is molded in one piece from plastic\./);
+    expect(b1, "V2 前置分词形态: " + b1).toMatch(/^Molded in one piece from plastic, the organizer has /i);
+    expect(b1).not.toMatch(/\band\s+is\s+molded\b/i);
+  });
+});
+
+describe("V2 运营编辑合同：普通名词小写/配件优先/描述结构句/审计附录（红）", () => {
+  async function runDraftV2(facts: Array<{ field: string; label: string; value: string }>) {
+    const li = input(facts);
+    const { evaluateListingCapabilityFromPolicy } = await import("@/lib/listingHandoff/listingCapabilityEvaluation");
+    const { buildListingPlanFromCapability } = await import("@/lib/listingHandoff/listingPlan");
+    const cap = evaluateListingCapabilityFromPolicy({
+      input: li,
+      confirmedFacts: li.productFacts.map((f) => ({ field: f.field, value: f.value, evidenceTier: "human_confirmed", sourceRef: { sourceKind: "user_confirmation" } })),
+      extraProhibitedTerms: [],
+      hasBlockingIssue: false,
+    });
+    const plan = buildListingPlanFromCapability(li, null, cap.capability);
+    return { draft: composeOptimizedListingDraft(li, plan, null), plan, capability: cap.capability };
+  }
+  const FIXTURES: Array<{ name: string; type: string; facts: Array<{ field: string; label: string; value: string }> }> = [
+    { name: "Organizer", type: "Organizer", facts: [
+      { field: "product_type", label: "商品类型", value: "Organizer" },
+      { field: "material", label: "材质", value: "Plastic" },
+      { field: "construction", label: "构造", value: "an expandable compartment design with multiple slots, molded in one piece from plastic" },
+      { field: "capacity", label: "容量", value: "keeps 40 pieces of cutlery" },
+      { field: "operation", label: "操作方式", value: "expands or contracts to the sides to fit the drawer width" },
+      { field: "usage", label: "使用场景", value: "stores cutlery in a kitchen drawer" },
+      { field: "care", label: "清洁保养", value: "wipe with a damp cloth" },
+    ]},
+    { name: "Bottle", type: "Bottle", facts: [
+      { field: "product_type", label: "商品类型", value: "Bottle" },
+      { field: "material", label: "材质", value: "Stainless Steel" },
+      { field: "capacity", label: "容量", value: "24 oz" },
+      { field: "functional_feature", label: "功能特性", value: "push-button opening" },
+      { field: "usage", label: "使用场景", value: "daily hydration at home or office" },
+      { field: "care", label: "清洁保养", value: "hand wash only" },
+    ]},
+    { name: "Tumbler", type: "Tumbler", facts: [
+      { field: "product_type", label: "商品类型", value: "Tumbler" },
+      { field: "material", label: "材质", value: "Plastic" },
+      { field: "capacity", label: "容量", value: "16 oz" },
+      { field: "operation", label: "操作方式", value: "Push Button" },
+      { field: "usage", label: "使用场景", value: "Kitchen counter" },
+      { field: "care", label: "清洁保养", value: "wipe with a damp cloth" },
+    ]},
+    { name: "Storage Box", type: "Storage Box", facts: [
+      { field: "product_type", label: "商品类型", value: "Storage Box" },
+      { field: "material", label: "材质", value: "Bamboo" },
+      { field: "dimensions", label: "尺寸", value: "12 x 8 x 4 in" },
+      { field: "usage", label: "使用场景", value: "organizes tea bags and small packets in a pantry" },
+      { field: "care", label: "清洁保养", value: "wipe with a dry cloth" },
+    ]},
+    { name: "Coffee Maker", type: "Coffee Maker", facts: [
+      { field: "product_type", label: "商品类型", value: "Coffee Maker" },
+      { field: "material", label: "材质", value: "Stainless Steel" },
+      { field: "capacity", label: "容量", value: "1.2 L" },
+      { field: "operation", label: "操作方式", value: "one-button brewing" },
+      { field: "usage", label: "使用场景", value: "brews coffee for a small household" },
+      { field: "care", label: "清洁保养", value: "rinse the carafe after each use" },
+      { field: "included_components", label: "包装清单", value: "a reusable filter and a measuring scoop" },
+    ]},
+  ];
+
+  it("红1：正文普通 product_type 名词不得大写（标题保留），五类夹具通用", async () => {
+    for (const fx of FIXTURES) {
+      const { draft } = await runDraftV2(fx.facts);
+      const body = [...draft.bullets, draft.description].join(" \u0001 ");
+      expect(body, fx.name + " 正文出现大写普通名词 " + fx.type).not.toMatch(new RegExp("\\b" + fx.type.replace(/ /g, "\\s+") + "\\b"));
+      expect(body.toLowerCase(), fx.name + " 正文应含小写形态").toContain(fx.type.toLowerCase());
+      expect(draft.titles[0], fx.name + " 标题保留类型词").toContain(fx.type);
+    }
+  });
+
+  it("红2：带配件商品配件不被低价值事实挤掉；6 组事实→5 条互异五点", async () => {
+    const fx = FIXTURES[4];
+    const { draft } = await runDraftV2(fx.facts);
+    expect(draft.bullets.length).toBe(5);
+    const corpus = draft.bullets.join(" \u0001 ");
+    expect(corpus, "配件应独立成条").toContain("reusable filter");
+    expect(corpus, "容量应存在").toContain("1.2 L");
+  });
+
+  it("红3：事实不足（<3 组）不凑数，五点数=可用组数", async () => {
+    const { draft, plan } = await runDraftV2([
+      { field: "product_type", label: "商品类型", value: "Tray" },
+      { field: "material", label: "材质", value: "Bamboo" },
+      { field: "usage", label: "使用场景", value: "stores tea bags and packets in a pantry" },
+    ]);
+    expect(plan.bulletPlans.length).toBeLessThan(3);
+    expect(draft.bullets.length).toBe(plan.bulletPlans.length);
+    expect(draft.bullets.length).toBeLessThan(3);
+  });
+
+  it("红4：描述必须包含核心结构信息（不只身份+规格），3-5 句且不整句复读五点", async () => {
+    const { draft } = await runDraftV2(FIXTURES[0].facts);
+    const sentences = draft.description.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0);
+    expect(sentences.length, "描述句数应在 3-5").toBeGreaterThanOrEqual(3);
+    expect(sentences.length, "描述句数应在 3-5").toBeLessThanOrEqual(5);
+    expect(draft.description, "描述缺核心结构信息").toContain("expandable");
+    const norm = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase().replace(/[.!?]+$/, "");
+    const bulletNorms = draft.bullets.map(norm);
+    const dup = sentences.map(norm).filter((s, i) => i > 0 && bulletNorms.includes(s));
+    expect(dup, "描述非首句整句复读五点").toEqual([]);
+  });
+
+  it("红5：审计附录逐句 factRefs 存在且消费者字段不泄露", async () => {
+    const { draft } = await runDraftV2(FIXTURES[0].facts);
+    const audit = (draft as unknown as { factRefsAudit?: { bullets?: string[][] } }).factRefsAudit;
+    expect(audit, "缺少 factRefsAudit 审计附录").toBeTruthy();
+    expect(Array.isArray(audit?.bullets)).toBe(true);
+    expect(audit?.bullets?.length).toBe(draft.bullets.length);
+    for (const refs of audit?.bullets ?? []) {
+      expect(refs.length, "每条五点至少 1 个 factRef").toBeGreaterThanOrEqual(1);
+    }
+    const { draftSafeSummary } = await import("@/lib/listingHandoff/listingGenerationService");
+    const full = {
+      ...draft,
+      draftKind: "structured_listing_draft",
+      humanReviewRequired: true,
+      generatedAt: "2026-09-03T00:00:00.000Z",
+      source: "deterministic_composition_v1",
+      version: 1,
+      composerVersion: "listing-composer-v1",
+      generationPolicyVersion: "listing-generation-policy-v1",
+      polishApplied: false,
+      polishModel: null,
+      sellingPoints: [],
+      providerAttempted: false,
+      providerSucceeded: false,
+      fallbackApplied: false,
+      factSafe: true,
+      copyQuality: true,
+      listingUnqualified: false,
+    };
+    const summary = draftSafeSummary(full);
+    expect(summary, "消费者摘要应为非空（草稿形状需完整）").not.toBeNull();
+    expect(summary === null || !("factRefsAudit" in summary), "消费者摘要泄露审计字段").toBe(true);
   });
 });

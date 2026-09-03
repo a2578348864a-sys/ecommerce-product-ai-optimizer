@@ -76,7 +76,7 @@ function researchDoc(candidateId = "candidate-quality2", extraNamespaces?: Recor
     actor: { mode: "visitor", actorRef: `visitor:${"f".repeat(16)}` }, now: NOW,
     decision: { decisionId: "11111111-1111-4111-8111-111111111111", status: "creative_ready", reason: "ok", nextAction: null },
   });
-  const context = { candidateId, productName: "Owala FreeSip Stainless Steel Water Bottle 24 oz Blue (Blue Jay)", sourceType: "seller_sprite_market_research", sourceLabel: "SellerSprite", marketplace: "US", asin: "B0FH1ZXTN1", productUrl: "https://e.com/p", title: "Owala FreeSip Stainless Steel Water Bottle 24 oz Blue (Blue Jay)", brand: "Owala", category: "Sports & Outdoors", priceUsd: 29.99, rating: 4.6, reviewCount: 2948, disclaimer: "third_party_estimate_point_in_time", reportType: "SellerSprite Search Results", query: "water bottle", evidenceStatus: "ok", researchPriority: "high", promotionEligible: false, capturedAt: NOW, contextHash: "a".repeat(64) };
+  const context = { candidateId, productName: "Owala FreeSip Stainless Steel Water Bottle 24 oz Blue (Blue Jay)", sourceType: "seller_sprite_market_research", sourceLabel: "SellerSprite", marketplace: "US", asin: "B0FH1ZXTN1", productUrl: "https://e.com/p", title: "Owala FreeSip Stainless Steel Water Bottle 24 oz Blue (Blue Jay)", brand: "owala", category: "Sports & Outdoors", priceUsd: 29.99, rating: 4.6, reviewCount: 2948, disclaimer: "third_party_estimate_point_in_time", reportType: "SellerSprite Search Results", query: "water bottle", evidenceStatus: "ok", researchPriority: "high", promotionEligible: false, capturedAt: NOW, contextHash: "a".repeat(64) };
   const agentOutput = { version: "agent-output-v1", generatedAt: NOW, sourcingSnapshot: { supplierConclusion: "S", sourceSignals: [], priceSignals: [], availabilitySignals: [], assumptions: [], missingInfo: [], confidence: "medium" }, riskSnapshot: { riskLevel: "low", riskFlags: [], complianceConcerns: [], ipConcerns: [], logisticsConcerns: [], safetyConcerns: [], riskReason: "ok", needsManualReview: false }, summarySnapshot: { decision: "recommended", decisionReason: "G", targetUser: "c", sellingPoints: ["L"], concerns: [], confidence: "medium" }, listingSnapshot: { titleDraft: "T", bulletDrafts: ["E"], keywordHints: [], imageIdeas: [], complianceNotes: [], missingInputs: [] }, nextActionSnapshot: { primaryAction: "prepare_listing", actionLabel: "l", checklist: [], blockingIssues: [], suggestedOwnerStep: "x" }, humanReviewSnapshot: { required: false, reasons: [], reviewFocus: [], defaultStatus: "not_required" }, fallbackUsed: false, warnings: [] };
   return JSON.stringify({ type: "workflow", researchRecord, researchVerification: verification,
     // V3 Completion Authority：正式完成标记（creative_ready 仅 Human Decision；完成需 research-completion.v1）
@@ -188,6 +188,41 @@ function validAiClient(): TaskLinkedAiListingClient {
 
     const bullets: string[] = [];
     const usedFactIds: string[] = [];
+    const byField = new Map<string, { field: string; value: string }>();
+    for (const [id, entry] of factByFactId) {
+      if (!byField.has(entry.field)) byField.set(entry.field, { field: entry.field, value: entry.value });
+    }
+    const valOf = (field: string): string => byField.get(field)?.value ?? "";
+    const conV = valOf("construction");
+    const matV = valOf("material");
+    const capV = valOf("capacity");
+    const fnV = valOf("functional_feature");
+    const careV = valOf("care");
+    // V2 Copy Quality 合规正文：句首大写、普通名词小写、主语多样化、无模板尾/悬垂分词/机械 and 拼接。
+    // 每条五点仍逐条锚定 plan.bulletPlans[i].featureFactIds 的已确认事实值。
+    const sentenceFor = (field: string): string => {
+      switch (field) {
+        case "material":
+          return conV
+            ? `The bottle features ${conV} and a ${matV.toLowerCase()} body.`
+            : `The bottle is made of ${matV.toLowerCase()}.`;
+        case "construction":
+          return `The bottle has ${conV} around its ${matV ? matV.toLowerCase() + " " : ""}body.`;
+        case "capacity":
+          return `It holds ${capV} of water when filled to the brim.`;
+        case "functional_feature":
+          return `The ${fnV} opens with a single press.`;
+        case "care": {
+          const lower = String(careV).replace(/^([a-z])/, (c: string) => c.toUpperCase());
+          return `${lower} separate from the bottle for cleaning in the dishwasher.`;
+        }
+        default: {
+          const entry = byField.get(field);
+          const v = entry ? entry.value : "";
+          return v ? `This bottle includes ${v.toLowerCase()}.` : "This bottle is included.";
+        }
+      }
+    };
     plans.forEach((bp, index) => {
       const ids = Array.isArray(bp?.featureFactIds) ? bp.featureFactIds.filter((x) => typeof x === "string") : [];
       const firstId = ids[0];
@@ -196,11 +231,8 @@ function validAiClient(): TaskLinkedAiListingClient {
         throw new Error(`helper: plan bulletPlan[${index}] 无可用事实（featureFactIds=${JSON.stringify(ids)}），禁止伪造成功。`);
       }
       // 只采用第一个写入正文的事实；usedFactIds 只记录它
-      // 迁移说明：原夹具直接以事实值开头（如 "food jar with unfolding spoon is the …"），
-      // 句首小写会被 Copy Quality 的 sentence_capitalization 正确拒绝。
-      // 意图保持不变：仍是「事实值 + 中性谓语 + 计划逐条绑定」的合法 Provider 稿，仅补句首大写。
-      const bullet = `${factEntry.value} is the ${factEntry.field.replace(/_/g, " ")} of this Water Bottle.`;
-      bullets.push(bullet.charAt(0).toUpperCase() + bullet.slice(1));
+      const bullet = sentenceFor(factEntry.field);
+      bullets.push(bullet);
       if (!usedFactIds.includes(firstId)) usedFactIds.push(firstId);
     });
 
@@ -219,14 +251,16 @@ function validAiClient(): TaskLinkedAiListingClient {
     }
     const titleValue = [identityValue, nonIdentityUsed[0].entry.value, nonIdentityUsed[1].entry.value].join(" - ");
 
-    // description 两句：从 usedFactIds 对应的非身份事实中选择（禁止 slice(0,2) 取到品牌/类型身份值）
-    // 句法需与 bullets 不同（避免 description bullet_concat：>0.85 重复），仍只用真实值+连接词
-    const descFirst = nonIdentityUsed[0];
-    const descSecond = nonIdentityUsed[1];
-    const description = [
-      `The ${descFirst.entry.field.replace(/_/g, " ")} of this ${identityValue} is ${descFirst.entry.value}.`,
-      `This ${identityValue} features ${descSecond.entry.value} for its ${descSecond.entry.field.replace(/_/g, " ")}.`,
-    ].join(" ");
+    // description 两句自然段：只使用真实已确认事实值（禁止凭空收益词），句法区别于五点避免 bullet_concat
+    const capWord = capV ? `${capV} capacity and ` : "";
+    const conWord = conV ? conV : `a ${String(matV).toLowerCase()} body`;
+    const detailFirst = capWord
+      ? `This water bottle has a ${capWord}${conWord}.`
+      : `This water bottle is made of ${String(matV || descFirst).toLowerCase()}.`;
+    const detailSecond = careV
+      ? "Rinse the removable parts by hand or load them into the top rack of a dishwasher."
+      : `It stores up to ${capV || descFirst} of water in a compact form.`;
+    const description = `${detailFirst} ${detailSecond}`;
 
     const brief = input.keywordBrief ?? null;
     const backendSearchTerms = brief && brief.backendSearchTerms?.length
@@ -270,6 +304,8 @@ describe("Quality.2 Task-linked AI integration", () => {
     const valid = validAiClient();
     const countingClient: TaskLinkedAiListingClient = async (input) => {
       providerCalls += 1;
+      console.log("DBG-PLAN", JSON.stringify((input.plan?.bulletPlans ?? []).map((bp: { role?: string; featureFactIds?: string[] }) => ({ role: bp.role, fids: bp.featureFactIds }))));
+      console.log("DBG-FACTS", JSON.stringify((input.facts ?? []).filter((f: { field?: string }) => f.field !== "brand" && f.field !== "product_type" && f.field !== "series_or_model").map((f: { field?: string; value?: string }) => ({ f: f.field, v: f.value }))));
       const out = await valid(input);
       return out;
     };

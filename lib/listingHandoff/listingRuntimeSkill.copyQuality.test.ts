@@ -5,7 +5,7 @@ describe("Copy Quality 红测：坏稿必须判不合格", () => {
   // HydroJug 坏稿复现（任务书锁定四句）
   const BAD_BULLETS = [
     "The straw lid option fits the everyday use of this Tumbler.",
-    "The Tumbler pairs with the Tumbler for everyday use.",
+    "The tumbler pairs with the Tumbler for everyday use.",
     "Easy cleaning matches the dishwasher safe option for this Tumbler.",
     "Available construction with the Tumbler of this Tumbler.",
   ];
@@ -31,7 +31,7 @@ describe("Copy Quality 红测：坏稿必须判不合格", () => {
   it("红：Tumbler pairs with Tumbler → self_reference / subject_object_duplicate", () => {
     const r = validateCopyQualityContract({
       title: "HydroJug Tumbler",
-      bullets: ["The Tumbler pairs with the Tumbler for everyday use."],
+      bullets: ["The tumbler pairs with the Tumbler for everyday use."],
       description: "A Tumbler for daily use.",
       facts: FACTS,
       typeLabel: "Tumbler",
@@ -101,13 +101,13 @@ describe("Listing natural editor v1 红测：真实截图形态必须被 Copy Qu
     const r = validateCopyQualityContract({
       title: "ukeetap UTO001 Organizer kitchen Plastic Silver",
       bullets: [
-        "The Organizer includes Expandable compartment design, multi-slot structure, molded in one piece from plastic.",
-        "The Organizer can hold approximately 40-50 pieces of everyday cutlery.",
+        "The organizer includes Expandable compartment design, multi-slot structure, molded in one piece from plastic.",
+        "The organizer can hold approximately 40-50 pieces of everyday cutlery.",
         "After placing in the drawer, expand or contract to the sides according to the drawer width.",
         "Use the Organizer for storing knives, forks, spoons, and other cutlery in kitchen drawers.",
         "For care, Wipe with a damp cloth; clean with warm water and mild detergent if necessary.",
       ],
-      description: "The UTO001 Organizer is an ukeetap product. The Organizer measures 16.5\"D x 21\"W x 1.77\"H and weighs 0.81 kg.",
+      description: "The UTO001 Organizer is an ukeetap product. The organizer measures 16.5\"D x 21\"W x 1.77\"H and weighs 0.81 kg.",
       facts: [],
       typeLabel: "Organizer",
     });
@@ -133,7 +133,7 @@ const STRUCT_FACTS = [
 ];
 
 /** 干净描述（结构合法）：负例只想验证 bullet，描述不得成为噪声来源 */
-const CLEAN_DESCRIPTION = "The Organizer is made of molded plastic with multiple compartments. It stores about 40 to 50 pieces of cutlery.";
+const CLEAN_DESCRIPTION = "The organizer is made of molded plastic with multiple compartments. It stores about 40 to 50 pieces of cutlery.";
 
 type StructCase = {
   name: string;
@@ -145,22 +145,22 @@ type StructCase = {
 const BAD_STRUCTURE_CASES: StructCase[] = [
   {
     name: "N1 主语后仅 with 短语、无谓语 → sentence_fragment",
-    bullet: "The Organizer with built with an expandable design for everyday use.",
+    bullet: "The organizer with built with an expandable design for everyday use.",
     code: "sentence_fragment",
   },
   {
     name: "N2 同句同时是模板尾（for everyday use 收尾）→ template_tail",
-    bullet: "The Organizer with built with an expandable design for everyday use.",
+    bullet: "The organizer with built with an expandable design for everyday use.",
     code: "template_tail",
   },
   {
     name: "N3 available with 拼接、缺正常谓语 → sentence_fragment",
-    bullet: "The Organizer available with rinse with clean water and wipe dry for practical use.",
+    bullet: "The organizer available with rinse with clean water and wipe dry for practical use.",
     code: "sentence_fragment",
   },
   {
     name: "N4 available with 拼接同时命中模板尾 → template_tail",
-    bullet: "The Organizer available with rinse with clean water and wipe dry for practical use.",
+    bullet: "The organizer available with rinse with clean water and wipe dry for practical use.",
     code: "template_tail",
   },
   {
@@ -209,8 +209,8 @@ describe("Copy Quality 结构维度（红测）：病句形态必须被拒并给
   it("红：description 中的无谓语句 → description 维度 sentence_fragment（不得只查五点）", () => {
     const r = validateCopyQualityContract({
       title: "ukeetap Organizer UTO001",
-      bullets: ["The Organizer stores about 40 to 50 pieces of cutlery."],
-      description: "The Organizer with an expandable multi-compartment design in molded plastic. It stores about 40 to 50 pieces of cutlery.",
+      bullets: ["The organizer stores about 40 to 50 pieces of cutlery."],
+      description: "The organizer with an expandable multi-compartment design in molded plastic. It stores about 40 to 50 pieces of cutlery.",
       facts: STRUCT_FACTS,
       typeLabel: "Organizer",
     });
@@ -221,8 +221,8 @@ describe("Copy Quality 结构维度（红测）：病句形态必须被拒并给
   it("红：description 中的模板尾 → description 维度 template_tail", () => {
     const r = validateCopyQualityContract({
       title: "ukeetap Organizer UTO001",
-      bullets: ["The Organizer stores about 40 to 50 pieces of cutlery."],
-      description: "The Organizer is made of molded plastic with multiple compartments. The Organizer expands to the drawer width for practical use with this product.",
+      bullets: ["The organizer stores about 40 to 50 pieces of cutlery."],
+      description: "The organizer is made of molded plastic with multiple compartments. The organizer expands to the drawer width for practical use with this product.",
       facts: STRUCT_FACTS,
       typeLabel: "Organizer",
     });
@@ -233,7 +233,7 @@ describe("Copy Quality 结构维度（红测）：病句形态必须被拒并给
   it("红：description 句首小写 → description 维度 sentence_capitalization", () => {
     const r = validateCopyQualityContract({
       title: "ukeetap Organizer UTO001",
-      bullets: ["The Organizer stores about 40 to 50 pieces of cutlery."],
+      bullets: ["The organizer stores about 40 to 50 pieces of cutlery."],
       description: "the Organizer is made of molded plastic with multiple compartments. It stores about 40 to 50 pieces of cutlery.",
       facts: STRUCT_FACTS,
       typeLabel: "Organizer",
@@ -245,10 +245,10 @@ describe("Copy Quality 结构维度（红测）：病句形态必须被拒并给
 
 /** 正例表：确定性受控句型产出的自然句，门禁不得误杀 */
 const GOOD_STRUCTURE_SENTENCES: Array<{ name: string; bullet: string }> = [
-  { name: "P1 is + built with 分词补语", bullet: "The Organizer is built with an expandable multi-compartment design in molded plastic." },
-  { name: "P2 三单谓语 stores", bullet: "The Organizer stores about 40 to 50 pieces of cutlery." },
-  { name: "P3 三单谓语 expands or collapses", bullet: "The Organizer expands or collapses to the sides according to the drawer width." },
-  { name: "P4 is + suitable for 形容词补语", bullet: "The Organizer is suitable for daily kitchen storage and carrying." },
+  { name: "P1 is + built with 分词补语", bullet: "The organizer is built with an expandable multi-compartment design in molded plastic." },
+  { name: "P2 三单谓语 stores", bullet: "The organizer stores about 40 to 50 pieces of cutlery." },
+  { name: "P3 三单谓语 expands or collapses", bullet: "The organizer expands or collapses to the sides according to the drawer width." },
+  { name: "P4 is + suitable for 形容词补语", bullet: "The organizer is suitable for daily kitchen storage and carrying." },
   { name: "P5 合法祈使句（For care, 引导）", bullet: "For care, rinse with clean water and wipe dry." },
   { name: "P6 自然句正文含 everyday use（非模板尾）不得误杀", bullet: "The reinforced handle supports everyday use." },
 ];
@@ -271,10 +271,10 @@ describe("Copy Quality 结构维度（正例）：自然句必须通过，门禁
     const r = validateCopyQualityContract({
       title: "ukeetap Organizer UTO001",
       bullets: [
-        "The Organizer is built with an expandable multi-compartment design in molded plastic.",
-        "The Organizer stores about 40 to 50 pieces of cutlery.",
-        "The Organizer expands or collapses to the sides according to the drawer width.",
-        "The Organizer is suitable for daily kitchen storage and carrying.",
+        "The organizer is built with an expandable multi-compartment design in molded plastic.",
+        "The organizer stores about 40 to 50 pieces of cutlery.",
+        "It expands or collapses to the sides according to the drawer width.",
+        "This organizer is suitable for daily kitchen storage and carrying.",
         "For care, rinse with clean water and wipe dry.",
       ],
       description: CLEAN_DESCRIPTION,
@@ -289,7 +289,7 @@ describe("反向验证（防作弊）", () => {
   it("反向②：临时恢复 pairs with 模板 → Copy Quality 必须红", () => {
     const r = validateCopyQualityContract({
       title: "HydroJug Tumbler",
-      bullets: ["This Tumbler pairs with the Tumbler for easy use."],
+      bullets: ["This tumbler pairs with the Tumbler for easy use."],
       description: "A Tumbler for daily use.",
       facts: [{ factId: "included_components", field: "included_components", label: "组件", value: "Tumbler" }],
       typeLabel: "Tumbler",
@@ -331,12 +331,12 @@ describe("Organizer 结构性病句门禁", () => {
     const r = validateCopyQualityContract({
       title: "ukeetap UTO001 Organizer",
       bullets: [
-        "The Organizer has a capacity of Can hold about 40-50 pieces of common cutlery.",
-        "The Organizer opens through its After placing in the drawer, expand or contract to the sides.",
-        "The Organizer is suitable for use at For storing knives, forks, and spoons in a kitchen drawer.",
+        "The organizer has a capacity of Can hold about 40-50 pieces of common cutlery.",
+        "The organizer opens through its After placing in the drawer, expand or contract to the sides.",
+        "The organizer is suitable for use at For storing knives, forks, and spoons in a kitchen drawer.",
         "For care, Wipe with a damp cloth; if necessary, clean with warm water.",
       ],
-      description: "The Organizer is made of plastic. It stores cutlery.",
+      description: "The organizer is made of plastic. It stores cutlery.",
       facts: [],
       typeLabel: "Organizer",
     });
@@ -354,7 +354,7 @@ describe("Organizer 结构性病句门禁", () => {
  * ────────────────────────────────────────────────────────────── */
 
 /** 干净描述（结构合法）——负例只想验证 bullet，描述不得成为噪声来源 */
-const CLEAN_DESC_2 = "The Trash Can is made of stainless steel. It holds about 30 liters of waste.";
+const CLEAN_DESC_2 = "The trash can is made of stainless steel. It holds about 30 liters of waste.";
 
 type MainClauseCase = { name: string; bullet: string; typeLabel: string; expectOk: boolean; code?: string };
 
@@ -377,14 +377,14 @@ const MAIN_CLAUSE_CASES: MainClauseCase[] = [
   // ── 负例：从句中的 is 不得洗白主句残片 ──
   {
     name: "N-S1 with 后的从句含 is，主句无谓语 → sentence_fragment",
-    bullet: "The Organizer with a lid that is durable.",
+    bullet: "The organizer with a lid that is durable.",
     typeLabel: "Organizer",
     expectOk: false,
     code: "sentence_fragment",
   },
   {
     name: "N-S2 which 从句含 is，主句无谓语 → sentence_fragment",
-    bullet: "The Organizer with a tray which is removable.",
+    bullet: "The organizer with a tray which is removable.",
     typeLabel: "Organizer",
     expectOk: false,
     code: "sentence_fragment",
@@ -392,20 +392,20 @@ const MAIN_CLAUSE_CASES: MainClauseCase[] = [
   // ── 正例：同一商品名 + 真实谓语 → 必须放行（证明不是对 Can 的整词封杀）──
   {
     name: "P-C1 商品名 Trash Can + 真实谓语 holds → 通过",
-    bullet: "The Trash Can holds about 30 liters of waste.",
+    bullet: "The trash can holds about 30 liters of waste.",
     typeLabel: "Trash Can",
     expectOk: true,
   },
   {
     name: "P-C2 商品名 Watering Can + 系动词 is → 通过",
-    bullet: "The Watering Can is made of stainless steel.",
+    bullet: "The watering can is made of stainless steel.",
     typeLabel: "Watering Can",
     expectOk: true,
   },
   // ── 正例：主句含从句但主句自身有谓语 → 放行 ──
   {
     name: "P-S1 主句有谓语，从句另有 is → 通过",
-    bullet: "The Organizer includes a tray that is removable.",
+    bullet: "The organizer includes a tray that is removable.",
     typeLabel: "Organizer",
     expectOk: true,
   },
@@ -417,8 +417,8 @@ const MAIN_CLAUSE_CASES: MainClauseCase[] = [
     expectOk: true,
   },
   {
-    name: "P-E2 The Organizer is ... 自然陈述句 → 通过",
-    bullet: "The Organizer is made of molded plastic with multiple compartments.",
+    name: "P-E2 The organizer is ... 自然陈述句 → 通过",
+    bullet: "The organizer is made of molded plastic with multiple compartments.",
     typeLabel: "Organizer",
     expectOk: true,
   },
@@ -464,8 +464,8 @@ describe("R3 Copy Quality：描述整句复读与机械分词尾必须被拒（�
     const { validateCopyQualityContract } = await import("@/lib/listingHandoff/listingRuntimeSkill");
     const r = validateCopyQualityContract({
       title: "ukeetap Organizer",
-      bullets: ["The Organizer fits most medium and large kitchen drawers.", "The Organizer is made of plastic.", "Wipe with a damp cloth."],
-      description: "It is a plastic organizer for cutlery. The Organizer fits most medium and large kitchen drawers.",
+      bullets: ["The organizer fits most medium and large kitchen drawers.", "The organizer is made of plastic.", "Wipe with a damp cloth."],
+      description: "It is a plastic organizer for cutlery. The organizer fits most medium and large kitchen drawers.",
     });
     expect(r.ok, JSON.stringify(r.issues)).toBe(false);
     expect(r.issues.some((i) => i.code === "description_bullet_repeat"), JSON.stringify(r.issues)).toBe(true);
@@ -475,10 +475,67 @@ describe("R3 Copy Quality：描述整句复读与机械分词尾必须被拒（�
     const { validateCopyQualityContract } = await import("@/lib/listingHandoff/listingRuntimeSkill");
     const r = validateCopyQualityContract({
       title: "ukeetap Organizer",
-      bullets: ["The Organizer has an expandable compartment design, molded in one piece from plastic.", "The Organizer keeps 40 pieces of cutlery.", "Wipe with a damp cloth."],
-      description: "The Organizer is made of plastic.",
+      bullets: ["The organizer has an expandable compartment design, molded in one piece from plastic.", "The organizer keeps 40 pieces of cutlery.", "Wipe with a damp cloth."],
+      description: "The organizer is made of plastic.",
     });
     expect(r.ok, JSON.stringify(r.issues)).toBe(false);
     expect(r.issues.some((i) => i.code === "mechanical_structure"), JSON.stringify(r.issues)).toBe(true);
+  });
+});
+
+describe("V2 Copy Quality：异常大写/机械and/重复主语/空洞尾句/标题从句（红）", () => {
+  it("红6：正文普通名词异常大写（小写形态并存证明是普通名词）→ abnormal_capitalization", async () => {
+    const { validateCopyQualityContract } = await import("@/lib/listingHandoff/listingRuntimeSkill");
+    const r = validateCopyQualityContract({
+      title: "ukeetap Drawer Organizer",
+      bullets: ["The Organizer holds 40 pieces of cutlery.", "The Organizer expands to the drawer width.", "The Organizer stores cutlery after meals.", "Wipe with a damp cloth."],
+      description: "It is a plastic organizer for a kitchen drawer.",
+    });
+    expect(r.ok, JSON.stringify(r.issues)).toBe(false);
+    expect(r.issues.some((i) => i.code === "abnormal_capitalization"), JSON.stringify(r.issues)).toBe(true);
+  });
+
+  it("红7：机械 and 拼接（has … and is molded…）→ mechanical_and_splice", async () => {
+    const { validateCopyQualityContract } = await import("@/lib/listingHandoff/listingRuntimeSkill");
+    const r = validateCopyQualityContract({
+      title: "ukeetap Organizer",
+      bullets: ["The organizer has an expandable compartment design with multiple slots and is molded in one piece from plastic.", "The organizer keeps 40 pieces of cutlery.", "Wipe with a damp cloth."],
+      description: "The organizer is made of plastic.",
+    });
+    expect(r.ok, JSON.stringify(r.issues)).toBe(false);
+    expect(r.issues.some((i) => i.code === "mechanical_and_splice"), JSON.stringify(r.issues)).toBe(true);
+  });
+
+  it("红8：≥3 条五点以同一主语开头 → repeated_subject", async () => {
+    const { validateCopyQualityContract } = await import("@/lib/listingHandoff/listingRuntimeSkill");
+    const r = validateCopyQualityContract({
+      title: "ukeetap Organizer",
+      bullets: [
+        "The organizer holds 40 pieces of cutlery.",
+        "The organizer expands to the drawer width.",
+        "The organizer stores knives and forks.",
+        "The organizer is made of plastic.",
+        "Wipe with a damp cloth.",
+      ],
+      description: "The organizer is made of plastic. It fits most kitchen drawers.",
+    });
+    expect(r.ok, JSON.stringify(r.issues)).toBe(false);
+    expect(r.issues.some((i) => i.code === "repeated_subject"), JSON.stringify(r.issues)).toBe(true);
+  });
+
+  it("红9：空洞尾句（…and more. / etc.）→ hollow_tail；标题含操作从句 → title_clause", async () => {
+    const { validateCopyQualityContract } = await import("@/lib/listingHandoff/listingRuntimeSkill");
+    const r1 = validateCopyQualityContract({
+      title: "ukeetap Organizer",
+      bullets: ["The organizer stores cutlery, gadgets and more.", "The organizer is made of plastic.", "Wipe with a damp cloth."],
+      description: "The organizer is made of plastic.",
+    });
+    expect(r1.issues.some((i) => i.code === "hollow_tail"), JSON.stringify(r1.issues)).toBe(true);
+    const r2 = validateCopyQualityContract({
+      title: "ukeetap Drawer Organizer, Fits Most Kitchen Drawers",
+      bullets: ["The organizer holds 40 pieces of cutlery.", "The organizer is made of plastic.", "Wipe with a damp cloth."],
+      description: "The organizer is made of plastic.",
+    });
+    expect(r2.issues.some((i) => i.code === "title_clause"), JSON.stringify(r2.issues)).toBe(true);
   });
 });

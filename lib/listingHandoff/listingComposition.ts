@@ -12,6 +12,7 @@
  */
 
 import type { AiListingPackDraft } from "@/lib/aiListingDraft";
+import { lowerCommonNounLabel } from "@/lib/listingHandoff/listingEnglishRendering";
 import { buildSafeFactSentences, type RuntimeFact, RUNTIME_QUALITY_LIMITS } from "@/lib/listingHandoff/listingRuntimeSkill";
 import { isTrivialSingleUnitQuantity } from "@/lib/listingHandoff/listingCapabilityV2";
 import {
@@ -227,7 +228,8 @@ function descriptionIdentitySentence(input: ListingGenerationInput): string {
   if (series) parts.push(series);
   if (type && (!brand || type.toLowerCase() !== brand.toLowerCase())) parts.push(type);
   if (parts.length === 0) parts.push("product");
-  const subject = parts.join(" ");
+  // V2：普通 product_type 在句中自然小写；系列/型号保留专名形态
+  const subject = parts.map((p) => (type && p === type ? lowerCommonNounLabel(p) : p)).join(" ");
   if (brand && material && type && hasMeasuredSpec && series) {
     const naturalMaterial = material.toLocaleLowerCase();
     const naturalType = type.toLocaleLowerCase();
@@ -250,6 +252,23 @@ function composeDescription(input: ListingGenerationInput): string {
   const sentences: string[] = [];
   sentences.push(descriptionIdentitySentence(input));
   const typeLabel = typeLabelOf(input);
+  const nounLabel = lowerCommonNounLabel(typeLabel);
+  // V2：核心差异句（结构/功能头部事实）——描述不得只有身份+规格；机械分词尾只取主部避免整句复读五点
+  const constructionV = englishRenderingOf(input, "construction");
+  const featureV = englishRenderingOf(input, "functional_feature");
+  const diffField = constructionV ? "construction" : featureV ? "functional_feature" : null;
+  const diffValue = constructionV ?? featureV;
+  if (diffField && diffValue) {
+    const headOnly = diffValue.split(/,\s*(?:molded|built|made|designed|constructed|finished|coated|lined|fitted)\s/i)[0].trim().replace(/[.!?\s]+$/, "");
+    if (headOnly && headOnly.split(/\s+/).filter(Boolean).length >= 3) {
+      // 小写 + 保证冠词（"has Expandable …" 属字段汤/异常大写，一律自然化）
+      const articleHead = /^(?:a|an|the)\s+/i.test(headOnly)
+        ? lowerFirstWord(headOnly)
+        : articleFor(headOnly) + " " + lowerFirstWord(headOnly);
+      const diffSentence = "It has " + consumerFactPhrase(diffField, articleHead) + ".";
+      if (!sentences.includes(diffSentence)) sentences.push(diffSentence);
+    }
+  }
   const comp = englishRenderingOf(input, "compatibility");
   if (comp) {
     const s = buildControlledSentence("compatibility", comp, typeLabel);
@@ -258,13 +277,14 @@ function composeDescription(input: ListingGenerationInput): string {
   const dimensions = renderingOf(input, "dimensions");
   const weight = renderingOf(input, "weight");
   if (dimensions && weight) {
-    sentences.push("The " + typeLabel + " measures " + dimensions + " and weighs " + weight + ".");
+    sentences.push("The " + nounLabel + " measures " + dimensions + " and weighs " + weight + ".");
   } else if (dimensions) {
-    sentences.push("The " + typeLabel + " measures " + dimensions + ".");
+    sentences.push("The " + nounLabel + " measures " + dimensions + ".");
   } else if (weight) {
-    sentences.push("The " + typeLabel + " weighs " + weight + ".");
+    sentences.push("The " + nounLabel + " weighs " + weight + ".");
   }
-  if (sentences.length < 2) {
+  // V2：描述 3-5 句信息层次；规格事实（材质/容量）在不足 3 句时补齐（与五点同门禁；重复句由上层去重/变体）
+  if (sentences.length < 3) {
     const material = englishRenderingOf(input, "material");
     const capacity = englishRenderingOf(input, "capacity");
     const extra = material
@@ -272,7 +292,7 @@ function composeDescription(input: ListingGenerationInput): string {
       : capacity
         ? buildControlledSentence("capacity", capacity, typeLabel)
         : null;
-    if (extra) sentences.push(extra);
+    if (extra && !sentences.includes(extra)) sentences.push(extra);
   }
   return sentences.slice(0, 5).join(" ");
 }
@@ -355,6 +375,9 @@ export type OptimizedListingDraft = {
   description: string;
   keywords: string[];
   backendSearchTerms: string[];
+
+  /** V2：内部审计附录（逐句 factRefs；不进入消费者安全摘要） */
+  factRefsAudit?: { titles: string[][]; bullets: string[][]; description: string[][] };
 };
 
 function valueOf(input: ListingGenerationInput, field: string): string | null {
@@ -709,19 +732,20 @@ function buildControlledSentence(field: string, rawValue: string, typeLabel: str
   if (!value) return null;
   const head = phraseHeadWord(value);
   const lower = value.toLowerCase();
+  const nounLabel = lowerCommonNounLabel(typeLabel);
 
   // 0) 值已是完整句 → 原样复述（只做句点归一），不再套骨架
   if (isSelfContainedSentence(value)) return endWithPeriod(value);
 
   // 带情态动词的完整事实短语（如 "Can hold ..."）需要补商品主语，不能再套 capacity of。
   if (/^can\s+(?:hold|store|accommodate|contain)\b/i.test(value)) {
-    return "The " + typeLabel + " " + lowerFirstWord(value) + ".";
+    return "The " + nounLabel + " " + lowerFirstWord(value) + ".";
   }
 
   // 时间引导事实需要明确商品对象；保留原事实从句作为锚点，但先给出明确主语。
   const placed = value.match(/^after\s+placing\s+in\s+the\s+([^,]+),\s*(.+)$/i);
   if (placed) {
-    return "The " + typeLabel + " works as follows: After placing in the " + placed[1].trim() + ", " + lowerFirstWord(placed[2].trim()) + ".";
+    return "The " + nounLabel + " works as follows: After placing in the " + placed[1].trim() + ", " + lowerFirstWord(placed[2].trim()) + ".";
   }
   const placedWithObject = value.match(/^after\s+placing\s+(?:the\s+)?[^,]+\s+in\s+the\s+[^,]+,\s*.+$/i);
   if (placedWithObject) return endWithPeriod(value);
@@ -731,7 +755,7 @@ function buildControlledSentence(field: string, rawValue: string, typeLabel: str
 
   // For storing/For organizing 等用途短语需要一个真实动作主语；保留事实短语本身作为锚点。
   if (/^for\s+(?:storing|organizing|holding|keeping)\b/i.test(value)) {
-    return "Use the " + typeLabel + " " + lowerFirstWord(value) + ".";
+    return "Use the " + nounLabel + " " + lowerFirstWord(value) + ".";
   }
 
   // 1) care / cleaning 的祈使短语 → `For care, {v}.`
@@ -742,14 +766,14 @@ function buildControlledSentence(field: string, rawValue: string, typeLabel: str
 
   // 2) 分词 / 形容词补语 → `The {t} is {v}.`
   if (COMPLEMENT_PHRASE_HEADS.some((h) => lower.startsWith(h + " "))) {
-    return "The " + typeLabel + " is " + value + ".";
+    return "The " + nounLabel + " is " + value + ".";
   }
 
   // 3) 三单谓语开头 → `The {t} {v}.`
-  if (FINITE_PHRASE_HEADS.has(head)) return "The " + typeLabel + " " + lowerFirstWord(value) + ".";
+  if (FINITE_PHRASE_HEADS.has(head)) return "The " + nounLabel + " " + lowerFirstWord(value) + ".";
 
   // R3 3.5) 机械分词尾重构：`X with …, molded in one piece from plastic.` 这类“名词短语+悬垂分词”套模板尾
-  // → `The {t} has {head} and is {tail}.`（仅调语序/连词/系动词，事实词逐字保留；与商品/品牌无关的通用形态）。
+  // → V2 前置分词句 `{Tail}, the {t} has {head}.`（仅调语序/连词/系动词，事实词逐字保留；无机械 and 拼接）。
   const TAIL_MECHANISM = /^(.+?),\s*(molded|built|made|designed|constructed|finished|coated|lined|fitted)\s+(in|with|from|as)\b(.*)$/i;
   if (field === "construction" || field === "material" || field === "functional_feature") {
     const tailM = value.match(TAIL_MECHANISM);
@@ -761,14 +785,14 @@ function buildControlledSentence(field: string, rawValue: string, typeLabel: str
         const tail = [tailVerb, tailM[3], (tailM[4] ?? "").trim()].filter(Boolean).join(" ").replace(/[.!?\s]+$/, "");
         // head 无冠词时补 `a/an`（仅闭合类语法词），避免 “has expandable compartment design” 缺冠词
         const headNoArticle = /^(?:a|an|the)\s+/i.test(headPhrase) ? lowerFirstWord(headPhrase) : articleFor(headPhrase) + " " + lowerFirstWord(headPhrase);
-        return "The " + typeLabel + " has " + headNoArticle + " and is " + tail + ".";
+        return tail.charAt(0).toUpperCase() + tail.slice(1) + ", the " + nounLabel + " has " + headNoArticle + ".";
       }
     }
   }
 
-  // 4) 名词规格值 → 字段专属真实谓语
+  // 4) 名词规格值 → 字段专属真实谓语（t 一律用正文小写形态 nounLabel，避免 “The Organizer” 异常大写）
   const nounFrame = NOUN_SPEC_FRAME_BY_FIELD[field];
-  if (nounFrame) return nounFrame(typeLabel, consumerFactPhrase(field, value));
+  if (nounFrame) return nounFrame(nounLabel, consumerFactPhrase(field, value));
 
   // 5) 形态不可识别 → fail-closed
   return null;
@@ -877,7 +901,7 @@ export function composeControlledBullets(
   return { bullets: bullets.slice(0, 5), factRefsByBullet, unrenderable };
 }
 
-function composeOptimizedBullets(input: ListingGenerationInput, plan: ListingPlan): string[] {
+function composeOptimizedBullets(input: ListingGenerationInput, plan: ListingPlan): { bullets: string[]; factRefsByBullet: Array<Array<{ field: string; value: string }>> } {
   // v2：计划必须真实驱动生成——绝不无差别退回 composeBullets。
   // 关键词只出现在标题（主词一次）与 Keywords 字段；正文不内嵌关键词词面
   // （市场词可能越过 Claim Evidence 允许表 → 保 claim 安全零风险）。
@@ -885,7 +909,7 @@ function composeOptimizedBullets(input: ListingGenerationInput, plan: ListingPla
   // 受控句 ≥1 条即采用（即使 <3 条——模板回退句含 "for ... use" 模板尾，违反无模板尾合同）；
   // 仅受控句为 0（全部 fail-closed）时才退回既有安全模板路径（旧行为）。
   if (bullets.length === 0) {
-    return composeBullets(input);
+    return { bullets: composeBullets(input), factRefsByBullet: [] };
   }
   // 阶段B：运营文案编辑（仅语序/句式/冠词/大小写/标点；factRefs 逐句相等；
   // 任何一句无法安全编辑时只回退该句（保留阶段A原句），不丢整稿）。
@@ -897,7 +921,22 @@ function composeOptimizedBullets(input: ListingGenerationInput, plan: ListingPla
     roles.push(plan.bulletPlans[i]?.role);
   }
   const edited = applyStageBToBullets(sliced, factMap, roles);
-  return edited.bullets;
+  return { bullets: edited.bullets, factRefsByBullet: factRefsByBullet.slice(0, 5) };
+}
+
+/** V2 审计附录：句子实际引用的事实字段（通用词面匹配，非信任旧 trace）。 */
+function factFieldsCitedIn(sentence: string, input: ListingGenerationInput): string[] {
+  const text = String(sentence ?? "").toLowerCase();
+  if (!text) return [];
+  const out: string[] = [];
+  for (const f of input.productFacts ?? []) {
+    const rendered = englishRenderingOf(input, f.field) || String(f.value ?? "");
+    const tokens = String(rendered).toLowerCase().split(/[^a-z0-9À-ɏ'-]+/).filter((w) => w.length > 2);
+    if (tokens.length === 0) continue;
+    const hits = tokens.filter((w) => text.includes(w)).length;
+    if (hits / tokens.length >= 0.6) out.push(f.field);
+  }
+  return [...new Set(out)];
 }
 function composeOptimizedDescription(input: ListingGenerationInput, excludeSentences: string[] = []): string {
   // R6：受控完整句描述（身份 + 规格/适配句，禁止碎片拼接）
@@ -914,10 +953,15 @@ function composeOptimizedDescription(input: ListingGenerationInput, excludeSente
     if (sentences.length >= 2) {
       // 去掉复读后不足 2 句：对复读句做 `It/The → This {typeLabel}` 主语变体（非逐字、不新增词义）
       const typeLabel = typeLabelOf(input);
+      const nounLabel = lowerCommonNounLabel(typeLabel);
+      const escapeRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const stripLeadingSubject = (sentence: string) => sentence
+        .replace(/^(?:It|The)\s+/i, "")
+        .replace(new RegExp("^" + escapeRe(typeLabel) + "\\s+", "i"), "")
+        .replace(new RegExp("^" + escapeRe(nounLabel) + "\\s+", "i"), "");
       const variant = sentences.map((s) => {
         if (!excludedNorms.has(normOf(s))) return s;
-        if (/^It\s/i.test(s)) return "This " + typeLabel + s.replace(/^It\s/i, " ");
-        if (/^The\s/i.test(s)) return "This " + typeLabel + s.replace(/^The\s/i, " ");
+        if (/^(?:It|The)\s/i.test(s)) return "This " + nounLabel + " " + stripLeadingSubject(s);
         return s;
       });
       return variant.join(" ");
@@ -973,8 +1017,14 @@ export function composeOptimizedListingDraft(
   brief: ListingKeywordBrief | null,
 ): OptimizedListingDraft {
   const title = composeOptimizedTitle(input, plan, brief);
-  const bullets = composeOptimizedBullets(input, plan);
+  const { bullets, factRefsByBullet } = composeOptimizedBullets(input, plan);
   const description = composeOptimizedDescription(input, bullets);
   const { keywords, backendSearchTerms } = composeOptimizedKeywords(input, brief);
-  return { titles: [title], bullets, description, keywords, backendSearchTerms };
+  // V2：内部审计附录（逐句 factRefs；仅存草稿 JSON 供审计，draftSafeSummary 不导出、消费者字段不泄露）
+  const factRefsAudit = {
+    titles: [factFieldsCitedIn(title, input)],
+    bullets: bullets.map((_, i) => [...new Set((factRefsByBullet[i] ?? []).map((r) => r.field))]),
+    description: description.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0).map((s) => factFieldsCitedIn(s, input)),
+  };
+  return { titles: [title], bullets, description, keywords, backendSearchTerms, factRefsAudit };
 }

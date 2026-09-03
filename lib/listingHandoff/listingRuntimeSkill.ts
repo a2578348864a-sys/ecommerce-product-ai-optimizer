@@ -294,6 +294,12 @@ export type CopyQualityResult = {
  * 纯英文形态判定，不含任何商品词/品牌/类型黑名单。
  */
 const MECHANICAL_TAIL_PATTERN = /,\s*(?:molded|built|made|designed|constructed|finished|coated|lined|fitted)\s+(?:in|with|from|as)\b/i;
+/** V2：机械 and 拼接（has … and is + 过去分词），仅形态判定、与商品词无关 */
+const MECHANICAL_AND_SPLICE_PATTERN = /\band\s+is\s+(?:molded|built|made|designed|constructed|finished|coated|lined|fitted)\b/i;
+/** V2：空洞尾句（…and more. / etc. / and so on.） */
+const HOLLOW_TAIL_PATTERN = /(?:,\s*|\s+)(?:and\s+more|and\s+so\s+on|and\s+others|etc)\.?\s*$/i;
+/** V2：标题分段不得是操作/场景/护理从句（通用动词头形态表，非商品词黑名单） */
+const TITLE_CLAUSE_HEAD_PATTERN = /^(?:fits?|expands?|contracts?|stores?|holds?|keeps?|wipes?|cleans?|works?|adjusts?|opens?|brews?|measures?|weighs?|uses?|accommodates?|contains?)\b/i;
 
 /** 规范化词面（连字符/空格等价），与 listingClaimPolicy 同义匹配 */
 function canonicalTerm(text: string): string {
@@ -522,6 +528,12 @@ export function validateCopyQualityContract(input: CopyQualityInput): CopyQualit
     if (MECHANICAL_TAIL_PATTERN.test(b)) {
       issues.push({ target: "bullets", code: "mechanical_structure", message: "Bullet " + (index + 1) + " 以“名词短语 + 悬垂分词尾”收尾（如 , molded in / , built with），是机械结构。" });
     }
+    if (MECHANICAL_AND_SPLICE_PATTERN.test(b)) {
+      issues.push({ target: "bullets", code: "mechanical_and_splice", message: "Bullet " + (index + 1) + " 用 and is + 分词机械拼接两个事实（应改为前置分词或自然分句）。" });
+    }
+    if (HOLLOW_TAIL_PATTERN.test(b)) {
+      issues.push({ target: "bullets", code: "hollow_tail", message: "Bullet " + (index + 1) + " 以 and more / etc. 等空洞尾收尾，不含信息量。" });
+    }
     // 结构维度（v2）：句法完整性 / 模板尾 / 句首大写
     for (const code of structureIssuesOf(b)) {
       issues.push({ target: "bullets", code, message: "Bullet " + (index + 1) + " " + STRUCTURE_MESSAGE[code] });
@@ -545,10 +557,72 @@ export function validateCopyQualityContract(input: CopyQualityInput): CopyQualit
     if (MECHANICAL_TAIL_PATTERN.test(s)) {
       issues.push({ target: "description", code: "mechanical_structure", message: "描述第 " + (index + 1) + " 句以悬垂分词尾收尾（如 , molded in / , built with），是机械结构。" });
     }
+    if (MECHANICAL_AND_SPLICE_PATTERN.test(s)) {
+      issues.push({ target: "description", code: "mechanical_and_splice", message: "描述第 " + (index + 1) + " 句用 and is + 分词机械拼接。" });
+    }
+    if (HOLLOW_TAIL_PATTERN.test(s)) {
+      issues.push({ target: "description", code: "hollow_tail", message: "描述第 " + (index + 1) + " 句以空洞尾收尾。" });
+    }
     for (const code of structureIssuesOf(s)) {
       issues.push({ target: "description", code, message: "描述第 " + (index + 1) + " 句 " + STRUCTURE_MESSAGE[code] });
     }
   });
+
+  // V2 repeated_subject：≥3 条五点以同一主语短语开头（前两个词形判定，通用）
+  {
+    const openingCounts = new Map<string, number>();
+    for (const b of bullets) {
+      const tokens = String(b).toLowerCase().match(/[a-z][a-z'-]*/g) ?? [];
+      const key = tokens.slice(0, 2).join(" ");
+      if (!key) continue;
+      openingCounts.set(key, (openingCounts.get(key) ?? 0) + 1);
+    }
+    for (const [key, count] of openingCounts) {
+      if (count >= 3) {
+        issues.push({ target: "bullets", code: "repeated_subject", message: count + " 条五点以同一主语开头（" + key + "），连续重复主语是机械模板节奏。" });
+        break;
+      }
+    }
+  }
+
+  // V2 title_clause：标题分段出现操作/场景/护理从句
+  {
+    const segments = String(input.title ?? "").split(/[,;|]/).map((seg) => seg.trim()).filter(Boolean);
+    for (const seg of segments) {
+      if (TITLE_CLAUSE_HEAD_PATTERN.test(seg)) {
+        issues.push({ target: "title", code: "title_clause", message: "标题分段“" + seg.slice(0, 40) + "”是操作/场景句而非名词短语，标题不得含谓语从句。" });
+        break;
+      }
+    }
+  }
+
+  // V2 abnormal_capitalization：正文普通名词被大写（同一词形在正文同时存在小写用法 → 证明是普通名词；品牌/缩写不误伤）
+  {
+    const bodySentences: string[] = [];
+    for (const b of bullets) bodySentences.push(...sentenceList(b));
+    bodySentences.push(...sentenceList(String(input.description ?? "")));
+    const bodyLowerWords = new Set(bodySentences.join(" ").toLowerCase().split(/[^a-z]+/).filter(Boolean));
+    const typeLabelWords = new Set(String(typeLabel ?? "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));
+    const capCounts = new Map<string, number>();
+    for (const sentence of bodySentences) {
+      const words = String(sentence).split(/\s+/);
+      for (let wi = 0; wi < words.length; wi += 1) {
+        const raw = words[wi].replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, "");
+        if (wi === 0 || raw.length < 2) continue;
+        if (!/^[A-Z][a-z]+$/.test(raw)) continue;
+        if (typeLabelWords.has(raw.toLowerCase())) continue; // typeLabel 词：AI/历史稿可作产品名大写，不判
+        capCounts.set(raw, (capCounts.get(raw) ?? 0) + 1);
+      }
+    }
+    // 大写形态出现 >=3 次且同词形小写也出现在正文 → 普通名词被系统性异常大写
+    // （品牌/型号等专名不会小写并存；材料名如 "Stainless Steel" 的 1-2 次大写不误伤）
+    for (const [raw, count] of capCounts) {
+      if (count < 3) continue;
+      if (bodyLowerWords.has(raw.toLowerCase())) {
+        issues.push({ target: "bullets", code: "abnormal_capitalization", message: "正文普通名词“" + raw + "”被异常大写（出现 " + count + " 次且正文同类用法为小写），应自然小写。" });
+      }
+    }
+  }
 
   // subject_object_duplicate：非身份事实值与类型词完全相同（如 included_components="Tumbler" 与类型 "Tumbler"）
   const IDENTITY_FACT_FIELDS = new Set(["brand", "product_type", "series_or_model"]);

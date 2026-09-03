@@ -430,7 +430,17 @@ export function buildListingPlanFromCapability(
   keywordBrief: ListingKeywordBrief | null,
   capability: ListingCapabilityResult,
 ): CapabilityDrivenPlan {
-  const coreGroupNames: ClaimGroupName[] = CORE_CLAIM_GROUPS.filter(
+  // V2 购买问题优先级：结构/容量尺寸/操作适配/用途/配件/护理/证明——配件不得被低价值组挤掉
+  const PLAN_GROUP_PRIORITY: readonly ClaimGroupName[] = [
+    "material_construction",
+    "size_capacity_fit",
+    "core_function_operation",
+    "use_scenario",
+    "package_contents",
+    "care_cleaning",
+    "proof_performance",
+  ];
+  const coreGroupNames: ClaimGroupName[] = PLAN_GROUP_PRIORITY.filter(
     (group) => capability.eligibleGroups.some((g) => g.group === group),
   );
 

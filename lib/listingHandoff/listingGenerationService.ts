@@ -1159,6 +1159,8 @@ export async function generateListingDraftFromHandoff(
             titles: optimizedTitles,
             bullets: optimized.bullets,
             description: optimized.description,
+            // V2：内部审计附录（逐句 factRefs；draftSafeSummary 不导出）
+            ...(optimized.factRefsAudit ? { factRefsAudit: optimized.factRefsAudit } : {}),
             // LISTING_FINAL_CLOSURE：结构化回退同样经唯一关键词策略出口（竞品/未知品牌/风险词一律拒绝）
             keywords: dedupeTerms(policyFilterForListing(optimizedKeywords, generationInput)),
             backendSearchTerms: dedupeTerms(policyFilterForListing(optimized.backendSearchTerms, generationInput)),

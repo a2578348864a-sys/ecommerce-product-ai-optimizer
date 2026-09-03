@@ -28,7 +28,7 @@ describe("阶段B编辑器：factRefs 不变性", () => {
 
   it("2. 编辑器不能引入输入中不存在的事实词或数值", () => {
     const facts = [FACT("material", "Plastic")];
-    const out = applyStageBEdit({ sentence: "The Organizer is made of Plastic.", facts });
+    const out = applyStageBEdit({ sentence: "The organizer is made of Plastic.", facts });
     expect(out.sentence).not.toContain("leakproof");
     expect(out.sentence).not.toContain("BPA-free");
     expect(out.sentence).not.toContain("12 hours");
@@ -37,12 +37,12 @@ describe("阶段B编辑器：factRefs 不变性", () => {
   });
 
   it("3. 五点重复开头得到改善（相同开头 ≤2 次）", () => {
-    // 3 个相同开头（The Organizer is）必须被编辑器改变，否则跳过阶段B时红
+    // 3 个相同开头（The organizer is）必须被编辑器改变，否则跳过阶段B时红
     const sents = [
-      "The Organizer is made of Plastic.",
-      "The Organizer is water resistant.",
-      "The Organizer is easy to clean.",
-      "The Organizer includes divider inserts.",
+      "The organizer is made of Plastic.",
+      "The organizer is water resistant.",
+      "The organizer is easy to clean.",
+      "The organizer includes divider inserts.",
     ];
     const factMap: Array<OperatedFact[]> = [
       [FACT("material", "Plastic")],
@@ -63,7 +63,7 @@ describe("阶段B编辑器：factRefs 不变性", () => {
   });
 
   it("4. 描述不再只是身份句加规格句的机械拼接", () => {
-    const desc = "The Organizer is a Plastic product. The Organizer measures 16.5 inches. The Organizer weighs 0.81 kg. The Organizer fits most kitchen drawers.";
+    const desc = "The organizer is a Plastic product. The organizer measures 16.5 inches. The organizer weighs 0.81 kg. The organizer fits most kitchen drawers.";
     const out = editDescriptionForCoherence(desc);
     expect(out.edited).toBe(true);
     // 重排后规格句收尾、事实句前置
@@ -74,7 +74,7 @@ describe("阶段B编辑器：factRefs 不变性", () => {
 
   it("5. Food Safe / Waterproof / Sturdy / 1 Count 等被阶段A排除的信息仍无法进入", () => {
     const facts = [FACT("material", "Plastic")];
-    const out = applyStageBEdit({ sentence: "The Organizer is made of Plastic.", facts });
+    const out = applyStageBEdit({ sentence: "The organizer is made of Plastic.", facts });
     for (const bad of ["Food Safe", "Waterproof", "Sturdy", "1 Count"]) {
       expect(out.sentence, "不得出现 " + bad).not.toContain(bad);
     }
@@ -82,7 +82,7 @@ describe("阶段B编辑器：factRefs 不变性", () => {
 
   it("6. 未确认关键词不能通过编辑器进入正文", () => {
     const facts = [FACT("material", "Plastic")];
-    const out = applyStageBEdit({ sentence: "The Organizer is made of Plastic.", facts });
+    const out = applyStageBEdit({ sentence: "The organizer is made of Plastic.", facts });
     for (const kw of ["drawer organizer", "silverware tray"]) {
       expect(out.sentence).not.toContain(kw);
     }
@@ -90,7 +90,7 @@ describe("阶段B编辑器：factRefs 不变性", () => {
 
   it("7. 至少三种不同商品夹具：Organizer / Bottle / Tumbler", () => {
     const cases: Array<{ s: string; f: OperatedFact[] }> = [
-      { s: "The Organizer is made of Plastic.", f: [FACT("material", "Plastic")] },
+      { s: "The organizer is made of Plastic.", f: [FACT("material", "Plastic")] },
       { s: "The Bottle is made of Stainless Steel.", f: [FACT("material", "Stainless Steel")] },
       { s: "The Tumbler is made of Stainless Steel.", f: [FACT("material", "Stainless Steel")] },
     ];
@@ -110,7 +110,7 @@ describe("阶段B编辑器：factRefs 不变性", () => {
   it("9. 删除事实或增加营销收益时：编辑器词面校验必须阻止（factRefs 测试红）", () => {
     const facts = [FACT("material", "Plastic")];
     // 试图注入营销词（guardedEdit 会因新词面拒绝）
-    const out = applyStageBEdit({ sentence: "The Organizer is made of Plastic.", facts });
+    const out = applyStageBEdit({ sentence: "The organizer is made of Plastic.", facts });
     expect(out.sentence).not.toContain("premium");
     expect(out.sentence).not.toContain("perfect");
   });
@@ -126,7 +126,7 @@ describe("阶段B编辑器：factRefs 不变性", () => {
 describe("阶段B安全护栏：删除事实或注入营销收益必须被阻止", () => {
   it("注入营销词：输出词面必须是输入词面的子集（guard 拒绝任何新词）", () => {
     const facts = [FACT("material", "Plastic")];
-    const input = "The Organizer is made of Plastic.";
+    const input = "The organizer is made of Plastic.";
     const out = applyStageBEdit({ sentence: input, facts });
     const inputWords = wordSetOf(input);
     const outputWords = wordSetOf(out.sentence);
@@ -137,14 +137,14 @@ describe("阶段B安全护栏：删除事实或注入营销收益必须被阻止
 
   it("删除事实：factRefs 集合必须保持（编辑器不因 Edit 变体丢失字段）", () => {
     const facts = [FACT("material", "Plastic"), FACT("capacity", "24 oz")];
-    const out = applyStageBEdit({ sentence: "The Organizer is made of Plastic and has a capacity of 24 oz.", facts });
+    const out = applyStageBEdit({ sentence: "The organizer is made of Plastic and has a capacity of 24 oz.", facts });
     expect(out.factRefs.material).toBe("Plastic");
     expect(out.factRefs.capacity).toBe("24 oz");
     expect(JSON.stringify(buildFactRefs(facts))).toEqual(JSON.stringify(out.factRefs));
   });
   it("Claim Evidence 红线：编辑器不得产出 fields 之外的数值/规格", () => {
     const facts = [FACT("material", "Plastic")];
-    const out = applyStageBEdit({ sentence: "The Organizer is made of Plastic.", facts });
+    const out = applyStageBEdit({ sentence: "The organizer is made of Plastic.", facts });
     // 新数值不得出现（无 weight/dimensions 事实）
     expect(out.sentence).not.toContain("0.81");
     expect(out.sentence).not.toContain("16.5");
@@ -152,11 +152,11 @@ describe("阶段B安全护栏：删除事实或注入营销收益必须被阻止
 });
 
 describe("任务2红测：阶段B未接入composeOptimizedListingDraft", () => {
-  it("红1：Organizer 五点最终输出保留重复 The Organizer 开头（阶段B未改善时必红）", async () => {
+  it("红1：Organizer 五点最终输出保留重复 The organizer 开头（阶段B未改善时必红）", async () => {
     const { evaluateListingCapabilityFromPolicy } = await import("@/lib/listingHandoff/listingCapabilityEvaluation");
     const { buildListingPlanFromCapability } = await import("@/lib/listingHandoff/listingPlan");
     const { composeOptimizedListingDraft } = await import("@/lib/listingHandoff/listingComposition");
-    // 构造 3 条以上在阶段A均生成 "The Organizer..." 的商品事实
+    // 构造 3 条以上在阶段A均生成 "The organizer..." 的商品事实
     const facts = [
       { field: "brand", label: "品牌", value: "ukeetap" },
       { field: "product_type", label: "商品类型", value: "Organizer" },
@@ -336,9 +336,9 @@ describe("反向验证（六大失败与破坏路径）", () => {
 
   it("反4：允许连续 3 条同主语开头，节奏校验必须失败（必须被编辑器消除）", () => {
     const sents = [
-      "The Organizer is made of Plastic.",
-      "The Organizer includes divider inserts.",
-      "The Organizer is used for Kitchen storage.",
+      "The organizer is made of Plastic.",
+      "The organizer includes divider inserts.",
+      "The organizer is used for Kitchen storage.",
     ];
     const factMap: Array<OperatedFact[]> = [
       [FACT("material", "Plastic")],
@@ -356,7 +356,7 @@ describe("反向验证（六大失败与破坏路径）", () => {
     // 试图注入各类营销收益词
     for (const badWord of ["ideal", "perfect", "helps you", "premium", "durable", "easy"]) {
       const out = applyStageBEdit({
-        sentence: "The Organizer is made of Plastic.",
+        sentence: "The organizer is made of Plastic.",
         facts,
       });
       expect(out.sentence.toLowerCase()).not.toContain(badWord);
@@ -365,7 +365,7 @@ describe("反向验证（六大失败与破坏路径）", () => {
 
   it("反6：编辑单句失败时只回退该句，整份草稿保持不为空", () => {
     const sents = [
-      "The Organizer is made of Plastic.",
+      "The organizer is made of Plastic.",
       "Use the Organizer for storing cutlery.",
       "Wipe clean with a damp cloth.",
     ];
@@ -452,5 +452,17 @@ describe("反向验证（六大失败与破坏路径）", () => {
     const descSentences = String(draft.description).split(/(?<=[.!?])\s+/).filter(Boolean);
     expect(descSentences.length).toBeGreaterThanOrEqual(2);
     expect(descSentences.length).toBeLessThanOrEqual(4);
+  });
+});
+
+describe("V2 阶段B不变量：数字/单位/限定词必须逐句保留（红）", () => {
+  it("红10：stageBSentenceInvariantOk 对丢数字/单位/限定词判 false，对纯语序调整判 true", async () => {
+    const { stageBSentenceInvariantOk } = await import("@/lib/listingHandoff/listingOperatorCopy");
+    expect(typeof stageBSentenceInvariantOk).toBe("function");
+    expect(stageBSentenceInvariantOk("The bottle holds 24 oz of water.", "The bottle holds water.")).toBe(false);
+    expect(stageBSentenceInvariantOk("The organizer keeps 40-50 pieces of cutlery.", "The organizer keeps pieces of cutlery.")).toBe(false);
+    expect(stageBSentenceInvariantOk("Hand wash only.", "Hand wash.")).toBe(false);
+    expect(stageBSentenceInvariantOk("The bottle holds 24 oz of water.", "The bottle holds 24 oz of water daily.")).toBe(false);
+    expect(stageBSentenceInvariantOk("The bottle holds 24 oz of water.", "The bottle holds 24 oz water.")).toBe(true);
   });
 });

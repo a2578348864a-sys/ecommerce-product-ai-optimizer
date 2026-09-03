@@ -60,11 +60,11 @@ function goodSnapshot() {
       //   "The Tumbler available with stainless steel for practical use." → sentence_fragment + template_tail
       // 意图保持不变：仍是一份「新格式、factSafe=true、copyQuality=true、3 条合格五点、1 段合格描述」的
       // 历史快照，只把句子换成真正合格的自然英文（材质 / 护理祈使 / 功能 + 真实谓语）。
-      "The HydroJug Tumbler is made of stainless steel.",
+      "The HydroJug tumbler is made of stainless steel.",
       "For care, rinse the parts and wipe dry.",
-      "The Tumbler features a straw lid for one-handed drinking.",
+      "The tumbler features a straw lid for one-handed drinking.",
     ],
-    description: "The HydroJug Tumbler is made of stainless steel. It features a straw lid for one-handed drinking.",
+    description: "The HydroJug tumbler is made of stainless steel. It features a straw lid for one-handed drinking.",
     keywords: ["HydroJug", "Tumbler"],
     backendSearchTerms: ["water bottle"],
     sellingPoints: ["A Tumbler"],
@@ -185,14 +185,14 @@ describe("HISTORICAL_KEYWORD_READ_GUARD：历史草稿关键词按当前 Brief+P
   ];
   const DIRTY_BACKEND = ["drawer organizer", "plastic organizer caddy", "Holds about 40-50 Organizer"];
   const BODY_BULLETS = [
-    "The Organizer is built with an expandable multi-compartment design.",
-    "The Organizer stores about 40 to 50 pieces of cutlery.",
+    "The organizer is built with an expandable multi-compartment design.",
+    "It stores about 40 to 50 pieces of cutlery.",
     "This drawer organizer expands to the drawer width.",
-    "The Organizer is suitable for daily kitchen storage.",
+    "It is suitable for daily kitchen storage.",
     "For care, wipe with a damp cloth.",
   ];
   const BODY_TITLE = "ukeetap UTO001 Drawer Organizer Plastic Silver";
-  const BODY_DESC = "The ukeetap UTO001 is a plastic organizer. It fits most medium kitchen drawers. The Organizer weighs 0.81 kg.";
+  const BODY_DESC = "The ukeetap UTO001 is a plastic organizer. It fits most medium kitchen drawers. The organizer weighs 0.81 kg.";
   const BRIEF = {
     primaryKeyword: "drawer organizer",
     supportingKeywords: ["kitchen drawer organizer"],
@@ -306,5 +306,45 @@ describe("HISTORICAL_KEYWORD_READ_GUARD：历史草稿关键词按当前 Brief+P
     const summary = draftSafeSummary(clean, POLICY);
     expect(summary?.keywords).toEqual(["drawer organizer", "kitchen drawer organizer"]);
     expect(summary?.historicalKeywordFilteredNotice).toBeUndefined();
+  });
+});
+
+describe("V2 历史旧pass稿按新合同重判：异常大写+机械拼接+重复主语必须不合格（红）", () => {
+  it("红11：R3 时代旧稿（The Organizer 大写 + and is molded + 重复主语）→ 读取重判不合格，正式字段清空", () => {
+    const legacy = {
+      draftKind: "structured_listing_draft",
+      humanReviewRequired: true,
+      generatedAt: "2026-09-03T06:00:00.000Z",
+      source: "deterministic_composition_v1",
+      version: 1,
+      composerVersion: "listing-composer-v1",
+      generationPolicyVersion: "listing-generation-policy-v1",
+      polishApplied: false,
+      polishModel: null,
+      titles: ["ukeetap UTO001 Expandable Cutlery Drawer Organizer, Plastic, Silver"],
+      bullets: [
+        "The Organizer has an expandable compartment design with multiple slots and is molded in one piece from plastic.",
+        "The Organizer holds approximately 40-50 pieces of cutlery.",
+        "After placing the organizer in the drawer, expand or contract it according to the drawer width.",
+        "The Organizer stores knives, forks, spoons, and other cutlery in a kitchen drawer.",
+        "Wipe with a damp cloth; if necessary, clean with warm water and mild detergent.",
+      ],
+      description: "The ukeetap UTO001 is a plastic organizer. It fits most medium and large kitchen drawers and adjusts to the available drawer space. The organizer measures 16.5 x 21 x 1.77 inches and weighs 0.81 kg.",
+      keywords: ["drawer organizer"],
+      backendSearchTerms: [],
+      sellingPoints: ["x"],
+      providerAttempted: false,
+      providerSucceeded: false,
+      fallbackApplied: false,
+      factSafe: true,
+      copyQuality: true,
+      listingUnqualified: false,
+    };
+    const summary = draftSafeSummary(legacy);
+    expect(summary, "旧稿应被读取重判拦截").not.toBeNull();
+    expect(summary?.listingUnqualified, "异常大写/机械拼接/重复主语旧稿仍被判合格").toBe(true);
+    expect(summary?.bullets, "不合格旧稿不得展示正式五点").toEqual([]);
+    expect(summary?.titles, "不合格旧稿不得展示正式标题").toEqual([]);
+    expect(summary?.description, "不合格旧稿不得展示正式描述").toBe("");
   });
 });

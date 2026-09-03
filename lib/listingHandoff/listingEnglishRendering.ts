@@ -340,3 +340,21 @@ export async function buildEnglishRenderingPack(
   renderingCache.set(cacheKey, pack);
   return { ok: true, pack };
 }
+
+/**
+ * V2 运营编辑合同：正文普通名词形态。
+ * product_type 作为普通名词在正文（五点/描述）中自然小写；全大写缩写词（如 LED）、
+ * 含数字的型号段保持原样。品牌/型号/技术专名不走此函数（由各自渲染路径保留原形）。
+ * 判定只依赖词形（与具体商品/品牌无关）。
+ */
+export function lowerCommonNounLabel(label: string): string {
+  return String(label ?? "")
+    .split(/(\s+)/)
+    .map((tok) => {
+      if (!/[A-Za-z]/.test(tok)) return tok;
+      if (/\d/.test(tok)) return tok;
+      if (tok.length > 1 && /^[A-Z]+$/.test(tok)) return tok;
+      return tok.charAt(0).toLowerCase() + tok.slice(1);
+    })
+    .join("");
+}

@@ -42,11 +42,13 @@ const NOW = "2026-08-30T15:45:00.000Z";
 const DEMO = "demo-ukeetap-offline";
 
 const UKEETAP_RENDERINGS: Record<string, string> = {
+  series_or_model: "UTO001",
+  material: "molded in one piece from plastic",
   capacity: "stores about 40 to 50 pieces of cutlery",
   usage: "suitable for daily kitchen storage and carrying",
   care: "rinse with clean water and wipe dry",
-  construction: "built with an expandable multi-compartment design in molded plastic",
-  operation: "expands or collapses to the sides according to the drawer width",
+  construction: "expandable compartment design with multiple slots, molded in one piece from plastic",
+  operation: "After placing the organizer in the drawer, expand or collapse it to the sides according to the drawer width.",
   compatibility: "fits most medium-sized drawers",
   included_components: "1 Expandable Silverware Organizer",
   functional_feature: "100% waterproof and guaranteed never to leak",
@@ -56,31 +58,32 @@ const UKEETAP_RENDERINGS: Record<string, string> = {
 const BAD_BULLET_5 = "After placing in the drawer, expand or collapse to the sides according to the drawer width for standard use with this product every day.";
 
 /**
- * 阶段A受控原句合同：未经过阶段B编辑前的原始受控句
+ * 阶段A受控原句合同：未经过阶段B编辑前的原始受控句。
+ * V2：普通名词小写、结构组前置分词句、operation 以 After placing 引导、配件组排在 care 前。
  */
 const STAGE_A_CONTROLLED_BULLETS = [
-  "The Organizer is built with an expandable multi-compartment design in molded plastic.",
-  "The Organizer stores about 40 to 50 pieces of cutlery.",
-  "The Organizer expands or collapses to the sides according to the drawer width.",
-  "The Organizer is suitable for daily kitchen storage and carrying.",
-  "Rinse with clean water and wipe dry.",
+  "Molded in one piece from plastic, the organizer has an expandable compartment design with multiple slots.",
+  "The organizer stores about 40 to 50 pieces of cutlery.",
+  "After placing the organizer in the drawer, expand or collapse it to the sides according to the drawer width.",
+  "The organizer is suitable for daily kitchen storage and carrying.",
+  "The included component is 1 expandable silverware organizer.",
 ] as const;
 
 /**
  * 精确自然句合同（阶段B运营文案输出）：确定性兜底必须逐字符产出这 5 条。
  * 每条由「字段 + 英文 rendering 短语形态」唯一确定，rendering 原文 verbatim 嵌入（事实锚点不丢）：
- * 1 construction（`built with …` 分词补语）→ The {type} is {value}.
- * 2 capacity（`stores …` 三单谓语）      → The {type} {value}.
- * 3 operation（`expands …` 三单谓语）    → This {type} {value}（阶段B句首去重优化）.
- * 4 usage（`suitable for …` 形容词补语） → The {type} is {value}.
- * 5 care（`rinse …` 祈使短语）           → 直接以动作动词开头。
+ * 1 construction（机械分词尾重构）→ `{Tail}, the {type} has {head}.`
+ * 2 capacity（`stores …` 三单谓语）→ The {type} {value}.
+ * 3 operation（自足时间从句祈使） → 原样保留 After placing …（含明确主语对象）。
+ * 4 usage（`suitable for …` 形容词补语）→ The {type} is {value}.
+ * 5 included_components（配件组，优先级高于 care）→ The included component is {value}.
  */
 const EXPECTED_NATURAL_BULLETS = [
-  "The Organizer is built with an expandable multi-compartment design in molded plastic.",
-  "The Organizer stores about 40 to 50 pieces of cutlery.",
-  "This Organizer expands or collapses to the sides according to the drawer width.",
-  "The Organizer is suitable for daily kitchen storage and carrying.",
-  "Rinse with clean water and wipe dry.",
+  "Molded in one piece from plastic, the organizer has an expandable compartment design with multiple slots.",
+  "The organizer stores about 40 to 50 pieces of cutlery.",
+  "After placing the organizer in the drawer, expand or collapse it to the sides according to the drawer width.",
+  "The organizer is suitable for daily kitchen storage and carrying.",
+  "The included component is 1 expandable silverware organizer.",
 ] as const;
 
 /** 旧万能帧产出的五类病句（必须被真实 Copy Quality 拒绝，不得再出现在正式输出） */
@@ -98,7 +101,7 @@ function visitorContext() {
 
 function seedTask(taskId: string, resultJson: string) {
   const storePath = process.env.DEMO_SANDBOX_STORE_PATH!;
-  writeFileSync(storePath, JSON.stringify({ version: 1, tasks: [{ id: taskId, demoAccessId: DEMO, type: "workflow", title: "ukeetap Extra Large Expandable Silverware Organizer", decisionStatus: "continue", platform: "amazon", productUrl: null, materialText: "m", source: "demo", score: 1, level: "low", oneLineSummary: "o", resultJson, productLifecycle: "i", createdAt: NOW, updatedAt: NOW }], candidates: [] }), "utf8");
+  writeFileSync(storePath, JSON.stringify({ version: 1, tasks: [{ id: taskId, demoAccessId: DEMO, type: "workflow", title: "ukeetap UTO001 Expandable Silverware Organizer", decisionStatus: "continue", platform: "amazon", productUrl: null, materialText: "m", source: "demo", score: 1, level: "low", oneLineSummary: "o", resultJson, productLifecycle: "i", createdAt: NOW, updatedAt: NOW }], candidates: [] }), "utf8");
 }
 
 function researchDoc() {
@@ -117,13 +120,13 @@ function researchDoc() {
   });
   const context = {
     candidateId: "candidate-ukeetap",
-    productName: "ukeetap Extra Large Expandable Silverware Organizer, Flatware Tray, Black",
+    productName: "ukeetap UTO001 Expandable Silverware Organizer, Flatware Tray, Black",
     sourceType: "seller_sprite_market_research",
     sourceLabel: "SellerSprite",
     marketplace: "US",
     asin: "B0GZRLKJT8",
     productUrl: "https://www.amazon.com/dp/B0GZRLKJT8",
-    title: "ukeetap Extra Large Expandable Silverware Organizer, Flatware Tray, Black",
+    title: "ukeetap UTO001 Expandable Silverware Organizer, Flatware Tray, Black",
     brand: "ukeetap",
     category: "Kitchen & Dining",
     priceUsd: 16.98,
@@ -181,7 +184,7 @@ async function setupHandoff(taskId: string, options: {
   const sv = preview1.storageVersion!;
   const confirmables = buildConfirmableCandidates(p1.gate.candidate!.stableSourceFacts);
   const eligible = confirmables.filter((c) => c.allowedUsageScopes.includes("listing"));
-  const fields = ["brand", "product_type", "series_or_model", "material"];
+  const fields = ["brand", "product_type", "material"];
   const seenField = new Set<string>();
   const selected = eligible.filter((c) => {
     if (!fields.includes(c.field) || seenField.has(c.field)) return false;
@@ -204,7 +207,7 @@ async function setupHandoff(taskId: string, options: {
           { field: "dimensions" as const, value: "16.5\"D x 21\"W x 1.77\"H" },
           { field: "weight" as const, value: "0.81 kg" },
           { field: "quantity_or_pack_size" as const, value: "1 Count" },
-          { field: "functional_feature" as const, value: "Extra Large Capacity, Expandable, Sturdy" },
+          { field: "functional_feature" as const, value: "extra large capacity with a sturdy expandable build" },
           { field: "other" as const, value: "Expandable design with multiple compartments for organizing forks, spoons, knives and kitchen utensils." },
         ]
       : []),
@@ -423,7 +426,7 @@ describe("ukeetap 离线回归（坏 Provider 稿 → 5 条 Plan 绑定确定性
     const copy = validateCopyQualityContract({
       title: optimized.titles[0] ?? "",
       bullets: optimized.bullets,
-      description: "The Organizer is made of molded plastic with multiple compartments. It stores about 40 to 50 pieces of cutlery.",
+      description: "The organizer is made of molded plastic with multiple compartments. It stores about 40 to 50 pieces of cutlery.",
       facts: renderedInput.productFacts.map((f) => ({ factId: f.field, field: f.field, label: f.label, value: f.value })),
       typeLabel: "Organizer",
     });
@@ -433,7 +436,7 @@ describe("ukeetap 离线回归（坏 Provider 稿 → 5 条 Plan 绑定确定性
       const r = validateCopyQualityContract({
         title: optimized.titles[0] ?? "",
         bullets: [bad],
-        description: "The Organizer is made of molded plastic with multiple compartments. It stores about 40 to 50 pieces of cutlery.",
+        description: "The organizer is made of molded plastic with multiple compartments. It stores about 40 to 50 pieces of cutlery.",
         facts: renderedInput.productFacts.map((f) => ({ factId: f.field, field: f.field, label: f.label, value: f.value })),
         typeLabel: "Organizer",
       });
