@@ -748,6 +748,24 @@ function buildControlledSentence(field: string, rawValue: string, typeLabel: str
   // 3) 三单谓语开头 → `The {t} {v}.`
   if (FINITE_PHRASE_HEADS.has(head)) return "The " + typeLabel + " " + lowerFirstWord(value) + ".";
 
+  // R3 3.5) 机械分词尾重构：`X with …, molded in one piece from plastic.` 这类“名词短语+悬垂分词”套模板尾
+  // → `The {t} has {head} and is {tail}.`（仅调语序/连词/系动词，事实词逐字保留；与商品/品牌无关的通用形态）。
+  const TAIL_MECHANISM = /^(.+?),\s*(molded|built|made|designed|constructed|finished|coated|lined|fitted)\s+(in|with|from|as)\b(.*)$/i;
+  if (field === "construction" || field === "material" || field === "functional_feature") {
+    const tailM = value.match(TAIL_MECHANISM);
+    if (tailM && tailM[1] && tailM[4] !== undefined) {
+      const headPhrase = tailM[1].trim().replace(/[.!?\s]+$/, "");
+      const headWords = headPhrase.split(/\s+/).filter(Boolean).length;
+      if (headWords >= 3 && headWords <= 24) {
+        const tailVerb = tailM[2].toLowerCase();
+        const tail = [tailVerb, tailM[3], (tailM[4] ?? "").trim()].filter(Boolean).join(" ").replace(/[.!?\s]+$/, "");
+        // head 无冠词时补 `a/an`（仅闭合类语法词），避免 “has expandable compartment design” 缺冠词
+        const headNoArticle = /^(?:a|an|the)\s+/i.test(headPhrase) ? lowerFirstWord(headPhrase) : articleFor(headPhrase) + " " + lowerFirstWord(headPhrase);
+        return "The " + typeLabel + " has " + headNoArticle + " and is " + tail + ".";
+      }
+    }
+  }
+
   // 4) 名词规格值 → 字段专属真实谓语
   const nounFrame = NOUN_SPEC_FRAME_BY_FIELD[field];
   if (nounFrame) return nounFrame(typeLabel, consumerFactPhrase(field, value));
@@ -778,6 +796,12 @@ function planBulletCandidates(
     candidates.push({ field: id, value: candidate });
   }
   return candidates.sort((a, b) => {
+    // R3：容量/规格等高价值规格词在同组内优先（防 compat 之类“尺寸适配”表达挤掉可用 capacity 独立取点）
+    if (a.field !== b.field) {
+      const aSpec = a.field === "capacity" || a.field === "weight" || a.field === "dimensions";
+      const bSpec = b.field === "capacity" || b.field === "weight" || b.field === "dimensions";
+      if (aSpec !== bSpec) return aSpec ? -1 : 1;
+    }
     const wa = planWordCount(a.value), wb = planWordCount(b.value);
     const scoreA = wa >= 5 && wa <= 30 ? (wa >= 8 ? 0 : 8 - wa) : 100;
     const scoreB = wb >= 5 && wb <= 30 ? (wb >= 8 ? 0 : 8 - wb) : 100;
@@ -875,11 +899,31 @@ function composeOptimizedBullets(input: ListingGenerationInput, plan: ListingPla
   const edited = applyStageBToBullets(sliced, factMap, roles);
   return edited.bullets;
 }
-function composeOptimizedDescription(input: ListingGenerationInput): string {
+function composeOptimizedDescription(input: ListingGenerationInput, excludeSentences: string[] = []): string {
   // R6：受控完整句描述（身份 + 规格/适配句，禁止碎片拼接）
   const base = composeDescription(input);
   // 阶段B：描述段落连贯性编辑（只重排已有句序；规格句后置；factRefs 不变）
-  return editDescriptionForCoherence(base).text;
+  const edited = editDescriptionForCoherence(base).text;
+  // R3：描述不得逐字复读任一条五点（在阶段B定稿后比较，避免 The/It 平滑造成的先后错位）
+  if (excludeSentences.length > 0) {
+    const normOf = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase().replace(/[.!?]+$/, "");
+    const excludedNorms = new Set(excludeSentences.map(normOf));
+    const sentences = edited.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter((s) => s.length > 0);
+    const kept = sentences.filter((s) => !excludedNorms.has(normOf(s)));
+    if (kept.length >= 2) return kept.join(" ");
+    if (sentences.length >= 2) {
+      // 去掉复读后不足 2 句：对复读句做 `It/The → This {typeLabel}` 主语变体（非逐字、不新增词义）
+      const typeLabel = typeLabelOf(input);
+      const variant = sentences.map((s) => {
+        if (!excludedNorms.has(normOf(s))) return s;
+        if (/^It\s/i.test(s)) return "This " + typeLabel + s.replace(/^It\s/i, " ");
+        if (/^The\s/i.test(s)) return "This " + typeLabel + s.replace(/^The\s/i, " ");
+        return s;
+      });
+      return variant.join(" ");
+    }
+  }
+  return edited;
 }
 /**
  * R2：组合层关键词策略输入（与 listingGenerationService.keywordPolicyInputOf 同源逻辑；
@@ -930,7 +974,7 @@ export function composeOptimizedListingDraft(
 ): OptimizedListingDraft {
   const title = composeOptimizedTitle(input, plan, brief);
   const bullets = composeOptimizedBullets(input, plan);
-  const description = composeOptimizedDescription(input);
+  const description = composeOptimizedDescription(input, bullets);
   const { keywords, backendSearchTerms } = composeOptimizedKeywords(input, brief);
   return { titles: [title], bullets, description, keywords, backendSearchTerms };
 }

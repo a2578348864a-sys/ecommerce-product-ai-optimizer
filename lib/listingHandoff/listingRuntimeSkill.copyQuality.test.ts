@@ -458,3 +458,27 @@ describe("Copy Quality 主句骨架谓语（红测）", () => {
     expect(r.issues.some((i) => i.code === "sentence_fragment" && i.target === "description")).toBe(true);
   });
 });
+
+describe("R3 Copy Quality：描述整句复读与机械分词尾必须被拒（红）", () => {
+  it("红4：描述整句逐字复读任一条五点 → description_bullet_repeat", async () => {
+    const { validateCopyQualityContract } = await import("@/lib/listingHandoff/listingRuntimeSkill");
+    const r = validateCopyQualityContract({
+      title: "ukeetap Organizer",
+      bullets: ["The Organizer fits most medium and large kitchen drawers.", "The Organizer is made of plastic.", "Wipe with a damp cloth."],
+      description: "It is a plastic organizer for cutlery. The Organizer fits most medium and large kitchen drawers.",
+    });
+    expect(r.ok, JSON.stringify(r.issues)).toBe(false);
+    expect(r.issues.some((i) => i.code === "description_bullet_repeat"), JSON.stringify(r.issues)).toBe(true);
+  });
+
+  it("红5：含机械分词尾（, molded in …）的五点 → mechanical_structure", async () => {
+    const { validateCopyQualityContract } = await import("@/lib/listingHandoff/listingRuntimeSkill");
+    const r = validateCopyQualityContract({
+      title: "ukeetap Organizer",
+      bullets: ["The Organizer has an expandable compartment design, molded in one piece from plastic.", "The Organizer keeps 40 pieces of cutlery.", "Wipe with a damp cloth."],
+      description: "The Organizer is made of plastic.",
+    });
+    expect(r.ok, JSON.stringify(r.issues)).toBe(false);
+    expect(r.issues.some((i) => i.code === "mechanical_structure"), JSON.stringify(r.issues)).toBe(true);
+  });
+});

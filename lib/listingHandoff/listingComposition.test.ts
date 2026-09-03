@@ -1243,3 +1243,69 @@ describe("R2 源单位保持：0.81 kg 不得被擅自换算（锁定）", () =>
     expect(corpus.toLowerCase()).not.toContain("28.6 oz");
   });
 });
+
+describe("R3 正文质量：capacity 优先/描述不整句复读/机械分词尾（红）", () => {
+  async function runDraft(facts: Array<{ field: string; label: string; value: string }>) {
+    const li = input(facts);
+    const { evaluateListingCapabilityFromPolicy } = await import("@/lib/listingHandoff/listingCapabilityEvaluation");
+    const { buildListingPlanFromCapability } = await import("@/lib/listingHandoff/listingPlan");
+    const cap = evaluateListingCapabilityFromPolicy({
+      input: li,
+      confirmedFacts: li.productFacts.map((f) => ({ field: f.field, value: f.value, evidenceTier: "human_confirmed", sourceRef: { sourceKind: "user_confirmation" } })),
+      extraProhibitedTerms: [],
+      hasBlockingIssue: false,
+    });
+    const plan = buildListingPlanFromCapability(li, null, cap.capability);
+    return composeOptimizedListingDraft(li, plan, null);
+  }
+  const baseFacts = (type: string, material: string) => [
+    { field: "product_type", label: "商品类型", value: type },
+    { field: "material", label: "材质", value: material },
+    { field: "construction", label: "构造", value: "an expandable frame with a steel core" },
+    { field: "capacity", label: "容量", value: "keeps 40 pieces of cutlery" },
+    { field: "compatibility", label: "适配", value: "fits most medium and large kitchen drawers and adjusts to the available drawer space" },
+    { field: "operation", label: "操作方式", value: "expands or contracts to the sides to fit the drawer width" },
+    { field: "usage", label: "使用场景", value: "stores cutlery in a kitchen drawer" },
+    { field: "care", label: "清洁保养", value: "wipe with a damp cloth" },
+  ];
+
+  it("红1：可用 capacity 不得被同组适配词挤掉；四类商品通用", async () => {
+    const cases = [
+      ["Organizer", "Plastic"],
+      ["Bottle", "Stainless Steel"],
+      ["Tumbler", "Plastic"],
+      ["Jar", "Glass"],
+    ] as const;
+    for (const [type, material] of cases) {
+      const draft = await runDraft(baseFacts(type, material));
+      const corpus = draft.bullets.join(" \u0001 ");
+      expect(draft.bullets.length, type + " 五点数").toBe(5);
+      expect(corpus, type + " capacity 句应存在").toContain("keeps 40 pieces of cutlery");
+      expect(corpus, type + " 适配句与容量并存属重复取点").not.toContain("fits most medium and large kitchen drawers");
+    }
+  });
+
+  it("红2：描述不得逐字复读任一条五点", async () => {
+    const draft = await runDraft(baseFacts("Organizer", "Plastic"));
+    const norm = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase().replace(/\.+$/, "");
+    const descSentences = draft.description.split(/(?<=[.!?])\s+/).map(norm).filter(Boolean);
+    const bulletNorms = draft.bullets.map(norm);
+    const dup = descSentences.filter((s) => bulletNorms.includes(s));
+    expect(dup, "描述整句复读五点：" + JSON.stringify(dup)).toEqual([]);
+  });
+
+  it("红3：机械分词尾（, molded in …）应被重构为自然分句", async () => {
+    const facts = [
+      { field: "product_type", label: "商品类型", value: "Organizer" },
+      { field: "construction", label: "构造", value: "an expandable compartment design with multiple slots, molded in one piece from plastic" },
+      { field: "capacity", label: "容量", value: "keeps 40 pieces of cutlery" },
+      { field: "operation", label: "操作方式", value: "expands or contracts to the sides to fit the drawer width" },
+      { field: "usage", label: "使用场景", value: "stores cutlery in a kitchen drawer" },
+      { field: "care", label: "清洁保养", value: "wipe with a damp cloth" },
+    ];
+    const draft = await runDraft(facts);
+    const b1 = draft.bullets[0] ?? "";
+    expect(b1, "构造句含机械分词尾: " + b1).not.toMatch(/,\s*molded\s+in\b/i);
+    expect(b1).toMatch(/and is molded in one piece from plastic\./);
+  });
+});

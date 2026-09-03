@@ -289,6 +289,12 @@ export type CopyQualityResult = {
   issues: RuntimeIssue[];
 };
 
+/**
+ * R3 通用机械结构检测：`名词短语 + 悬垂分词尾`（, molded in / , built with / , made from …）。
+ * 纯英文形态判定，不含任何商品词/品牌/类型黑名单。
+ */
+const MECHANICAL_TAIL_PATTERN = /,\s*(?:molded|built|made|designed|constructed|finished|coated|lined|fitted)\s+(?:in|with|from|as)\b/i;
+
 /** 规范化词面（连字符/空格等价），与 listingClaimPolicy 同义匹配 */
 function canonicalTerm(text: string): string {
   return String(text ?? "").toLowerCase().replace(/[-_\s]+/g, "");
@@ -513,17 +519,31 @@ export function validateCopyQualityContract(input: CopyQualityInput): CopyQualit
     if (templateJargonHit(b)) {
       issues.push({ target: "bullets", code: "template_jargon", message: "Bullet " + (index + 1) + " 是模板拼接表达（如 option fits / pairs with / Available construction），非自然文案。" });
     }
+    if (MECHANICAL_TAIL_PATTERN.test(b)) {
+      issues.push({ target: "bullets", code: "mechanical_structure", message: "Bullet " + (index + 1) + " 以“名词短语 + 悬垂分词尾”收尾（如 , molded in / , built with），是机械结构。" });
+    }
     // 结构维度（v2）：句法完整性 / 模板尾 / 句首大写
     for (const code of structureIssuesOf(b)) {
       issues.push({ target: "bullets", code, message: "Bullet " + (index + 1) + " " + STRUCTURE_MESSAGE[code] });
     }
   });
 
+  // R3：描述句不得逐字复读任一条五点（整句归一比较；防“描述只是五点复制”）
+  const bulletNorms = bullets.map((b) => b.trim().replace(/\s+/g, " ").toLowerCase().replace(/[.!?]+$/, ""));
   // 结构维度（v2）：描述与五点走同一判定——任何字段漏检都会成为模板尾/病句港湾
   sentenceList(String(input.description ?? "")).forEach((s, index) => {
     const jargon = templateJargonHit(s);
     if (jargon) {
       issues.push({ target: "description", code: jargon, message: "描述第 " + (index + 1) + " 句含结构性模板拼接病句。" });
+    }
+    const normS = s.trim().replace(/\s+/g, " ").toLowerCase().replace(/[.!?]+$/, "");
+    // R3：仅当“非首句”逐字复读任一条五点才判重——兼容历史合格快照以首句复述卖点的既有合同，
+    // 同时杜绝“正文第二句起整段复制五点”的低质量描述。
+    if (index > 0 && bulletNorms.includes(normS)) {
+      issues.push({ target: "description", code: "description_bullet_repeat", message: "描述第 " + (index + 1) + " 句与某条五点逐字重复，不得把五点复制进描述。" });
+    }
+    if (MECHANICAL_TAIL_PATTERN.test(s)) {
+      issues.push({ target: "description", code: "mechanical_structure", message: "描述第 " + (index + 1) + " 句以悬垂分词尾收尾（如 , molded in / , built with），是机械结构。" });
     }
     for (const code of structureIssuesOf(s)) {
       issues.push({ target: "description", code, message: "描述第 " + (index + 1) + " 句 " + STRUCTURE_MESSAGE[code] });
