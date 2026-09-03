@@ -96,3 +96,6 @@ data/replay-demo-choices/
 # Formal v2 local collection and audit artifacts — never commit
 /tmp/
 /start-local-r11.txt
+
+# 回滚备份目录（保留本地，不提交）
+archives/
