@@ -250,7 +250,7 @@ const PREVIEW_CACHE: Map<string, BrowserUsePreviewCacheEntry> = new Map();
 const PREVIEW_CACHE_TTL_MS = 10 * 60 * 1000;
 
 export function storeBrowserUsePreview(preview: BrowserUseResearchPreview): string {
-  const id = `bup_preview_${Math.random().toString(36).slice(2, 12)}`;
+  const id = `bup_preview_${Math.random().toString(36).slice(2, 12).padEnd(10, "0")}`;
   const expiresAt = Date.now() + PREVIEW_CACHE_TTL_MS;
   PREVIEW_CACHE.set(id, { preview, expiresAt });
   setTimeout(() => {
@@ -264,7 +264,7 @@ export function storeBrowserUsePreview(preview: BrowserUseResearchPreview): stri
 
 /** 原子提取 claim，防止并发双保存 */
 export function claimBrowserUsePreview(previewId: string): BrowserUsePreviewClaim | null {
-  if (typeof previewId !== "string" || !/^bup_preview_[a-z0-9]{10}$/.test(previewId)) return null;
+  if (typeof previewId !== "string" || !/^bup_preview_/.test(previewId)) return null;
   const entry = PREVIEW_CACHE.get(previewId);
   if (!entry) return null;
   const now = Date.now();
@@ -281,7 +281,7 @@ export function claimBrowserUsePreview(previewId: string): BrowserUsePreviewClai
 
 /** 仅在确证未落库（如 CAS/storageVersion 冲突）时恢复 claim，严格保留原 expiresAt，不延长 TTL */
 export function restoreBrowserUsePreviewClaim(previewId: string, claim: BrowserUsePreviewClaim): boolean {
-  if (typeof previewId !== "string" || !/^bup_preview_[a-z0-9]{10}$/.test(previewId)) return false;
+  if (typeof previewId !== "string" || !/^bup_preview_/.test(previewId)) return false;
   if (!claim || typeof claim !== "object" || !claim.preview || typeof claim.expiresAt !== "number") return false;
   const now = Date.now();
   if (now >= claim.expiresAt) return false;
