@@ -99,3 +99,6 @@ data/replay-demo-choices/
 
 # 回滚备份目录（保留本地，不提交）
 archives/
+
+# Public Showcase static export artifacts
+dist/public-showcase/

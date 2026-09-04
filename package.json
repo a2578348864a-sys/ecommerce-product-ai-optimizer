@@ -31,7 +31,8 @@
     "db:postdeploy": "node scripts/db/protect-sqlite-db.mjs postdeploy",
     "check": "npm run lint && npm run test && npm run build",
     "prepare": "husky",
-    "test:project-materials": "node scripts/run-project-materials-tests.mjs"
+    "test:project-materials": "node scripts/run-project-materials-tests.mjs",
+    "showcase:export": "node scripts/export-public-showcase.mjs"
   },
   "dependencies": {
     "@langchain/core": "1.2.9",
