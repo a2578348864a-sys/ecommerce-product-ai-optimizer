@@ -21,6 +21,11 @@ import {
   parseSourcingCapabilities,
   type SourcingCapabilitiesView,
 } from "@/lib/client/acquisitionCapability";
+import {
+  parseSourcingResponse,
+  classifySourcingRequestError,
+  type SourcingErrorDetail,
+} from "@/lib/client/sourcingErrorRecovery";
 import { CapabilityNotice } from "@/components/evidence/CapabilityNotice";
 import type {
   AcquisitionCandidate,
@@ -189,6 +194,7 @@ export function SourcingEvidencePanel({
   const [accessPassword, , accessHydrated, , noAuthOwner] = useAccessPassword();
   const [status, setStatus] = useState<PanelStatus>("idle");
   const [errorMessage, setErrorMessage] = useState("");
+  const [errorDetail, setErrorDetail] = useState<SourcingErrorDetail | null>(null);
   const [toolStatus, setToolStatus] = useState<ToolStatus | null>(null);
   const [capabilities, setCapabilities] = useState<SourcingCapabilitiesView | null>(null);
   const [keyword, setKeyword] = useState("");
@@ -203,6 +209,10 @@ export function SourcingEvidencePanel({
   // 轮 14：同页版本恢复——保存 409 时保留预览/选择/备注，刷新版本后自动重试一次；二次冲突提示且停止
   const [saveConflictPending, setSaveConflictPending] = useState(false);
   const lastSaveVersionRef = useRef<string | null>(null);
+  const lastOperationRef = useRef<{
+    method: "keyword" | "image" | "url";
+    payload: Record<string, unknown>;
+  } | null>(null);
   const [checkingTools, setCheckingTools] = useState(false);
   const [lastCheckAt, setLastCheckAt] = useState<Date | null>(null);
   const [checkResult, setCheckResult] = useState<string>("");
@@ -216,15 +226,16 @@ export function SourcingEvidencePanel({
   // 体验“演示找货”——服务端回放预置真实 1688 供应线索样本（demo 分支），结果标注“演示数据”。
   const demoMode = getAccessMode() === "demo";
 
-  const api = useCallback(async (body: Record<string, unknown>) => {
+  const api = useCallback(async (body: Record<string, unknown>, timeoutMs = 120_000) => {
     const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/sourcing`, {
       method: "POST",
       cache: "no-store",
       headers: { ...buildAccessHeaders(), "content-type": "application/json" },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(60_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
-    return { response, data: await response.json() as { ok: boolean; error?: { code: string; message: string }; data?: unknown } };
+    const parsed = await parseSourcingResponse(response);
+    return { response, data: parsed.data };
   }, [taskId]);
 
   const loadInitial = useCallback(async (): Promise<ToolStatus | null> => {
@@ -235,25 +246,28 @@ export function SourcingEvidencePanel({
         headers: { ...buildAccessHeaders() },
         signal: AbortSignal.timeout(30_000),
       });
-      const data = await response.json() as {
-        ok: boolean;
-        data?: { evidence: SourcingEvidenceV1 | null; storageVersion: { resultJsonHash: string; updatedAt: string }; toolStatus: ToolStatus; capabilities?: unknown };
-      };
+      const parsed = await parseSourcingResponse<{
+        evidence: SourcingEvidenceV1 | null;
+        storageVersion: { resultJsonHash: string; updatedAt: string };
+        toolStatus: ToolStatus;
+        capabilities?: unknown;
+      }>(response);
       if (currentId !== reqIdRef.current) return null;
-      if (!response.ok || !data.ok || !data.data) return null;
-      setEvidence(data.data.evidence);
-      setStorageVersion(data.data.storageVersion);
-      setToolStatus(data.data.toolStatus);
-      setCapabilities(parseSourcingCapabilities(data.data.capabilities));
-      onEvidenceChange?.((data.data.evidence?.humanConfirmed.length ?? 0) > 0);
+      if (!response.ok || !parsed.data.ok || !parsed.data.data) return null;
+      const payload = parsed.data.data;
+      setEvidence(payload.evidence);
+      setStorageVersion(payload.storageVersion);
+      setToolStatus(payload.toolStatus);
+      setCapabilities(parseSourcingCapabilities(payload.capabilities));
+      onEvidenceChange?.((payload.evidence?.humanConfirmed.length ?? 0) > 0);
       // F3：分能力 gate——CLI 未登录只影响关键词/URL（need_login 横幅），图片能力独立
-      const caps = sourcingCapabilities(data.data.toolStatus);
+      const caps = sourcingCapabilities(payload.toolStatus);
       // §16：公网（capabilities=local_env_required）不进入 need_login 诊断态——由 CapabilityNotice 统一提示
-      const publicRuntime = parseSourcingCapabilities(data.data.capabilities)?.keyword.state === "local_env_required";
+      const publicRuntime = parseSourcingCapabilities(payload.capabilities)?.keyword.state === "local_env_required";
       setStatus((prev) => (
         publicRuntime ? "idle" : (caps.cliReady ? (prev === "need_login" ? "idle" : prev) : "need_login")
       ));
-      return data.data.toolStatus;
+      return payload.toolStatus;
     } catch {
       // 初始读取失败保持 idle
       return null;
@@ -282,6 +296,7 @@ export function SourcingEvidencePanel({
   async function refreshTools() {
     setCheckingTools(true);
     setErrorMessage("");
+    setErrorDetail(null);
     setCheckResult("");
     try {
       const fresh = await loadInitial();
@@ -302,64 +317,80 @@ export function SourcingEvidencePanel({
   async function openLoginWindow() {
     setOpeningLogin(true);
     setErrorMessage("");
+    setErrorDetail(null);
     setLoginNotice("");
     try {
-      const { response, data } = await api({ action: "begin-keyword-login" });
+      const { response, data } = await api({ action: "begin-keyword-login" }, 30_000);
       if (!response.ok || !data.ok) {
-        setErrorMessage(data.error?.message ?? "无法打开 1688 登录窗口，请稍后重试。");
+        const classified = classifySourcingRequestError({
+          status: response.status,
+          code: data.error?.code,
+          message: data.error?.message,
+          method: "keyword",
+        });
+        setErrorMessage(classified.message || "无法打开 1688 登录窗口，请稍后重试。");
+        setErrorDetail(classified);
         return;
       }
       setLoginNotice((data.data as { hint?: string }).hint ?? "已在电脑上打开 1688 登录窗口，请完成扫码。");
-    } catch {
-      setErrorMessage("无法打开 1688 登录窗口，请稍后重试。");
+    } catch (err) {
+      const classified = classifySourcingRequestError({ error: err, method: "keyword" });
+      setErrorMessage(classified.message || "无法打开 1688 登录窗口，请稍后重试。");
+      setErrorDetail(classified);
     } finally {
       setOpeningLogin(false);
     }
   }
 
+  function retryLastOperation() {
+    if (!lastOperationRef.current) {
+      void refreshTools();
+      return;
+    }
+    const { method, payload } = lastOperationRef.current;
+    void runSearch(method, payload);
+  }
+
+  function dismissError() {
+    setErrorDetail(null);
+    setErrorMessage("");
+    if (status === "error") {
+      setStatus(preview ? "preview" : "idle");
+    }
+  }
+
   async function runSearch(method: "keyword" | "image" | "url", payload: Record<string, unknown>) {
+    lastOperationRef.current = { method, payload };
     setStatus("searching");
     setErrorMessage("");
+    setErrorDetail(null);
     setSelected(new Set());
     setDetailByOfferId({});
     try {
       // V3 Final R13：action 必须用 canonical SourcingOperation（keyword → search）
-      const { response, data } = await api({ action: UI_METHOD_TO_OPERATION[method], ...payload });
+      const { response, data } = await api({ action: UI_METHOD_TO_OPERATION[method], ...payload }, 120_000);
       if (!response.ok || !data.ok || !data.data) {
-        const code = data.error?.code ?? "";
-        if (method === "image") {
-          // F3：图片找货错误按扩展/浏览器语义分流，绝不进入 CLI 登录横幅
-          if (code === "auth_required") {
-            setStatus("error");
-            setErrorMessage("图片找货需要在普通 Chrome 中登录 1688（与关键词找货的登录相互独立）。请在 Chrome 完成 1688 登录后重试。");
-            return;
-          }
-          if (code === "extension_not_installed" || code === "extension_disconnected" || code === "extension_bridge_not_available") {
-            setStatus("error");
-            setErrorMessage("图片找货需要浏览器助手扩展。请按「图片找货」入口下的加载步骤安装后，点击「已加载，重新检测」重试。");
-            return;
-          }
-          if (code === "risk_control_required") {
-            setStatus("need_user_verification");
-            setErrorMessage(data.error?.message ?? "");
-            return;
-          }
-          setStatus("error");
-          setErrorMessage(data.error?.message ?? "图片找货失败，请重试。");
-          return;
-        }
-        if (code === "auth_required" || code === "acquisition_tool_not_available") {
+        const classified = classifySourcingRequestError({
+          status: response.status,
+          code: data.error?.code,
+          message: data.error?.message,
+          method,
+        });
+        if (classified.category === "login_required") {
           setStatus("need_login");
-          setErrorMessage(data.error?.message ?? "");
+          setErrorMessage(classified.message);
+          setErrorDetail(classified);
           return;
         }
-        if (code === "risk_control_required") {
+        if (classified.category === "risk_control_required") {
           setStatus("need_user_verification");
-          setErrorMessage(data.error?.message ?? "");
+          setErrorMessage(classified.message);
+          setErrorDetail(classified);
           return;
         }
         setStatus("error");
-        setErrorMessage(data.error?.message ?? "获取失败，请重试。");
+        setErrorMessage(classified.message);
+        setErrorDetail(classified);
         return;
       }
       const payloadData = data.data as { preview: PreviewPayload; trace?: unknown; demo?: boolean };
@@ -373,9 +404,14 @@ export function SourcingEvidencePanel({
       setStatus("preview");
       // 轮 14：采集成功后取得最新任务版本（避免同页其它模块更新后保存立即 409）
       void loadInitial();
-    } catch {
+    } catch (err) {
+      const classified = classifySourcingRequestError({
+        error: err,
+        method,
+      });
       setStatus("error");
-      setErrorMessage("网络异常，请重试。");
+      setErrorMessage(classified.message);
+      setErrorDetail(classified);
     }
   }
 
@@ -383,7 +419,7 @@ export function SourcingEvidencePanel({
     if (detailByOfferId[offerId] !== undefined) return;
     setDetailByOfferId((prev) => ({ ...prev, [offerId]: null }));
     try {
-      const { response, data } = await api({ action: "detail", offerId });
+      const { response, data } = await api({ action: "detail", offerId }, 60_000);
       if (response.ok && data.ok && data.data) {
         const detail = (data.data as { detail: AcquisitionCandidate }).detail;
         setDetailByOfferId((prev) => ({ ...prev, [offerId]: detail }));
@@ -402,6 +438,7 @@ export function SourcingEvidencePanel({
     lastSaveVersionRef.current = version.resultJsonHash + version.updatedAt;
     setStatus("saving");
     setErrorMessage("");
+    setErrorDetail(null);
     try {
       const { response, data } = await api({
         action: "save",
@@ -409,19 +446,23 @@ export function SourcingEvidencePanel({
         selectedOfferIds: [...selected],
         noteByOfferId,
         expectedStorageVersion: version,
-      });
+      }, 60_000);
       if (!response.ok || !data.ok || !data.data) {
         const code = data.error?.code ?? "";
         // 轮 14：统一恢复动作（复用证据冲突决策；预览过期/认证旁路）
         const action = resolveSourcingSaveError(response.status, code, data.error?.message ?? null, !allowRetry);
         if (action.kind === "preview_expired") {
+          const classified = classifySourcingRequestError({ status: response.status, code: "preview_expired", message: action.message, method: "save" });
           setStatus("error");
           setErrorMessage(action.message);
+          setErrorDetail(classified);
           return;
         }
         if (action.kind === "auth_required") {
+          const classified = classifySourcingRequestError({ status: response.status, code: "auth_required", message: action.message, method: "save" });
           setStatus("need_login");
           setErrorMessage(action.message);
+          setErrorDetail(classified);
           return;
         }
         if (action.kind === "conflict_retry") {
@@ -431,8 +472,10 @@ export function SourcingEvidencePanel({
           return;
         }
         setSaveConflictPending(false);
+        const classified = classifySourcingRequestError({ status: response.status, code, message: action.message, method: "save" });
         setStatus("error");
         setErrorMessage(action.message);
+        setErrorDetail(classified);
         return;
       }
       const saved = data.data as { evidence: SourcingEvidenceV1; storageVersion: { resultJsonHash: string; updatedAt: string } };
@@ -443,9 +486,11 @@ export function SourcingEvidencePanel({
       setStatus("confirmed");
       onConfirmed?.();
       onEvidenceChange?.(true);
-    } catch {
+    } catch (err) {
+      const classified = classifySourcingRequestError({ error: err, method: "save" });
       setStatus("error");
-      setErrorMessage("网络异常，保存未完成，请重试。");
+      setErrorMessage(classified.message);
+      setErrorDetail(classified);
     }
   }
 
@@ -591,8 +636,55 @@ export function SourcingEvidencePanel({
           ) : null}
 
           {!localEnvRequired && status === "error" ? (
-            <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50/60 p-3">
-              <p className="text-sm font-semibold text-rose-700">{errorMessage}</p>
+            <div
+              className="mt-3 rounded-xl border border-rose-200 bg-rose-50/90 p-3 shadow-sm"
+              role="alert"
+              data-testid="sourcing-error-card"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className="inline-flex items-center rounded-md bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-800"
+                    data-testid="sourcing-error-layer"
+                  >
+                    {errorDetail?.layer ?? "操作失败"}
+                  </span>
+                  <p className="text-sm font-semibold text-rose-800" data-testid="sourcing-error-message">
+                    {errorMessage || errorDetail?.message || "操作失败，请重试。"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {errorDetail?.canRetry !== false ? (
+                    <button
+                      type="button"
+                      onClick={() => retryLastOperation()}
+                      className="inline-flex h-7 items-center justify-center rounded-lg bg-rose-600 px-2.5 text-xs font-semibold text-white hover:bg-rose-700"
+                      data-testid="sourcing-error-retry"
+                    >
+                      重试刚才操作
+                    </button>
+                  ) : null}
+                  {errorDetail?.canRecheck ? (
+                    <button
+                      type="button"
+                      disabled={checkingTools}
+                      onClick={() => void refreshTools()}
+                      className="inline-flex h-7 items-center justify-center rounded-lg border border-rose-300 bg-white px-2.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                      data-testid="sourcing-error-recheck"
+                    >
+                      {checkingTools ? "正在检测…" : "重新检测"}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => dismissError()}
+                    className="px-1 text-xs font-semibold text-rose-400 hover:text-rose-600"
+                    data-testid="sourcing-error-dismiss"
+                  >
+                    关闭
+                  </button>
+                </div>
+              </div>
             </div>
           ) : null}
 
