@@ -234,24 +234,83 @@ export function parseBrowserUseResearchPreview(value: unknown): BrowserUseResear
   return { schema: BROWSER_USE_RESEARCH_SCHEMA, version: BROWSER_USE_RESEARCH_VERSION, kind, seedAsin: seedAsin.toUpperCase(), marketplace, seedProductUrl: asString(value.seedProductUrl, 1000), sourceUrl, capturedAt, results, missing: Array.isArray(value.missing) ? (value.missing as unknown[]).filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 20) : [], failureReason: failureReason as BrowserUseResearchPreview["failureReason"], collector };
 }
 
-/* ── 服务端 Preview 短暂缓存（一次性取用；不信任客户端回传字段） ── */
+/* ── 服务端 Preview 短暂缓存（安全 claim / restore 机制；一次性最终消费） ── */
 
-const PREVIEW_CACHE: Map<string, BrowserUseResearchPreview> = new Map();
+export type BrowserUsePreviewCacheEntry = {
+  preview: BrowserUseResearchPreview;
+  expiresAt: number;
+};
+
+export type BrowserUsePreviewClaim = {
+  preview: BrowserUseResearchPreview;
+  expiresAt: number;
+};
+
+const PREVIEW_CACHE: Map<string, BrowserUsePreviewCacheEntry> = new Map();
 const PREVIEW_CACHE_TTL_MS = 10 * 60 * 1000;
 
 export function storeBrowserUsePreview(preview: BrowserUseResearchPreview): string {
-  const id = `bup_preview_${Math.random().toString(36).slice(2, 12)}`;
-  PREVIEW_CACHE.set(id, preview);
-  setTimeout(() => { PREVIEW_CACHE.delete(id); }, PREVIEW_CACHE_TTL_MS).unref?.();
+  const id = `bup_preview_${Math.random().toString(36).slice(2, 12).padEnd(10, "0")}`;
+  const expiresAt = Date.now() + PREVIEW_CACHE_TTL_MS;
+  PREVIEW_CACHE.set(id, { preview, expiresAt });
+  setTimeout(() => {
+    const entry = PREVIEW_CACHE.get(id);
+    if (entry && Date.now() >= entry.expiresAt) {
+      PREVIEW_CACHE.delete(id);
+    }
+  }, PREVIEW_CACHE_TTL_MS).unref?.();
   return id;
 }
 
-export function takeBrowserUsePreview(previewId: string): BrowserUseResearchPreview | null {
-  if (typeof previewId !== "string" || !/^bup_preview_[a-z0-9]{10}$/.test(previewId)) return null;
-  const preview = PREVIEW_CACHE.get(previewId);
-  if (!preview) return null;
+/** 原子提取 claim，防止并发双保存 */
+export function claimBrowserUsePreview(previewId: string): BrowserUsePreviewClaim | null {
+  if (typeof previewId !== "string" || !/^bup_preview_/.test(previewId)) return null;
+  const entry = PREVIEW_CACHE.get(previewId);
+  if (!entry) return null;
+  const now = Date.now();
+  if (now >= entry.expiresAt) {
+    PREVIEW_CACHE.delete(previewId);
+    return null;
+  }
   PREVIEW_CACHE.delete(previewId);
-  return preview;
+  return {
+    preview: entry.preview,
+    expiresAt: entry.expiresAt,
+  };
+}
+
+/** 仅在确证未落库（如 CAS/storageVersion 冲突）时恢复 claim，严格保留原 expiresAt，不延长 TTL */
+export function restoreBrowserUsePreviewClaim(previewId: string, claim: BrowserUsePreviewClaim): boolean {
+  if (typeof previewId !== "string" || !/^bup_preview_/.test(previewId)) return false;
+  if (!claim || typeof claim !== "object" || !claim.preview || typeof claim.expiresAt !== "number") return false;
+  const now = Date.now();
+  if (now >= claim.expiresAt) return false;
+  if (PREVIEW_CACHE.has(previewId)) return false;
+
+  const remainingMs = claim.expiresAt - now;
+  if (remainingMs <= 0) return false;
+
+  PREVIEW_CACHE.set(previewId, {
+    preview: claim.preview,
+    expiresAt: claim.expiresAt,
+  });
+  setTimeout(() => {
+    const current = PREVIEW_CACHE.get(previewId);
+    if (current && Date.now() >= current.expiresAt) {
+      PREVIEW_CACHE.delete(previewId);
+    }
+  }, remainingMs).unref?.();
+  return true;
+}
+
+export function takeBrowserUsePreview(previewId: string): BrowserUseResearchPreview | null {
+  const claim = claimBrowserUsePreview(previewId);
+  return claim ? claim.preview : null;
+}
+
+/** 测试辅助：清空缓存 */
+export function _clearBrowserUsePreviewCacheForTests(): void {
+  PREVIEW_CACHE.clear();
 }
 
 /** 采集来源 URL 同域校验：只允许 Amazon 官方域名（伪造外站 URL → false）。 */

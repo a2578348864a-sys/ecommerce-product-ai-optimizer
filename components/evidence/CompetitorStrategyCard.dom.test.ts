@@ -283,9 +283,9 @@ describe("CompetitorStrategyCard", () => {
     expect(text).toContain("B0D1 · 自动采集");
     expect(text).toContain("B0D2 · 人工添加");
   });
-  it("主操作「自动采集竞品」存在", async () => {
+  it("主操作「采集关键词+竞品」存在", async () => {
     await render({ productName: PRODUCT, entries: ENTRIES, onAdd: async () => null, onDelete: async () => null });
-    expect(documentInstance.body.textContent).toContain("自动采集竞品");
+    expect(documentInstance.body.textContent).toContain("采集关键词+竞品");
   });
   it("409/失败：onAdd 返回错误 → 保留 ASIN/备注输入", async () => {
     await render({ productName: PRODUCT, entries: ENTRIES, onAdd: async () => "内容刚在其他位置更新，请刷新后重试。", onDelete: async () => null });

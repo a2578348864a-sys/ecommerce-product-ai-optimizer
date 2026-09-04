@@ -595,6 +595,7 @@ export function EvidenceWorkbench({
   const [competitorBusy, setCompetitorBusy] = useState(false);
   // 轮 10 合并：竞品采集同时产出的关键词预览（待确认卡片）
   const [keywordPending, setKeywordPending] = useState<KeywordPendingPreview | null>(null);
+  const [isPendingExpired, setIsPendingExpired] = useState(false);
   // 竞品采集命令式句柄：卡片内「自动采集竞品」与下方 BrowserUseCollectButton 共用同一采集链路
   const competitorCollectRef = useRef<(() => void) | null>(null);
 
@@ -960,6 +961,36 @@ useEffect(() => {
         briefEvidenceCount={keywordReportEvidence?.rows.length ?? 0}
         inListing={Boolean(keywordBriefState)}
         needsReconfirm={false}
+        hasPending={Boolean(keywordPending)}
+        pendingKeywordCount={keywordPending?.keywordCount}
+        hasPendingExpired={isPendingExpired}
+        pendingPanel={
+          keywordPending ? (
+            <KeywordPendingSubmitCard
+              taskId={taskId}
+              preview={keywordPending}
+              storageVersion={keywordReportStorageVersion}
+              onSaved={() => {
+                setKeywordPending(null); loadKeywordEvidence();
+                setIsPendingExpired(false);
+                loadKeywordBriefState();
+                onDataChanged?.();
+              }}
+              onCancel={() => {
+                setKeywordPending(null);
+                setIsPendingExpired(false);
+              }}
+              onExpired={() => {
+                setIsPendingExpired(true);
+              }}
+              onRecollect={() => {
+                setKeywordPending(null);
+                setIsPendingExpired(false);
+                competitorCollectRef.current?.();
+              }}
+            />
+          ) : null
+        }
         onSave={async (input) => {
           try {
             const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/listing-handoff`, {
@@ -982,15 +1013,6 @@ useEffect(() => {
         error={sectionErrors.keyword ?? null}
         rawEvidence={keywordReportEvidence ? { reportType: keywordReportEvidence.reportType, capturedAt: keywordReportEvidence.capturedAt, rows: keywordReportEvidence.rows } as never : null}
       />
-      {keywordPending ? (
-        <KeywordPendingSubmitCard
-          taskId={taskId}
-          preview={keywordPending}
-          storageVersion={keywordReportStorageVersion}
-          onSaved={() => { setKeywordPending(null); loadKeywordEvidence(); }}
-          onCancel={() => setKeywordPending(null)}
-        />
-      ) : null}
       {/* ── 竞品策略（第2轮：默认摘要，管理/采集折叠） ── */}
       <CompetitorStrategyCard
         productName={productNameForBrief}
@@ -1013,7 +1035,39 @@ useEffect(() => {
         error={competitorError}
         busy={competitorBusy}
       />
-      <BrowserUseCollectButton taskId={taskId} kind="competitor" storageVersion={storageVersion} collectRef={competitorCollectRef} onCollected={({ keywordPreviewId, keywordCount, seedAsin, sourceUrl }) => { if (keywordPreviewId) setKeywordPending({ previewId: keywordPreviewId, seedAsin: seedAsin ?? "", sourceUrl: sourceUrl ?? "", keywordCount: keywordCount ?? 0, capturedAt: null }); }} onSaved={() => { void (async () => { try { const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/competitor-evidence`, { headers: buildFetchHeaders() }); const body = await res.json(); if (res.ok && body.ok && Array.isArray(body.data?.evidence?.asins)) setCompetitors(body.data.evidence.asins); if (body.ok && body.data?.storageVersion) setStorageVersion(body.data.storageVersion); } catch { /* refresh best-effort */ } })(); void loadKeywordEvidence(); onDataChanged?.(); }} />
+      <BrowserUseCollectButton taskId={taskId} kind="competitor"
+        storageVersion={storageVersion}
+        collectRef={competitorCollectRef}
+        showTrigger={false}
+        onCollectStart={() => {
+          setKeywordPending(null);
+          setIsPendingExpired(false);
+        }}
+        onCollected={({ keywordPreviewId, keywordCount, seedAsin, sourceUrl }) => {
+          if (keywordPreviewId) {
+            setIsPendingExpired(false);
+            setKeywordPending({
+              previewId: keywordPreviewId,
+              seedAsin: seedAsin ?? "",
+              sourceUrl: sourceUrl ?? "",
+              keywordCount: keywordCount ?? 0,
+              capturedAt: null,
+            });
+          }
+        }}
+        onSaved={() => {
+          void (async () => {
+            try {
+              const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/competitor-evidence`, { headers: buildFetchHeaders() });
+              const body = await res.json();
+              if (res.ok && body.ok && Array.isArray(body.data?.evidence?.asins)) setCompetitors(body.data.evidence.asins);
+              if (body.ok && body.data?.storageVersion) setStorageVersion(body.data.storageVersion);
+            } catch { /* refresh best-effort */ }
+          })();
+          void loadKeywordEvidence();
+          onDataChanged?.();
+        }}
+      />
       {/* ── Amazon 商品资料（V3.3） ── */}
       <div data-testid="workbench-browser">
         <SectionStatusBar

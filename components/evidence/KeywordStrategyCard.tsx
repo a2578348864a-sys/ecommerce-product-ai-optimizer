@@ -17,6 +17,10 @@ export function KeywordStrategyCard({
   onSaved,
   error,
   rawEvidence,
+  hasPending = false,
+  pendingKeywordCount,
+  hasPendingExpired = false,
+  pendingPanel,
 }: {
   rows: Array<{ keyword: string | null; rowNumber?: number }>;
   productName?: string | null;
@@ -31,6 +35,10 @@ export function KeywordStrategyCard({
   onSaved: () => void;
   error?: string | null;
   rawEvidence?: { reportType: string; capturedAt: string; rows: Array<{ rowNumber: number; keyword: string; fields: Record<string, unknown> }> } | null;
+  hasPending?: boolean;
+  pendingKeywordCount?: number;
+  hasPendingExpired?: boolean;
+  pendingPanel?: React.ReactNode;
 }) {
   const recommended = useMemo(() => buildKeywordBriefDraft(rows, productName), [rows, productName]);
   const [editing, setEditing] = useState(false);
@@ -42,6 +50,22 @@ export function KeywordStrategyCard({
   const [backendTerms, setBackendTerms] = useState("");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
+
+  const buttonText = briefPrimary
+    ? "调整关键词方案"
+    : briefEvidenceCount > 0
+      ? "确认并用于 Listing"
+      : hasPending && !hasPendingExpired
+        ? "先保存关键词证据"
+        : "等待采集";
+
+  const buttonTitle = briefPrimary || briefEvidenceCount > 0
+    ? undefined
+    : hasPending && !hasPendingExpired
+      ? "保存本次采集结果后，才能确认关键词方案。"
+      : "请先通过下方「采集关键词+竞品」获取证据";
+
+  const buttonDisabled = !briefPrimary && briefEvidenceCount === 0;
 
   const openEditor = () => {
     setPrimaryKeyword(briefPrimary ?? recommended?.primaryKeyword ?? "");
@@ -78,16 +102,38 @@ export function KeywordStrategyCard({
         <div className="min-w-0">
           <h4 className="text-sm font-bold text-slate-900">关键词策略</h4>
           <p className="mt-1 text-xs text-slate-500" data-testid="kw-status">
-            {briefPrimary
-              ? `状态：${needsReconfirm ? "需重新确认" : "已确认"}`
-              : briefEvidenceCount > 0
-                ? `已采集${briefEvidenceCount}条关键词，尚未确认方案`
-                : "状态：待确认"}
+            {hasPendingExpired
+              ? "状态：本次预览已失效"
+              : hasPending
+                ? `状态：已采集 ${pendingKeywordCount ?? 0} 条关键词 · 待确认保存`
+                : briefPrimary
+                  ? `状态：${needsReconfirm ? "需重新确认" : "已确认"}`
+                  : briefEvidenceCount > 0
+                    ? `已采集${briefEvidenceCount}条关键词，尚未确认方案`
+                    : "状态：待确认"}
             {" · "}Listing：{inListing ? "已用于 Listing" : "尚未用于 Listing"}
           </p>
         </div>
-        <button type="button" data-testid="kw-adjust" aria-expanded={editing} aria-controls="kw-strategy-editor" onClick={() => (editing ? setEditing(false) : openEditor())} className="inline-flex h-8 shrink-0 items-center rounded-lg bg-teal-600 px-3 text-xs font-semibold text-white hover:bg-teal-700">
-          {briefPrimary ? "调整关键词方案" : "确认并用于 Listing"}
+        <button
+          type="button"
+          data-testid="kw-adjust"
+          aria-expanded={editing}
+          aria-controls="kw-strategy-editor"
+          disabled={buttonDisabled}
+          title={buttonTitle}
+          onClick={() => {
+            if (buttonDisabled) return;
+            if (editing) setEditing(false);
+            else openEditor();
+          }}
+          className={
+            "inline-flex h-8 shrink-0 items-center rounded-lg px-3 text-xs font-semibold " +
+            (buttonDisabled
+              ? "cursor-not-allowed bg-slate-200 text-slate-400"
+              : "bg-teal-600 text-white hover:bg-teal-700")
+          }
+        >
+          {buttonText}
         </button>
       </div>
 
@@ -174,6 +220,12 @@ export function KeywordStrategyCard({
             <button type="button" data-testid="kw-cancel" onClick={() => { setConfirmed(false); setEditing(false); }} className="inline-flex h-8 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50">取消</button>
           </div>
           {(error ?? saveError) ? <p className="mt-2 text-xs text-rose-600" role="alert">{error ?? saveError}</p> : null}
+        </div>
+      ) : null}
+
+      {pendingPanel ? (
+        <div className="mt-3 border-t border-slate-100 pt-3" data-testid="kw-pending-slot">
+          {pendingPanel}
         </div>
       ) : null}
     </section>

@@ -21,7 +21,10 @@ import {
   assertBrowserUseOwnerOnly,
   isAllowedCollectorSourceUrl,
   resolveBrowserUseSeed,
+  claimBrowserUsePreview,
+  restoreBrowserUsePreviewClaim,
   takeBrowserUsePreview,
+  type BrowserUsePreviewClaim,
 } from "@/lib/server/browserUseResearch";
 import { getRuntimeMode } from "@/lib/server/runtimeMode";
 
@@ -147,6 +150,8 @@ export async function POST(
   const resolved = await resolveContext(request, id, bodyRecord);
   if (!resolved.ok) return resolved.response;
 
+  let previewId = "";
+  let claim: BrowserUsePreviewClaim | null = null;
   try {
     assertBrowserUseOwnerOnly(resolved.context);
     if (getRuntimeMode() !== "local_owner") return errorResponse(403, "browser_use_local_env_required", "自动采集仅限本机环境使用。");
@@ -155,12 +160,13 @@ export async function POST(
     const seed = resolveBrowserUseSeed(record);
     if (!seed) return errorResponse(409, "browser_use_identity_unavailable", "该任务没有可验证的权威商品身份（批次/卖家精灵事实缺失或不完整），无法自动采集。");
 
-    const previewId = asString(bodyRecord.previewId);
+    previewId = asString(bodyRecord.previewId);
     if (!previewId) return errorResponse(400, "preview_id_required", "缺少预览 ID。");
     const expectedStorageVersion = parseStorageVersionInput(bodyRecord.expectedStorageVersion);
     if (expectedStorageVersion === null) return errorResponse(400, "storage_version_required", "内容刚在其他位置更新，请刷新后重试。");
-    const preview = takeBrowserUsePreview(previewId);
-    if (!preview) return errorResponse(400, "preview_not_found", "预览不存在或已过期，请重新采集。");
+    claim = claimBrowserUsePreview(previewId);
+    if (!claim) return errorResponse(400, "preview_not_found", "预览不存在或已过期，请重新采集。");
+    const preview = claim.preview;
     if (preview.kind !== "keyword") return errorResponse(400, "preview_kind_mismatch", "预览类型与保存目标不一致。");
     if (!isAllowedCollectorSourceUrl(preview.sourceUrl)) return errorResponse(400, "forged_external_source_url", "采集来源不是 Amazon 官方页面，已拒绝保存。");
     if (preview.seedAsin !== seed.asin) return errorResponse(409, "seed_asin_mismatch", "当前任务的商品身份已变化，请重新采集后再确认。不做覆盖。");
@@ -187,6 +193,10 @@ export async function POST(
     const after = await readKeywordEvidenceSnapshot(resolved.context, id);
     return jsonResponse({ ok: true, data: { evidence: saved, storageVersion: toStorageVersion(after), saved: rows.map((row) => row.keyword) } });
   } catch (error) {
+    // 仅在确证未落库（CAS / storageVersion 冲突）时 restore claim，保留原 TTL
+    if (claim && previewId && error instanceof KeywordEvidenceError && (error.code === "task_result_conflict" || error.status === 409)) {
+      restoreBrowserUsePreviewClaim(previewId, claim);
+    }
     if (error && typeof error === "object" && (error as { code?: unknown }).code === "browser_use_local_owner_only") {
       return errorResponse(403, "browser_use_local_owner_only", "Browser Use 自动采集仅限本机 Owner 使用。");
     }

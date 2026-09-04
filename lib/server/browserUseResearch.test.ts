@@ -8,6 +8,8 @@ import {
   resolveBrowserUseSeed,
   storeBrowserUsePreview,
   takeBrowserUsePreview,
+  claimBrowserUsePreview,
+  restoreBrowserUsePreviewClaim,
   type BrowserUseResearchPreviewV1,
 } from "./browserUseResearch";
 
@@ -145,3 +147,72 @@ describe("selectReliableSearchKeyword with productName（与 Brief 推荐同一�
     expect(selectReliableSearchKeyword([{ keyword: "kitchen towels", keywordTranslation: "厨巾", searchVolume: 1, capturedAt: "x" }] as never, "THERMOS FUNTAINER Kids Food Jar with Spoon 10oz Pink")).toBeNull();
   });
 });
+
+describe("claimBrowserUsePreview 与 restoreBrowserUsePreviewClaim 生命周期与原子性", () => {
+  it("claimBrowserUsePreview 原子取出：首个 claim 成功并获取 expiresAt，后续 claim 返回 null", () => {
+    const id = storeBrowserUsePreview(validPreview());
+    const claim1 = claimBrowserUsePreview(id);
+    expect(claim1).not.toBeNull();
+    expect(claim1?.preview).toEqual(validPreview());
+    expect(claim1?.expiresAt).toBeGreaterThan(Date.now());
+
+    // 第二次 claim 返回 null（防并发双写）
+    const claim2 = claimBrowserUsePreview(id);
+    expect(claim2).toBeNull();
+  });
+
+  it("并发 claim 只有 1 个成功获取 claim", async () => {
+    const id = storeBrowserUsePreview(validPreview());
+    const results = await Promise.all([
+      Promise.resolve().then(() => claimBrowserUsePreview(id)),
+      Promise.resolve().then(() => claimBrowserUsePreview(id)),
+      Promise.resolve().then(() => claimBrowserUsePreview(id)),
+    ]);
+    const successes = results.filter(Boolean);
+    expect(successes).toHaveLength(1);
+  });
+
+  it("CAS 冲突未落库时恢复 claim：恢复后可重新 claim 并保留原 expiresAt，不延长 TTL", () => {
+    const id = storeBrowserUsePreview(validPreview());
+    const claim = claimBrowserUsePreview(id);
+    expect(claim).not.toBeNull();
+
+    // 模拟 CAS 冲突，调用 restore
+    const restored = restoreBrowserUsePreviewClaim(id, claim!);
+    expect(restored).toBe(true);
+
+    // 恢复后可以被再次 claim
+    const secondClaim = claimBrowserUsePreview(id);
+    expect(secondClaim).not.toBeNull();
+    expect(secondClaim?.expiresAt).toBe(claim!.expiresAt);
+    expect(secondClaim?.preview).toEqual(validPreview());
+  });
+
+  it("过期 claim 不得恢复（不延长 TTL）", () => {
+    const id = storeBrowserUsePreview(validPreview());
+    const claim = claimBrowserUsePreview(id);
+    expect(claim).not.toBeNull();
+
+    // 伪造已过期 expiresAt
+    const expiredClaim = {
+      preview: claim!.preview,
+      expiresAt: Date.now() - 1000,
+    };
+    const restored = restoreBrowserUsePreviewClaim(id, expiredClaim);
+    expect(restored).toBe(false);
+    expect(claimBrowserUsePreview(id)).toBeNull();
+  });
+
+  it("已存在缓存项时不得覆盖恢复", () => {
+    const id1 = storeBrowserUsePreview(validPreview());
+    const claim1 = claimBrowserUsePreview(id1);
+    expect(claim1).not.toBeNull();
+
+    // 重新存入一个新的
+    const id2 = storeBrowserUsePreview(validPreview());
+    // 试图用 claim1 覆盖已有缓存 id2
+    const restored = restoreBrowserUsePreviewClaim(id2, claim1!);
+    expect(restored).toBe(false);
+  });
+});
+
