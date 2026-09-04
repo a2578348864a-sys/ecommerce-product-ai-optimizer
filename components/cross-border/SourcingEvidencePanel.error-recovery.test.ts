@@ -592,4 +592,333 @@ describe("SourcingEvidencePanel 真实 DOM 挂载与错误卡片交互", () => {
     expect(errorMsg?.textContent).toContain("本地服务执行异常");
     expect(errorMsg?.textContent).not.toContain("网络异常，请重试。");
   });
+
+  it("初始 loadInitial 失败：挂出 [供应能力状态读取失败] 错误卡并展示 [状态未知 / 检测失败] 徽标，重新检测成功后自愈", async () => {
+    let getCallCount = 0;
+    (globalThis as Record<string, unknown>).fetch = vi.fn(async (url: string, init?: { method?: string }) => {
+      const urlStr = String(url);
+      if (urlStr.includes("/api/tasks/task-load-fail/sourcing")) {
+        if (!init?.method || init.method === "GET") {
+          getCallCount++;
+          if (getCallCount === 1) {
+            // 首次 GET 模拟服务端 500 HTML 崩溃
+            return new Response("<!DOCTYPE html><html><body><h1>Internal Server Error</h1></body></html>", {
+              status: 500,
+              headers: { "content-type": "text/html" },
+            });
+          }
+          // 重新检测时恢复 200
+          return new Response(JSON.stringify(GET_TOOL_OK), { status: 200, headers: { "content-type": "application/json" } });
+        }
+      }
+      return new Response(JSON.stringify({ ok: false }), { status: 404 });
+    });
+
+    await act(async () => {
+      root = createRoot(container as unknown as Element);
+      root.render(createElement(SourcingEvidencePanel, {
+        taskId: "task-load-fail",
+        amazonContext: { title: "测试商品", image: null, asin: null },
+      } as never));
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    // 首次挂载失败，应展示错误卡
+    const errorCard = findByTestId(container, "sourcing-error-card");
+    const errorLayer = findByTestId(container, "sourcing-error-layer");
+    const recheckBtn = findByTestId(container, "sourcing-error-recheck");
+    const retryBtn = findByTestId(container, "sourcing-error-retry");
+
+    expect(errorCard).not.toBeNull();
+    expect(errorLayer?.textContent).toContain("供应能力状态读取失败");
+    expect(recheckBtn).not.toBeNull();
+    expect(retryBtn).toBeNull(); // 首次加载失败没有前置业务搜索操作，因此不提供重试刚才操作
+
+    // 三个入口的状态徽标必须变更为“状态未知 / 检测失败”，不得伪装为组件未安装
+    const kwBadge = findByTestId(container, "sourcing-kw-status-failed");
+    const imgBadge = findByTestId(container, "sourcing-img-status-failed");
+    const urlBadge = findByTestId(container, "sourcing-url-status-failed");
+    expect(kwBadge?.textContent).toContain("状态未知 / 检测失败");
+    expect(imgBadge?.textContent).toContain("状态未知 / 检测失败");
+    expect(urlBadge?.textContent).toContain("状态未知 / 检测失败");
+
+    // 点击 [重新检测]
+    await act(async () => {
+      const recheckProps = getReactProps(recheckBtn);
+      (recheckProps?.onClick as () => void)();
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    // 重新检测成功后，错误卡自动关闭，徽标恢复正常登录状态
+    const errorCardAfter = findByTestId(container, "sourcing-error-card");
+    expect(errorCardAfter).toBeNull();
+    const kwInput = findByTestId(container, "sourcing-keyword-input");
+    expect(kwInput).not.toBeNull();
+  });
+
+  it("搜索失败保护现场：已选中的 checkbox 与详情在搜索失败时完整保留，关闭错误卡后依然可见", async () => {
+    const SAMPLE_CANDIDATES = [
+      {
+        offerId: "offer-101",
+        title: "高品质不锈钢保温杯 500ml",
+        sourceUrl: "https://detail.1688.com/offer/101.html",
+        images: ["https://cbu01.alicdn.com/img/ibank/101.jpg"],
+        displayedPrice: { text: "¥18.50" },
+        displayedMoq: { text: "2 个起批" },
+        priceRange: { min: 18.5, max: 22.0 },
+        priceTiers: [{ minQty: 2, price: 18.5 }],
+        skuSpecs: [{ skuId: "s1", specs: "黑色 500ml" }],
+        sellerClaims: [{ name: "材质", value: "304不锈钢" }],
+        supplierDisplayName: "浙江某某实业",
+        matchState: "exact_match",
+      },
+      {
+        offerId: "offer-102",
+        title: "双层真空车载便携保温杯 600ml",
+        sourceUrl: "https://detail.1688.com/offer/102.html",
+        images: ["https://cbu01.alicdn.com/img/ibank/102.jpg"],
+        displayedPrice: { text: "¥25.00" },
+        displayedMoq: { text: "5 个起批" },
+        priceRange: { min: 25.0, max: 28.0 },
+        priceTiers: [],
+        skuSpecs: [],
+        sellerClaims: [],
+        supplierDisplayName: "永康某某制造",
+        matchState: "likely_similar",
+      },
+    ];
+
+    let postCount = 0;
+    (globalThis as Record<string, unknown>).fetch = vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
+      const urlStr = String(url);
+      if (urlStr.includes("/api/tasks/task-state-preserve/sourcing")) {
+        if (!init?.method || init.method === "GET") {
+          return new Response(JSON.stringify(GET_TOOL_OK), { status: 200, headers: { "content-type": "application/json" } });
+        }
+        if (init.method === "POST") {
+          postCount++;
+          if (postCount === 1) {
+            // 第一次搜索成功返回 2 个 candidate
+            return new Response(JSON.stringify({
+              ok: true,
+              data: {
+                preview: {
+                  previewId: "prev-1",
+                  method: "keyword",
+                  query: "保温杯",
+                  candidates: SAMPLE_CANDIDATES,
+                  expiresAt: Date.now() + 600_000,
+                },
+              },
+            }), { status: 200, headers: { "content-type": "application/json" } });
+          }
+          if (postCount === 2) {
+            // 第二次搜索模拟超时断开报错
+            throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+          }
+        }
+      }
+      return new Response(JSON.stringify({ ok: false }), { status: 404 });
+    });
+
+    await act(async () => {
+      root = createRoot(container as unknown as Element);
+      root.render(createElement(SourcingEvidencePanel, {
+        taskId: "task-state-preserve",
+        amazonContext: { title: "亚马逊保温杯", image: null, asin: null },
+      } as never));
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    // 第一次搜索：输入并提交
+    const input = findByTestId(container, "sourcing-keyword-input");
+    const submitBtn = findByTestId(container, "sourcing-keyword-submit");
+    await act(async () => {
+      const inputProps = getReactProps(input);
+      (inputProps?.onChange as (e: { target: { value: string } }) => void)({ target: { value: "保温杯" } });
+    });
+    await act(async () => {
+      const submitProps = getReactProps(submitBtn);
+      (submitProps?.onClick as () => void)();
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    // 确认预览已展示，并且有 2 个候选
+    const select101 = findByTestId(container, "select-offer-101");
+    expect(select101).not.toBeNull();
+
+    // 用户勾选 offer-101
+    await act(async () => {
+      const selectProps = getReactProps(select101);
+      (selectProps?.onChange as () => void)();
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    // 确认按钮上显示“加入供应线索（1）”
+    const confirmBtn = findByTestId(container, "sourcing-confirm-button");
+    expect(confirmBtn?.textContent).toContain("加入供应线索（1）");
+
+    // 现在触发第二次搜索（模拟用户输入新词后搜索报错）
+    await act(async () => {
+      const inputProps = getReactProps(input);
+      (inputProps?.onChange as (e: { target: { value: string } }) => void)({ target: { value: "不锈钢杯" } });
+    });
+    await act(async () => {
+      const submitProps = getReactProps(submitBtn);
+      (submitProps?.onClick as () => void)();
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    // 断言出现错误卡片
+    const errorCard = findByTestId(container, "sourcing-error-card");
+    expect(errorCard).not.toBeNull();
+
+    // 核心断言：旧 preview 和已有选择未被提前抹除！
+    const select101AfterError = findByTestId(container, "select-offer-101");
+    expect(select101AfterError).not.toBeNull();
+    expect(getReactProps(select101AfterError)?.checked).toBe(true);
+
+    // 点击关闭错误卡片
+    const dismissBtn = findByTestId(container, "sourcing-error-dismiss");
+    await act(async () => {
+      const dismissProps = getReactProps(dismissBtn);
+      (dismissProps?.onClick as () => void)();
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    // 关闭后完整回到 preview 状态，确认按钮仍然是已选 1 条
+    const confirmBtnAfter = findByTestId(container, "sourcing-confirm-button");
+    expect(confirmBtnAfter?.textContent).toContain("加入供应线索（1）");
+  });
+
+  it("搜索 0 结果时保留上一批结果并提供 [返回上一批搜索结果] 按钮", async () => {
+    let postCount = 0;
+    (globalThis as Record<string, unknown>).fetch = vi.fn(async (url: string, init?: { method?: string }) => {
+      const urlStr = String(url);
+      if (urlStr.includes("/api/tasks/task-zero-result/sourcing")) {
+        if (!init?.method || init.method === "GET") {
+          return new Response(JSON.stringify(GET_TOOL_OK), { status: 200, headers: { "content-type": "application/json" } });
+        }
+        if (init.method === "POST") {
+          postCount++;
+          if (postCount === 1) {
+            return new Response(JSON.stringify({
+              ok: true,
+              data: {
+                preview: {
+                  previewId: "prev-orig",
+                  method: "keyword",
+                  query: "杯子",
+                  candidates: [{
+                    offerId: "cup-1",
+                    title: "原先的杯子",
+                    sourceUrl: "https://detail.1688.com/offer/1.html",
+                    images: [],
+                    displayedPrice: { text: "¥10.00" },
+                    displayedMoq: null,
+                    priceRange: null,
+                    priceTiers: [],
+                    skuSpecs: [],
+                    sellerClaims: [],
+                    supplierDisplayName: "制造厂",
+                    matchState: "exact_match",
+                  }],
+                  expiresAt: Date.now() + 600_000,
+                },
+              },
+            }), { status: 200, headers: { "content-type": "application/json" } });
+          }
+          if (postCount === 2) {
+            // 第二次搜索返回 0 个候选
+            return new Response(JSON.stringify({
+              ok: true,
+              data: {
+                preview: {
+                  previewId: "prev-empty",
+                  method: "keyword",
+                  query: "不存在的商品名称xyz123",
+                  candidates: [],
+                  expiresAt: Date.now() + 600_000,
+                },
+              },
+            }), { status: 200, headers: { "content-type": "application/json" } });
+          }
+        }
+      }
+      return new Response(JSON.stringify({ ok: false }), { status: 404 });
+    });
+
+    await act(async () => {
+      root = createRoot(container as unknown as Element);
+      root.render(createElement(SourcingEvidencePanel, {
+        taskId: "task-zero-result",
+        amazonContext: { title: "测试商品", image: null, asin: null },
+      } as never));
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    const input = findByTestId(container, "sourcing-keyword-input");
+    const submitBtn = findByTestId(container, "sourcing-keyword-submit");
+
+    // 第一次搜索
+    await act(async () => {
+      const inputProps = getReactProps(input);
+      (inputProps?.onChange as (e: { target: { value: string } }) => void)({ target: { value: "杯子" } });
+    });
+    await act(async () => {
+      const submitProps = getReactProps(submitBtn);
+      (submitProps?.onClick as () => void)();
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    expect(findByTestId(container, "select-cup-1")).not.toBeNull();
+
+    // 第二次搜索（无结果）
+    await act(async () => {
+      const inputProps = getReactProps(input);
+      (inputProps?.onChange as (e: { target: { value: string } }) => void)({ target: { value: "不存在的商品名称xyz123" } });
+    });
+    await act(async () => {
+      const submitProps = getReactProps(submitBtn);
+      (submitProps?.onClick as () => void)();
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    // 出现 no_results 和返回上一批按钮
+    const backBtn = findByTestId(container, "sourcing-back-previous-preview");
+    expect(backBtn).not.toBeNull();
+
+    // 点击返回上一批
+    await act(async () => {
+      const backProps = getReactProps(backBtn);
+      (backProps?.onClick as () => void)();
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    // 原结果恢复
+    expect(findByTestId(container, "select-cup-1")).not.toBeNull();
+  });
 });
+

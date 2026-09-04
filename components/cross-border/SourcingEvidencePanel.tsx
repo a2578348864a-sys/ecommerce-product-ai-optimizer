@@ -178,6 +178,10 @@ export function resolveSourcingAccessState(
   if (accessPassword.trim().length > 0) return { available: true, reason: "password", placeholder: "working" };
   return { available: false, reason: "password_required", placeholder: "请输入访问密码后使用供应线索功能。" };
 }
+export type LoadInitialResult =
+  | { ok: true; toolStatus: ToolStatus }
+  | { ok: false; error: SourcingErrorDetail };
+
 export function SourcingEvidencePanel({
   taskId,
   amazonContext,
@@ -197,6 +201,7 @@ export function SourcingEvidencePanel({
   const [errorDetail, setErrorDetail] = useState<SourcingErrorDetail | null>(null);
   const [toolStatus, setToolStatus] = useState<ToolStatus | null>(null);
   const [capabilities, setCapabilities] = useState<SourcingCapabilitiesView | null>(null);
+  const [capabilityLoadFailed, setCapabilityLoadFailed] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [offerUrl, setOfferUrl] = useState("");
@@ -221,6 +226,9 @@ export function SourcingEvidencePanel({
   const [previewDemo, setPreviewDemo] = useState(false);
   const reqIdRef = useRef(0);
   const panelOpen = useRef(false);
+  const isSearchingRef = useRef(false);
+  const previousPreviewRef = useRef<PreviewPayload | null>(null);
+  const [retrying, setRetrying] = useState(false);
 
   // 演示模式（Visitor）：本地采集能力不可用（local_env_required）时，搜索入口仍可
   // 体验“演示找货”——服务端回放预置真实 1688 供应线索样本（demo 分支），结果标注“演示数据”。
@@ -238,7 +246,7 @@ export function SourcingEvidencePanel({
     return { response, data: parsed.data };
   }, [taskId]);
 
-  const loadInitial = useCallback(async (): Promise<ToolStatus | null> => {
+  const loadInitial = useCallback(async (): Promise<LoadInitialResult> => {
     const currentId = ++reqIdRef.current;
     try {
       const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/sourcing`, {
@@ -252,27 +260,83 @@ export function SourcingEvidencePanel({
         toolStatus: ToolStatus;
         capabilities?: unknown;
       }>(response);
-      if (currentId !== reqIdRef.current) return null;
-      if (!response.ok || !parsed.data.ok || !parsed.data.data) return null;
+      if (currentId !== reqIdRef.current) {
+        return {
+          ok: false,
+          error: {
+            category: "server_error",
+            layer: "供应能力状态读取失败",
+            message: "请求已被新操作覆盖",
+            canRetry: false,
+            canRecheck: true,
+          },
+        };
+      }
+      if (!response.ok || !parsed.data.ok || !parsed.data.data) {
+        const classified = classifySourcingRequestError({
+          status: response.status,
+          code: parsed.data.error?.code,
+          message: parsed.data.error?.message,
+          method: "url",
+        });
+        const errDetail: SourcingErrorDetail = {
+          ...classified,
+          layer: "供应能力状态读取失败",
+          message: classified.message || "未能成功读取本机 1688 供应能力状态，请点击重新检测。",
+          canRetry: false,
+          canRecheck: true,
+        };
+        setCapabilityLoadFailed(true);
+        setStatus("error");
+        setErrorDetail(errDetail);
+        setErrorMessage(errDetail.message);
+        return { ok: false, error: errDetail };
+      }
       const payload = parsed.data.data;
       setEvidence(payload.evidence);
       setStorageVersion(payload.storageVersion);
       setToolStatus(payload.toolStatus);
       setCapabilities(parseSourcingCapabilities(payload.capabilities));
+      setCapabilityLoadFailed(false);
+      setErrorDetail((prev) => (prev?.layer === "供应能力状态读取失败" ? null : prev));
+      setErrorMessage((prev) => (status === "error" ? "" : prev));
       onEvidenceChange?.((payload.evidence?.humanConfirmed.length ?? 0) > 0);
       // F3：分能力 gate——CLI 未登录只影响关键词/URL（need_login 横幅），图片能力独立
       const caps = sourcingCapabilities(payload.toolStatus);
       // §16：公网（capabilities=local_env_required）不进入 need_login 诊断态——由 CapabilityNotice 统一提示
       const publicRuntime = parseSourcingCapabilities(payload.capabilities)?.keyword.state === "local_env_required";
       setStatus((prev) => (
-        publicRuntime ? "idle" : (caps.cliReady ? (prev === "need_login" ? "idle" : prev) : "need_login")
+        publicRuntime ? "idle" : (caps.cliReady ? (prev === "need_login" || prev === "error" ? "idle" : prev) : "need_login")
       ));
-      return payload.toolStatus;
-    } catch {
-      // 初始读取失败保持 idle
-      return null;
+      return { ok: true, toolStatus: payload.toolStatus };
+    } catch (err) {
+      if (currentId !== reqIdRef.current) {
+        return {
+          ok: false,
+          error: {
+            category: "server_error",
+            layer: "供应能力状态读取失败",
+            message: "请求已被新操作覆盖",
+            canRetry: false,
+            canRecheck: true,
+          },
+        };
+      }
+      const classified = classifySourcingRequestError({ error: err });
+      const errDetail: SourcingErrorDetail = {
+        ...classified,
+        layer: "供应能力状态读取失败",
+        message: classified.message || "网络异常或读取超时，未能成功获取 1688 供应能力状态。",
+        canRetry: false,
+        canRecheck: true,
+      };
+      setCapabilityLoadFailed(true);
+      setStatus("error");
+      setErrorDetail(errDetail);
+      setErrorMessage(errDetail.message);
+      return { ok: false, error: errDetail };
     }
-  }, [taskId, onEvidenceChange]);
+  }, [taskId, onEvidenceChange, status]);
 
   useEffect(() => {
     if (!panelOpen.current) {
@@ -299,14 +363,21 @@ export function SourcingEvidencePanel({
     setErrorDetail(null);
     setCheckResult("");
     try {
-      const fresh = await loadInitial();
+      const res = await loadInitial();
       setLastCheckAt(new Date());
-      if (fresh) {
-        const capsNow = sourcingCapabilities(fresh);
+      if (res.ok) {
+        setCapabilityLoadFailed(false);
+        const capsNow = sourcingCapabilities(res.toolStatus);
         const parts: string[] = [];
         parts.push(capsNow.cliReady ? "关键词登录：已完成" : (capsNow.cliToolAvailable ? "关键词登录：未完成" : "关键词工具：未安装"));
         parts.push(capsNow.imageReady ? "浏览器助手：已连接" : "浏览器助手：未连接");
         setCheckResult(parts.join(" · "));
+      } else {
+        setCapabilityLoadFailed(true);
+        setStatus("error");
+        setErrorDetail(res.error);
+        setErrorMessage(res.error.message);
+        setCheckResult("供应能力检测失败");
       }
     } finally {
       setCheckingTools(false);
@@ -343,12 +414,16 @@ export function SourcingEvidencePanel({
   }
 
   function retryLastOperation() {
+    if ((status as PanelStatus) === "searching" || isSearchingRef.current || retrying) return;
     if (!lastOperationRef.current) {
       void refreshTools();
       return;
     }
+    setRetrying(true);
     const { method, payload } = lastOperationRef.current;
-    void runSearch(method, payload);
+    void runSearch(method, payload).finally(() => {
+      setRetrying(false);
+    });
   }
 
   function dismissError() {
@@ -360,12 +435,12 @@ export function SourcingEvidencePanel({
   }
 
   async function runSearch(method: "keyword" | "image" | "url", payload: Record<string, unknown>) {
+    if (status === "searching" || isSearchingRef.current) return;
+    isSearchingRef.current = true;
     lastOperationRef.current = { method, payload };
     setStatus("searching");
     setErrorMessage("");
     setErrorDetail(null);
-    setSelected(new Set());
-    setDetailByOfferId({});
     try {
       // V3 Final R13：action 必须用 canonical SourcingOperation（keyword → search）
       const { response, data } = await api({ action: UI_METHOD_TO_OPERATION[method], ...payload }, 120_000);
@@ -396,9 +471,16 @@ export function SourcingEvidencePanel({
       const payloadData = data.data as { preview: PreviewPayload; trace?: unknown; demo?: boolean };
       const candidates = payloadData.preview.candidates;
       if (candidates.length === 0) {
+        if (preview) {
+          previousPreviewRef.current = preview;
+        }
         setStatus("no_results");
         return;
       }
+      setSelected(new Set());
+      setDetailByOfferId({});
+      setNoteByOfferId({});
+      previousPreviewRef.current = null;
       setPreview(payloadData.preview);
       setPreviewDemo(payloadData.demo === true);
       setStatus("preview");
@@ -412,6 +494,8 @@ export function SourcingEvidencePanel({
       setStatus("error");
       setErrorMessage(classified.message);
       setErrorDetail(classified);
+    } finally {
+      isSearchingRef.current = false;
     }
   }
 
@@ -657,8 +741,9 @@ export function SourcingEvidencePanel({
                   {errorDetail?.canRetry !== false ? (
                     <button
                       type="button"
+                      disabled={retrying || (status as PanelStatus) === "searching"}
                       onClick={() => retryLastOperation()}
-                      className="inline-flex h-7 items-center justify-center rounded-lg bg-rose-600 px-2.5 text-xs font-semibold text-white hover:bg-rose-700"
+                      className="inline-flex h-7 items-center justify-center rounded-lg bg-rose-600 px-2.5 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
                       data-testid="sourcing-error-retry"
                     >
                       重试刚才操作
@@ -695,13 +780,15 @@ export function SourcingEvidencePanel({
           ) : null}
 
           {/* ── 获取入口 ── */}
-          {!preview && status !== "saving" && (
+          {status !== "saving" && (
             <div className="mt-3 grid gap-3 lg:grid-cols-3">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs font-bold text-slate-500">关键词找货</p>
                   {localEnvRequired ? (
                     <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">需要本地研究环境</span>
+                  ) : capabilityLoadFailed ? (
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700" data-testid="sourcing-kw-status-failed">状态未知 / 检测失败</span>
                   ) : caps.cliReady ? (
                     <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-700">1688 登录 ✓</span>
                   ) : caps.cliToolAvailable ? (
@@ -729,7 +816,7 @@ export function SourcingEvidencePanel({
                     搜索
                   </button>
                 </div>
-                {!localEnvRequired ? (
+                {!localEnvRequired && !capabilityLoadFailed ? (
                   !caps.cliToolAvailable ? (
                     <p className="mt-1.5 text-xs text-amber-600">关键词找货组件尚未安装，安装完成后即可使用（见顶部提示）。</p>
                   ) : !caps.cliReady ? (
@@ -743,6 +830,8 @@ export function SourcingEvidencePanel({
                   <p className="text-xs font-bold text-slate-500">图片找货</p>
                   {localEnvRequired ? (
                     <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">需要本地研究环境</span>
+                  ) : capabilityLoadFailed ? (
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700" data-testid="sourcing-img-status-failed">状态未知 / 检测失败</span>
                   ) : caps.imageReady ? (
                     <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-700">浏览器助手 ✓</span>
                   ) : caps.imageReasonCode === "extension_version_mismatch" || (caps.imageExtensionSwVersion !== null && !caps.imageVersionCompatible) ? (
@@ -783,7 +872,7 @@ export function SourcingEvidencePanel({
                     </button>
                   </p>
                 ) : null}
-                {!localEnvRequired && !caps.imageReady ? (
+                {!localEnvRequired && !capabilityLoadFailed && !caps.imageReady ? (
                   caps.imageReasonCode === "extension_version_mismatch" || (caps.imageExtensionSwVersion !== null && !caps.imageVersionCompatible) ? (
                     <div className="mt-1.5">
                       <p className="text-xs font-semibold text-rose-700" data-testid="sourcing-helper-outdated">
@@ -841,6 +930,8 @@ export function SourcingEvidencePanel({
                   <p className="text-xs font-bold text-slate-500">已有 1688 链接</p>
                   {localEnvRequired ? (
                     <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">需要本地研究环境</span>
+                  ) : capabilityLoadFailed ? (
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700" data-testid="sourcing-url-status-failed">状态未知 / 检测失败</span>
                   ) : caps.cliReady ? (
                     <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-700">1688 登录 ✓</span>
                   ) : caps.cliToolAvailable ? (
@@ -867,7 +958,7 @@ export function SourcingEvidencePanel({
                     读取
                   </button>
                 </div>
-                {!localEnvRequired ? (
+                {!localEnvRequired && !capabilityLoadFailed ? (
                   !caps.cliToolAvailable ? (
                     <p className="mt-1.5 text-xs text-amber-600">链接读取组件尚未安装，安装完成后即可使用（见顶部提示）。</p>
                   ) : !caps.cliReady ? (
@@ -980,7 +1071,25 @@ export function SourcingEvidencePanel({
           ) : null}
 
           {status === "no_results" ? (
-            <p className="mt-3 text-sm text-slate-500">没有找到结果，换个关键词试试。</p>
+            <div className="mt-3 flex flex-wrap items-center gap-3" data-testid="sourcing-no-results-box">
+              <p className="text-sm text-slate-500">没有找到结果，换个关键词试试。</p>
+              {previousPreviewRef.current ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (previousPreviewRef.current) {
+                      setPreview(previousPreviewRef.current);
+                      previousPreviewRef.current = null;
+                      setStatus("preview");
+                    }
+                  }}
+                  className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  data-testid="sourcing-back-previous-preview"
+                >
+                  返回上一批搜索结果
+                </button>
+              ) : null}
+            </div>
           ) : null}
 
           {/* ── 已保存证据 ── */}
