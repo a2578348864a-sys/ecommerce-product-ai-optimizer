@@ -26,11 +26,14 @@ function useImperativeHandleSafe(
 export type BrowserUseCollectPhase =
   | "idle" | "collecting" | "preview" | "saving" | "login_required" | "captcha_required" | "permission_insufficient" | "collect_failed" | "error";
 
+export type SaveSummaryTone = "success" | "neutral" | "warning" | "error";
+
 export type BrowserUseCollectState = {
   phase: BrowserUseCollectPhase;
   preview: { schema: string; kind: string; seedAsin: string; marketplace: string; sourceUrl: string; capturedAt: string; results: { asin?: string; title?: string; keyword?: string; price?: number | null; rating?: number | null; reviews?: number | null; bsr?: number | null; searchVolume?: number | null; relevance?: number | null; competition?: number | null }[]; missing: string[]; failureReason: string | null } | null;
   previewId: string | null;
   message: string | null;
+  messageTone?: SaveSummaryTone;
   savedCount: number | null;
 };
 
@@ -67,25 +70,78 @@ export function browserUseSaveAllowed(preview: { results: unknown[]; failureReas
  * duplicate_asin → 已在列表中；task_result_conflict → 版本冲突未保存；
  * competitor_evidence_limit_exceeded → 达到上限；其余 → 保存失败。
  */
-export function buildSaveSummary(
+export function buildSaveSummaryWithTone(
   savedCount: number,
   skipped: Array<{ asin: string; code: string }> | undefined,
-): string {
+): { message: string; tone: SaveSummaryTone } {
   const skippedList = Array.isArray(skipped) ? skipped : [];
   if (skippedList.length === 0) {
-    return savedCount > 0 ? `已保存 ${savedCount} 条自动采集证据。` : "";
+    return {
+      message: savedCount > 0 ? `已保存 ${savedCount} 条自动采集证据。` : "",
+      tone: "success",
+    };
   }
   const duplicates = skippedList.filter((s) => s.code === "duplicate_asin").length;
   const conflicts = skippedList.filter((s) => s.code === "task_result_conflict").length;
   const limits = skippedList.filter((s) => s.code === "competitor_evidence_limit_exceeded").length;
   const others = skippedList.filter((s) => !["duplicate_asin", "task_result_conflict", "competitor_evidence_limit_exceeded"].includes(s.code)).length;
-  const parts: string[] = [`已保存 ${savedCount} 条`];
-  if (duplicates > 0) parts.push(`${duplicates} 条已在列表中（重复采集被跳过）`);
+
+  // 情况 B: saved === 0 且全部为 duplicate_asin
+  if (savedCount === 0 && duplicates > 0 && conflicts === 0 && limits === 0 && others === 0) {
+    return {
+      message: `没有新增竞品：${duplicates} 条已在列表中，已跳过重复项。`,
+      tone: "neutral",
+    };
+  }
+
+  // 情况 C: 只有冲突且未保存
+  if (savedCount === 0 && conflicts > 0 && duplicates === 0 && limits === 0 && others === 0) {
+    return {
+      message: "部分竞品未保存：内容版本已更新，请刷新后重试。",
+      tone: "warning",
+    };
+  }
+
+  // 达到上限且未保存
+  if (savedCount === 0 && limits > 0 && duplicates === 0 && conflicts === 0 && others === 0) {
+    return {
+      message: `竞品未保存：已达到竞品数量上限（${limits} 条未添加）。`,
+      tone: "warning",
+    };
+  }
+
+  // 情况 A: saved > 0
+  if (savedCount > 0) {
+    const parts: string[] = [`新增保存 ${savedCount} 条竞品`];
+    if (duplicates > 0) parts.push(`${duplicates} 条已在列表中，已跳过重复项`);
+    if (conflicts > 0) parts.push(`${conflicts} 条因版本冲突未保存（请刷新后重试）`);
+    if (limits > 0) parts.push(`${limits} 条因达到竞品上限未保存`);
+    if (others > 0) parts.push(`${others} 条保存失败`);
+    return {
+      message: `${parts.join("；")}。`,
+      tone: conflicts > 0 || limits > 0 ? "warning" : "success",
+    };
+  }
+
+  // 其余 saved === 0 的混合情况
+  const parts: string[] = ["没有新增竞品"];
+  if (duplicates > 0) parts.push(`${duplicates} 条已在列表中，已跳过重复项`);
   if (conflicts > 0) parts.push(`${conflicts} 条因版本冲突未保存（请刷新后重试）`);
-  if (limits > 0) parts.push(`${limits} 条因达到竞品上限未保存`);
-  if (others > 0) parts.push(`${others} 条保存失败（未保存）`);
-  return `${parts.join("；")}。`;
+  if (limits > 0) parts.push(`${limits} 条因达到上限未保存`);
+  if (others > 0) parts.push(`${others} 条保存失败`);
+  return {
+    message: `${parts.join("；")}。`,
+    tone: conflicts > 0 || limits > 0 || others > 0 ? "warning" : "neutral",
+  };
 }
+
+export function buildSaveSummary(
+  savedCount: number,
+  skipped: Array<{ asin: string; code: string }> | undefined,
+): string {
+  return buildSaveSummaryWithTone(savedCount, skipped).message;
+}
+
 export const INITIAL_BROWSER_USE_COLLECT_STATE: BrowserUseCollectState = {
   phase: "idle", preview: null, previewId: null, message: null, savedCount: null,
 };
@@ -107,30 +163,33 @@ export function browserUseCollectStateReducer(
     case "START":
       return { ...INITIAL_BROWSER_USE_COLLECT_STATE, phase: "collecting" };
     case "COLLECT_SUCCEEDED":
-      if (action.preview === null) return { ...state, phase: "collect_failed", message: "采集成功但预览为空（不冒充无数据）。" };
+      if (action.preview === null) return { ...state, phase: "collect_failed", message: "采集成功但预览为空（不冒充无数据）。", messageTone: "error" };
       return { ...state, phase: "preview", preview: action.preview, previewId: action.previewId, message: null };
     case "COLLECT_FAILED": {
       const phase = action.code === "login_required" ? "login_required"
         : action.code === "captcha_required" ? "captcha_required"
           : action.code === "permission_insufficient" ? "permission_insufficient"
             : "collect_failed";
-      return { ...INITIAL_BROWSER_USE_COLLECT_STATE, phase, message: action.message };
+      return { ...INITIAL_BROWSER_USE_COLLECT_STATE, phase, message: action.message, messageTone: "error" };
     }
     case "SAVING":
       return { ...state, phase: "saving" };
-    case "SAVED":
+    case "SAVED": {
+      const summary = buildSaveSummaryWithTone(action.count, action.skipped);
       return {
         ...state,
         phase: "idle",
         preview: null,
         previewId: null,
         savedCount: action.count,
-        message: buildSaveSummary(action.count, action.skipped),
+        message: summary.message,
+        messageTone: summary.tone,
       };
+    }
     case "SAVE_FAILED":
-      return { ...state, phase: "error", message: action.message };
+      return { ...state, phase: "error", message: action.message, messageTone: "error" };
     case "CANCEL":
-      return { ...INITIAL_BROWSER_USE_COLLECT_STATE, message: "已取消，未保存任何数据。" };
+      return { ...INITIAL_BROWSER_USE_COLLECT_STATE, message: "已取消，未保存任何数据。", messageTone: "neutral" };
   }
 }
 
@@ -147,7 +206,9 @@ export function BrowserUseCollectButton({
   storageVersion,
   onSaved,
   onCollected,
+  onCollectStart,
   collectRef,
+  showTrigger = true,
 }: {
   taskId: string;
   kind: "competitor" | "keyword";
@@ -155,15 +216,18 @@ export function BrowserUseCollectButton({
   onSaved?: (count: number) => void;
   /** 轮 10 合并：采集成功后额外产物（竞品采集同时产出的关键词预览） */
   onCollected?: (extra: { keywordPreviewId?: string | null; keywordCount?: number | null; seedAsin?: string | null; sourceUrl?: string | null }) => void;
-  /** 命令式采集句柄：供卡片内「自动采集竞品」等按钮复用同一采集链路 */
+  onCollectStart?: () => void;
+  /** 命令式采集句柄：供卡片内「采集关键词+竞品」等按钮复用同一采集链路 */
   collectRef?: React.MutableRefObject<(() => void) | null>;
+  showTrigger?: boolean;
 }) {
   const [state, dispatch] = useReducer(browserUseCollectStateReducer, INITIAL_BROWSER_USE_COLLECT_STATE);
   const busy = state.phase === "collecting" || state.phase === "saving";
 
   const collect = useCallback(() => {
-    // busy guard：采集中/保存中禁止再次触发（含 collectRef 外部按钮，如卡片「自动采集竞品」）
+    // busy guard：采集中/保存中禁止再次触发（含 collectRef 外部按钮）
     if (busy) return;
+    onCollectStart?.();
     dispatch({ type: "START" });
     let cancelled = false;
     void (async () => {
@@ -188,7 +252,7 @@ export function BrowserUseCollectButton({
       }
     })();
     return () => { cancelled = true; };
-  }, [taskId, kind, onCollected, busy]);
+  }, [taskId, kind, onCollected, onCollectStart, busy]);
 
   useImperativeHandleSafe(collectRef, collect);
 
@@ -232,27 +296,53 @@ export function BrowserUseCollectButton({
 
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2">
-      <button
-        type="button"
-        data-testid={kind === "competitor" ? "browser-use-collect-competitors" : "browser-use-collect-keywords"}
-        disabled={busy}
-        onClick={collect}
-        className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-teal-200 bg-teal-50 px-3 text-sm font-semibold text-teal-700 hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-        {kind === "competitor" ? "采集关键词+竞品" : "自动采集关键词"}
-      </button>
+      {showTrigger !== false ? (
+        <button
+          type="button"
+          data-testid={kind === "competitor" ? "browser-use-collect-competitors" : "browser-use-collect-keywords"}
+          disabled={busy}
+          onClick={collect}
+          className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-teal-200 bg-teal-50 px-3 text-sm font-semibold text-teal-700 hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+          {kind === "competitor" ? "采集关键词+竞品" : "自动采集关键词"}
+        </button>
+      ) : null}
       {(state.phase === "collecting" || state.phase === "saving") && (
         <span className="text-sm text-slate-500">{state.phase === "collecting" ? "正在启动浏览器采集…" : "正在确认保存…"}</span>
       )}
       {failureLabel && <p className="text-sm text-amber-700" role="status">{failureLabel}</p>}
       {state.phase === "collect_failed" && state.message && <p className="text-sm text-rose-700" role="alert">{state.message}</p>}
       {state.phase === "error" && state.message && <p className="text-sm text-rose-700" role="alert">{state.message}</p>}
-      {state.message && (state.phase === "idle") && <p className="text-sm text-emerald-700" role="status">{state.message}</p>}
+      {state.message && (state.phase === "idle") && (
+        <p
+          className={`text-sm ${
+            state.messageTone === "warning"
+              ? "text-amber-800"
+              : state.messageTone === "error"
+                ? "text-rose-700"
+                : state.messageTone === "neutral"
+                  ? "text-slate-600"
+                  : "text-emerald-700"
+          }`}
+          role="status"
+          data-testid="browser-use-save-summary"
+        >
+          {state.message}
+        </p>
+      )}
       {state.phase === "preview" && state.preview && (
         <div className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm" data-testid="browser-use-preview">
           <p className="font-semibold text-slate-900">采集预览（{state.preview.kind === "competitor" ? `竞品 ${state.preview.results.length} 条` : `关键词 ${state.preview.results.length} 条`}）</p>
-          <p className="text-xs text-slate-500">种子 ASIN：{state.preview.seedAsin} · 来源：{state.preview.sourceUrl}</p>
+          <p className="text-xs text-slate-500">种子 ASIN：{state.preview.seedAsin} · 来源：Amazon 搜索结果</p>
+          {state.preview.sourceUrl ? (
+            <details className="mt-0.5 text-xs text-slate-400">
+              <summary className="cursor-pointer text-slate-400 hover:underline">查看采集来源</summary>
+              <p className="mt-0.5 break-all font-mono text-[11px] text-slate-500 bg-slate-50 p-1.5 rounded border border-slate-200">
+                {state.preview.sourceUrl}
+              </p>
+            </details>
+          ) : null}
           <ul className="mt-2 max-h-40 overflow-auto space-y-1">
             {state.preview.results.slice(0, 10).map((item, index) => (
               <li key={index} className="truncate text-slate-700">

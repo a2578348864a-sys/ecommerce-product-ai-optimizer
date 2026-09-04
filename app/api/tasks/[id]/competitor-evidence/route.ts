@@ -25,7 +25,10 @@ import {
   type BrowserUseKeywordPreviewItem,
   resolveBrowserUseSeed,
   storeBrowserUsePreview,
+  claimBrowserUsePreview,
+  restoreBrowserUsePreviewClaim,
   takeBrowserUsePreview,
+  type BrowserUsePreviewClaim,
 } from "@/lib/server/browserUseResearch";
 import { runSellerSpriteCollection } from "@/tools/collectors/browser-use/sellerSpriteCollector";
 import { runAmazonCompetitorCollection, amazonCompetitorObservationToPreview } from "@/tools/collectors/browser-use/amazonCompetitorCollector";
@@ -200,82 +203,97 @@ export async function POST(
       if (expectedStorageVersion === null) {
         return jsonResponse({ ok: false, error: { code: "storage_version_required", message: "内容刚在其他位置更新，请刷新后重试。" } }, 400);
       }
-      const preview = takeBrowserUsePreview(previewId);
-      if (!preview) return jsonResponse({ ok: false, error: { code: "preview_not_found", message: "预览不存在或已过期，请重新采集。" } }, 400);
-      if (preview.kind !== "competitor") return jsonResponse({ ok: false, error: { code: "preview_kind_mismatch", message: "预览类型与保存目标不一致。" } }, 400);
-      if (preview.failureReason !== null) return jsonResponse({ ok: false, error: { code: "preview_not_collectable", message: "预览采集未成功（" + preview.failureReason + "），没有可保存的数据。" } }, 400);
-      // 空结果硬拒：failureReason=null 但零条目 → 不进入保存循环（不写入、不产生"已保存 0 条"假成功）
-      if (!Array.isArray(preview.results) || preview.results.length === 0) {
-        return jsonResponse({ ok: false, error: { code: "competitor_preview_empty", message: "采集预览没有任何竞品条目，未保存任何数据。请重新采集。" } }, 422);
-      }
-      if (!isAllowedCollectorSourceUrl(preview.sourceUrl)) {
-        return jsonResponse({ ok: false, error: { code: "forged_external_source_url", message: "采集来源不是 Amazon 官方页面，已拒绝保存。" } }, 400);
-      }
-      if (preview.seedAsin !== seed.asin) {
-        return jsonResponse({ ok: false, error: { code: "seed_asin_mismatch", message: "当前任务的商品身份已变化，请重新采集后再确认。不做覆盖。" } }, 409);
-      }
-      const savedAsins: string[] = [];
-      const skipped: { asin: string; code: string }[] = [];
-      let currentVersion = expectedStorageVersion;
-      for (const result of preview.results) {
-        // 冲突重试：版本失配时用最新快照重读一次（最多 1 次），避免其余条目被一次
-        // 并发写（如关键词保存）连带丢弃；连续 2 次冲突才放弃该条并记录 skipped。
-        let attempts = 0;
-        let saved = false;
-        let skipCode: string | null = null;
-        while (attempts < 2 && !saved && skipCode === null) {
-          attempts += 1;
-          try {
-            const detailBullets = Array.isArray(result.bullets) && result.bullets.length > 0
-              ? {
-                  bullets: result.bullets.slice(0, 5),
+      let claim: BrowserUsePreviewClaim | null = null;
+      try {
+        claim = claimBrowserUsePreview(previewId);
+        if (!claim) return jsonResponse({ ok: false, error: { code: "preview_not_found", message: "预览不存在或已过期，请重新采集。" } }, 400);
+        const preview = claim.preview;
+        if (preview.kind !== "competitor") return jsonResponse({ ok: false, error: { code: "preview_kind_mismatch", message: "预览类型与保存目标不一致。" } }, 400);
+        if (preview.failureReason !== null) return jsonResponse({ ok: false, error: { code: "preview_not_collectable", message: "预览采集未成功（" + preview.failureReason + "），没有可保存的数据。" } }, 400);
+        // 空结果硬拒：failureReason=null 但零条目 → 不进入保存循环（不写入、不产生"已保存 0 条"假成功）
+        if (!Array.isArray(preview.results) || preview.results.length === 0) {
+          return jsonResponse({ ok: false, error: { code: "competitor_preview_empty", message: "采集预览没有任何竞品条目，未保存任何数据。请重新采集。" } }, 422);
+        }
+        if (!isAllowedCollectorSourceUrl(preview.sourceUrl)) {
+          return jsonResponse({ ok: false, error: { code: "forged_external_source_url", message: "采集来源不是 Amazon 官方页面，已拒绝保存。" } }, 400);
+        }
+        if (preview.seedAsin !== seed.asin) {
+          return jsonResponse({ ok: false, error: { code: "seed_asin_mismatch", message: "当前任务的商品身份已变化，请重新采集后再确认。不做覆盖。" } }, 409);
+        }
+        const savedAsins: string[] = [];
+        const skipped: { asin: string; code: string }[] = [];
+        let currentVersion = expectedStorageVersion;
+        for (const result of preview.results) {
+          // 冲突重试：版本失配时用最新快照重读一次（最多 1 次），避免其余条目被一次
+          // 并发写（如关键词保存）连带丢弃；连续 2 次冲突才放弃该条并记录 skipped。
+          let attempts = 0;
+          let saved = false;
+          let skipCode: string | null = null;
+          while (attempts < 2 && !saved && skipCode === null) {
+            attempts += 1;
+            try {
+              const detailBullets = Array.isArray(result.bullets) && result.bullets.length > 0
+                ? {
+                    bullets: result.bullets.slice(0, 5),
+                    capturedAt: result.capturedAt || preview.capturedAt,
+                    sourceUrl: result.sourceUrl,
+                  }
+                : null;
+              await addCompetitorAsin({
+                context: resolved.context,
+                taskId: id,
+                asin: result.asin,
+                note: result.title.slice(0, 200) || undefined,
+                autoProvenance: {
+                  collector: preview.collector,
+                  sourceUrl: preview.sourceUrl,
                   capturedAt: result.capturedAt || preview.capturedAt,
-                  sourceUrl: result.sourceUrl,
-                }
-              : null;
-            await addCompetitorAsin({
-              context: resolved.context,
-              taskId: id,
-              asin: result.asin,
-              note: result.title.slice(0, 200) || undefined,
-              autoProvenance: {
-                collector: preview.collector,
-                sourceUrl: preview.sourceUrl,
-                capturedAt: result.capturedAt || preview.capturedAt,
-                reasonCodes: ["browser_use_collected"],
-              },
-              expectedStorageVersion: currentVersion,
-              ...(detailBullets ? { detailBullets } : {}),
-            });
-            // 写入成功即锁定 saved：后续刷新版本失败（并发/瞬时错误）不得把该条改记为 skipped
-            saved = true;
-          } catch (error) {
-            const code = error instanceof CompetitorEvidenceError ? error.code : "save_failed";
-            // 仅并发冲突（版本失配）值得重试；duplicate/上限等业务拒绝立即记 skip（不重复记 2 次）
-            if (code === "task_result_conflict" && attempts < 2) {
-              // 刷新版本后重试该条（其他页面并发写入导致的失配）
-              const fresh = await readCompetitorEvidenceSnapshot(resolved.context, id);
-              currentVersion = toStorageVersion(fresh);
-              continue;
+                  reasonCodes: ["browser_use_collected"],
+                },
+                expectedStorageVersion: currentVersion,
+                ...(detailBullets ? { detailBullets } : {}),
+              });
+              // 写入成功即锁定 saved：后续刷新版本失败（并发/瞬时错误）不得把该条改记为 skipped
+              saved = true;
+            } catch (error) {
+              const code = error instanceof CompetitorEvidenceError ? error.code : "save_failed";
+              // 仅并发冲突（版本失配）值得重试；duplicate/上限等业务拒绝立即记 skip（不重复记 2 次）
+              if (code === "task_result_conflict" && attempts < 2) {
+                // 刷新版本后重试该条（其他页面并发写入导致的失配）
+                const fresh = await readCompetitorEvidenceSnapshot(resolved.context, id);
+                currentVersion = toStorageVersion(fresh);
+                continue;
+              }
+              skipCode = code;
             }
-            skipCode = code;
+          }
+          if (saved) {
+            savedAsins.push(result.asin);
+            // 版本刷新与"写入结果记账"分离：刷新失败只影响后续条的 expectedStorageVersion，
+            // 不改变本条的 saved 归属（互斥保证）。
+            try {
+              const after = await readCompetitorEvidenceSnapshot(resolved.context, id);
+              currentVersion = toStorageVersion(after);
+            } catch { /* 保留当前版本，后续条若冲突将自行重试 */ }
+          } else if (skipCode !== null) {
+            skipped.push({ asin: result.asin, code: skipCode });
           }
         }
-        if (saved) {
-          savedAsins.push(result.asin);
-          // 版本刷新与"写入结果记账"分离：刷新失败只影响后续条的 expectedStorageVersion，
-          // 不改变本条的 saved 归属（互斥保证）。
-          try {
-            const after = await readCompetitorEvidenceSnapshot(resolved.context, id);
-            currentVersion = toStorageVersion(after);
-          } catch { /* 保留当前版本，后续条若冲突将自行重试 */ }
-        } else if (skipCode !== null) {
-          skipped.push({ asin: result.asin, code: skipCode });
+
+        // 仅在确证零条写入且全部因 CAS 版本冲突导致失败时，restore claim 允许刷新重试
+        if (claim && savedAsins.length === 0 && skipped.length > 0 && skipped.every((s) => s.code === "task_result_conflict")) {
+          restoreBrowserUsePreviewClaim(previewId, claim);
         }
+
+        const evidence = await getCompetitorEvidence(resolved.context, id);
+        const finalSnapshot = await readCompetitorEvidenceSnapshot(resolved.context, id);
+        return jsonResponse({ ok: true, data: { evidence, storageVersion: toStorageVersion(finalSnapshot), saved: savedAsins, skipped } });
+      } catch (error) {
+        if (claim && previewId && error instanceof CompetitorEvidenceError && (error.code === "task_result_conflict" || error.status === 409)) {
+          restoreBrowserUsePreviewClaim(previewId, claim);
+        }
+        throw error;
       }
-      const evidence = await getCompetitorEvidence(resolved.context, id);
-      const finalSnapshot = await readCompetitorEvidenceSnapshot(resolved.context, id);
-      return jsonResponse({ ok: true, data: { evidence, storageVersion: toStorageVersion(finalSnapshot), saved: savedAsins, skipped } });
     } catch (error) {
       if (error && typeof error === "object" && (error as { code?: unknown }).code === "browser_use_local_owner_only") {
         return jsonResponse({ ok: false, error: { code: "browser_use_local_owner_only", message: "Browser Use 自动采集仅限本机 Owner 使用。" } }, 403);

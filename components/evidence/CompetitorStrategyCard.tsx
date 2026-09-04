@@ -67,7 +67,7 @@ export function CompetitorStrategyCard({
           </p>
         </div>
         <button type="button" data-testid="cp-collect" onClick={onCollect} disabled={busy} className="inline-flex h-8 shrink-0 items-center rounded-lg bg-teal-600 px-3 text-xs font-semibold text-white hover:bg-teal-700 disabled:opacity-50">
-          自动采集竞品
+          {busy ? "正在采集…" : "采集关键词+竞品"}
         </button>
       </div>
 
@@ -81,7 +81,7 @@ export function CompetitorStrategyCard({
             </p>
           </li>
         ))}
-        {classified.length === 0 ? <li className="text-xs text-slate-400">尚未采集竞品。点击「自动采集竞品」开始。</li> : null}
+        {classified.length === 0 ? <li className="text-xs text-slate-400">尚未采集竞品。点击「采集关键词+竞品」开始。</li> : null}
       </ul>
 
       {hidden.length > 0 ? (
