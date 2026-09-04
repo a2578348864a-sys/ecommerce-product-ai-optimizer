@@ -137,6 +137,7 @@ function errorResponseFrom(error: unknown): NextResponse {
   if (error instanceof SourcingEvidenceError || error instanceof SourcingAcquisitionError) {
     return errorResponse(error.status, error.code, error.message);
   }
+  console.error("[sourcing] unexpected route error:", error);
   return errorResponse(500, "server_error", "服务器错误，请稍后重试。");
 }
 
