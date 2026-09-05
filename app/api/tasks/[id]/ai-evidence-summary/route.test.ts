@@ -243,6 +243,8 @@ describe("R2 契约：businessModules 由服务端唯一生成并返回", () => 
     expect(modulesJson).not.toContain("11111111-");
     const market = modules.find((m: { key: string }) => m.key === "market");
     expect(market.missing.some((x: { text: string }) => x.text.includes("臆测"))).toBe(true);
+    // 门禁：GET 读取零 Provider 调用
+    expect(vi.mocked(callAiJson)).toHaveBeenCalledTimes(0);
     // POST 生成后同样有 businessModules
   });
 
@@ -394,6 +396,7 @@ describe("R5 P1-1：安全 DTO hasSummary 状态 + 前端消费者契约", () =>
       expect(raw).not.toContain(forbidden);
     }
     expect(body.data).not.toHaveProperty("summary");
+    expect(vi.mocked(callAiJson)).toHaveBeenCalledTimes(0);
   });
   it("GET 有摘要任务 → hasSummary=true；legacyCategories 存在；businessModules 有结论", async () => {
     const response = await routeGet(
@@ -405,6 +408,30 @@ describe("R5 P1-1：安全 DTO hasSummary 状态 + 前端消费者契约", () =>
     expect(Array.isArray(body.data.legacyCategories)).toBe(true);
     const buyers = body.data.businessModules.find((m: { key: string }) => m.key === "buyers");
     expect(buyers.conclusion.length).toBeGreaterThan(0);
+    expect(vi.mocked(callAiJson)).toHaveBeenCalledTimes(0);
+  });
+});
+
+describe("AI Re-summary Retirement：Provider 门禁契约", () => {
+  it("GET 路由在任何情况（有摘要、空摘要）下零 Provider 调用（callAiJson calls = 0）", async () => {
+    vi.mocked(callAiJson).mockClear();
+    // 1. 读取有摘要任务
+    const res1 = await routeGet(
+      new NextRequest("http://localhost/api/tasks/x/ai-evidence-summary", { headers: { "x-access-token": "tok-demo-a" } }),
+      { params: Promise.resolve({ id: taskId }) },
+    );
+    expect(res1.status).toBe(200);
+
+    // 2. 读取无摘要任务
+    const emptyTask = await makeTask({ resultJson: JSON.stringify({ sourceMeta: {} }) });
+    const res2 = await routeGet(
+      new NextRequest("http://localhost/api/tasks/x/ai-evidence-summary", { headers: { "x-access-token": "tok-demo-a" } }),
+      { params: Promise.resolve({ id: emptyTask.id }) },
+    );
+    expect(res2.status).toBe(200);
+
+    // 3. 门禁断言：Provider 调用彻底归零
+    expect(vi.mocked(callAiJson)).toHaveBeenCalledTimes(0);
   });
 });
 

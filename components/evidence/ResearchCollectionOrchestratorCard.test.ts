@@ -354,24 +354,24 @@ describe("ResearchCollectionOrchestratorCard (Phase 3 UI / Interaction)", () => 
       // 保证容器具备防溢出与响应式布局类
       expect(cardSource).toContain("max-w-full");
       expect(cardSource).toContain("overflow-hidden");
-      expect(cardSource).toContain("sm:grid-cols-2");
+      expect(cardSource).toContain("lg:grid-cols-4");
     });
 
-    it("正确挂载在 EvidenceWorkbench 顶部（位于当前研究资料/分类导航之上，紧贴研究资料主区域）", () => {
+    it("正确挂载在 EvidenceWorkbench 顶部（位于简明结论/分类导航之上，紧贴研究资料主区域）", () => {
       expect(workbenchSource).toContain("import { ResearchCollectionOrchestratorCard }");
       expect(workbenchSource).toContain("<ResearchCollectionOrchestratorCard");
 
-      // 必须位于 research-evidence-checklist 之前
+      // 必须位于 workbench-summary 和 tabs 之前
       const orchestratorIndex = workbenchSource.indexOf("<ResearchCollectionOrchestratorCard");
-      const checklistIndex = workbenchSource.indexOf('data-testid="research-evidence-checklist"');
+      const summaryIndex = workbenchSource.indexOf('data-testid="workbench-summary"');
       const tabsIndex = workbenchSource.indexOf('data-testid="workbench-tabs"');
 
       expect(orchestratorIndex).toBeGreaterThan(-1);
-      expect(checklistIndex).toBeGreaterThan(-1);
+      expect(summaryIndex).toBeGreaterThan(-1);
       expect(tabsIndex).toBeGreaterThan(-1);
 
-      // 卡片必须在 checklist 和 tabs 之上
-      expect(orchestratorIndex).toBeLessThan(checklistIndex);
+      // 卡片必须在 summary 和 tabs 之上
+      expect(orchestratorIndex).toBeLessThan(summaryIndex);
       expect(orchestratorIndex).toBeLessThan(tabsIndex);
 
       // 工作台中包含对应的锚点容器

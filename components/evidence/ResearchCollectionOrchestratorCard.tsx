@@ -487,7 +487,7 @@ export function ResearchCollectionOrchestratorCard({
   return (
     <section
       data-testid="research-orchestrator-card"
-      className={`w-full max-w-full overflow-hidden rounded-2xl border border-slate-200/90 bg-slate-50/70 p-4 sm:p-5 shadow-sm transition-all ${className}`}
+      className={`w-full max-w-full overflow-hidden rounded-2xl border border-slate-200/90 bg-slate-50/70 p-3 sm:p-4 shadow-sm transition-all ${className}`}
     >
       {/* ── 顶部标题、状态徽章与一键补齐操作 ── */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -607,7 +607,7 @@ export function ResearchCollectionOrchestratorCard({
       {/* ── 4 项来源状态列表展示 ── */}
       <div
         data-testid="orchestrator-sources-grid"
-        className="mt-3.5 grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3"
+        className="mt-2.5 grid grid-cols-2 lg:grid-cols-4 gap-2"
       >
         {sourceItems.map((item) => {
           const badge = formatBadgeLabel(item.state);
@@ -615,7 +615,7 @@ export function ResearchCollectionOrchestratorCard({
             <div
               key={item.key}
               data-testid={`orchestrator-item-${item.key}`}
-              className="flex flex-col justify-between rounded-xl border border-slate-200/80 bg-white p-3 sm:p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-colors hover:border-slate-300/80"
+              className="flex flex-col justify-between rounded-xl border border-slate-200/80 bg-white p-2.5 sm:p-3 shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-colors hover:border-slate-300/80"
             >
               {/* 顶部行：名称 + 徽章 */}
               <div className="flex items-center justify-between gap-2">
@@ -649,7 +649,7 @@ export function ResearchCollectionOrchestratorCard({
               </div>
 
               {/* 底部行：描述/明细 + 对应操作（直达锚点/重试） */}
-              <div className="mt-2 flex items-center justify-between gap-2 pt-1 border-t border-slate-100 text-xs">
+              <div className="mt-1.5 flex items-center justify-between gap-1.5 pt-1 border-t border-slate-100 text-[11px] sm:text-xs">
                 <span className="text-slate-500 truncate" title={item.detail}>
                   {item.detail || (
                     item.state === "ready"
