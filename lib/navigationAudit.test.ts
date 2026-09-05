@@ -324,15 +324,9 @@ describe("TaskRecordDetail operation overview", () => {
     expect(detailSource).not.toMatch(/技术信息与原始数据/);
     expect(detailSource).not.toMatch(/完整结果 JSON/);
     expect(detailSource).not.toMatch(/任务状态和后续能力/);
-    // Formal v2 主体：统一商品结论 + 四个业务模块；每模块保留结论、依据、缺口和一步动作。
+    // RESEARCH_DETAIL_SLIMDOWN_V1: 统一商品结论 + 资料工作台收缩形态（顶部四张重复 Summary 大卡已退役）
     expect(detailSource).toMatch(/aria-label="商品结论"/);
-    expect(detailSource).toMatch(/aria-label="研究模块"/);
-    for (const heading of ["市场机会", "买家需求与差评", "货源与商品匹配", "成本与风险"]) {
-      expect(detailSource).toContain(heading);
-    }
-    for (const field of ["AI 结论", "关键依据", "缺什么"]) {
-      expect(detailSource).toContain(field);
-    }
+    expect(detailSource).not.toMatch(/aria-label="研究模块"/);
     expect(detailSource).toContain("EvidenceWorkbench");
     expect(detailSource).toContain("人工决定");
     expect(detailSource).toContain("Listing 与商品图片");

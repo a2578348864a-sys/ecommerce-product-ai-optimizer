@@ -19,12 +19,6 @@ import {
   type KeywordEvidenceView,
 } from "@/components/evidence/KeywordReportEvidenceSection";
 import {
-  AiEvidenceSummarySection,
-  type AiEvidenceSummaryView,
-  type BusinessModuleView,
-  type LegacyCategoryView,
-} from "@/components/evidence/AiEvidenceSummarySection";
-import {
   BrowserEvidenceSection,
   parseBrowserEvidenceView,
   type BrowserEvidenceView,
@@ -637,10 +631,6 @@ export function EvidenceWorkbench({
   const [keywordReportEvidence, setKeywordReportEvidence] = useState<KeywordEvidenceView | null>(null);
   const [keywordReportStorageVersion, setKeywordReportStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
 
-  const [aiSummary, setAiSummary] = useState<boolean>(false);
-  const [aiSummaryBusinessModules, setAiSummaryBusinessModules] = useState<BusinessModuleView[] | null>(null);
-  const [aiSummaryLegacyCategories, setAiSummaryLegacyCategories] = useState<LegacyCategoryView[] | null>(null);
-  const [aiSummaryStorageVersion, setAiSummaryStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
 
   const [browserEvidence, setBrowserEvidence] = useState<BrowserEvidenceView | null>(null);
   const [browserEvidenceStorageVersion, setBrowserEvidenceStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
@@ -713,29 +703,6 @@ export function EvidenceWorkbench({
     }
   }
 
-  async function loadAiSummary() {
-    try {
-      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/ai-evidence-summary`, {
-        headers: buildFetchHeaders(),
-        signal: AbortSignal.timeout(60_000),
-      });
-      const json = await res.json() as
-        | { ok: true; data: { hasSummary: boolean; businessModules?: BusinessModuleView[] | null; legacyCategories?: LegacyCategoryView[] | null; storageVersion: { resultJsonHash: string; updatedAt: string } } }
-        | { ok: false };
-      if (res.ok && json.ok) {
-        setAiSummary(json.data.hasSummary);
-        setAiSummaryLegacyCategories(json.data.legacyCategories ?? null);
-        setAiSummaryBusinessModules(json.data.businessModules ?? null);
-        setAiSummaryStorageVersion(json.data.storageVersion);
-        clearSectionError("aiSummary");
-      } else {
-        setSectionError("aiSummary", "AI 研究摘要读取失败，请稍后重试。");
-      }
-    } catch {
-      setSectionError("aiSummary", "AI 研究摘要读取失败，请检查网络后重试。");
-    }
-  }
-
   const [keywordBriefState, setKeywordBriefState] = useState<{ primaryKeyword: string; source: string; backendTermsCount: number } | null>(null);
   async function loadKeywordBriefState() {
     try {
@@ -749,7 +716,8 @@ export function EvidenceWorkbench({
       }
     } catch { /* best-effort */ }
   }
-    async function loadKeywordEvidence() {
+
+  async function loadKeywordEvidence() {
     try {
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/keyword-evidence`, {
         headers: buildFetchHeaders(),
@@ -776,7 +744,6 @@ export function EvidenceWorkbench({
     void Promise.allSettled([
       loadKeywordEvidence(),
       loadKeywordBriefState(),
-      loadAiSummary(),
       loadBrowserEvidence(),
       loadVoc(),
     ]).then(() => setSectionLoading(false));
@@ -850,22 +817,22 @@ export function EvidenceWorkbench({
     productBasicsState: coveredFacts.size > 0 ? "已有" : "待补",
     productBasicsDetail,
   });
-  const researchStatus = deriveResearchStatus(materialRows, aiSummary);
+  const researchStatus = deriveResearchStatus(materialRows, null);
 
   // 轮 13 一致性：把 live 清单冒泡给外层（模块卡「缺什么」不落后于实际资料）
   const liveCounts: LiveEvidenceCounts = {
-  productBasics: coveredFacts.size,
-  competitor: competitors.length,
-  keyword: (keywordReportEvidence as { rows?: unknown[] } | null)?.rows?.length ?? 0,
-  browser: (browserEvidence as { snapshots?: unknown[] } | null)?.snapshots?.length ?? 0,
-  voc: (vocEvidence as { dataset?: { reviews?: unknown[] } } | null)?.dataset?.reviews?.length ?? 0,
-  sourcing: sourcingConfirmed ? 1 : 0,
-};
-const materialRowsJson = JSON.stringify(materialRows.map((row) => [row.key, row.state])) + JSON.stringify(liveCounts) + (aiSummary ? "1" : "0");
-useEffect(() => {
-  onMaterialRowsChange?.({ rows: materialRows, counts: liveCounts, hasAiSummary: aiSummary });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [materialRowsJson]);
+    productBasics: coveredFacts.size,
+    competitor: competitors.length,
+    keyword: (keywordReportEvidence as { rows?: unknown[] } | null)?.rows?.length ?? 0,
+    browser: (browserEvidence as { snapshots?: unknown[] } | null)?.snapshots?.length ?? 0,
+    voc: (vocEvidence as { dataset?: { reviews?: unknown[] } } | null)?.dataset?.reviews?.length ?? 0,
+    sourcing: sourcingConfirmed ? 1 : 0,
+  };
+  const materialRowsJson = JSON.stringify(materialRows.map((row) => [row.key, row.state])) + JSON.stringify(liveCounts);
+  useEffect(() => {
+    onMaterialRowsChange?.({ rows: materialRows, counts: liveCounts, hasAiSummary: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [materialRowsJson]);
 
   return (
     <section data-testid="evidence-workbench" className="mt-5 space-y-4">
@@ -887,61 +854,7 @@ useEffect(() => {
         }}
       />
 
-      {/* R7：当前研究资料（从各 资料 区实时 state 派生，确认保存后自动更新） */}
-      <section data-testid="research-evidence-checklist" className="rounded-2xl border border-slate-200 bg-white p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm font-bold text-slate-900">当前研究资料</p>
-          {/* V3 Final R12：研究状态行（唯一语义：研究开始 ≠ AI 总结生成） */}
-          <span
-            data-testid="research-status-line"
-            className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-              researchStatus.status === "ai_ready"
-                ? "bg-teal-50 text-teal-700"
-                : researchStatus.status === "partial"
-                  ? "bg-sky-50 text-sky-700"
-                  : "bg-amber-50 text-amber-700"
-            }`}
-          >
-            {researchStatus.status === "ai_ready"
-              ? "AI 已整理当前资料"
-              : researchStatus.status === "partial"
-                ? "研究进行中"
-                : "研究资料尚待补充"}
-          </span>
-        </div>
-        {researchStatus.status === "partial" ? (
-          <p className="mt-1.5 text-sm leading-6 text-slate-600" data-testid="research-status-detail">
-            已收集{researchStatus.collectedLabels.join("、")}等资料；可继续补充其他 资料，或在下方生成 AI 研究摘要。
-          </p>
-        ) : null}
-        <details className="mt-2" data-testid="research-material-details">
-          <summary className="cursor-pointer text-xs font-semibold text-slate-600">查看各资料区状态（{materialRows.filter((row) => row.state === "已有").length} 项已有）</summary>
-          <ul className="mt-2 grid gap-1.5 text-sm sm:grid-cols-2">
-            {materialRows.map((row) => (
-              <li key={row.key} className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2">
-                <span className="text-slate-700">{row.label}{row.detail ? <span className="ml-1 text-xs text-slate-400">（{row.detail}）</span> : null}</span>
-                {row.key === "productBasics" && row.state === "待补" ? (
-                  <a href="#fact-candidate-review" className="inline-flex items-center gap-1 rounded-lg border border-indigo-300 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100" data-testid="cta-product-basics">补充商品事实 →</a>
-                ) : row.key === "browser" && row.state === "待补" ? (
-                  <a href="#workbench-browser-evidence" className="inline-flex items-center gap-1 rounded-lg border border-indigo-300 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100" data-testid="cta-browser-collect">采集 Amazon 页面 →</a>
-                ) : (
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${row.state === "已有" ? "bg-teal-50 text-teal-700" : row.state === "可选" ? "bg-slate-100 text-slate-500" : "bg-amber-50 text-amber-700"}`}>{row.state}</span>
-                )}
-              </li>
-            ))}
-          </ul>
-          <p className="mt-2 text-xs text-slate-400">下方各区可直接补充资料；确认保存后，这里的状态会自动更新。</p>
-        </details>
-      </section>
-
-      {/* V3 UX Closure：Fact Candidate Review（商品基础资料待补时的就地补充入口） */}
-      <FactCandidateReview
-        taskId={taskId}
-        storageVersion={storageVersion}
-        onChanged={() => onDataChanged?.()}
-      />
-
-      {/* ── 简明结论（首屏） ── */}
+      {/* ── 02: 简明结论（首屏） ── */}
       <section data-testid="workbench-summary" className="rounded-2xl border border-teal-200 bg-teal-50/60 p-4">
         <h3 className="text-sm font-bold text-slate-900">简明结论</h3>
         <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
@@ -979,6 +892,7 @@ useEffect(() => {
           </p>
         )}
       </section>
+
 
       {/* ── 4 维度 Tabs 导航 ── */}
       <div className="rounded-2xl border border-slate-200/90 bg-slate-50/80 p-1.5 shadow-sm" data-testid="workbench-tabs">
@@ -1223,27 +1137,12 @@ useEffect(() => {
         <CommercialInputsCard taskId={taskId} onChanged={() => onDataChanged?.()} />
       </div>
 
-      {/* ── AI 研究摘要（Phase 5） ── */}
-      <section data-testid="workbench-ai-summary" className="rounded-2xl border border-slate-200 bg-white p-4">
-        <h3 className="text-sm font-bold text-slate-900">AI 研究摘要</h3>
-        <SectionStatusBar
-          loading={sectionLoading}
-          error={sectionErrors.aiSummary ?? ""}
-          onRetry={() => { void loadAiSummary(); }}
-          loadingLabel="AI 研究摘要"
-        />
-        <p className="mt-1 text-xs text-slate-500">
-          AI 只解释已有 资料，不创造事实；事实、风险和矛盾信息必须带资料引用。
-        </p>
-        <AiEvidenceSummarySection
-          taskId={taskId}
-          summary={aiSummary}
-          businessModules={aiSummaryBusinessModules}
-          legacyCategories={aiSummaryLegacyCategories}
-          storageVersion={aiSummaryStorageVersion}
-          onChanged={loadAiSummary}
-        />
-      </section>
+      {/* ── 04: 紧凑的商品事实确认（折叠入口） ── */}
+      <FactCandidateReview
+        taskId={taskId}
+        storageVersion={storageVersion}
+        onChanged={() => onDataChanged?.()}
+      />
 
       {/* ── 待补资料 ── */}
       <p className="text-xs text-slate-400">

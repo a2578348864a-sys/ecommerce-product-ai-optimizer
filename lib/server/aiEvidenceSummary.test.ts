@@ -572,3 +572,55 @@ describe("R4 P1-3 risk/conflict 模块优先级", () => {
     expect(costRisk.missing.some((x) => x.text.includes("合规"))).toBe(true);
   });
 });
+
+describe("AI Re-summary Retirement：getAiEvidenceSummary 零 Provider 调用门禁", () => {
+  it("读取已存在历史摘要或无摘要任务时完全纯读，零 callAiJson 调用", async () => {
+    vi.mocked(callAiJson).mockClear();
+    const context = visitorContext();
+
+    // 1. 无摘要任务读取：安全返回 null，不触发 AI
+    const summaryEmpty = await getAiEvidenceSummary(context, taskId);
+    expect(summaryEmpty).toBeNull();
+    expect(vi.mocked(callAiJson)).toHaveBeenCalledTimes(0);
+
+    // 2. 有历史摘要任务读取：安全返回历史结构，不触发 AI
+    const taskWithSummary = await createTrustedSandboxTask(
+      DEMO_A,
+      {
+        type: "workflow",
+        title: "AI Summary Test With Existing Summary",
+        platform: "amazon",
+        productUrl: null,
+        materialText: "",
+        source: "demo",
+        score: 0,
+        level: "low",
+        oneLineSummary: "",
+        resultJson: JSON.stringify({
+          ...BASE_RESULT,
+          aiEvidenceSummary: {
+            schema: "ai-evidence-summary.v1",
+            version: 1,
+            runId: "historic-run-1",
+            inputEvidenceHash: "a".repeat(64),
+            model: "historic-model",
+            summary: { facts: [], estimates: [], signals: [], risks: [], conflicts: [], missing: [], nextSteps: [] },
+            gateResult: "pass",
+            updatedAt: NOW,
+          },
+        }),
+        productLifecycle: "new_candidate",
+        decisionStatus: "pending",
+        createdAt: NOW,
+        updatedAt: NOW,
+      } as Parameters<typeof createTrustedSandboxTask>[1],
+    );
+    const summaryExist = await getAiEvidenceSummary(context, taskWithSummary.id);
+    expect(summaryExist).not.toBeNull();
+    expect(summaryExist?.runId).toBe("historic-run-1");
+
+    // 3. 严格断言：全过程 Provider 调用归零
+    expect(vi.mocked(callAiJson)).toHaveBeenCalledTimes(0);
+  });
+});
+

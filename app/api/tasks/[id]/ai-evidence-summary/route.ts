@@ -1,7 +1,12 @@
 /**
- * Phase 5 — AI 证据总结 API
- * GET  /api/tasks/[id]/ai-evidence-summary  读取已生成总结 + storageVersion
- * POST /api/tasks/[id]/ai-evidence-summary  生成（复用 provider 治理 + demo 配额 + run trace）
+ * Phase 5 — AI 证据总结 API（AI Re-summary Retirement / 兼容后端）
+ *
+ * 治理规范：
+ * 1. GET  /api/tasks/[id]/ai-evidence-summary  读取已生成总结 + storageVersion
+ *    - 纯读 snapshot + 投影纯函数，零 Provider 调用（callAiJson calls = 0），保障历史数据读取与兼容。
+ * 2. POST /api/tasks/[id]/ai-evidence-summary  保留作为兼容 backend
+ *    - 正常商品研究主链路（采集编排器、任务详情、研究决定、Listing 交接）不再主动调用其写入逻辑。
+ *    - 保留实现使既有单元测试持续通过，禁止任何定时任务、编排器或 webhook 隐式触发。
  */
 import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";

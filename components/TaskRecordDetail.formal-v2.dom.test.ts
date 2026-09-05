@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-import { TaskRecordDetail } from "@/components/TaskRecordDetail";
+import { TaskRecordDetail, activateFormalV2Target } from "@/components/TaskRecordDetail";
 
 /* ── 真实 React DOM 行为测试：无 jsdom 的最小 DOM（支撑 React 19 渲染/事件 + 真实组件挂载）。 ── */
 
@@ -405,7 +405,7 @@ describe("TaskRecordDetail 正式组件挂载（真实 DOM）", () => {
 
     expect(findByTestId("formal-v2-product-result")).not.toBeNull();
     expect(findByTestId("legacy-record-content")).toBeNull();
-    expect(findAllByTestId("formal-v2-module-market").length).toBe(1);
+    expect(findAllByTestId("formal-v2-module-market").length).toBe(0);
 
     const button = findByTestId("formal-v2-primary-action")!;
     expect(button.getAttribute("aria-controls")).toBe("formal-v2-materials");
@@ -442,15 +442,6 @@ describe("TaskRecordDetail 正式组件挂载（真实 DOM）", () => {
     expect(hashHistory.at(-1)).toBe("#listing-and-images");
     expect(documentInstance!.getElementById("listing-and-images")).not.toBeNull();
     expect(documentInstance!.activeElement?.nodeName).toBe("H2");
-
-    // 四模块按钮指向各自的证据目标
-    const firstModule = (container as unknown as FakeElement).querySelector('[data-testid="formal-v2-module-market"] button') as FakeElement | null;
-    expect(firstModule).not.toBeNull();
-    expect(firstModule!.getAttribute("aria-controls")).toBe("formal-v2-market-evidence");
-    await act(async () => { firstModule!.dispatchEvent(new FakeEvent("click", firstModule!)); });
-    await flush();
-    expect(hashHistory.at(-1)).toBe("#formal-v2-market-evidence");
-    expect(documentInstance!.getElementById("formal-v2-market-evidence")).not.toBeNull();
   });
 
   it("stale workflow：正式组件真实渲染重新确认目标，点击后展开/hash/焦点/aria 正确", async () => {
@@ -500,15 +491,10 @@ const MODULE_EXPECT: Array<{ key: string; targetId: string }> = [
   { key: "cost-risk", targetId: "formal-v2-cost-risk-evidence" },
 ];
 
-describe("四模块按钮目标路由（真实 TaskRecordDetail 挂载）", () => {
+describe("四证据目标路由（真实 TaskRecordDetail 挂载）", () => {
   async function mountWorkflow() {
     installRecordHandler(recordFixture());
     await mountDetail();
-  }
-  function moduleButton(key: string): FakeElement {
-    const btn = (container as unknown as FakeElement).querySelector('[data-testid="formal-v2-module-' + key + '"] button') as FakeElement | null;
-    expect(btn, "module button " + key).not.toBeNull();
-    return btn!;
   }
   function focusedInside(target: FakeElement): boolean {
     let cur: FakeNode | null = documentInstance!.activeElement;
@@ -516,19 +502,17 @@ describe("四模块按钮目标路由（真实 TaskRecordDetail 挂载）", () =
     return false;
   }
 
-  it("1. 四个按钮 aria-controls 分别等于四个目标且互不重复；目标在挂载 DOM 中真实存在", async () => {
+  it("1. 四个证据目标在挂载 DOM 中真实存在且 ID 互不重复", async () => {
     await mountWorkflow();
     const seen = new Set<string>();
     for (const { key, targetId } of MODULE_EXPECT) {
-      const btn = moduleButton(key);
-      expect(btn.getAttribute("aria-controls")).toBe(targetId);
       seen.add(targetId);
       expect(documentInstance!.getElementById(targetId), targetId + " exists").not.toBeNull();
     }
     expect(seen.size).toBe(4);
   });
 
-  it("2. 分别点击四个按钮：外层 details 自动展开；hash/滚动目标/焦点均在对应资料区内", async () => {
+  it("2. 通过 activateFormalV2Target 激活四个目标：外层 details 自动展开；hash/滚动目标/焦点均在对应资料区内", async () => {
     await mountWorkflow();
     const details = documentInstance!.getElementById("formal-v2-materials") as FakeElement | null;
     for (const { key, targetId } of MODULE_EXPECT) {
@@ -536,8 +520,9 @@ describe("四模块按钮目标路由（真实 TaskRecordDetail 挂载）", () =
         await act(async () => { details.open = false; });
         await flush();
       }
-      const btn = moduleButton(key);
-      await act(async () => { btn.dispatchEvent(new FakeEvent("click", btn)); });
+      await act(async () => {
+        activateFormalV2Target(targetId, "h3");
+      });
       await flush();
       expect(details!.open, key + " ancestors open").toBe(true);
       expect(hashHistory.at(-1), key + " hash").toBe("#" + targetId);
@@ -547,15 +532,16 @@ describe("四模块按钮目标路由（真实 TaskRecordDetail 挂载）", () =
     }
   });
 
-  it("3. 关闭总资料区后点击模块按钮会重新展开祖先 details", async () => {
+  it("3. 关闭总资料区后激活目标会重新展开祖先 details", async () => {
     await mountWorkflow();
     const details = documentInstance!.getElementById("formal-v2-materials") as FakeElement | null;
     expect(details).not.toBeNull();
     await act(async () => { details!.open = false; });
     await flush();
     expect(details!.open).toBe(false);
-    const btn = moduleButton("sourcing");
-    await act(async () => { btn.dispatchEvent(new FakeEvent("click", btn)); });
+    await act(async () => {
+      activateFormalV2Target("formal-v2-sourcing-evidence", "h3");
+    });
     await flush();
     expect(details!.open).toBe(true);
     expect(hashHistory.at(-1)).toBe("#formal-v2-sourcing-evidence");
@@ -573,13 +559,46 @@ describe("四模块按钮目标路由（真实 TaskRecordDetail 挂载）", () =
   it("5. 焦点落在目标区内的标题或首个可操作元素（H3 或 section 本身）", async () => {
     await mountWorkflow();
     for (const { key, targetId } of MODULE_EXPECT) {
-      const btn = moduleButton(key);
-      await act(async () => { btn.dispatchEvent(new FakeEvent("click", btn)); });
+      await act(async () => {
+        activateFormalV2Target(targetId, "h3");
+      });
       await flush();
       const section = documentInstance!.getElementById(targetId)!;
       const focused = documentInstance!.activeElement!;
       const ok = focused.nodeName === "H3" || focused === section || focusedInside(section);
       expect(ok, key + " focus semantics").toBe(true);
     }
+  });
+
+  it("6. 访问带 #formal-v2-market-evidence 锚点：自动展开 materials 并激活目标区域", async () => {
+    const w = (globalThis as unknown as { window: { location: { hash?: string } } }).window;
+    w.location.hash = "#formal-v2-market-evidence";
+    await mountWorkflow();
+    await new Promise((r) => setTimeout(r, 50));
+    await flush();
+
+    const details = documentInstance!.getElementById("formal-v2-materials") as FakeElement | null;
+    expect(details).not.toBeNull();
+    expect(details!.open).toBe(true);
+
+    const target = documentInstance!.getElementById("formal-v2-market-evidence") as FakeElement | null;
+    expect(target).not.toBeNull();
+    expect(target!.scrollIntoViewCalls).toBeGreaterThan(0);
+  });
+
+  it("7. 访问带 #fact-candidate-review 锚点：自动展开 materials 并展开 fact-candidate-review 折叠入口", async () => {
+    const w = (globalThis as unknown as { window: { location: { hash?: string } } }).window;
+    w.location.hash = "#fact-candidate-review";
+    await mountWorkflow();
+    await new Promise((r) => setTimeout(r, 50));
+    await flush();
+
+    const details = documentInstance!.getElementById("formal-v2-materials") as FakeElement | null;
+    expect(details).not.toBeNull();
+    expect(details!.open).toBe(true);
+
+    const target = documentInstance!.getElementById("fact-candidate-review") as FakeElement | null;
+    expect(target).not.toBeNull();
+    expect(target!.open).toBe(true);
   });
 });

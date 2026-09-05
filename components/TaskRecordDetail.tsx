@@ -1907,6 +1907,58 @@ function FormalV2RecordContent({
   const imageCopy = formalV2ImageCopy(view.hasImageDraft);
   const [primaryOpen, setPrimaryOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<EvidenceTabKey>("market");
+
+  useEffect(() => {
+    function syncWithHash() {
+      if (typeof window === "undefined") return;
+      const rawHash = (window.location.hash || "").replace(/^#/, "");
+      if (!rawHash) return;
+
+      let matchedTab: EvidenceTabKey | null = null;
+      if (
+        rawHash === "formal-v2-market-evidence" ||
+        rawHash.startsWith("workbench-browser") ||
+        rawHash.startsWith("workbench-competitor") ||
+        rawHash.startsWith("workbench-keyword") ||
+        rawHash === "workbench-overview"
+      ) {
+        matchedTab = "market";
+      } else if (rawHash === "formal-v2-buyer-evidence" || rawHash.startsWith("workbench-voc")) {
+        matchedTab = "buyers";
+      } else if (rawHash === "formal-v2-sourcing-evidence" || rawHash.startsWith("workbench-sourcing")) {
+        matchedTab = "sourcing";
+      } else if (
+        rawHash === "formal-v2-cost-risk-evidence" ||
+        rawHash.startsWith("workbench-cost-risk") ||
+        rawHash === "commercial-inputs-card"
+      ) {
+        matchedTab = "cost-risk";
+      }
+
+      if (matchedTab) {
+        setActiveTab(matchedTab);
+      }
+
+      if (
+        matchedTab ||
+        rawHash === "formal-v2-materials" ||
+        rawHash === "research-collection-orchestrator" ||
+        rawHash === "fact-candidate-review"
+      ) {
+        setPrimaryOpen(true);
+        setTimeout(() => {
+          activateFormalV2Target(rawHash, "summary, h3");
+        }, 0);
+      }
+    }
+
+    syncWithHash();
+    window.addEventListener("hashchange", syncWithHash);
+    return () => {
+      window.removeEventListener("hashchange", syncWithHash);
+    };
+  }, []);
+
   // 轮 13 一致性：EvidenceWorkbench live 研究资料清单（模块卡「缺什么」据此刷新）
   const [liveMaterial, setLiveMaterial] = useState<LiveMaterialState | null>(null);
   const materialSigRef = useRef("");
@@ -1971,25 +2023,13 @@ function FormalV2RecordContent({
         </div>
       </section>
 
-      {/* ── 4 模块速览与 Tab 联动卡片 ── */}
-      <section className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4" aria-label="研究模块">
-        {liveModules.map((module) => (
-          <FormalV2ModuleCard
-            key={module.key}
-            module={module}
-            onNext={() => {
-              setActiveTab(module.key);
-              activateFormalV2Target(MODULE_EVIDENCE_TARGETS[module.key] ?? "formal-v2-materials", "h3");
-            }}
-          />
-        ))}
-      </section>
 
       {/* ── 02: 核对与补充当前研究资料（四维度工作台） ── */}
       <details
         id="formal-v2-materials"
         className="mt-5 rounded-2xl border border-slate-200/90 bg-white shadow-xs overflow-hidden"
         data-testid="formal-v2-materials"
+        open={primaryOpen || undefined}
         onToggle={(event) => setPrimaryOpen(event.currentTarget.open)}
       >
         <summary className="cursor-pointer bg-slate-50/70 px-5 py-3.5 text-sm font-semibold text-slate-800 hover:bg-slate-100/70 transition-colors flex items-center justify-between select-none">

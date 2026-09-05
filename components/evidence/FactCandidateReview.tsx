@@ -199,6 +199,21 @@ export function FactCandidateReview({
     void load();
   }, [load]);
 
+  useEffect(() => {
+    function checkHash() {
+      if (typeof window === "undefined") return;
+      if (window.location.hash === "#fact-candidate-review") {
+        const el = document.getElementById("fact-candidate-review");
+        if (el && "open" in el) {
+          (el as HTMLDetailsElement).open = true;
+        }
+      }
+    }
+    checkHash();
+    window.addEventListener("hashchange", checkHash);
+    return () => window.removeEventListener("hashchange", checkHash);
+  }, []);
+
   function toggle(candidateId: string) {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -420,49 +435,90 @@ export function FactCandidateReview({
 
   if (loading && candidates === null && confirmed === null) {
     return (
-      <div id="fact-candidate-review" className="mt-4 scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500" data-testid="fact-candidates-loading">
-        <Loader2 className="mr-1 inline size-4 animate-spin" /> 正在从研究证据整理待确认商品事实…
-      </div>
+      <details id="fact-candidate-review" className="mt-4 scroll-mt-6 rounded-2xl border border-slate-200/90 bg-white shadow-xs overflow-hidden" data-testid="fact-candidate-review">
+        <summary className="cursor-pointer bg-slate-50/70 px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-100/70 transition-colors flex items-center justify-between select-none">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-slate-900">商品事实确认</span>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+              正在整理…
+            </span>
+          </div>
+          <span className="text-xs font-normal text-slate-400">点击展开</span>
+        </summary>
+        <div className="p-4 text-sm text-slate-500 border-t border-slate-100" data-testid="fact-candidates-loading">
+          <Loader2 className="mr-1 inline size-4 animate-spin" /> 正在从研究证据整理待确认商品事实…
+        </div>
+      </details>
     );
   }
 
   const total = (candidates?.length ?? 0) + (confirmed?.length ?? 0);
   if (total === 0 && !error) {
     return (
-      <div id="fact-candidate-review" className="mt-4 scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500" data-testid="fact-candidates-empty">
-        暂无待确认商品事实（来源：SellerSprite 商品数据 / Amazon 原始页面证据 / 商品标题）。
-      </div>
+      <details id="fact-candidate-review" className="mt-4 scroll-mt-6 rounded-2xl border border-slate-200/90 bg-white shadow-xs overflow-hidden" data-testid="fact-candidate-review">
+        <summary className="cursor-pointer bg-slate-50/70 px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-100/70 transition-colors flex items-center justify-between select-none">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-slate-900">商品事实确认</span>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+              待确认 0 项 · 已确认 0 项
+            </span>
+          </div>
+          <span className="text-xs font-normal text-slate-400">点击展开</span>
+        </summary>
+        <div className="p-4 text-sm text-slate-500 border-t border-slate-100" data-testid="fact-candidates-empty">
+          暂无待确认商品事实（来源：SellerSprite 商品数据 / Amazon 原始页面证据 / 商品标题）。
+        </div>
+      </details>
     );
   }
 
+  const pendingCount = candidates?.length ?? 0;
+  const confirmedCount = confirmed?.length ?? 0;
+
   return (
-    <section id="fact-candidate-review" className="mt-4 scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-4" data-testid="fact-candidate-review">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-bold text-slate-900">
-          商品事实确认 <span className="ml-1 rounded-md bg-indigo-50 px-1.5 py-0.5 text-[11px] font-semibold text-indigo-700">来自研究证据 · 人工确认</span>
-        </h3>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            disabled={recovering || saving}
-            onClick={() => void runRecovery()}
-            className="inline-flex items-center gap-1 rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-semibold text-sky-700 hover:bg-sky-100 disabled:opacity-50"
-            data-testid="smart-recovery-trigger"
-          >
-            {recovering ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-            {recovering ? "正在补齐商品资料…" : "✨ 智能补齐商品资料"}
-          </button>
-          <button
-            type="button"
-            disabled={saving || selected.size === 0}
-            onClick={() => void confirmSelected()}
-            className="inline-flex items-center gap-1 rounded-lg border border-teal-300 bg-teal-50 px-3 py-1.5 text-sm font-semibold text-teal-700 hover:bg-teal-100 disabled:opacity-50"
-          >
-            {saving ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-            确认所选事实（{selected.size}）
-          </button>
+    <details
+      id="fact-candidate-review"
+      className="mt-4 scroll-mt-6 rounded-2xl border border-slate-200/90 bg-white shadow-xs overflow-hidden"
+      data-testid="fact-candidate-review"
+    >
+      <summary className="cursor-pointer bg-slate-50/70 px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-100/70 transition-colors flex items-center justify-between select-none">
+        <div className="flex items-center gap-2">
+          <span className="font-bold text-slate-900">商品事实确认</span>
+          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+            待确认 {pendingCount} 项 · 已确认 {confirmedCount} 项
+          </span>
         </div>
-      </div>
+        <span className="text-xs font-normal text-slate-400">
+          点击展开核对或补充商品事实
+        </span>
+      </summary>
+      <div className="p-4 sm:p-5 border-t border-slate-100 space-y-3.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-slate-500">
+            系统从已有研究证据提取以下候选；勾选并确认后即成为本任务已确认事实。
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={recovering || saving}
+              onClick={() => void runRecovery()}
+              className="inline-flex items-center gap-1 rounded-lg border border-sky-300 bg-sky-50 px-2.5 py-1 text-xs sm:text-sm font-semibold text-sky-700 hover:bg-sky-100 disabled:opacity-50 transition-colors"
+              data-testid="smart-recovery-trigger"
+            >
+              {recovering ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+              {recovering ? "正在补齐…" : "✨ 智能补齐商品资料"}
+            </button>
+            <button
+              type="button"
+              disabled={saving || selected.size === 0}
+              onClick={() => void confirmSelected()}
+              className="inline-flex items-center gap-1 rounded-lg border border-teal-300 bg-teal-50 px-2.5 py-1 text-xs sm:text-sm font-semibold text-teal-700 hover:bg-teal-100 disabled:opacity-50 transition-colors"
+            >
+              {saving ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
+              确认所选事实（{selected.size}）
+            </button>
+          </div>
+        </div>
       <p className="mt-1 text-xs text-slate-500">
         系统从已有研究证据提取以下候选；勾选并「确认」后即成为本任务已确认事实（可修改值，来源保持不变）。
         「✨ 智能补齐商品资料」会读取该商品在 Amazon 的规格资料（材质/尺寸/重量/清洁等），生成候选后仍由你确认。
@@ -713,6 +769,7 @@ export function FactCandidateReview({
           </div>
         )}
       </div>
-    </section>
+      </div>
+    </details>
   );
 }
