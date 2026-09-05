@@ -21,7 +21,7 @@ describe("home dashboard demo language", () => {
     expect(source).toContain("从一个真实候选商品开始，AI 整理证据，关键决定由你确认。");
     // v2 三个状态区标题
     expect(source).toContain("需要我处理");
-    expect(source).toContain("AI 研究中");
+    expect(source).toContain("研究中");
     expect(source).toContain("已完成");
     expect(source).toContain('href="/opportunity-candidates"');
     // flag off 纯文字引导 + 诚实空态

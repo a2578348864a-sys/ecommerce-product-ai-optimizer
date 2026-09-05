@@ -280,7 +280,9 @@ function localProductMeta(result: unknown) {
   };
 }
 
-function localConclusion(task: LocalTaskItem) {
+function localConclusion(task: LocalTaskItem): string {
+  // 第十一轮（Bug 1）：与任务详情同口径——只允许真实 AI/研究结论字段；
+  // oneLineSummary 是任务摘要不是 AI 判断；无真实结论返回空串（不渲染假文案）。
   const result = isLocalRecord(task.result) ? task.result : null;
   const legacy = result && isLocalRecord(result.legacyListSummary) ? result.legacyListSummary : null;
   const presentation = legacy && isLocalRecord(legacy.presentation) ? legacy.presentation : null;
@@ -291,8 +293,12 @@ function localConclusion(task: LocalTaskItem) {
   const workflow = legacy && isLocalRecord(legacy.workflow) ? legacy.workflow : null;
   const verdict = localText(workflow?.verdictLabel);
   if (verdict && !["暂无", "未知", "待确认"].includes(verdict)) return verdict;
-  const storedSummary = localText(task.oneLineSummary);
-  return storedSummary || "AI 研究结论尚未取得。";
+  if (result) {
+    const summary = isLocalRecord(result.summary) ? result.summary : null;
+    const decisionReason = localText(summary?.decisionReason);
+    if (decisionReason) return decisionReason;
+  }
+  return "";
 }
 
 /** 服务端正式投影状态 → 三组语义。失败/取消终态优先于旧研究/决定（§2.4）。 */
@@ -1001,7 +1007,9 @@ function LocalProductSection({
                         {project.statusLabel}
                       </span>
                     </div>
-                    <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-700">{project.conclusion}</p>
+                    {project.conclusion ? (
+                      <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-700">{project.conclusion}</p>
+                    ) : null}
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                       {project.taskCount > 1 ? (
                         <span className="text-xs text-slate-400">同一商品的 {project.taskCount} 次研究已合并</span>
@@ -1146,8 +1154,8 @@ function LocalWorkspace({ runtime }: { runtime: HomeRuntime }) {
                   emptyHint="当前没有等待你处理的商品。"
                 />
                 <LocalProductSection
-                  title="AI 研究中"
-                  description="资料仍在整理，结论尚未完成。"
+                  title="研究中"
+                  description="已经开始研究，资料仍在整理或补充。"
                   items={researching}
                   loading={loading}
                   unavailable={unavailable}
@@ -1156,7 +1164,7 @@ function LocalWorkspace({ runtime }: { runtime: HomeRuntime }) {
                 />
                 <LocalProductSection
                   title="已完成"
-                  description="研究和人工决定都已保存。"
+                  description="研究已正式收口（researchCompletion=completed）。"
                   items={completed}
                   loading={loading}
                   unavailable={unavailable}

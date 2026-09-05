@@ -39,7 +39,7 @@ import {
 import { hasFormalHumanDecision } from "@/lib/taskWorkflowSummary";
 import { collectPagedTasks, deriveProductProjectGroup, type ProductProjectGroup, type ProductProjectGroupView } from "@/lib/researchLifecycle";
 
-/** 轮 6：/research 与工作台共用的纯视图工具（需要我处理 / AI 研究中 / 全部）。 */
+/** 轮 6：/research 与工作台共用的纯视图工具（需要我处理 / 研究中 / 全部）。 */
 export type ResearchViewItem = {
   id: string;
   decisionStatus: DecisionStatus;
@@ -52,7 +52,7 @@ export type ResearchGroupTabValue = "needs" | "researching" | "";
 export function deriveResearchViewTabs(): Array<{ value: ResearchGroupTabValue; label: string }> {
   return [
     { value: "needs", label: "需要我处理" },
-    { value: "researching", label: "AI 研究中" },
+    { value: "researching", label: "研究中" },
     { value: "", label: "全部" },
   ];
 }
@@ -378,7 +378,7 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
   const [type, setType] = useState(defaultType);
   const [decisionStatus, setDecisionStatus] = useState(defaultDecisionStatus);
   const [agentStatus, setAgentStatus] = useState<"" | AgentStatusKey>(defaultAgentStatus);
-  // 轮 6：/research 使用与工作台一致的三组分法（需要我处理 default / AI 研究中 / 全部）
+  // 轮 6：/research 使用与工作台一致的三组分法（需要我处理 default / 研究中 / 全部）
   const [researchTab, setResearchTab] = useState<ResearchGroupTabValue>("needs");
   const [runStatusById, setRunStatusById] = useState<Record<string, string>>({});
   const [runStatusUnavailable, setRunStatusUnavailable] = useState(false);
@@ -1236,7 +1236,7 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
                                   </span>
                                   {groupView ? (
                                     <span data-testid="research-group-label" className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
-                                      {groupView.group === "needs_action" ? "需要我处理" : groupView.group === "researching" ? "AI 研究中" : "已完成"}
+                                      {groupView.group === "needs_action" ? "需要我处理" : groupView.group === "researching" ? "研究中" : "已完成"}
                                     </span>
                                   ) : null}
                                   {highlighted ? <span className="text-emerald-700">刚保存</span> : null}
