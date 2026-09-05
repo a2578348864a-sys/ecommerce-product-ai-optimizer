@@ -151,6 +151,7 @@ type PageState = {
   ok: boolean;
   pageKind?: string;
   pageUrl?: string;
+  documentReadyState?: string;
   uploadTarget?: { found?: boolean; unique?: boolean };
   preview?: { confirmed?: boolean; srcLength?: number };
   resultPage?: { resultsReady?: boolean };
@@ -163,6 +164,7 @@ function parsePageState(value: Record<string, unknown>): PageState {
     ok: value.ok === true,
     pageKind: typeof value.pageKind === "string" ? value.pageKind : undefined,
     pageUrl: typeof value.pageUrl === "string" ? value.pageUrl : undefined,
+    documentReadyState: typeof value.documentReadyState === "string" ? value.documentReadyState : undefined,
     uploadTarget: isRecord(value.uploadTarget) ? value.uploadTarget as PageState["uploadTarget"] : undefined,
     preview: isRecord(value.preview) ? value.preview as PageState["preview"] : undefined,
     resultPage: isRecord(value.resultPage) ? value.resultPage as PageState["resultPage"] : undefined,
@@ -275,6 +277,33 @@ export async function acquireByImage(input: {
       if (state.pageKind === "risk_control") {
         fail("risk_control_required", 403, "1688 触发了验证，请在页面完成验证后重试（系统不会绕过）。");
       }
+      // 确定性不支持 DOM 的快速失败（Fast-Fail）：
+      // 场景：页面已处于上传页（pageKind === "upload_page"）、DOM 状态 complete、且非登录墙/非风控。
+      // 若 uploadTarget 明确未找到，短时复核一次（1s 吸收框架异步 hydration 延迟），
+      // 若复核依然 complete 且 uploadTarget 不存在，说明当前页面 DOM 结构确定性不兼容，
+      // 必须快速失败为 page_identity_unknown，禁止继续执行 30s 导航与重复多轮死等。
+      if (
+        state.pageKind === "upload_page" &&
+        state.documentReadyState === "complete" &&
+        state.uploadTarget?.found === false
+      ) {
+        await sleep(1_000, signal);
+        await bridge.enqueue(jobId, { type: "getState" });
+        const recheck = parsePageState(await bridge.waitResult(jobId, 10_000));
+        if (uploadPageReady(recheck)) {
+          state = recheck;
+          pageReady = true;
+          break;
+        }
+        if (
+          recheck.pageKind === "upload_page" &&
+          recheck.documentReadyState === "complete" &&
+          recheck.uploadTarget?.found === false
+        ) {
+          fail("page_identity_unknown", 422, "1688 图搜页面未就绪，请确认已打开图搜页且助手已刷新后重试。");
+        }
+      }
+
       // 非上传页（如停留在结果页）→ 自动导航回上传页（固定能力）
       await bridge.enqueue(jobId, { type: "navigateUploadPage" });
       const nav = await bridge.waitResult(jobId, 20_000); // 导航结果用于诊断；页面验证交给轮询 getState
@@ -283,6 +312,7 @@ export async function acquireByImage(input: {
       }
       // 导航后轮询确认上传页就绪（吸收页面加载/重注入延迟；≤30s）
       const navDeadline = Date.now() + 30_000;
+      let completeNotFoundStreak = 0;
       while (Date.now() < navDeadline) {
         assertNotAborted(signal);
         await sleep(2_000, signal);
@@ -297,6 +327,15 @@ export async function acquireByImage(input: {
         if (uploadPageReady(state)) {
           pageReady = true;
           break;
+        }
+        // 导航后若页面已在 upload_page 且 documentReadyState === "complete"，连续 2 次仍 found === false → 判定为确定性不支持，快速失败
+        if (state.pageKind === "upload_page" && state.documentReadyState === "complete" && state.uploadTarget?.found === false) {
+          completeNotFoundStreak++;
+          if (completeNotFoundStreak >= 2) {
+            fail("page_identity_unknown", 422, "1688 图搜页面未就绪，请确认已打开图搜页且助手已刷新后重试。");
+          }
+        } else {
+          completeNotFoundStreak = 0;
         }
       }
     }
@@ -435,7 +474,7 @@ export async function acquireByImage(input: {
       query: input.imageUrl ?? input.localImagePath ?? "",
       timestamp: new Date().toISOString(),
       driverVersion: NATIVE_1688_EXTENSION_DRIVER_VERSION,
-      resolverVersion: "native-1688-upload-resolver.v2|native-1688-image-submit-resolver.v2|native-1688-result-extractor.v2",
+      resolverVersion: "native-1688-upload-resolver.v3|native-1688-image-submit-resolver.v2|native-1688-result-extractor.v2",
       success: true,
       failClosedReason: null,
       pageState: "results_ready",

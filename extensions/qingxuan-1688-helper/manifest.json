@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Qingxuan 1688 Sourcing Helper",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "V3.5 image acquisition helper: fixed capabilities only (state/upload/submit/collect) for 1688 native image search. No chrome.debugger, no cookies, no all_urls.",
   "permissions": ["storage", "alarms"],
   "host_permissions": [

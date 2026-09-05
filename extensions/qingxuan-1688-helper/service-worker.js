@@ -9,7 +9,7 @@
  */
 
 const BRIDGE_BASE_PORTS = [53318, 53319, 53320, 53321, 53322, 53323, 53324, 53325, 53326, 53327];
-const SW_VERSION = "0.3.1";
+const SW_VERSION = "0.3.2";
 const MAX_IMAGE_BYTES = 30 * 1024 * 1024;
 const UPLOAD_PAGE_URL = "https://s.1688.com/selloffer/offer_search.html";
 let bridgePort = null; // 运行时缓存（SW 重启后经 storage.session 恢复）

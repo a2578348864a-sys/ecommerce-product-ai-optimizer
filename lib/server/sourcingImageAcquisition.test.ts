@@ -18,6 +18,7 @@ function fakeBridge(script: {
   commands?: Array<{ type: string; respond: () => Record<string, unknown> }>;
   /** 记录 registerJob 调用次数（V3 Final R13：upload 重试必须重新注册 job） */
   onRegisterJob?: (call: number) => void;
+  onEnqueue?: (command: { type: string }) => void;
 }) {
   let jobCounter = 0;
   const bridge = {
@@ -30,7 +31,8 @@ function fakeBridge(script: {
       script.onRegisterJob?.(jobCounter);
       return `fake-job-${jobCounter}`;
     },
-    async enqueue(_jobId: string, _command: { type: string }) {
+    async enqueue(_jobId: string, command: { type: string }) {
+      script.onEnqueue?.(command);
       return { duplicate: false };
     },
     async waitResult(): Promise<Record<string, unknown>> {
@@ -143,6 +145,39 @@ describe("Native1688ExtensionDriver 编排错误映射", () => {
         bridgeFactory: () => fb,
       }));
       expect(code).toBe("page_identity_unknown");
+    } finally {
+      rmSync(join(path, ".."), { recursive: true, force: true });
+    }
+  });
+
+  it("确定性不支持 DOM（已在上传页但 documentReadyState=complete 且找不到 uploadTarget）→ 快速失败为 page_identity_unknown（零 30s 导航重试）", async () => {
+    const path = tinyPngFile();
+    try {
+      const state = () => ({
+        ok: true,
+        pageKind: "upload_page",
+        documentReadyState: "complete",
+        uploadTarget: { found: false },
+      });
+      const enqueuedCommands: string[] = [];
+      const fb = fakeBridge({
+        onEnqueue: (c) => enqueuedCommands.push(c.type),
+        commands: [
+          // 初始 getState + 1 次短时复核 getState
+          { type: "getState", respond: state },
+          { type: "getState", respond: state },
+        ],
+      });
+      const code = await capture(acquireByImage({
+        localImagePath: path,
+        taskId: "t1",
+        candidateId: "c1",
+        bridgeFactory: () => fb,
+      }));
+      expect(code).toBe("page_identity_unknown");
+      // 确认未进行任何无意义的 navigateUploadPage 命令下发
+      expect(enqueuedCommands).not.toContain("navigateUploadPage");
+      expect(enqueuedCommands).toEqual(["getState", "getState"]);
     } finally {
       rmSync(join(path, ".."), { recursive: true, force: true });
     }
