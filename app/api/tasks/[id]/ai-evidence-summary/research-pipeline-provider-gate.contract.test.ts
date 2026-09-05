@@ -12,8 +12,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NextRequest } from "next/server";
-import { createTrustedSandboxTask } from "@/lib/server/demoSandbox";
-import { mutateDemoSandboxStore } from "@/lib/server/demoSandboxStore.internal";
+import { createSeededSandboxTaskAndCandidate, createTrustedSandboxTask } from "@/lib/server/demoSandbox";
 import {
   buildProductResearchHash,
   createInitialProductResearchRecord,
@@ -213,27 +212,27 @@ beforeEach(async () => {
   process.env.DEMO_SANDBOX_STORE_PATH = join(root, "sandbox.json");
   process.env.DEMO_ACCESS_STORE_PATH = join(root, "access.json");
 
-  const task = await createTrustedSandboxTask(DEMO_A, {
-    type: "workflow",
-    title: "Contract Task",
-    platform: "amazon",
-    productUrl: null,
-    materialText: "",
-    source: "demo",
-    score: 80,
-    level: "high",
-    oneLineSummary: "Contract test task",
-    resultJson: JSON.stringify(COMPLETE_RESEARCH_RESULT),
-    productLifecycle: "new_candidate",
-    decisionStatus: "pending",
-    createdAt: NOW,
-    updatedAt: NOW,
-  } as Parameters<typeof createTrustedSandboxTask>[1]);
-  taskId = task.id;
-  mutateDemoSandboxStore((store) => {
-    store.candidates.push({
+  const seeded = await createSeededSandboxTaskAndCandidate(
+    DEMO_A,
+    {
+      id: "sandbox_task_contract_1",
+      type: "workflow",
+      title: "Contract Task",
+      platform: "amazon",
+      productUrl: null,
+      materialText: "",
+      source: "demo",
+      score: 80,
+      level: "high",
+      oneLineSummary: "Contract test task",
+      resultJson: JSON.stringify(COMPLETE_RESEARCH_RESULT),
+      productLifecycle: "new_candidate",
+      decisionStatus: "pending",
+      createdAt: NOW,
+      updatedAt: NOW,
+    },
+    {
       id: "candidate-1",
-      demoAccessId: DEMO_A,
       name: "Insulated Water Bottle",
       rawInput: "Insulated Water Bottle",
       link: null,
@@ -247,10 +246,10 @@ beforeEach(async () => {
       sourceMetaJson: "{}",
       analysisJson: "{}",
       createdAt: NOW,
-      convertedTaskId: taskId,
-    });
-    return { value: true, changed: true };
-  });
+      convertedTaskId: "sandbox_task_contract_1",
+    },
+  );
+  taskId = seeded.taskId;
 });
 
 afterEach(() => {
