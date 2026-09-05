@@ -335,10 +335,17 @@ export async function createOrAppendCreativeHandoff(
       if (resolvedKeys.length !== input.selectedFactCandidateIds.length) {
         throw new CreativeHandoffPersistenceError("invalid_selection", 400, "选择项与最新研究状态不匹配，请刷新后重试。");
       }
-      // 零候选兜底：无候选 selectionId 时允许仅手工事实；两者都不提供且无视觉参考批准才拒绝
+      // 零候选兜底：无候选 selectionId 时允许仅手工事实、纯视觉批准，或研究已确认事实（Research Human Confirmed Facts）；均不提供才拒绝
       const manualFacts = input.manualConfirmedFacts ?? [];
       const visualApprovalOnly = (input.selectedVisualReferenceCandidateIds ?? []).length > 0;
-      if (resolvedKeys.length < 1 && manualFacts.length < 1 && !visualApprovalOnly) {
+      const researchConfirmed = getFactCandidates(current)?.confirmed ?? [];
+      const hasResearchConfirmed = researchConfirmed.length > 0;
+      if (
+        resolvedKeys.length < 1 &&
+        manualFacts.length < 1 &&
+        !visualApprovalOnly &&
+        !hasResearchConfirmed
+      ) {
         throw new CreativeHandoffPersistenceError("no_facts_selected", 400, "请至少选择一项或填写一项可用的商品事实。");
       }
       const conversion = confirmSelectedProductFacts({
@@ -382,7 +389,6 @@ export async function createOrAppendCreativeHandoff(
         : [];
       // V3 Final PHASE 1：研究侧已确认事实（factCandidates 权威）经唯一 Canonical Adapter 桥接
       // ——已有 Confirmed Fact 自动进入 Listing 链，不再要求用户重复输入（SHARED_CONTRACT_FREEZE §8/§9）
-      const researchConfirmed = getFactCandidates(current)?.confirmed ?? [];
       const researchBridge = researchConfirmed.length > 0
         ? mapResearchConfirmedToHandoff({
             confirmed: researchConfirmed,

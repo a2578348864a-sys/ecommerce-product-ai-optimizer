@@ -775,3 +775,89 @@ function buildRequestFingerprintFor(input: {
     confirmed: true,
   });
 }
+
+describe("Research Human Confirmed Facts 自动作为事实基础 (selectedFactCandidateIds=[])", () => {
+  it("无候选勾选但研究已有 confirmed 事实 → 成功创建 Handoff 且 confirmedFacts 包含研究事实", async () => {
+    // 注入研究已确认事实到 task
+    const task = await loadTask(client!, "task-e2e");
+    task.resultJson.factCandidates = {
+      schema: "fact-candidates.v1",
+      version: 1,
+      confirmed: [
+        {
+          candidateId: "product_title:brand",
+          field: "brand",
+          label: "品牌",
+          value: "ResearchBrand",
+          sourceKind: "product_title",
+          sourceRef: "task.resultJson.productInfo.title",
+          humanConfirmationRequired: true,
+          confirmedAt: "2026-08-05T00:00:00.000Z",
+          confirmedBy: "owner:v1",
+        },
+        {
+          candidateId: "product_title:material",
+          field: "material",
+          label: "材质",
+          value: "304不锈钢",
+          sourceKind: "product_title",
+          sourceRef: "task.resultJson.productInfo.title",
+          humanConfirmationRequired: true,
+          confirmedAt: "2026-08-05T00:00:00.000Z",
+          confirmedBy: "owner:v1",
+        },
+      ],
+      updatedAt: "2026-08-05T00:00:00.000Z",
+    };
+    await client!.viralAnalysisRecord.update({
+      where: { id: "task-e2e" },
+      data: { resultJson: JSON.stringify(task.resultJson) },
+    });
+
+    const preview = await generateCreativeHandoffPreview("task-e2e", ownerContext);
+    const sv = preview.gate.storageVersion!;
+    const fp = buildRequestFingerprintFor({
+      selectedFactIds: [],
+      expectedResearchRevision: 1,
+      expectedCurrentHandoffRevision: 0,
+      sv,
+    });
+
+    const result = await createOrAppendCreativeHandoff("task-e2e", ownerContext, {
+      requestId: "550e8400-e29b-41d4-a716-446655440099",
+      expectedResearchRevision: 1,
+      expectedCurrentHandoffRevision: 0,
+      expectedStorageVersion: sv,
+      selectedFactCandidateIds: [], // 空选择！
+      requestFingerprint: fp,
+    });
+
+    expect(result.isNewRevision).toBe(true);
+    expect(result.handoff.currentRevision).toBe(1);
+    expect(result.handoff.versions[0].confirmedFacts.length).toBeGreaterThanOrEqual(2);
+    const fields = result.handoff.versions[0].confirmedFacts.map((f) => f.field);
+    expect(fields).toContain("brand");
+    expect(fields).toContain("material");
+  });
+
+  it("无候选勾选且无研究 confirmed 事实 → 抛出 no_facts_selected (400)", async () => {
+    const preview = await generateCreativeHandoffPreview("task-e2e", ownerContext);
+    const sv = preview.gate.storageVersion!;
+    const fp = buildRequestFingerprintFor({
+      selectedFactIds: [],
+      expectedResearchRevision: 1,
+      expectedCurrentHandoffRevision: 0,
+      sv,
+    });
+
+    await expect(createOrAppendCreativeHandoff("task-e2e", ownerContext, {
+      requestId: "550e8400-e29b-41d4-a716-446655440098",
+      expectedResearchRevision: 1,
+      expectedCurrentHandoffRevision: 0,
+      expectedStorageVersion: sv,
+      selectedFactCandidateIds: [], // 空选择且无研究事实
+      requestFingerprint: fp,
+    })).rejects.toMatchObject({ code: "no_facts_selected", status: 400 });
+  });
+});
+
