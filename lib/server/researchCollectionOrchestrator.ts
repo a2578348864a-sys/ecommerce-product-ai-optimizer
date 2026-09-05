@@ -33,6 +33,8 @@ import {
 import {
   collectBrowserEvidencePreview,
   storeBrowserEvidencePreview,
+  findPendingBrowserEvidencePreview,
+  browserEvidenceSubjectKey,
 } from "@/lib/server/browserEvidenceCollect";
 import {
   resolveBrowserAcquisitionCapability,
@@ -246,7 +248,19 @@ async function handleAmazonSource(
       };
     }
 
-    // 3. inspect 模式仅检查状态，不执行采集
+    // 3. 检查是否有待确认的 Pending 预览（无副作用只读检测）
+    const subjectKey = browserEvidenceSubjectKey(context);
+    const pending = findPendingBrowserEvidencePreview({ subjectKey, taskId, asin });
+    if (pending !== null) {
+      return {
+        status: "awaiting_confirmation",
+        hasEvidence: false,
+        previewId: pending.evidenceId,
+        message: "Amazon 详情已有待确认采集预览",
+      };
+    }
+
+    // 4. inspect 模式仅检查状态，不执行采集
     if (action === "inspect") {
       return {
         status: "needs_user",
@@ -255,7 +269,7 @@ async function handleAmazonSource(
       };
     }
 
-    // 4. orchestrate 模式：尝试采集 Preview（严格不自动确认入库）
+    // 5. orchestrate 模式：尝试采集 Preview（严格不自动确认入库）
     if (context.mode === "demo") {
       // Demo 模式回放预置 preview
       const preview = buildDemoBrowserCollectPreview(asin);
@@ -264,7 +278,7 @@ async function handleAmazonSource(
         preview,
         capturedAt: new Date().toISOString(),
         expiresAt: Date.now() + 15 * 60 * 1000,
-        subjectKey: `visitor:${context.demoAccessId}`,
+        subjectKey,
         taskId,
         asin,
       });
@@ -297,7 +311,7 @@ async function handleAmazonSource(
       preview,
       capturedAt: new Date().toISOString(),
       expiresAt: Date.now() + 15 * 60 * 1000,
-      subjectKey: "owner:v1",
+      subjectKey,
       taskId,
       asin,
     });
