@@ -374,3 +374,26 @@ export function marketplaceToAmazonTld(marketplace: string): string {
   if (normalized === "ca" || normalized === "amazon ca") return "ca";
   return "com";
 }
+
+/**
+ * 无副作用检测是否有待确认的关键词/竞品预览。
+ * 纯只读探测，不消耗（不 claim / 不 take），用于编排器幂等检查。
+ */
+export function findPendingBrowserUsePreview(
+  seedAsin: string,
+): { previewId: string; preview: BrowserUseResearchPreview; expiresAt: number } | null {
+  if (typeof seedAsin !== "string" || !seedAsin.trim()) return null;
+  const normalized = seedAsin.trim().toUpperCase();
+  const now = Date.now();
+  for (const [previewId, entry] of PREVIEW_CACHE.entries()) {
+    if (entry.expiresAt > now && entry.preview.seedAsin.toUpperCase() === normalized) {
+      return {
+        previewId,
+        preview: entry.preview,
+        expiresAt: entry.expiresAt,
+      };
+    }
+  }
+  return null;
+}
+
