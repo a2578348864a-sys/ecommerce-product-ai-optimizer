@@ -26,6 +26,7 @@ describe("formal v2 task result", () => {
       productImage: null,
       result: {
         productName: "THERMOS Food Jar",
+        researchCompletion: { schema: "research-completion.v1", status: "completed" },
         productResearchSummary: { schema: "product-research-record.v1", status: "creative_ready" },
         sourceMeta: {
           productBatchSnapshot: {

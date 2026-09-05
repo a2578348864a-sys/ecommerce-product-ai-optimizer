@@ -94,7 +94,7 @@ describe("轮 6 共享状态分类器（/ 与 /research 同一口径）", () => 
     productResearchSummary: { schema: "product-research-record.v1", status: "creative_ready", label: "研究已完成" },
   };
 
-  it("not_started 绝不算 AI 研究中：缺资料/待决定/失败/取消全部落在需要我处理", () => {
+  it("not_started 绝不算 AI 研究中：无任何研究资料时落在需要我处理（v11：有资料则 researching）", () => {
     expect(deriveProductProjectGroup(r({ aiRunStatus: "not_started" })).group).toBe("needs_action");
     expect(deriveProductProjectGroup(r({ aiRunStatus: undefined })).group).toBe("needs_action");
     expect(deriveProductProjectGroup(r({ aiRunStatus: "cancelled" })).group).toBe("needs_action");
@@ -103,9 +103,12 @@ describe("轮 6 共享状态分类器（/ 与 /research 同一口径）", () => 
     expect(deriveProductProjectGroup(r({ aiRunStatus: "waiting" })).group).toBe("needs_action");
   });
 
-  it("running/waiting 之外的 run 状态：只有 running 归 AI 研究中", () => {
+  it("v11：run 状态只是子步骤——running 归研究中；completed+无 completion 归 researching（研究未收口）", () => {
     expect(deriveProductProjectGroup(r({ aiRunStatus: "running" })).group).toBe("researching");
-    expect(deriveProductProjectGroup(r({ aiRunStatus: "completed", result: completedResult })).group).toBe("completed");
+    // completedResult 有正式决定载体（productResearchSummary=creative_ready）→ 等待人工决定
+    expect(deriveProductProjectGroup(r({ aiRunStatus: "completed", result: completedResult })).group).toBe("needs_action");
+    // 无决定载体的纯研究资料 → researching
+    expect(deriveProductProjectGroup(r({ aiRunStatus: "completed", result: { keywordEvidence: { rows: [] } } })).group).toBe("researching");
   });
 
   it("终态失败优先：即使已保存研究与人工决定也不落入已完成", () => {
@@ -117,23 +120,43 @@ describe("轮 6 共享状态分类器（/ 与 /research 同一口径）", () => 
     expect(deriveProductProjectGroup(r({ aiRunStatus: "research_stale", result: completedResult })).group).toBe("needs_action");
   });
 
-  it("P1-3：abandoned 研究在第三列显示「已放弃/查看研究记录」（不显示已完成/查看研究结果）", () => {
-    const abandonedResult = {
+  it("v11：abandoned 由 researchCompletion 标记（needs_action 组，不显示已完成）；仅 summaryStatus=abandoned 且无 completion → 研究中", () => {
+    // 正式 abandoned：researchCompletion 是唯一终态依据
+    const view = deriveProductProjectGroup(r({ aiRunStatus: "completed", result: {
       productResearchSummary: { schema: "product-research-record.v1", status: "abandoned", label: "已放弃" },
-    };
-    const view = deriveProductProjectGroup(r({ aiRunStatus: "completed", result: abandonedResult }));
-    expect(view.group).toBe("completed");
+      researchCompletion: { schema: "research-completion.v1", status: "abandoned" },
+    } }));
+    expect(view.group).toBe("needs_action");
     expect(view.statusLabel).toBe("已放弃");
     expect(view.nextLabel).toBe("查看研究记录");
-    // creative_ready 不回归
-    const ok = deriveProductProjectGroup(r({ aiRunStatus: "completed", result: completedResult }));
-    expect(ok.statusLabel).toBe("研究已完成");
-    expect(ok.nextLabel).toBe("查看研究结果");
+    // 无正式 completion 的 abandoned-ish summary：summaryStatus 由 presentation 归为
+    // awaiting_decision（研究过程中有资料+决定）→ needs_action 组，与"待人工决定"一致。
+    // 若该 abandoned 任务无决定载体，则按 hasResearchStarted 归 researching。
+    const view2 = deriveProductProjectGroup(r({ aiRunStatus: "completed", result: {
+      productResearchSummary: { schema: "product-research-record.v1", status: "abandoned", label: "已放弃" },
+    } }));
+    expect(view2.group).toBe("needs_action");
+    // 有决定载体（productResearchSummary 可作为正式决定证明）→ awaiting_decision 优先于 researching
+    const view3 = deriveProductProjectGroup(r({ aiRunStatus: "completed", result: {
+      competitorEvidence: { asins: [{ asin: "B0X" }] },
+      productResearchSummary: { schema: "product-research-record.v1", status: "abandoned" },
+    } }));
+    expect(view3.group).toBe("needs_action");
+    // 纯研究证据（无决定载体）→ researching
+    const view4 = deriveProductProjectGroup(r({ aiRunStatus: "completed", result: {
+      competitorEvidence: { asins: [{ asin: "B0X" }] },
+    } }));
+    expect(view4.group).toBe("researching");
   });
 
-  it("待人工决定（已有研究但无正式决定）/ 缺资料 → 需要我处理；完整保存→已完成", () => {
+  it("v11：待人工决定（有正式决定载体）→ 需要我处理；缺资料 → 需要我处理；正式 completion → 已完成", () => {
     expect(deriveProductProjectGroup(r({ result: { finalReport: { finalVerdict: "x" } } })).group).toBe("needs_action");
     expect(deriveProductProjectGroup(r({ result: {} })).group).toBe("needs_action");
-    expect(deriveProductProjectGroup(r({ result: completedResult })).group).toBe("completed");
+    expect(deriveProductProjectGroup(r({ result: completedResult })).group).toBe("needs_action");
+    // 真正的「已完成」唯一来源：researchCompletion=completed
+    expect(deriveProductProjectGroup(r({ result: {
+      productResearchSummary: completedResult.productResearchSummary,
+      researchCompletion: { schema: "research-completion.v1", status: "completed" },
+    } })).group).toBe("completed");
   });
 });

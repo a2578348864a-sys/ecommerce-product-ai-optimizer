@@ -777,6 +777,146 @@ describe("GET /api/tasks", () => {
     expect(body.data.items).toEqual([]);
   });
 
+  it("第十一轮真实 scope 回归：研究已开始 + 有 researchRecord/partial outputs + 无 completion => scope=research 返回", async () => {
+    mockPrisma.viralAnalysisRecord.findMany.mockResolvedValueOnce([{
+      id: "task-active-research",
+      createdAt: new Date("2026-08-10T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-17T01:00:00.000Z"),
+      type: "candidate_research",
+      decisionStatus: "continue",
+      title: "Active Research In Progress",
+      platform: "manual",
+      productUrl: null,
+      materialText: "Active Research",
+      source: "candidate_research",
+      score: 1,
+      level: "low",
+      oneLineSummary: "",
+      resultJson: JSON.stringify({
+        productName: "Active Research In Progress",
+        researchRecord: {
+          schema: "product-research-record.v1",
+          revision: 1,
+          researchHash: "a".repeat(64),
+          candidateId: "candidate-active",
+          runId: "task-active-research",
+          contextHash: "b".repeat(64),
+          createdAt: "2026-08-10T00:00:00.000Z",
+          updatedAt: "2026-08-17T00:00:00.000Z",
+          latestDecision: {
+            decisionId: "11111111-1111-4111-8111-111111111111",
+            revision: 1,
+            status: "creative_ready",
+            reason: "ok",
+            nextAction: null,
+            researchHash: "a".repeat(64),
+            decidedAt: "2026-08-17T00:00:00.000Z",
+            actor: { mode: "owner", actorRef: "owner:v1" },
+          },
+          decisionEvents: [],
+        },
+      }),
+    }]);
+    mockPrisma.viralAnalysisRecord.count.mockResolvedValueOnce(1);
+    mockPrisma.opportunityCandidate.findMany.mockResolvedValueOnce([]);
+
+    const resResearch = await GET(createRequest({
+      url: "http://localhost:3000/api/tasks?scope=research",
+      headers: { "x-access-password": CORRECT_PASSWORD },
+    }));
+    const { status: s1, body: b1 } = await getJsonStatus(resResearch);
+    expect(s1).toBe(200);
+    expect(b1.page.total).toBe(1);
+    expect(b1.data.items[0].id).toBe("task-active-research");
+  });
+
+  it("第十一轮真实 scope 回归：researchCompletion=abandoned => scope=research 不返回", async () => {
+    mockPrisma.viralAnalysisRecord.findMany.mockResolvedValueOnce([{
+      id: "task-abandoned-completion",
+      createdAt: new Date("2026-08-10T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-17T01:00:00.000Z"),
+      type: "candidate_research",
+      decisionStatus: "continue",
+      title: "Abandoned Research",
+      platform: "manual",
+      productUrl: null,
+      materialText: "Abandoned Research",
+      source: "candidate_research",
+      score: 1,
+      level: "low",
+      oneLineSummary: "",
+      resultJson: JSON.stringify({
+        productName: "Abandoned Research",
+        researchCompletion: {
+          schema: "research-completion.v1",
+          status: "abandoned",
+          completedAt: "2026-08-17T01:00:00.000Z",
+          decisionId: "22222222-2222-4222-8222-222222222222",
+          revision: 1,
+          finalStatus: "abandoned",
+        },
+      }),
+    }]);
+    mockPrisma.viralAnalysisRecord.count.mockResolvedValueOnce(1);
+    mockPrisma.opportunityCandidate.findMany.mockResolvedValueOnce([]);
+
+    const res = await GET(createRequest({
+      url: "http://localhost:3000/api/tasks?scope=research",
+      headers: { "x-access-password": CORRECT_PASSWORD },
+    }));
+    const { status, body } = await getJsonStatus(res);
+    expect(status).toBe(200);
+    expect(body.page.total).toBe(0);
+    expect(body.data.items).toEqual([]);
+  });
+
+  it("scope=product-research: projects researchCompletion safely without internal ids so home workbench identifies completion", async () => {
+    mockPrisma.viralAnalysisRecord.findMany.mockResolvedValueOnce([{
+      id: "task-completed-research",
+      createdAt: new Date("2026-08-10T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-17T01:00:00.000Z"),
+      type: "workflow",
+      decisionStatus: "continue",
+      title: "Completed Research Task",
+      platform: "manual",
+      productUrl: null,
+      materialText: "Completed Research",
+      source: "agent_run",
+      score: 1,
+      level: "low",
+      oneLineSummary: "",
+      resultJson: JSON.stringify({
+        productName: "Completed Research Task",
+        researchCompletion: {
+          schema: "research-completion.v1",
+          status: "completed",
+          completedAt: "2026-09-05T10:48:47.298Z",
+          decisionId: "internal-id-should-strip",
+          revision: 2,
+          finalStatus: "creative_ready",
+        },
+      }),
+    }]);
+    mockPrisma.viralAnalysisRecord.count.mockResolvedValueOnce(1);
+    mockPrisma.opportunityCandidate.findMany.mockResolvedValueOnce([]);
+
+    const res = await GET(createRequest({
+      url: "http://localhost:3000/api/tasks?scope=product-research",
+      headers: { "x-access-password": CORRECT_PASSWORD },
+    }));
+    const { status, body } = await getJsonStatus(res);
+    expect(status).toBe(200);
+    const item = body.data.items[0];
+    expect(item.result.researchCompletion).toEqual({
+      schema: "research-completion.v1",
+      status: "completed",
+      completedAt: "2026-09-05T10:48:47.298Z",
+      revision: 2,
+      finalStatus: "creative_ready",
+    });
+    expect(item.result.researchCompletion).not.toHaveProperty("decisionId");
+  });
+
   it("P1-1：scope=research 精确分页——total 为精确匹配总数，hasMore 正确，翻页无重无漏（红灯契约）", async () => {
     const mk = (id: string, decisionStatus: string, verdict: string | null, completion: boolean) => ({
       id,

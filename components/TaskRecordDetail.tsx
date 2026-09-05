@@ -1484,12 +1484,15 @@ export function deriveFormalV2ResearchView(record: TaskCenterItem): FormalV2Rese
     decisionStatus: record.decisionStatus,
     result,
   });
-  const headline = formalText(summary?.decisionReason)
+  // 第十一轮（Bug 1）：AI 辅助判断 nullable——只允许真实 AI/研究结论字段；
+  // 无真实结论时 headline 为空，整个「AI 辅助判断」卡不渲染，
+  // 不得用 oneLineSummary 或假文案冒充 AI 判断。
+  const headline =
+    formalText(summary?.decisionReason)
     || formalText(finalReport?.finalVerdict)
     || formalText(finalReport?.decisionReason)
     || presentation.researchConclusions[0]
-    || formalText(record.oneLineSummary)
-    || "AI 研究结论尚未取得。";
+    || "";
 
   const buyerSignals = uniqueStrings([
     ...formalTexts(summary?.concerns, 2),
@@ -1936,10 +1939,15 @@ function FormalV2RecordContent({
                 ) : null}
               </div>
               <h2 className="mt-2.5 break-words text-xl sm:text-2xl font-bold tracking-tight text-slate-950">{view.productName}</h2>
-              <div className="mt-3 rounded-xl border-l-4 border-emerald-500 bg-emerald-50/50 p-3 text-sm font-medium leading-relaxed text-slate-700">
-                <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider block mb-0.5">AI 辅助判断</span>
-                {view.headline}
-              </div>
+              {view.headline ? (
+                <div className="mt-3 rounded-xl border-l-4 border-emerald-500 bg-emerald-50/50 p-3 text-sm font-medium leading-relaxed text-slate-700">
+                  <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider block mb-0.5">AI 辅助判断</span>
+                  {view.headline}
+                </div>
+              ) : null}
+              {!view.headline && formalText(record.oneLineSummary) ? (
+                <p className="mt-2 text-xs leading-5 text-slate-500">{formalText(record.oneLineSummary)}</p>
+              ) : null}
               {publicProductUrl ? (
                 <a href={publicProductUrl} target="_blank" rel="noopener noreferrer" className="mt-2.5 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-900 transition-colors">
                   <span>查看商品来源链接</span>

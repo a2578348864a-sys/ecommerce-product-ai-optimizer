@@ -238,10 +238,22 @@ function productProjectKey(
   return `ppk_${createHash("sha256").update(stableBinding, "utf8").digest("base64url")}`;
 }
 
-/** §2.3 product-research scope：移除通用 result.status（客户端不得信任），只保留服务端 stale 信号。 */
+/** §2.3 product-research scope：移除通用 result.status（客户端不得信任），只保留服务端 stale 信号与 safe researchCompletion。 */
 function stripRawProjectedStatus(formalScope: boolean, projected: Record<string, unknown>, rawResult: unknown): Record<string, unknown> {
   if (!formalScope) return projected;
   const { status: rawStatus, ...rest } = projected;
+  if (isRecord(rawResult) && isRecord(rawResult.researchCompletion)) {
+    const rc = rawResult.researchCompletion;
+    if (rc.schema === "research-completion.v1" && (rc.status === "completed" || rc.status === "abandoned")) {
+      rest.researchCompletion = {
+        schema: rc.schema,
+        status: rc.status,
+        ...(typeof rc.completedAt === "string" ? { completedAt: rc.completedAt } : {}),
+        ...(typeof rc.revision === "number" ? { revision: rc.revision } : {}),
+        ...(typeof rc.finalStatus === "string" ? { finalStatus: rc.finalStatus } : {}),
+      };
+    }
+  }
   return rest;
 }
 

@@ -90,7 +90,7 @@ describe("home dashboard C-end local workbench", () => {
     expect(html).toContain("了解你的商品研究进度，下一步由你决定。");
     expect(html).toContain("正在确认可研究商品");
     expect(html).toContain("需要我处理");
-    expect(html).toContain("AI 研究中");
+    expect(html).toContain("研究中");
     expect(html).toContain("已完成");
     expect(html).not.toContain("失败待处理");
     // 初始为读取中（诚实加载态）
@@ -180,9 +180,10 @@ describe("home dashboard C-end local workbench", () => {
     }
     expect(byId.get("cancelled")!).toMatchObject({ group: "needs_action", statusLabel: "研究已取消，待处理", nextLabel: "重新发起研究" });
     expect(byId.get("waiting")!).toMatchObject({ group: "needs_action", statusLabel: "研究等待处理", nextLabel: "查看研究进度" });
-    expect(byId.get("running")!).toMatchObject({ group: "researching", statusLabel: "AI 正在研究", nextLabel: "查看研究进度" });
+    expect(byId.get("running")!).toMatchObject({ group: "researching", statusLabel: "研究中", nextLabel: "查看研究进度" });
     expect(byId.get("stale")!).toMatchObject({ group: "needs_action", statusLabel: "研究资料需重新确认", nextLabel: "重新确认研究资料" });
-    expect(byId.get("completed")!).toMatchObject({ group: "completed", statusLabel: "研究已完成", nextLabel: "查看研究结果" });
+    // v11：creative_ready 无 researchCompletion → 待人工决定（已完成需 researchCompletion=completed）
+    expect(byId.get("completed")!).toMatchObject({ group: "needs_action", statusLabel: "待人工决定", nextLabel: "查看并决定" });
   });
 
   it("终态失败/取消优先于已完成：即使有完整研究与人工决定，也不落入已完成", () => {
@@ -198,7 +199,8 @@ describe("home dashboard C-end local workbench", () => {
     expect(byId.get("t1")!.group).toBe("needs_action");
     expect(byId.get("t2")!.group).toBe("needs_action");
     expect(byId.get("t3")!.group).toBe("needs_action");
-    expect(byId.get("t4")!.group).toBe("completed");
+    // v11：t4 有研究+决定载体但无 researchCompletion → 待人工决定（已完成唯一来源=completion）
+    expect(byId.get("t4")!.group).toBe("needs_action");
   });
 
 
@@ -224,7 +226,8 @@ describe("home dashboard C-end local workbench", () => {
       listTask({ id: "t-quarter", updatedAt: "2026-08-21T00:00:00.000Z", aiRunStatus: "waiting", productProjectKey: "ppk_same", result: listProjection({ productName: "同款" }) }),
     ]);
     expect(projects[0]!.task.id).toBe("t-done-new");
-    expect(projects[0]!.group).toBe("completed");
+    // v11：完成代表仍有研究+决定载体但无 researchCompletion → 待人工决定
+    expect(projects[0]!.group).toBe("needs_action");
   });
 
 

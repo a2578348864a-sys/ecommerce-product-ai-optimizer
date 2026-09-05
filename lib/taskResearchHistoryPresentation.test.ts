@@ -35,9 +35,11 @@ describe("research history status", () => {
       oneLineSummary: "Research saved.",
     });
 
+    // v11：无 researchCompletion（research-completion.v1）→ 不得判「已完成」；
+    // 有正式决定载体（productResearchSummary）只是「待人工决定」。
     expect(withoutCreativeArtifacts).toEqual({
-      key: "completed",
-      label: "研究已完成",
+      key: "awaiting_decision",
+      label: "待人工决定",
       researchSaved: true,
       humanDecisionExists: true,
     });
@@ -120,8 +122,9 @@ describe("research history status", () => {
       decisionStatus: "continue",
       oneLineSummary: "research saved",
     });
-    expect(abandoned.key).toBe("abandoned");
-    expect(abandoned.label).toBe("已放弃");
+    // v11：abandoned 终态只能由 researchCompletion 证明；summaryStatus=abandoned 无 completion → awaiting_decision
+    expect(abandoned.key).toBe("awaiting_decision");
+    expect(abandoned.label).toBe("待人工决定");
     // creative_ready 不回归
     const ready = deriveResearchHistoryStatus({
       result: {
@@ -135,8 +138,9 @@ describe("research history status", () => {
       decisionStatus: "continue",
       oneLineSummary: "",
     });
-    expect(ready.key).toBe("completed");
-    expect(ready.label).toBe("研究已完成");
+    // v11：creative_ready 无 completion → 待人工决定
+    expect(ready.key).toBe("awaiting_decision");
+    expect(ready.label).toBe("待人工决定");
   });
 
   it("projects creative material and generated artifacts as read-only history summaries", () => {
