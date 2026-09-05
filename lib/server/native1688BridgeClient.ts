@@ -21,7 +21,7 @@ export const NATIVE_1688_BRIDGE_VERSION = "authenticated-loopback-bridge.v1";
 export const NATIVE_1688_EXTENSION_DRIVER_VERSION = "native-1688-extension-driver.v1";
 /** V3 Final R13：期望的 Helper SW 版本（与 extensions/qingxuan-1688-helper SW_VERSION / manifest version 一致）。
  *  版本不匹配 → readiness = PROTOCOL_MISMATCH（UI 显示"浏览器助手需要更新"，不假绿）。 */
-export const NATIVE_1688_HELPER_SW_VERSION = "0.3.1";
+export const NATIVE_1688_HELPER_SW_VERSION = "0.3.2";
 
 const BRIDGE_PORT_START = 53318;
 const BRIDGE_PORT_RANGE = 10;

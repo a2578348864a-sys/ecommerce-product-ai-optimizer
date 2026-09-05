@@ -71,10 +71,24 @@ export function buildUploadTargetProofExpression(): string {
     const pageUrl = location.href;
     const pageUrlAllowed = ${host} === new URL(pageUrl).hostname;
     const fileInputs = Array.from(document.querySelectorAll('input[type=file]'));
-    const target = document.querySelector('input[type=file]#img-search-upload');
+    const hasAccept = (el) => {
+      if (!(el instanceof HTMLInputElement)) return false;
+      const acc = (el.getAttribute('accept') || '').toLowerCase();
+      return acc.includes('.jpg') || acc.includes('.jpeg') || acc.includes('.png') || acc.includes('.webp') || acc.includes('.bmp') || acc.includes('image/');
+    };
+    const target = (() => {
+      const modern = document.querySelector('input[type=file].image-file-reader-wrapper');
+      if (hasAccept(modern)) return modern;
+      const containerInput = document.querySelector('.search-image-upload-container input[type=file], .image-upload-button-container input[type=file], .image-input-button input[type=file], [data-spm*="imagesearch"] input[type=file]');
+      if (hasAccept(containerInput)) return containerInput;
+      const legacy = document.querySelector('input[type=file]#img-search-upload');
+      if (hasAccept(legacy)) return legacy;
+      return null;
+    })();
     const rect = target instanceof HTMLElement ? target.getBoundingClientRect() : null;
     const found = target instanceof HTMLInputElement;
-    const unique = fileInputs.length === 1 && fileInputs[0] === target;
+    const matchingInputs = fileInputs.filter(el => el === target || el.classList.contains('image-file-reader-wrapper') || el.id === 'img-search-upload');
+    const unique = found && (fileInputs.length === 1 && fileInputs[0] === target || matchingInputs.length === 1 && matchingInputs[0] === target);
     const visible = found && rect !== null && rect.width > 0 && rect.height > 0;
     const enabled = found && !target.disabled;
     const reasonCodes = [];

@@ -22,7 +22,7 @@
   "use strict";
 
   const MESSAGE_VERSION = "1.0";
-  const UPLOAD_RESOLVER_VERSION = "native-1688-upload-resolver.v2";
+  const UPLOAD_RESOLVER_VERSION = "native-1688-upload-resolver.v3";
   const SUBMIT_RESOLVER_VERSION = "native-1688-image-submit-resolver.v2";
   const EXTRACTOR_VERSION = "native-1688-result-extractor.v2";
   const MAX_CARDS = 60;
@@ -40,28 +40,128 @@
   function classifyPage() {
     const href = location.href;
     let pageKind = "unknown";
-    if (/^https:\/\/s\.1688\.com\//.test(href)) pageKind = "upload_page";
-    else if (/^https:\/\/air\.1688\.com\//.test(href) && new URL(href).searchParams.get("tab") === "imageSearch") {
-      pageKind = "result_page";
-    } else if (/login|signin/i.test(href)) pageKind = "login_wall";
-    else if (/captcha|verify/i.test(href)) pageKind = "risk_control";
+    try {
+      const url = new URL(href);
+      if (url.searchParams.get("tab") === "imageSearch" && (url.hostname === "air.1688.com" || url.hostname === "s.1688.com")) {
+        pageKind = "result_page";
+      } else if (url.hostname === "s.1688.com") {
+        pageKind = "upload_page";
+      } else if (/login|signin/i.test(href)) {
+        pageKind = "login_wall";
+      } else if (/captcha|verify/i.test(href)) {
+        pageKind = "risk_control";
+      }
+    } catch {
+      if (/^https:\/\/(?:air|s)\.1688\.com\/.*[?&]tab=imageSearch/.test(href)) pageKind = "result_page";
+      else if (/^https:\/\/s\.1688\.com\//.test(href)) pageKind = "upload_page";
+      else if (/login|signin/i.test(href)) pageKind = "login_wall";
+      else if (/captcha|verify/i.test(href)) pageKind = "risk_control";
+    }
     return pageKind;
   }
 
   // ── getState：上传入口 proof（§16：证明属于 1688 图搜组件，非任意 file input） ──
 
+  function isStrictImageUploadContext() {
+    const href = location.href;
+    // 必须属于 allowlist 的 1688 图搜上传页面（s.1688.com）
+    if (!/^https:\/\/s\.1688\.com\//.test(href)) return false;
+    // 严禁商品详情页、结果页、登录页、风控页
+    if (/detail\.1688\.com/i.test(location.hostname)) return false;
+    if (/^https:\/\/air\.1688\.com\//.test(href)) return false;
+    if (/login|signin/i.test(href)) return false;
+    if (/captcha|verify/i.test(href)) return false;
+    return true;
+  }
+
+  function hasImageAccept(input) {
+    if (!(input instanceof HTMLInputElement) || input.type !== "file") return false;
+    const accept = (input.getAttribute("accept") || "").toLowerCase();
+    return accept.includes(".jpg") || accept.includes(".jpeg") || accept.includes(".png") || accept.includes(".webp") || accept.includes(".bmp") || accept.includes("image/");
+  }
+
+  function hasImageSearchSemantics(element) {
+    if (!(element instanceof Element)) return false;
+    // 1. 结构证据：位于图搜专属容器或具有图搜属性
+    const container = element.closest(
+      ".search-image-upload-container, .image-upload-button-container, .image-input-button, #pc-home2024-search-tab, [data-spm*='imagesearch']"
+    );
+    if (container) return true;
+
+    // 2. 文本语义证据：祖先容器包含明确图搜关键词
+    let cur = element.parentElement;
+    let hops = 0;
+    while (cur && hops < 5 && cur !== document.body) {
+      const text = (cur.innerText || "").slice(0, 500);
+      if (text.includes("以图搜款") || text.includes("搜索图片") || text.includes("本地上传") || text.includes("拖拽图片")) {
+        return true;
+      }
+      cur = cur.parentElement;
+      hops++;
+    }
+    return false;
+  }
+
+  function findUploadTargetElement() {
+    // 前置：必须通过严格页面上下文准入
+    if (!isStrictImageUploadContext()) return null;
+
+    // 1. 现代 1688 图搜类名入口（class image-file-reader-wrapper）且具备图片 accept
+    const modern = document.querySelector("input[type=file].image-file-reader-wrapper");
+    if (modern instanceof HTMLInputElement && hasImageAccept(modern)) return modern;
+
+    // 2. 现代 1688 图搜容器限定入口
+    const container = document.querySelector(".search-image-upload-container, .image-upload-button-container, .image-input-button, [data-spm*='imagesearch']");
+    if (container) {
+      const input = container.querySelector("input[type=file]");
+      if (input instanceof HTMLInputElement && hasImageAccept(input)) return input;
+    }
+
+    // 3. 向下兼容旧版 1688 图搜固定 id
+    const legacy = document.querySelector("input[type=file]#img-search-upload");
+    if (legacy instanceof HTMLInputElement && hasImageAccept(legacy)) return legacy;
+
+    // 4. 严格受限的图搜组件语义兜底：
+    // 绝不允许“任意页面 + 唯一 file input”；
+    // 必须满足：页面在 allowlist、全页仅 1 个 file input、具备图片 accept 语义、且具有明确图搜语义/容器证据
+    const allFileInputs = Array.from(document.querySelectorAll("input[type=file]"));
+    if (allFileInputs.length === 1) {
+      const single = allFileInputs[0];
+      if (hasImageAccept(single) && hasImageSearchSemantics(single)) {
+        return single;
+      }
+    }
+
+    return null;
+  }
+
   function uploadTargetReport() {
     const fileInputs = Array.from(document.querySelectorAll("input[type=file]"));
-    const target = document.querySelector('input[type=file]#img-search-upload');
+    const target = findUploadTargetElement();
     const rect = target instanceof HTMLElement ? target.getBoundingClientRect() : null;
     const found = target instanceof HTMLInputElement;
+    const matchingInputs = fileInputs.filter((el) =>
+      el === target ||
+      (el.classList && el.classList.contains("image-file-reader-wrapper")) ||
+      el.id === "img-search-upload" ||
+      hasImageSearchSemantics(el)
+    );
+    const unique = found && (
+      (fileInputs.length === 1 && fileInputs[0] === target) ||
+      (matchingInputs.length === 1 && matchingInputs[0] === target)
+    );
     return {
       found,
-      unique: fileInputs.length === 1 && fileInputs[0] === target,
+      unique,
       visible: found && rect !== null && rect.width > 0 && rect.height > 0,
       enabled: found && !target.disabled,
       y: found && rect ? Math.round(rect.y + rect.height / 2) : null,
-      reasonCodes: found ? [] : ["upload_target_not_found"],
+      reasonCodes: [
+        ...(!found ? ["upload_target_not_found"] : []),
+        ...(found && !unique ? ["upload_target_not_unique"] : []),
+        ...(found && !(rect !== null && rect.width > 0 && rect.height > 0) ? ["upload_target_not_visible"] : []),
+        ...(found && target.disabled ? ["upload_target_disabled"] : []),
+      ],
     };
   }
 
@@ -111,9 +211,9 @@
     } catch {
       return fail("invalid_image_payload", "图片 base64 解码失败。");
     }
-    const target = document.querySelector('input[type=file]#img-search-upload');
+    const target = findUploadTargetElement();
     if (!(target instanceof HTMLInputElement)) {
-      return fail("upload_target_not_found", "未找到 1688 图搜上传入口（input#img-search-upload）。");
+      return fail("upload_target_not_found", "未找到 1688 图搜上传入口（input.image-file-reader-wrapper 或 input#img-search-upload）。");
     }
     try {
       const file = new File([array], "candidate-image.jpg", { type: "image/jpeg" });
@@ -350,6 +450,7 @@
             ok: true,
             pageKind: classifyPage(),
             pageUrl: location.href,
+            documentReadyState: document.readyState,
             uploadTarget: uploadTargetReport(),
             preview: previewReport(),
             resultPage: resultPageReport(),
