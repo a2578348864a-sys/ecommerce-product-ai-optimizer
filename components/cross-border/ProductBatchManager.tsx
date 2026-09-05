@@ -191,42 +191,33 @@ export function ProductBatchManagerView({
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-4" data-testid="product-batch-manager">
-      <section className="workspace-header">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="eyebrow">发现商品</p>
-            <h1 className="section-title mt-1 text-2xl">发现与选择商品</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              上传 SellerSprite 官方 XLSX 导入商品，查看最近一次导入的商品，选择要研究的目标。
-              排名只用于安排研究顺序，不是自动选品结论。
-            </p>
-          </div>
-          <button
-            type="button"
-            className="linear-button h-10 px-4 text-sm font-semibold"
-            disabled={busy}
-            onClick={onRefresh}
-          >
-            刷新
-          </button>
-        </div>
-        {accessMode === "visitor" ? (
-          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-800">
-            <p className="font-semibold">
-              访客体验
-              {maxProducts !== null && usedProducts !== null && remainingProducts !== null
-                ? ` · 已使用商品 ${usedProducts} / ${maxProducts} · 剩余 ${remainingProducts} 个商品`
-                : ""}
-            </p>
-            <p>上传、解析、排序和归档不占用商品体验名额；首次开始一个新的商品研究链时才占用名额。</p>
-          </div>
-        ) : null}
-        {state === "error" && errorMessage ? (
-          <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-            {errorMessage}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="text-xs font-semibold text-slate-500">已记录 {batches.length} 次导入</span>
+        <button
+          type="button"
+          className="linear-button h-9 px-3 text-xs font-semibold"
+          disabled={busy}
+          onClick={onRefresh}
+        >
+          刷新
+        </button>
+      </div>
+      {accessMode === "visitor" ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-800">
+          <p className="font-semibold">
+            访客体验
+            {maxProducts !== null && usedProducts !== null && remainingProducts !== null
+              ? ` · 已使用商品 ${usedProducts} / ${maxProducts} · 剩余 ${remainingProducts} 个商品`
+              : ""}
           </p>
-        ) : null}
-      </section>
+          <p>上传、解析、排序和归档不占用商品体验名额；首次开始一个新的商品研究链时才占用名额。</p>
+        </div>
+      ) : null}
+      {state === "error" && errorMessage ? (
+        <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+          {errorMessage}
+        </p>
+      ) : null}
 
       {/* 第一步：上传 SellerSprite XLSX */}
       <section className="surface-card p-5" aria-label="上传报表入口">
@@ -260,8 +251,8 @@ export function ProductBatchManagerView({
               <label
                 htmlFor="product-batch-file"
                 aria-disabled={busy}
-                className={`inline-flex h-11 items-center justify-center rounded-xl border border-teal-200 bg-teal-50 px-4 font-semibold text-teal-700 ${
-                  busy ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-teal-100"
+                className={`inline-flex h-11 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 font-semibold text-emerald-700 ${
+                  busy ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-emerald-100/80"
                 }`}
               >
                 选择文件
@@ -273,7 +264,7 @@ export function ProductBatchManagerView({
           </div>
 
           {importInspectionState === "loading" ? (
-            <p role="status" className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-sm text-teal-800">
+            <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
               正在安全解析文件并识别报表类型…
             </p>
           ) : null}
@@ -283,7 +274,7 @@ export function ProductBatchManagerView({
             </p>
           ) : null}
           {detectedReportType ? (
-            <p className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-sm text-teal-800" data-testid="report-type-auto-detected">
+            <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800" data-testid="report-type-auto-detected">
               已自动识别报表类型：{productBatchReportTypeLabel(detectedReportType)}。
               {importInspection?.categoryDetection.status === "detected" && selectedCategory ? (
                 <> 已自动识别一级类目：{categoryValueLabel(selectedCategory)}。请确认查询词和价格范围后导入。</>
@@ -424,7 +415,7 @@ export function ProductBatchManagerView({
             </p>
           </div>
           {selection?.activeProductBatchId && activeBatch ? (
-            <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-700">
+            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
               已导入 {activeBatch.acceptedCount ?? 0} 个商品 · {formatDate(activeBatch.importedAt)}
             </span>
           ) : null}
@@ -574,8 +565,8 @@ export function ProductBatchManagerView({
                     第三方估算月销量<br /><b>{presentation.estimatedMonthlySales}</b>
                   </p>
                 </div>
-                <div className="mt-3 rounded-xl border border-teal-100 bg-teal-50/60 p-3">
-                  <p className="text-xs font-semibold text-teal-800">智能研究优先级</p>
+                <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
+                  <p className="text-xs font-semibold text-emerald-800">智能研究优先级</p>
                   <p className="mt-1 text-sm font-semibold text-slate-950">{presentation.researchPriority}</p>
                   <p className="mt-1 text-xs leading-5 text-slate-600">{presentation.evidenceStatus}</p>
                 </div>
@@ -583,7 +574,7 @@ export function ProductBatchManagerView({
                   <summary className="cursor-pointer font-semibold text-slate-800">查看排序依据</summary>
                   <div className="mt-3 grid gap-3">
                     <div>
-                      <p className="font-semibold text-teal-700">有利信号</p>
+                      <p className="font-semibold text-emerald-700">有利信号</p>
                       <ul className="mt-1 list-disc space-y-1 pl-4">
                         {(presentation.positiveReasons.length > 0
                           ? presentation.positiveReasons

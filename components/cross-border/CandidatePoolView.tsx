@@ -99,50 +99,44 @@ export function CandidatePoolView(props: CandidatePoolViewProps) {
     ? visibleItems.some((c) => c.id === props.focusCandidateId)
     : null;  return (
     <div className="space-y-4" data-testid="candidate-pool-view">
-      <section className="surface-card-strong p-5 sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="linear-kicker">服务端权威记录</p>
-            <h2 className="mt-2 text-2xl font-semibold text-slate-950">商品研究池</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-              已加入的商品会保存在当前身份的数据域中。刷新页面、关闭浏览器或重新登录后，仍可从这里继续研究。
-            </p>
+      <section className="surface-card p-5 sm:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="text-sm font-bold text-slate-950">商品研究池</h2>
+            <div className="flex flex-wrap gap-1.5" aria-label="研究池状态筛选">
+              {STATUS_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  aria-pressed={props.statusFilter === option.value}
+                  onClick={() => props.onStatusFilterChange(option.value)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                    props.statusFilter === option.value
+                      ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-emerald-200"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Link href="/opportunities" className="linear-button inline-flex h-10 items-center gap-2 px-4 text-sm font-semibold">
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-semibold text-slate-500">
+              共 <strong className="text-sm font-bold text-slate-900">{props.total}</strong> 项
+            </span>
+            <Link href="/opportunities" className="linear-button inline-flex h-9 items-center gap-1.5 px-3 text-xs font-semibold">
               发现更多商品
             </Link>
             <button
               type="button"
               onClick={props.onRefresh}
               disabled={props.busy}
-              className="linear-button-soft inline-flex h-10 items-center gap-2 px-4 text-sm font-semibold disabled:opacity-50"
+              className="linear-button-soft inline-flex h-9 items-center gap-1.5 px-3 text-xs font-semibold disabled:opacity-50"
             >
-              <RefreshCw className={`size-4 ${props.busy ? "animate-spin" : ""}`} />
+              <RefreshCw className={`size-3.5 ${props.busy ? "animate-spin" : ""}`} />
               刷新
             </button>
-          </div>
-        </div>
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
-          <p className="text-sm text-slate-600">
-            服务端共有 <strong className="text-xl text-slate-950">{props.total}</strong> 项
-          </p>
-          <div className="flex flex-wrap gap-2" aria-label="研究池状态筛选">
-            {STATUS_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                aria-pressed={props.statusFilter === option.value}
-                onClick={() => props.onStatusFilterChange(option.value)}
-                className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                  props.statusFilter === option.value
-                    ? "border-teal-300 bg-teal-50 text-teal-800"
-                    : "border-slate-200 bg-white text-slate-600 hover:border-teal-200"
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
           </div>
         </div>
         {/* C：搜索 + 批量工具条 */}
@@ -240,7 +234,7 @@ export function CandidatePoolView(props: CandidatePoolViewProps) {
                 ref={item.id === props.focusCandidateId ? (el) => { if (el) { el.scrollIntoView({ block: "center" }); el.focus?.(); } } : undefined}
                 tabIndex={item.id === props.focusCandidateId ? -1 : undefined}
                 data-testid={item.id === props.focusCandidateId ? "candidate-focused" : undefined}
-                className={`surface-card p-4 sm:p-5 ${selected ? "border-teal-300 ring-1 ring-teal-200" : ""} ${item.id === props.focusCandidateId ? "border-teal-300 ring-2 ring-teal-200" : ""}`}
+                className={`rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-xs transition-all hover:border-slate-300 hover:shadow-sm ${selected ? "border-emerald-400 ring-2 ring-emerald-200" : ""} ${item.id === props.focusCandidateId ? "border-emerald-400 ring-2 ring-emerald-300" : ""}`}
               >
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="flex min-w-0 items-start gap-3">
@@ -271,7 +265,7 @@ export function CandidatePoolView(props: CandidatePoolViewProps) {
                         aria-label={`选择 ${item.name}`}
                         checked={selected}
                         onChange={() => props.onToggleSelect(item.id)}
-                        className="h-4 w-4 accent-teal-600"
+                        className="h-4 w-4 accent-emerald-600"
                       />
                     </label>
                     <div className="min-w-0 flex-1">
@@ -279,7 +273,7 @@ export function CandidatePoolView(props: CandidatePoolViewProps) {
                         <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
                           converted
                             ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                            : "border-teal-200 bg-teal-50 text-teal-800"
+                            : "border-slate-200 bg-slate-50 text-slate-700"
                         }`}>
                           {converted ? "已转任务" : STATUS_LABEL[item.status]}
                         </span>
@@ -288,7 +282,7 @@ export function CandidatePoolView(props: CandidatePoolViewProps) {
                         </span>
                         <span className="text-xs text-slate-500">{item.marketplace || "市场待确认"}</span>
                       </div>
-                      <h3 className="mt-3 break-words text-base font-semibold text-slate-950">{item.name}</h3>
+                      <h3 className="mt-2.5 break-words text-base font-semibold text-slate-950">{item.name}</h3>
                       {item.researchAction === "converted" && item.researchDecision ? (
                         <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-2 text-sm text-slate-700">
                           <div className="flex flex-wrap items-center gap-2">
@@ -316,9 +310,9 @@ export function CandidatePoolView(props: CandidatePoolViewProps) {
                   <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
                     {converted ? (
                       href ? (
-                        <Link href={href} className="linear-button-primary inline-flex h-10 items-center justify-center gap-2 px-4 text-sm font-semibold">
+                        <Link href={href} className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 text-xs font-semibold text-white shadow-xs hover:bg-emerald-700 active:scale-[0.98] transition-all">
                           查看研究记录
-                          <ArrowRight className="size-4" />
+                          <ArrowRight className="size-3.5" />
                         </Link>
                       ) : null
                     ) : href ? (
@@ -326,10 +320,10 @@ export function CandidatePoolView(props: CandidatePoolViewProps) {
                         type="button"
                         disabled={props.busy}
                         onClick={() => props.onStartItem?.(item)}
-                        className="linear-button-primary inline-flex h-10 items-center justify-center gap-2 px-4 text-sm font-semibold disabled:opacity-50"
+                        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 text-xs font-semibold text-white shadow-xs hover:bg-emerald-700 active:scale-[0.98] transition-all disabled:opacity-50"
                       >
                         开始研究
-                        <ArrowRight className="size-4" />
+                        <ArrowRight className="size-3.5" />
                       </button>
                     ) : (
                       <span className="max-w-xs text-sm leading-6 text-amber-700">
@@ -340,7 +334,7 @@ export function CandidatePoolView(props: CandidatePoolViewProps) {
                       type="button"
                       disabled={props.busy}
                       onClick={() => props.onDeleteItem(item.id)}
-                      className="h-9 rounded-lg border border-rose-200 px-3 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-40"
+                      className="inline-flex h-9 items-center justify-center rounded-xl border border-rose-200 bg-white px-3 text-xs font-semibold text-rose-700 hover:bg-rose-50 active:scale-[0.98] transition-all disabled:opacity-40"
                     >
                       {converted ? "移出研究池" : "删除"}
                     </button>

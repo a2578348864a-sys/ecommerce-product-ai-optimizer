@@ -16,7 +16,7 @@ import { isAgentRunTask, extractAgentRunSnapshot, extractListingPrepSnapshot } f
 import { extractAgentOutputSnapshotFromTask } from "@/lib/agentOutputSnapshot";
 import { AgentOutputSnapshotCard } from "@/components/AgentOutputSnapshotCard";
 import { DecisionEvidencePanel } from "@/components/DecisionEvidencePanel";
-import { EvidenceWorkbench, type ResearchMaterialRow } from "@/components/evidence/EvidenceWorkbench";
+import { EvidenceWorkbench, type EvidenceTabKey, type ResearchMaterialRow } from "@/components/evidence/EvidenceWorkbench";
 import { extractDecisionEvidenceSnapshot } from "@/lib/decisionEvidence";
 import { AgentRunTimeline } from "@/components/AgentRunTimeline";
 import { TaskDecisionHero } from "@/components/TaskDecisionHero";
@@ -1706,30 +1706,37 @@ const MODULE_EVIDENCE_TARGETS: Readonly<Record<string, string>> = {
 
 function FormalV2ModuleCard({ module, onNext }: { module: FormalV2Module; onNext: () => void }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4" data-testid={`formal-v2-module-${module.key}`}>
-      <div className="flex items-center gap-2">
-        <span className="text-xs font-semibold text-slate-400">{module.number}</span>
-        <h3 className="text-base font-semibold text-slate-950">{module.title}</h3>
+    <section className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs flex flex-col justify-between hover:border-emerald-300 hover:shadow-sm transition-all" data-testid={`formal-v2-module-${module.key}`}>
+      <div>
+        <div className="flex items-center gap-2">
+          <span className="flex size-6 items-center justify-center rounded-lg bg-emerald-50 text-xs font-bold text-emerald-700">{module.number}</span>
+          <h3 className="text-base font-bold text-slate-900">{module.title}</h3>
+        </div>
+        <div className="mt-3.5 space-y-3 text-sm leading-6">
+          <div>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">AI 结论</p>
+            <p className="mt-0.5 text-xs sm:text-sm font-medium text-slate-800">{module.conclusion}</p>
+          </div>
+          <div>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">关键依据</p>
+            {module.evidence.length ? (
+              <ul className="mt-1 space-y-1 text-xs text-slate-600">
+                {module.evidence.map((item) => (
+                  <li key={item} className="flex items-start gap-1.5">
+                    <span className="text-emerald-500 font-bold">·</span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="mt-1 text-xs text-slate-400 italic">尚未取得可核实的关键依据。</p>}
+          </div>
+          <div className="rounded-xl border border-amber-200/60 bg-amber-50/50 p-2.5">
+            <p className="text-[11px] font-bold text-amber-800">缺什么</p>
+            <p className="mt-0.5 text-xs leading-5 text-amber-900/90">{module.missing}</p>
+          </div>
+        </div>
       </div>
-      <div className="mt-4 space-y-3 text-sm leading-6">
-        <div>
-          <p className="text-xs font-semibold text-slate-400">AI 结论</p>
-          <p className="mt-1 text-slate-700">{module.conclusion}</p>
-        </div>
-        <div>
-          <p className="text-xs font-semibold text-slate-400">关键依据</p>
-          {module.evidence.length ? (
-            <ul className="mt-1 space-y-1 text-slate-700">
-              {module.evidence.map((item) => <li key={item}>· {item}</li>)}
-            </ul>
-          ) : <p className="mt-1 text-slate-500">尚未取得可核实的关键依据。</p>}
-        </div>
-        <div>
-          <p className="text-xs font-semibold text-amber-700">缺什么</p>
-          <p className="mt-1 text-amber-800">{module.missing}</p>
-        </div>
-      </div>
-      <button type="button" aria-controls={MODULE_EVIDENCE_TARGETS[module.key] ?? "formal-v2-materials"} onClick={onNext} className="linear-button mt-4 inline-flex h-9 items-center justify-center px-3 text-sm font-semibold">
+      <button type="button" aria-controls={MODULE_EVIDENCE_TARGETS[module.key] ?? "formal-v2-materials"} onClick={onNext} className="linear-button mt-4 inline-flex h-9 items-center justify-center px-3 text-xs sm:text-sm font-semibold">
         {module.nextLabel}
       </button>
     </section>
@@ -1892,6 +1899,7 @@ function FormalV2RecordContent({
   const primary = deriveFormalV2PrimaryAction({ statusKey: view.status.key, researchStale, taskType: record.type });
   const imageCopy = formalV2ImageCopy(view.hasImageDraft);
   const [primaryOpen, setPrimaryOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<EvidenceTabKey>("market");
   // 轮 13 一致性：EvidenceWorkbench live 研究资料清单（模块卡「缺什么」据此刷新）
   const [liveMaterial, setLiveMaterial] = useState<LiveMaterialState | null>(null);
   const materialSigRef = useRef("");
@@ -1905,21 +1913,38 @@ function FormalV2RecordContent({
   const liveModules = applyLiveMaterialRows(view.modules, liveMaterial);
 
   return (
-    <section className="surface-card p-5 sm:p-6" data-testid="formal-v2-product-result">
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5" aria-label="商品结论">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex min-w-0 items-start gap-4">
-            <ResearchProductImage image={record.productImage} alt={view.productName} size="detail" />
+    <section className="surface-card p-4 sm:p-6" data-testid="formal-v2-product-result">
+      {/* ── 01: 商品决策看板 Hero ── */}
+      <section className="rounded-2xl border border-slate-200/90 bg-white p-5 sm:p-6 shadow-xs" aria-label="商品结论">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 items-start gap-4 sm:gap-5">
+            <div className="shrink-0 rounded-xl border border-slate-100 overflow-hidden shadow-xs">
+              <ResearchProductImage image={record.productImage} alt={view.productName} size="detail" />
+            </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700">{researchStale ? "研究资料需重新确认" : view.status.label}</span>
-                <span className="text-xs text-slate-500">{view.category} · {view.market}</span>
+                <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${researchStale ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
+                  {researchStale ? "研究资料需重新确认" : view.status.label}
+                </span>
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+                  {view.category} · {view.market}
+                </span>
+                {view.asin ? (
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-mono text-slate-600">
+                    ASIN: {view.asin}
+                  </span>
+                ) : null}
               </div>
-              <h2 className="mt-2 break-words text-2xl font-semibold tracking-tight text-slate-950">{view.productName}</h2>
-              {view.asin ? <p className="mt-1 text-xs text-slate-500">ASIN：{view.asin}</p> : null}
-              <p className="mt-3 max-w-4xl text-sm font-semibold leading-6 text-slate-700">{view.headline}</p>
+              <h2 className="mt-2.5 break-words text-xl sm:text-2xl font-bold tracking-tight text-slate-950">{view.productName}</h2>
+              <div className="mt-3 rounded-xl border-l-4 border-emerald-500 bg-emerald-50/50 p-3 text-sm font-medium leading-relaxed text-slate-700">
+                <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider block mb-0.5">AI 辅助判断</span>
+                {view.headline}
+              </div>
               {publicProductUrl ? (
-                <a href={publicProductUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex text-sm font-semibold text-teal-700 hover:text-teal-900">查看商品来源</a>
+                <a href={publicProductUrl} target="_blank" rel="noopener noreferrer" className="mt-2.5 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-900 transition-colors">
+                  <span>查看商品来源链接</span>
+                  <span aria-hidden="true">↗</span>
+                </a>
               ) : null}
             </div>
           </div>
@@ -1934,34 +1959,59 @@ function FormalV2RecordContent({
         </div>
       </section>
 
+      {/* ── 4 模块速览与 Tab 联动卡片 ── */}
       <section className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4" aria-label="研究模块">
         {liveModules.map((module) => (
           <FormalV2ModuleCard
             key={module.key}
             module={module}
-            onNext={() => activateFormalV2Target(MODULE_EVIDENCE_TARGETS[module.key] ?? "formal-v2-materials", "h3")}
+            onNext={() => {
+              setActiveTab(module.key);
+              activateFormalV2Target(MODULE_EVIDENCE_TARGETS[module.key] ?? "formal-v2-materials", "h3");
+            }}
           />
         ))}
       </section>
 
+      {/* ── 02: 核对与补充当前研究资料（四维度工作台） ── */}
       <details
         id="formal-v2-materials"
-        className="mt-5 rounded-2xl border border-slate-200 bg-white p-4"
+        className="mt-5 rounded-2xl border border-slate-200/90 bg-white shadow-xs overflow-hidden"
         data-testid="formal-v2-materials"
         onToggle={(event) => setPrimaryOpen(event.currentTarget.open)}
       >
-        <summary className="cursor-pointer text-sm font-semibold text-slate-800">核对与补充当前研究资料</summary>
-        <p className="mt-2 text-xs leading-5 text-slate-500">这里只显示当前正式研究记录；缺失数据不会由 AI 猜测补齐。</p>
-        <div className="mt-4">
-          <EvidenceWorkbench taskId={record.id} result={result} sourceImageUrl={resolvePublicSourceImageUrl(result)} onDataChanged={onUpdated} onMaterialRowsChange={onMaterialRowsChange} />
+        <summary className="cursor-pointer bg-slate-50/70 px-5 py-3.5 text-sm font-semibold text-slate-800 hover:bg-slate-100/70 transition-colors flex items-center justify-between select-none">
+          <div className="flex items-center gap-2.5">
+            <span className="flex size-6 items-center justify-center rounded-lg bg-emerald-50 text-xs font-bold text-emerald-700">02</span>
+            <span>核对与补充当前研究资料（四维度工作台）</span>
+          </div>
+          <span className="text-xs font-normal text-slate-500">点击展开/折叠完整证据与录入表单</span>
+        </summary>
+        <div className="p-4 sm:p-5 border-t border-slate-100">
+          <p className="text-xs leading-5 text-slate-500 mb-3">这里只显示当前正式研究记录；缺失数据不会由 AI 猜测补齐。</p>
+          <EvidenceWorkbench
+            taskId={record.id}
+            result={result}
+            sourceImageUrl={resolvePublicSourceImageUrl(result)}
+            onDataChanged={onUpdated}
+            onMaterialRowsChange={onMaterialRowsChange}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+          />
         </div>
       </details>
 
+      {/* ── 03: 人工决定与状态门禁 ── */}
       {record.type === "workflow" ? (
-        <section id="product-research-decision" className="mt-5 rounded-2xl border border-slate-200 bg-white p-4" data-testid="research-decision-section">
-          <h2 className="text-base font-semibold text-slate-950">人工决定</h2>
-          <p className="mt-1 text-sm leading-6 text-slate-500">AI 只整理依据，是否继续由你确认。</p>
-          <ProductResearchDecisionPanel taskId={record.id} onUpdated={onUpdated} />
+        <section id="product-research-decision" className="mt-5 rounded-2xl border border-slate-200/90 bg-white p-5 sm:p-6 shadow-xs" data-testid="research-decision-section">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="flex size-6 items-center justify-center rounded-lg bg-emerald-50 text-xs font-bold text-emerald-700">03</span>
+            <h2 className="text-base font-bold text-slate-950">人工决定</h2>
+          </div>
+          <p className="mt-1 text-xs sm:text-sm leading-6 text-slate-500">AI 只整理依据，是否继续由你确认。</p>
+          <div className="mt-4">
+            <ProductResearchDecisionPanel taskId={record.id} onUpdated={onUpdated} />
+          </div>
           <ResearchCompletionControl
             taskId={record.id}
             result={result}
@@ -1972,26 +2022,40 @@ function FormalV2RecordContent({
         </section>
       ) : null}
 
-      <section id="listing-and-images" className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5" aria-label="Listing 与商品图片" data-testid="formal-v2-listing-images">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-base font-semibold text-slate-950">Listing 与商品图片</h2>
-          <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">发布前需人工确认</span>
+      {/* ── 04: Listing 与商品图片（创作工作流） ── */}
+      <section id="listing-and-images" className="mt-5 rounded-2xl border border-slate-200/90 bg-white p-5 sm:p-6 shadow-xs" aria-label="Listing 与商品图片" data-testid="formal-v2-listing-images">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <div className="flex items-center gap-2">
+            <span className="flex size-6 items-center justify-center rounded-lg bg-emerald-50 text-xs font-bold text-emerald-700">04</span>
+            <h2 className="text-base font-bold text-slate-950">Listing 与商品图片</h2>
+          </div>
+          <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">发布前需人工确认</span>
         </div>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <div className="rounded-xl border border-rose-100 bg-rose-50/50 p-4">
-            <p className="text-sm font-semibold text-rose-700">Listing</p>
-            <p className="mt-2 text-sm font-semibold leading-6 text-rose-700">
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-slate-900">Listing 文本草稿</p>
+              <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${view.hasListingDraft ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>
+                {view.hasListingDraft ? "已生成" : "待生成"}
+              </span>
+            </div>
+            <p className="mt-2 text-sm leading-6 text-slate-700 font-medium">
               {view.hasListingDraft ? "AI Listing 草稿已生成（未人工核实，暂不可发布）。" : "Listing 草稿尚未取得。"}
             </p>
-            <p className="mt-2 text-xs leading-5 text-slate-600">人工核实入口：点击下方「前往 Listing Studio 人工核对」，在「确认创作资料」区勾选「人工确认」并保存后，才可发布。</p>
+            <p className="mt-2 text-xs leading-5 text-slate-500">人工核实入口：点击下方「前往 Listing Studio 人工核对」，在「确认创作资料」区勾选「人工确认」并保存后，才可发布。</p>
             {!studioLegacyUnsupported && !researchStale ? (
               <Link href={`/listing-studio?taskId=${encodeURIComponent(record.id)}`} className="linear-button mt-4 inline-flex h-9 items-center justify-center px-3 text-sm font-semibold">前往 Listing Studio 人工核对</Link>
             ) : <p className="mt-3 text-xs font-semibold text-amber-700">{researchStale ? "研究资料已变化，请先重新确认研究。" : "当前记录的创作资料尚未取得。"}</p>}
           </div>
-          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-            <p className="text-sm font-semibold text-slate-900">商品图片</p>
-            <p className="mt-2 text-sm font-semibold leading-6 text-slate-800">{imageCopy.headline}</p>
-            <p className="mt-2 text-xs leading-5 text-slate-600">{imageCopy.guidance}</p>
+          <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-slate-900">商品图片素材</p>
+              <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${view.hasImageDraft ? "border-amber-200 bg-amber-50 text-amber-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>
+                {view.hasImageDraft ? "AI 图片待核验" : "无参考图"}
+              </span>
+            </div>
+            <p className="mt-2 text-sm leading-6 text-slate-800 font-medium">{imageCopy.headline}</p>
+            <p className="mt-2 text-xs leading-5 text-slate-500">{imageCopy.guidance}</p>
             {imageCopy.verificationReasons.length ? (
               <ul className="mt-2 space-y-1 text-xs leading-5 text-slate-600">
                 {imageCopy.verificationReasons.map((reason) => <li key={reason}>· {reason}</li>)}
