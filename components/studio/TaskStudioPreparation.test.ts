@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildPreparationFactOptions,
   buildPreparationPreferences,
+  canConfirmPreparation,
   defaultPreparationSelection,
   visualReferenceSourceLabel,
 } from "@/components/studio/TaskStudioPreparation";
@@ -142,3 +143,165 @@ describe("buildPreparationFactOptions", () => {
     });
   });
 });
+
+describe("canConfirmPreparation (Listing & Image Studio Gate 回归)", () => {
+  const basePreview: CreativeHandoffPreview = {
+    eligibility: "eligible",
+    expectedResearchRevision: 1,
+    expectedCurrentHandoffRevision: 0,
+    storageVersion: {
+      resultJsonHash: "a".repeat(64),
+      updatedAt: "2026-09-05T00:00:00.000Z",
+    },
+    candidateFactOptions: [],
+    confirmableFactCandidates: [],
+    currentConfirmedFacts: Array.from({ length: 14 }, (_, i) => ({
+      field: `fact_${i}`,
+      label: `事实${i}`,
+      value: `值${i}`,
+      sourceKind: "user_confirmation",
+    })),
+  };
+
+  it("1. Listing: currentConfirmedFacts = 14, selectableFactOptions = 0, selectedFacts = 0, confirmed = true → enabled", () => {
+    const res = canConfirmPreparation({
+      preview: basePreview,
+      kind: "listing",
+      confirmed: true,
+      selectedFacts: [],
+      selectedVisuals: [],
+    });
+    expect(res).toBe(true);
+  });
+
+  it("2. Listing: currentConfirmedFacts > 0, selectedFacts = 0, confirmed = false → disabled", () => {
+    const res = canConfirmPreparation({
+      preview: basePreview,
+      kind: "listing",
+      confirmed: false,
+      selectedFacts: [],
+      selectedVisuals: [],
+    });
+    expect(res).toBe(false);
+  });
+
+  it("3. Listing: currentConfirmedFacts = 0, selectedFacts > 0, confirmed = true → enabled", () => {
+    const zeroResearchPreview: CreativeHandoffPreview = {
+      ...basePreview,
+      currentConfirmedFacts: [],
+    };
+    const res = canConfirmPreparation({
+      preview: zeroResearchPreview,
+      kind: "listing",
+      confirmed: true,
+      selectedFacts: ["confirm:brand"],
+      selectedVisuals: [],
+    });
+    expect(res).toBe(true);
+  });
+
+  it("4. Listing: currentConfirmedFacts = 0, selectedFacts = 0, confirmed = true → disabled (零事实必须阻断)", () => {
+    const zeroFactsPreview: CreativeHandoffPreview = {
+      ...basePreview,
+      currentConfirmedFacts: [],
+    };
+    const res = canConfirmPreparation({
+      preview: zeroFactsPreview,
+      kind: "listing",
+      confirmed: true,
+      selectedFacts: [],
+      selectedVisuals: [],
+    });
+    expect(res).toBe(false);
+  });
+
+  it("5. 研究已确认事实字段覆盖来源候选：不需要重复选择，selectedFacts 可以为 0，仍可继续", () => {
+    const coveredPreview: CreativeHandoffPreview = {
+      ...basePreview,
+      currentConfirmedFacts: [
+        { field: "material", label: "材质", value: "304不锈钢", sourceKind: "user_confirmation" },
+      ],
+      confirmableFactCandidates: [],
+    };
+    const res = canConfirmPreparation({
+      preview: coveredPreview,
+      kind: "listing",
+      confirmed: true,
+      selectedFacts: [],
+      selectedVisuals: [],
+    });
+    expect(res).toBe(true);
+  });
+
+  it("6. 缺少前置关键版本字段时 fail-closed (disabled)", () => {
+    expect(canConfirmPreparation({
+      preview: null,
+      kind: "listing",
+      confirmed: true,
+      selectedFacts: [],
+    })).toBe(false);
+
+    expect(canConfirmPreparation({
+      preview: { ...basePreview, storageVersion: undefined },
+      kind: "listing",
+      confirmed: true,
+      selectedFacts: [],
+    })).toBe(false);
+
+    expect(canConfirmPreparation({
+      preview: { ...basePreview, expectedResearchRevision: undefined },
+      kind: "listing",
+      confirmed: true,
+      selectedFacts: [],
+    })).toBe(false);
+
+    expect(canConfirmPreparation({
+      preview: { ...basePreview, expectedCurrentHandoffRevision: undefined },
+      kind: "listing",
+      confirmed: true,
+      selectedFacts: [],
+    })).toBe(false);
+  });
+
+  it("7. Image Studio: 具备研究已确认事实，无需选视觉参考或补充事实即可继续", () => {
+    const res = canConfirmPreparation({
+      preview: basePreview,
+      kind: "image",
+      confirmed: true,
+      selectedFacts: [],
+      selectedVisuals: [],
+    });
+    expect(res).toBe(true);
+  });
+
+  it("8. Image Studio: 无事实但具备视觉参考批准，confirmed=true → enabled", () => {
+    const zeroFactsPreview: CreativeHandoffPreview = {
+      ...basePreview,
+      currentConfirmedFacts: [],
+    };
+    const res = canConfirmPreparation({
+      preview: zeroFactsPreview,
+      kind: "image",
+      confirmed: true,
+      selectedFacts: [],
+      selectedVisuals: ["visual-ref-1"],
+    });
+    expect(res).toBe(true);
+  });
+
+  it("9. Image Studio: 零事实且零视觉参考，confirmed=true → disabled", () => {
+    const zeroFactsPreview: CreativeHandoffPreview = {
+      ...basePreview,
+      currentConfirmedFacts: [],
+    };
+    const res = canConfirmPreparation({
+      preview: zeroFactsPreview,
+      kind: "image",
+      confirmed: true,
+      selectedFacts: [],
+      selectedVisuals: [],
+    });
+    expect(res).toBe(false);
+  });
+});
+

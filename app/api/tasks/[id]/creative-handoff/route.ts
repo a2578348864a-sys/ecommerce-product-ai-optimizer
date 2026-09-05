@@ -421,9 +421,15 @@ export async function POST(
       return errorResponse(400, "invalid_visual_reference_selection", "视觉参考选择无效。");
     }
 
-    // 纯视觉参考批准（无新事实）合法 — 与 Persistence 锁内 visualApprovalOnly 分支一致
-    // （继承当前 Handoff 的 confirmedFacts；若尚无 Handoff 则无事实可继承 → 拒绝）
-    if (selectedFactCandidateIds.length < 1 && manualConfirmedFacts.length < 1 && selectedVisualReferenceIds.length < 1) {
+    // 候选选择、手工事实、纯视觉参考批准，或研究已确认事实（Research Human Confirmed Facts）
+    // 至少一项成立时允许创建；均无事实基础时阻断
+    const hasResearchConfirmed = (gate.workbenchConfirmedFacts?.length ?? 0) > 0;
+    if (
+      selectedFactCandidateIds.length < 1 &&
+      manualConfirmedFacts.length < 1 &&
+      selectedVisualReferenceIds.length < 1 &&
+      !hasResearchConfirmed
+    ) {
       return errorResponse(400, "no_facts_selected", "请至少选择一项或填写一项可用的商品事实。");
     }
 

@@ -20,7 +20,37 @@ import {
   resolveStudioImageCreativeIntent,
 } from "@/lib/studioImageCreativeIntent";
 
-type PreparationKind = "listing" | "image";
+export type PreparationKind = "listing" | "image";
+
+export function canConfirmPreparation(params: {
+  preview: CreativeHandoffPreview | null;
+  kind: PreparationKind;
+  confirmed: boolean;
+  selectedFacts: string[];
+  selectedVisuals?: string[];
+}): boolean {
+  const { preview, kind, confirmed, selectedFacts, selectedVisuals = [] } = params;
+  const hasResearchConfirmedFacts = (preview?.currentConfirmedFacts?.length ?? 0) > 0;
+  const hasSelectableConfirmedFacts = selectedFacts.length > 0;
+  const hasListingFactBasis = hasResearchConfirmedFacts || hasSelectableConfirmedFacts;
+
+  return Boolean(
+    preview
+    && preview.expectedResearchRevision
+    && preview.storageVersion
+    && preview.expectedCurrentHandoffRevision !== undefined
+    && confirmed
+    && (
+      kind === "listing"
+        ? hasListingFactBasis
+        : (
+            hasResearchConfirmedFacts
+            || selectedFacts.length > 0
+            || selectedVisuals.length > 0
+          )
+    )
+  );
+}
 
 const FACT_LABELS: Record<string, string> = {
   brand: "品牌",
@@ -533,14 +563,17 @@ export function TaskStudioPreparation({
     );
   }
 
-  const canConfirm = Boolean(
-    preview
-    && preview.expectedResearchRevision
-    && preview.storageVersion
-    && preview.expectedCurrentHandoffRevision !== undefined
-    && (selectedFacts.length > 0 || (kind === "image" && selectedVisuals.length > 0))
-    && confirmed,
-  );
+  const hasResearchConfirmedFacts = (preview?.currentConfirmedFacts?.length ?? 0) > 0;
+  const hasSelectableConfirmedFacts = selectedFacts.length > 0;
+  const hasListingFactBasis = hasResearchConfirmedFacts || hasSelectableConfirmedFacts;
+
+  const canConfirm = canConfirmPreparation({
+    preview,
+    kind,
+    confirmed,
+    selectedFacts,
+    selectedVisuals,
+  });
 
   /** V4 Fact Authority：冲突面板「仍作为视觉参考使用」——确保已勾选待批准参考图并提示事实采用权威值 */
   function stillUseVisualAsReference() {
@@ -746,8 +779,10 @@ export function TaskStudioPreparation({
           </div>
         </fieldset>
       ) : (
-        <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-800">
-          当前没有可确认的来源快照事实；研究已确认事实会自动用于创作，无需再次勾选。如需补充新事实或修改已确认事实，请先回到商品研究处理。
+        <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-800" data-testid="task-studio-no-selectable-facts">
+          {hasResearchConfirmedFacts
+            ? "当前没有可确认的来源快照事实；研究已确认事实会自动用于创作，无需再次勾选。如需补充新事实或修改已确认事实，请先回到商品研究处理。"
+            : "当前没有可用于 Listing 的已确认商品事实，请先返回商品研究确认商品事实。"}
         </p>
       )}
 
@@ -863,6 +898,12 @@ export function TaskStudioPreparation({
         <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
         <span>我已核对以上商品事实、禁止声明与创作偏好；生成结果仅作为草稿，最终仍需人工复核。</span>
       </label>
+
+      {kind === "listing" && !hasListingFactBasis ? (
+        <p className="mt-3 text-sm font-semibold text-amber-700" role="alert" data-testid="task-studio-missing-fact-basis-notice">
+          当前没有可用于 Listing 的已确认商品事实，请先返回商品研究确认商品事实。
+        </p>
+      ) : null}
 
       {notice ? <p className="mt-3 text-sm font-semibold text-rose-700" role="alert">{notice}</p> : null}
 
