@@ -42,6 +42,7 @@ import { KeywordPendingSubmitCard, type KeywordPendingPreview } from "@/componen
 import { KeywordStrategyCard } from "./KeywordStrategyCard";
 import { CompetitorStrategyCard } from "./CompetitorStrategyCard";
 import { SourcingEvidencePanel } from "@/components/cross-border/SourcingEvidencePanel";
+import { ResearchCollectionOrchestratorCard } from "./ResearchCollectionOrchestratorCard";
 import { RESEARCH_MATERIAL_ROWS } from "@/lib/client/evidenceCompletion";
 import {
   getFactCandidates,
@@ -868,6 +869,24 @@ useEffect(() => {
 
   return (
     <section data-testid="evidence-workbench" className="mt-5 space-y-4">
+      {/* 资料编排卡片（置顶于当前研究资料/分类导航之上，紧贴研究资料主区域） */}
+      <ResearchCollectionOrchestratorCard
+        taskId={taskId}
+        onDataChanged={onDataChanged}
+        onNavigate={(tab, anchorId) => {
+          handleTabSelect(tab);
+          if (anchorId && typeof window !== "undefined") {
+            window.location.hash = anchorId;
+            setTimeout(() => {
+              const el = document.getElementById(anchorId);
+              if (el) {
+                el.scrollIntoView({ behavior: "smooth" });
+              }
+            }, 60);
+          }
+        }}
+      />
+
       {/* R7：当前研究资料（从各 资料 区实时 state 派生，确认保存后自动更新） */}
       <section data-testid="research-evidence-checklist" className="rounded-2xl border border-slate-200 bg-white p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1023,6 +1042,7 @@ useEffect(() => {
         </section>
 
         {/* ── 关键词策略（第2轮：默认摘要，编辑/原始资料折叠） ── */}
+        <div id="workbench-keyword-strategy" className="scroll-mt-6">
         <KeywordStrategyCard
           rows={(keywordReportEvidence?.rows ?? []).map((r) => ({ keyword: r.keyword, rowNumber: r.rowNumber }))}
           productName={productNameForBrief}
@@ -1085,7 +1105,9 @@ useEffect(() => {
           error={sectionErrors.keyword ?? null}
           rawEvidence={keywordReportEvidence ? { reportType: keywordReportEvidence.reportType, capturedAt: keywordReportEvidence.capturedAt, rows: keywordReportEvidence.rows } as never : null}
         />
+        </div>
         {/* ── 竞品策略（第2轮：默认摘要，管理/采集折叠） ── */}
+        <div id="workbench-competitor-strategy" className="scroll-mt-6">
         <CompetitorStrategyCard
           productName={productNameForBrief}
           entries={competitors.map((c) => ({
@@ -1107,6 +1129,7 @@ useEffect(() => {
           error={competitorError}
           busy={competitorBusy}
         />
+        </div>
         <BrowserUseCollectButton taskId={taskId} kind="competitor"
           storageVersion={storageVersion}
           collectRef={competitorCollectRef}
