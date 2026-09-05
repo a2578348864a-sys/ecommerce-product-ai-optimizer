@@ -13,6 +13,7 @@ import Link from "next/link";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { FactCandidateReview } from "@/components/evidence/FactCandidateReview";
+import { ReferenceListingDraftPanel } from "@/components/evidence/ReferenceListingDraftPanel";
 import type { DecisionStatus } from "@/lib/tasks/decisionStatus";
 import {
   KeywordReportEvidenceSection,
@@ -920,6 +921,12 @@ useEffect(() => {
         taskId={taskId}
         storageVersion={storageVersion}
         onChanged={() => onDataChanged?.()}
+      />
+
+      {/* 按现有资料生成参考初稿（基于采集资料，待人工复核） */}
+      <ReferenceListingDraftPanel
+        taskId={taskId}
+        onDraftGenerated={() => onDataChanged?.()}
       />
 
       {/* ── 简明结论（首屏） ── */}
