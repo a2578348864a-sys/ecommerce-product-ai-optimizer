@@ -88,6 +88,28 @@ class PreviewStore {
     return entry;
   }
 
+  findPending(query: { subjectKey: string; taskId: string; asin: string }): BrowserEvidenceStoredPreview | null {
+    this.prune();
+    const normalizedAsin = query.asin.trim().toUpperCase();
+    const now = Date.now();
+    let match: BrowserEvidenceStoredPreview | null = null;
+    for (const entry of this.entries.values()) {
+      if (
+        entry.subjectKey === query.subjectKey &&
+        entry.taskId === query.taskId &&
+        entry.asin.trim().toUpperCase() === normalizedAsin &&
+        entry.expiresAt > now
+      ) {
+        match = entry;
+      }
+    }
+    return match;
+  }
+
+  clearForTests(): void {
+    this.entries.clear();
+  }
+
   private prune(): void {
     const now = Date.now();
     for (const [id, entry] of this.entries) {
@@ -107,6 +129,18 @@ export function takeBrowserEvidencePreview(
   claim: { subjectKey: string; taskId: string },
 ): BrowserEvidenceStoredPreview | null {
   return previewStore.take(evidenceId, claim);
+}
+
+export function findPendingBrowserEvidencePreview(query: {
+  subjectKey: string;
+  taskId: string;
+  asin: string;
+}): BrowserEvidenceStoredPreview | null {
+  return previewStore.findPending(query);
+}
+
+export function resetBrowserEvidencePreviewStoreForTests(): void {
+  previewStore.clearForTests();
 }
 
 export class BrowserEvidenceCollectError extends Error {

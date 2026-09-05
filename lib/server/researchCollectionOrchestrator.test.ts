@@ -32,10 +32,13 @@ vi.mock("@/lib/server/browserEvidence", () => ({
   readBrowserEvidenceTaskAsin: mocks.readBrowserEvidenceTaskAsin,
 }));
 
-vi.mock("@/lib/server/browserEvidenceCollect", () => ({
-  collectBrowserEvidencePreview: mocks.collectBrowserEvidencePreview,
-  storeBrowserEvidencePreview: vi.fn(),
-}));
+vi.mock("@/lib/server/browserEvidenceCollect", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/server/browserEvidenceCollect")>();
+  return {
+    ...actual,
+    collectBrowserEvidencePreview: mocks.collectBrowserEvidencePreview,
+  };
+});
 
 vi.mock("@/lib/server/acquisitionCapability", () => ({
   resolveBrowserAcquisitionCapability: mocks.resolveBrowserAcquisitionCapability,
@@ -113,11 +116,52 @@ import {
   createSourcingPreview,
   resetSourcingPreviewStoreForTests,
 } from "./sourcingEvidence";
+import {
+  storeBrowserEvidencePreview,
+  findPendingBrowserEvidencePreview,
+  resetBrowserEvidencePreviewStoreForTests,
+} from "./browserEvidenceCollect";
 import type { AccessContext } from "./accessPassword";
 
 // ── 测试辅助数据 ─────────────────────────────────────────────────────────
 
 const ownerContext: AccessContext = { mode: "owner", token: "test-owner-token" };
+
+function buildSampleBrowserCollectPreview(asin = "B0SAMPLE01") {
+  return {
+    extraction: {
+      schemaVersion: "amazon-detail-page-extraction.v1" as const,
+      expectedAsin: asin,
+      urlAsin: asin,
+      pageAsin: asin,
+      pageStatus: "ok" as const,
+      capturedAt: new Date().toISOString(),
+      collectorVersion: "amazon-detail-page-extractor.v1",
+      entityBound: true,
+      bindingProof: {
+        urlMatchesExpected: true,
+        pageAnchorMatchesExpected: true,
+        productContainerFound: true,
+      },
+      fields: {
+        asin: { field: "asin" as const, value: asin, status: "correct" as const, reason: null },
+        title: { field: "title" as const, value: "Test Bento Box", status: "correct" as const, reason: null },
+        price: { field: "price" as const, value: 19.99, status: "correct" as const, reason: null },
+        bsr: { field: "bsr" as const, value: 100, status: "correct" as const, reason: null },
+        rating: { field: "rating" as const, value: 4.5, status: "correct" as const, reason: null },
+        reviews: { field: "reviews" as const, value: 200, status: "correct" as const, reason: null },
+      },
+    },
+    navigation: {
+      requestedUrl: `https://www.amazon.com/dp/${asin}`,
+      finalUrl: `https://www.amazon.com/dp/${asin}`,
+      httpStatus: 200,
+      navigationElapsedMs: 100,
+      allowedFinalOrigin: true,
+    },
+    calibration: null,
+  };
+}
 
 function buildTaskResultJson(asin = "B0SAMPLE01") {
   return JSON.stringify({
@@ -146,6 +190,7 @@ describe("researchCollectionOrchestrator", () => {
     _clearOrchestratorRunningStateForTests();
     _clearBrowserUsePreviewCacheForTests();
     resetSourcingPreviewStoreForTests();
+    resetBrowserEvidencePreviewStoreForTests();
 
     mocks.getRuntimeMode.mockReturnValue("local_owner");
     mocks.findFirst.mockResolvedValue({
@@ -156,7 +201,8 @@ describe("researchCollectionOrchestrator", () => {
 
     mocks.readBrowserEvidence.mockResolvedValue(null);
     mocks.readBrowserEvidenceTaskAsin.mockResolvedValue("B0SAMPLE01");
-    mocks.resolveBrowserAcquisitionCapability.mockReturnValue({ state: "ready" });
+    mocks.resolveBrowserAcquisitionCapability.mockReturnValue({ state: "available" });
+    mocks.collectBrowserEvidencePreview.mockResolvedValue(buildSampleBrowserCollectPreview("B0SAMPLE01"));
     mocks.getKeywordEvidence.mockResolvedValue(null);
     mocks.getCompetitorEvidence.mockResolvedValue(null);
     mocks.getReviewEvidence.mockResolvedValue(null);
@@ -287,12 +333,26 @@ describe("researchCollectionOrchestrator", () => {
         candidates: [],
       });
 
+      // 3. 注入待确认的 Amazon 详情 preview
+      const amazonPreviewId = "bev_preview_existing_001";
+      storeBrowserEvidencePreview({
+        evidenceId: amazonPreviewId,
+        preview: buildSampleBrowserCollectPreview("B0SAMPLE01"),
+        capturedAt: new Date().toISOString(),
+        expiresAt: Date.now() + 15 * 60 * 1000,
+        subjectKey: "owner:v1",
+        taskId: "task-001",
+        asin: "B0SAMPLE01",
+      });
+
       const result = await orchestrateResearchCollection({
         context: ownerContext,
         taskId: "task-001",
         action: "orchestrate",
       });
 
+      expect(result.sources.amazon.status).toBe("awaiting_confirmation");
+      expect(result.sources.amazon.previewId).toBe(amazonPreviewId);
       expect(result.sources.keywordCompetitor.status).toBe("awaiting_confirmation");
       expect(result.sources.keywordCompetitor.previewId).toBe(previewId);
       expect(result.sources.sourcing1688.status).toBe("awaiting_confirmation");
@@ -301,6 +361,158 @@ describe("researchCollectionOrchestrator", () => {
       // 铁律验证：已有 pending 不调用采集
       expect(mocks.runSellerSpriteCollection).not.toHaveBeenCalled();
       expect(mocks.runAmazonCompetitorCollection).not.toHaveBeenCalled();
+      expect(mocks.collectBrowserEvidencePreview).not.toHaveBeenCalled();
+    });
+
+    it("Amazon 首次采集生成 Pending Preview，未确认前二次编排返回 awaiting_confirmation 且采集器调用增量为 0", async () => {
+      // 第一次编排：未有 Pending Preview，触发采集
+      const result1 = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "orchestrate",
+      });
+
+      expect(result1.sources.amazon.status).toBe("awaiting_confirmation");
+      expect(result1.sources.amazon.hasEvidence).toBe(false);
+      const firstPreviewId = result1.sources.amazon.previewId;
+      expect(firstPreviewId).toBeTruthy();
+      expect(mocks.collectBrowserEvidencePreview).toHaveBeenCalledTimes(1);
+
+      // 第二次编排：已有有效的 Pending Preview，命中幂等保护，不再触发采集（delta = 0）
+      const result2 = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "orchestrate",
+      });
+
+      expect(result2.sources.amazon.status).toBe("awaiting_confirmation");
+      expect(result2.sources.amazon.hasEvidence).toBe(false);
+      expect(result2.sources.amazon.previewId).toBe(firstPreviewId);
+      expect(result2.sources.amazon.message).toBe("Amazon 详情已有待确认采集预览");
+      expect(mocks.collectBrowserEvidencePreview).toHaveBeenCalledTimes(1); // delta = 0
+    });
+
+    it("inspect 探测阶段若存在 Amazon Pending Preview，直接返回 awaiting_confirmation 且不调用采集器", async () => {
+      storeBrowserEvidencePreview({
+        evidenceId: "bev_preview_inspect_test",
+        preview: buildSampleBrowserCollectPreview("B0SAMPLE01"),
+        capturedAt: new Date().toISOString(),
+        expiresAt: Date.now() + 15 * 60 * 1000,
+        subjectKey: "owner:v1",
+        taskId: "task-001",
+        asin: "B0SAMPLE01",
+      });
+
+      const result = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "inspect",
+      });
+
+      expect(result.sources.amazon.status).toBe("awaiting_confirmation");
+      expect(result.sources.amazon.previewId).toBe("bev_preview_inspect_test");
+      expect(result.sources.amazon.message).toBe("Amazon 详情已有待确认采集预览");
+      expect(mocks.collectBrowserEvidencePreview).not.toHaveBeenCalled();
+    });
+
+    it("任务隔离：task-001 的 Amazon Pending Preview 不会被 task-002 误用", async () => {
+      storeBrowserEvidencePreview({
+        evidenceId: "bev_preview_task_001",
+        preview: buildSampleBrowserCollectPreview("B0SAMPLE01"),
+        capturedAt: new Date().toISOString(),
+        expiresAt: Date.now() + 15 * 60 * 1000,
+        subjectKey: "owner:v1",
+        taskId: "task-001",
+        asin: "B0SAMPLE01",
+      });
+
+      mocks.findFirst.mockResolvedValue({
+        id: "task-002",
+        updatedAt: new Date("2026-09-01T00:00:00.000Z"),
+        resultJson: buildTaskResultJson("B0SAMPLE01"),
+      });
+
+      const result = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-002",
+        action: "orchestrate",
+      });
+
+      expect(result.sources.amazon.status).toBe("awaiting_confirmation");
+      expect(result.sources.amazon.previewId).not.toBe("bev_preview_task_001");
+      expect(mocks.collectBrowserEvidencePreview).toHaveBeenCalledTimes(1);
+    });
+
+    it("ASIN 隔离：同一任务若 ASIN 发生变更，不复用旧 ASIN 的 Pending Preview", async () => {
+      storeBrowserEvidencePreview({
+        evidenceId: "bev_preview_old_asin",
+        preview: buildSampleBrowserCollectPreview("B0OLDASIN01"),
+        capturedAt: new Date().toISOString(),
+        expiresAt: Date.now() + 15 * 60 * 1000,
+        subjectKey: "owner:v1",
+        taskId: "task-001",
+        asin: "B0OLDASIN01",
+      });
+
+      mocks.readBrowserEvidenceTaskAsin.mockResolvedValue("B0NEWASIN02");
+
+      const result = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "orchestrate",
+      });
+
+      expect(result.sources.amazon.status).toBe("awaiting_confirmation");
+      expect(result.sources.amazon.previewId).not.toBe("bev_preview_old_asin");
+      expect(mocks.collectBrowserEvidencePreview).toHaveBeenCalledTimes(1);
+    });
+
+    it("过期失效：已过期的 Amazon Pending Preview 自动失效并允许重新采集", async () => {
+      storeBrowserEvidencePreview({
+        evidenceId: "bev_preview_expired",
+        preview: buildSampleBrowserCollectPreview("B0SAMPLE01"),
+        capturedAt: new Date(Date.now() - 3600 * 1000).toISOString(),
+        expiresAt: Date.now() - 1000, // 已过期
+        subjectKey: "owner:v1",
+        taskId: "task-001",
+        asin: "B0SAMPLE01",
+      });
+
+      const result = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "orchestrate",
+      });
+
+      expect(result.sources.amazon.status).toBe("awaiting_confirmation");
+      expect(result.sources.amazon.previewId).not.toBe("bev_preview_expired");
+      expect(mocks.collectBrowserEvidencePreview).toHaveBeenCalledTimes(1);
+    });
+
+    it("主体隔离：Owner 与 Visitor 互不可见彼此的 Amazon Pending Preview", () => {
+      storeBrowserEvidencePreview({
+        evidenceId: "bev_preview_owner",
+        preview: buildSampleBrowserCollectPreview("B0SAMPLE01"),
+        capturedAt: new Date().toISOString(),
+        expiresAt: Date.now() + 15 * 60 * 1000,
+        subjectKey: "owner:v1",
+        taskId: "task-001",
+        asin: "B0SAMPLE01",
+      });
+
+      const ownerPending = findPendingBrowserEvidencePreview({
+        subjectKey: "owner:v1",
+        taskId: "task-001",
+        asin: "B0SAMPLE01",
+      });
+      const visitorPending = findPendingBrowserEvidencePreview({
+        subjectKey: "visitor:demo-user-123",
+        taskId: "task-001",
+        asin: "B0SAMPLE01",
+      });
+
+      expect(ownerPending?.evidenceId).toBe("bev_preview_owner");
+      expect(visitorPending).toBeNull();
     });
   });
 
