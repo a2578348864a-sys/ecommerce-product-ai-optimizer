@@ -332,14 +332,16 @@ async function handleKeywordCompetitorSource(
     // 1. 检查已保存的正式证据：竞品与关键词
     const compEvidence = await getCompetitorEvidence(context, taskId);
     const kwEvidence = await getKeywordEvidence(context, taskId);
-    const hasComp = compEvidence !== null && compEvidence.asins.length > 0;
-    const hasKw = kwEvidence !== null && kwEvidence.rows.length > 0;
+    const compAsins = (compEvidence?.asins ?? (compEvidence as unknown as { competitors?: unknown[] })?.competitors) ?? [];
+    const kwRows = (kwEvidence?.rows ?? (kwEvidence as unknown as { items?: unknown[] })?.items) ?? [];
+    const hasComp = compEvidence !== null && compAsins.length > 0;
+    const hasKw = kwEvidence !== null && kwRows.length > 0;
 
     if (hasComp && hasKw) {
       return {
         status: "ready",
         hasEvidence: true,
-        itemCount: compEvidence.asins.length + kwEvidence.rows.length,
+        itemCount: compAsins.length + kwRows.length,
         message: "关键词与竞品资料已就绪",
       };
     }

@@ -213,10 +213,12 @@ describe("researchCollectionOrchestrator", () => {
       });
       mocks.getKeywordEvidence.mockResolvedValue({
         schema: "keyword-evidence.v1",
+        rows: [{ keyword: "bento box" }],
         items: [{ keyword: "bento box" }],
       });
       mocks.getCompetitorEvidence.mockResolvedValue({
         schema: "competitor-evidence.v1",
+        asins: [{ asin: "B0COMP01" }],
         competitors: [{ asin: "B0COMP01" }],
       });
       mocks.getReviewEvidence.mockResolvedValue({
