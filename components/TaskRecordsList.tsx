@@ -877,60 +877,52 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
           </header>
 
           <section className="surface-card p-5 sm:p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-bold text-teal-700">{view === "research" ? "商品研究" : "研究记录"}</p>
-                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">{view === "research" ? "商品研究" : "研究记录"}</h2>
-                <p className="muted-text mt-1 text-sm">{view === "research"
-                  ? "继续正在进行或等待补充资料的商品研究。"
-                  : "已经形成历史结果的研究：已完成、已放弃的研究记录。"}</p>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+              {/* OA1（Option B）：进度分组 Tab（进行中/待补信息/已完成/已放弃） */}
+              <div className="flex flex-wrap gap-2" role="tablist" aria-label="研究进度分组">
+                {view === "research"
+                  ? deriveResearchViewTabs().map((tab) => (
+                    <button
+                      key={tab.value || "all"}
+                      type="button"
+                      role="tab"
+                      aria-selected={researchTab === tab.value}
+                      onClick={() => setResearchTab(tab.value)}
+                      data-testid={"research-tab-" + (tab.value || "all")}
+                      className={`rounded-full border px-4 py-1.5 text-xs sm:text-sm font-semibold transition ${
+                        researchTab === tab.value
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-emerald-200"
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))
+                  : ([
+                    { value: "completed", label: "已完成" },
+                    { value: "abandoned", label: "已放弃" },
+                    { value: "historical", label: "历史" },
+                    { value: "", label: "全部" },
+                  ] as Array<{ value: "" | "completed" | "abandoned" | "historical"; label: string }>).map((tab) => (
+                    <button
+                      key={tab.value || "all"}
+                      type="button"
+                      role="tab"
+                      aria-selected={scope === tab.value}
+                      onClick={() => onScopeChange(tab.value)}
+                      className={`rounded-full border px-4 py-1.5 text-xs sm:text-sm font-semibold transition ${
+                        scope === tab.value
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-emerald-200"
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
               </div>
-              <span className="status-pill px-3 py-1 text-sm">
-                {page ? `${page.total} 条` : `${items.length} 条`}
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                共 {page ? page.total : items.length} 条记录
               </span>
-            </div>
-
-            {/* OA1（Option B）：进度分组 Tab（进行中/待补信息/已完成/已放弃） */}
-            <div className="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="研究进度分组">
-              {view === "research"
-                ? deriveResearchViewTabs().map((tab) => (
-                  <button
-                    key={tab.value || "all"}
-                    type="button"
-                    role="tab"
-                    aria-selected={researchTab === tab.value}
-                    onClick={() => setResearchTab(tab.value)}
-                    data-testid={"research-tab-" + (tab.value || "all")}
-                    className={`rounded-full border px-4 py-1.5 text-sm font-semibold transition ${
-                      researchTab === tab.value
-                        ? "border-teal-300 bg-teal-50 text-teal-800"
-                        : "border-slate-200 bg-white text-slate-600 hover:border-teal-200"
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))
-                : ([
-                  { value: "completed", label: "已完成" },
-                  { value: "abandoned", label: "已放弃" },
-                  { value: "historical", label: "历史" },
-                  { value: "", label: "全部" },
-                ] as Array<{ value: "" | "completed" | "abandoned" | "historical"; label: string }>).map((tab) => (
-                  <button
-                    key={tab.value || "all"}
-                    type="button"
-                    role="tab"
-                    aria-selected={scope === tab.value}
-                    onClick={() => onScopeChange(tab.value)}
-                    className={`rounded-full border px-4 py-1.5 text-sm font-semibold transition ${
-                      scope === tab.value
-                        ? "border-teal-300 bg-teal-50 text-teal-800"
-                        : "border-slate-200 bg-white text-slate-600 hover:border-teal-200"
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
             </div>
 
             {view === "research" && runStatusUnavailable ? (
@@ -1225,7 +1217,7 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
                     return (
                       <article
                         key={item.id}
-                        className={`linear-panel p-5 ${highlighted ? "border-emerald-300 bg-emerald-50/60 ring-2 ring-emerald-200" : ""}`}
+                        className={`rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs transition-all hover:border-slate-300 hover:shadow-sm ${highlighted ? "border-emerald-400 bg-emerald-50/40 ring-2 ring-emerald-300" : ""}`}
                       >
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                           <div className="min-w-0 flex-1">
@@ -1236,10 +1228,10 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
                               />
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500">
-                                  <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">
+                                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
                                     {sourceLabel(item.source)}
                                   </span>
-                                  <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold text-slate-600">
+                                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-600">
                                     {researchStatus.label}
                                   </span>
                                   {groupView ? (
@@ -1258,21 +1250,21 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
                                 </p>
                               </div>
                             </div>
-                            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
                               {[
                                 ["来源", sourceLabel(item.source)],
                                 ["研究状态", researchStatus.label],
                                 ["当前决定", decisionLabel],
                                 ["风险", summary.riskLabel],
                               ].map(([label, value]) => (
-                                <div key={label} className="rounded-2xl border border-slate-200 bg-white/80 p-3">
-                                  <p className="text-xs font-bold text-slate-400">{label}</p>
-                                  <p className="mt-1 line-clamp-2 text-sm font-semibold leading-5 text-slate-800">{value}</p>
+                                <div key={label} className="rounded-xl border border-slate-100 bg-slate-50/80 p-2.5">
+                                  <p className="text-[11px] font-semibold text-slate-400">{label}</p>
+                                  <p className="mt-0.5 line-clamp-1 text-xs font-bold text-slate-800">{value}</p>
                                 </div>
                               ))}
                             </div>
                             <div className="mt-3 flex flex-wrap items-center gap-2">
-                              <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">
+                              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
                                 历史成果：{artifactLabel}
                               </span>
                               <span className="text-xs text-slate-500">研究时间：{formatDate(item.createdAt)}</span>
@@ -1289,20 +1281,20 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
                                 className="size-4 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                               />
                             ) : null}
-                            <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700">
+                            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
                               {researchStatus.label}
                             </span>
                             {/* Primary actions（OA3：新任务不误导为"结果"） */}
                             <Link
                               href={view === "research" ? `/tasks/${item.id}?from=research` : `/tasks/${item.id}`}
-                              className="linear-button-primary inline-flex h-8 items-center px-3 text-xs font-semibold"
+                              className="inline-flex h-8 items-center justify-center rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white shadow-xs hover:bg-emerald-700 active:scale-[0.98] transition-all"
                             >
                               {view === "research" ? "继续研究" : (researchStatus.key === "completed" ? "查看研究记录" : "打开研究")}
                             </Link>
                             <button
                               type="button"
                               onClick={() => setOpenId(open ? "" : item.id)}
-                              className="linear-button inline-flex h-8 items-center px-3 text-xs font-semibold"
+                              className="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-all"
                             >
                               {open ? "收起更多" : "查看更多"}
                             </button>

@@ -1,31 +1,32 @@
+:root,
 :where(.listing-studio-page, .image-studio-page) {
   --brand-50: #f8fafc;
-  --brand-100: #ecfdf8;
-  --brand-200: #b4ece3;
+  --brand-100: #ecfdf5;
+  --brand-200: #a7f3d0;
   --brand-300: var(--brand-200);
   --brand-core: var(--brand-100);
-  --brand-400: #4d9b94;
-  --brand-500: var(--brand-600);
-  --brand-600: #0f766e;
-  --brand-700: var(--brand-600);
+  --brand-400: #34d399;
+  --brand-500: #10b981;
+  --brand-600: #059669;
+  --brand-700: #047857;
 
-  --app-bg: #f6f8fa;
-  --app-background: #f6f8fa;
+  --app-bg: #f8fafc;
+  --app-background: #f8fafc;
   --panel-bg: #ffffff;
   --panel-soft: #f8fafc;
   --panel-accent: var(--brand-100);
   --surface: #ffffff;
   --surface-soft: #f8fafc;
-  --surface-glass: rgba(255, 255, 255, 0.96);
-  --border-soft: #e5e7eb;
+  --surface-glass: rgba(255, 255, 255, 0.98);
+  --border-soft: rgba(15, 23, 42, 0.08);
   --text-primary: #0f172a;
   --text-secondary: #64748b;
   --accent: var(--brand-core);
   --accent-foreground: var(--brand-600);
   --accent-soft: var(--brand-100);
   --action-primary: var(--brand-600);
-  --action-primary-hover: color-mix(in srgb, var(--brand-600) 88%, #000000);
-  --action-primary-active: color-mix(in srgb, var(--brand-600) 78%, #000000);
+  --action-primary-hover: var(--brand-700);
+  --action-primary-active: #065f46;
   --action-primary-foreground: #ffffff;
 
   --color-paper: var(--app-background);

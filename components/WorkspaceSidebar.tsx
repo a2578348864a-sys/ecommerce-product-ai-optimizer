@@ -174,7 +174,7 @@ function NavLink({
         className={
           "flex items-center justify-center rounded-lg border bg-white " +
           (compact ? "size-6 " : "size-7 ") +
-          (active ? "border-teal-200 text-teal-700" : "border-slate-200 text-slate-500")
+          (active ? "border-emerald-200 text-emerald-700 shadow-xs" : "border-slate-200/80 text-slate-500")
         }
       >
         <Icon className={compact ? "size-3.5" : "size-4"} />
@@ -221,53 +221,58 @@ export function WorkspaceSidebar() {
     <>
       <DemoAccessBanner />
       <aside className="hidden lg:block">
-        <div className="sticky top-4 flex flex-col gap-3">
-          {sharedProduct.productName ? (
-          <div className="surface-card rounded-2xl border-teal-200 bg-teal-50/60 p-3">
-            <div className="flex items-center gap-2">
-              <Package className="size-4 shrink-0 text-teal-600" />
-              <p className="text-xs font-semibold text-teal-600">当前研究商品</p>
-            </div>
-            <p className="mt-1 truncate text-sm font-bold text-teal-900">{productLabel}</p>
-            <p className="mt-0.5 text-xs text-teal-600">{productMeta}</p>
-          </div>
-        ) : null}
-
-        <div className="surface-card p-3">
-          <div className="flex items-start gap-3">
-            <div className="linear-icon size-9 shrink-0 rounded-xl">
-              <Sparkles className="size-5" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <p className="text-xs font-semibold text-teal-700">轻选工作台</p>
-                {runtime.mode === "public_showcase" ? (
-                  <span className="rounded border border-teal-200 bg-teal-50 px-1 py-0.5 text-[10px] font-bold text-teal-700">演示</span>
+        <div className="sticky top-4 flex flex-col gap-2.5">
+          <div className="surface-card flex flex-col p-3.5 shadow-sm">
+            {/* 顶部品牌与模式 */}
+            <div className="flex items-start gap-3 pb-3 border-b border-slate-100">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100">
+                <Sparkles className="size-4.5" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs font-bold text-emerald-800 tracking-tight">轻选工作台</span>
+                  {runtime.mode === "public_showcase" ? (
+                    <span className="rounded border border-emerald-200 bg-emerald-50 px-1 py-0.2 text-[10px] font-bold text-emerald-700">演示</span>
+                  ) : null}
+                </div>
+                <p className="mt-0.5 text-xs font-semibold text-slate-800 leading-snug">
+                  AI 跨境商品研究与上架准备工作台
+                </p>
+                <p className="text-[11px] text-slate-400 mt-0.5">辅助研究 · 人工决定</p>
+                {badge ? (
+                  <p data-testid="sidebar-mode-badge" className="mt-1 inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.2 text-[10px] font-semibold text-slate-600">{badge}</p>
                 ) : null}
               </div>
-              <p className="mt-0.5 break-words text-sm font-semibold leading-5 text-slate-950">
-                AI 跨境商品研究与上架准备工作台
-              </p>
-              <p className="muted-text mt-1 text-sm leading-6">辅助研究 · 人工决定</p>
-              {badge ? (
-                <p data-testid="sidebar-mode-badge" className="mt-1.5 inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{badge}</p>
-              ) : null}
             </div>
+
+            {/* 中部主导航 */}
+            <nav className="pt-2.5" aria-label="工作台导航">
+              {groups.map((group, index) => (
+                <section key={group.label} className={index > 0 ? "mt-3 border-t border-slate-100/80 pt-2.5" : ""}>
+                  <p className="px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{group.label}</p>
+                  {group.items.map((item) => (
+                    <NavLink key={item.href} item={item} pathname={pathname} search={search} hasActiveDetail={hasActiveDetail} />
+                  ))}
+                </section>
+              ))}
+            </nav>
+
+            {/* 底部当前研究商品常驻卡（复用既有 useSharedProduct） */}
+            {sharedProduct.productName ? (
+              <div className="mt-3.5 pt-3 border-t border-slate-100">
+                <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/50 p-2.5 transition hover:bg-emerald-50">
+                  <div className="flex items-center gap-1.5 text-emerald-700">
+                    <Package className="size-3.5 shrink-0" />
+                    <span className="text-[11px] font-semibold">当前研究商品</span>
+                  </div>
+                  <p className="mt-1 truncate text-xs font-bold text-slate-800" title={productLabel}>{productLabel}</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">{productMeta}</p>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
-
-        <nav className="surface-card p-2" aria-label="工作台导航">
-          {groups.map((group, index) => (
-            <section key={group.label} className={index > 0 ? "mt-3 border-t border-slate-100 pt-3" : ""}>
-              <p className="px-2 pb-1 text-xs font-semibold text-teal-700">{group.label}</p>
-              {group.items.map((item) => (
-                <NavLink key={item.href} item={item} pathname={pathname} search={search} hasActiveDetail={hasActiveDetail} />
-              ))}
-            </section>
-          ))}
-        </nav>
-      </div>
-    </aside>
+      </aside>
     </>
   );
 }

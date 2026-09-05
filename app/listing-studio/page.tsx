@@ -23,7 +23,7 @@ export default async function ListingStudioPage({ searchParams }: ListingStudioP
                 <p className={styles.headerEyebrow}>AI Content Workspace</p>
                 <div className="flex flex-wrap items-center gap-3">
                   <h1>Listing Studio</h1>
-                  <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-bold text-teal-700">
+                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
                     {sourceLabel}
                   </span>
                 </div>
