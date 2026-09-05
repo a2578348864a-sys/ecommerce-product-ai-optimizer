@@ -17,6 +17,7 @@ import { extractAgentOutputSnapshotFromTask } from "@/lib/agentOutputSnapshot";
 import { AgentOutputSnapshotCard } from "@/components/AgentOutputSnapshotCard";
 import { DecisionEvidencePanel } from "@/components/DecisionEvidencePanel";
 import { EvidenceWorkbench, type EvidenceTabKey, type ResearchMaterialRow } from "@/components/evidence/EvidenceWorkbench";
+import { ReferenceListingDraftPanel } from "@/components/evidence/ReferenceListingDraftPanel";
 import { extractDecisionEvidenceSnapshot } from "@/lib/decisionEvidence";
 import { AgentRunTimeline } from "@/components/AgentRunTimeline";
 import { TaskDecisionHero } from "@/components/TaskDecisionHero";
@@ -1823,6 +1824,9 @@ function LegacyRecordContent({
       {decisionEvidence ? <DecisionEvidencePanel evidence={decisionEvidence} compact /> : null}
       {result ? <EvidenceWorkbench taskId={record.id} result={result} onDataChanged={onUpdated} /> : null}
       {result ? <WorkflowResultSection result={result} /> : null}
+      <section className="mt-6 border-t border-slate-200 pt-6" aria-label="下一步：Listing 准备情况">
+        <ReferenceListingDraftPanel taskId={record.id} onDraftGenerated={onUpdated} />
+      </section>
       <RecordFooter isActiveResearchView={isActiveResearchView} deleting={deleting} deleteError={deleteError} onDelete={onDelete} />
     </section>
   );
@@ -2029,6 +2033,14 @@ function FormalV2RecordContent({
           />
         </section>
       ) : null}
+
+      {/* ── 下一步：Listing 准备情况（归入下一步创作动作） ── */}
+      <section id="formal-v2-next-action-draft" className="mt-6 border-t border-slate-200 pt-6" aria-label="下一步：Listing 准备情况">
+        <ReferenceListingDraftPanel
+          taskId={record.id}
+          onDraftGenerated={onUpdated}
+        />
+      </section>
 
       {/* ── 04: Listing 与商品图片（创作工作流） ── */}
       <section id="listing-and-images" className="mt-5 rounded-2xl border border-slate-200/90 bg-white p-5 sm:p-6 shadow-xs" aria-label="Listing 与商品图片" data-testid="formal-v2-listing-images">

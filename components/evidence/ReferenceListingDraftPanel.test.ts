@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-describe("ReferenceListingDraftPanel Component Source & Contract Check", () => {
+describe("ListingPreparationSummary (ReferenceListingDraftPanel) Contract & Retirement Check", () => {
   const panelSource = readFileSync(
     resolve(process.cwd(), "components/evidence/ReferenceListingDraftPanel.tsx"),
     "utf8",
@@ -11,50 +11,63 @@ describe("ReferenceListingDraftPanel Component Source & Contract Check", () => {
     resolve(process.cwd(), "components/evidence/EvidenceWorkbench.tsx"),
     "utf8",
   );
+  const taskDetailSource = readFileSync(
+    resolve(process.cwd(), "components/TaskRecordDetail.tsx"),
+    "utf8",
+  );
 
-  it("面板必须包含法定身份标记：研究对象参考初稿 · 基于采集资料，待人工复核", () => {
-    expect(panelSource).toContain("按现有资料生成参考初稿");
-    expect(panelSource).toContain("研究对象参考初稿 · 基于采集资料，待人工复核");
-    expect(panelSource).toContain("data-testid=\"reference-listing-draft-panel\"");
-    expect(panelSource).toContain("data-testid=\"draft-identity-badge\"");
+  it("已彻底撤下参考初稿生成器与编辑组件（无生成按钮、无输入框、无复制下载、无本地缓存暂存）", () => {
+    // 不再包含初稿生成标题
+    expect(panelSource).not.toContain("按现有资料生成参考初稿");
+    // 不再包含初稿生成按钮
+    expect(panelSource).not.toContain("data-testid=\"generate-reference-draft-btn\"");
+    // 不再包含标题、卖点、描述输入控件
+    expect(panelSource).not.toContain("data-testid=\"reference-draft-title-input\"");
+    expect(panelSource).not.toContain("data-testid=\"reference-draft-desc-input\"");
+    expect(panelSource).not.toContain("reference-draft-bullet-");
+    // 不再包含复制文案与下载 Markdown 按钮
+    expect(panelSource).not.toContain("data-testid=\"copy-reference-draft-btn\"");
+    expect(panelSource).not.toContain("data-testid=\"download-reference-draft-btn\"");
+    expect(panelSource).not.toContain("handleDownloadMarkdown");
+    // 不再包含 POST 请求
+    expect(panelSource).not.toContain("method: \"POST\"");
+    expect(panelSource).not.toContain("method: 'POST'");
   });
 
-  it("面板必须包含主生成按钮及编辑字段（标题、卖点、描述）", () => {
-    expect(panelSource).toContain("data-testid=\"generate-reference-draft-btn\"");
-    expect(panelSource).toContain("data-testid=\"reference-draft-title-input\"");
-    expect(panelSource).toContain("data-testid=\"reference-draft-desc-input\"");
-    expect(panelSource).toContain("reference-draft-bullet-");
+  it("面板结构转换为「Listing 准备情况」只读摘要，包含统计、详情折叠区与 Listing Studio 正式入口", () => {
+    // 结构 ID 与 TestId
+    expect(panelSource).toContain("id=\"listing-preparation-summary\"");
+    expect(panelSource).toContain("data-testid=\"listing-preparation-summary\"");
+    // 面板标题与待复核徽章
+    expect(panelSource).toContain("Listing 准备情况");
+    expect(panelSource).toContain("资料整理分析 · 待人工复核");
+    // 统计项
+    expect(panelSource).toContain("可用于 Listing 准备：");
+    expect(panelSource).toContain("data-testid=\"adopted-count\"");
+    expect(panelSource).toContain("暂不采用：");
+    expect(panelSource).toContain("data-testid=\"excluded-count\"");
+    // 仅基础身份信息时不足以支撑 Listing 准备的诚实警示
+    expect(panelSource).toContain("data-testid=\"insufficient-warning\"");
+    expect(panelSource).toContain("⚠️ 当前仅整理出基础身份信息，暂无足够的实质规格资料，尚不足以支撑完整 Listing 准备。");
+    // 直达 Listing Studio 正式入口
+    expect(panelSource).toContain("data-testid=\"goto-listing-studio-btn\"");
+    expect(panelSource).toContain("/listing-studio?taskId=");
+    expect(panelSource).toContain("进入 Listing Studio");
+    // 折叠依据详情与清单
+    expect(panelSource).toContain("data-testid=\"listing-prep-details\"");
+    expect(panelSource).toContain("data-testid=\"adopted-materials-list\"");
+    expect(panelSource).toContain("data-testid=\"excluded-materials-list\"");
+    // 导出别名
+    expect(panelSource).toContain("export { ReferenceListingDraftPanel as ListingPreparationSummary }");
   });
 
-  it("必须提供复制文案与下载 Markdown 操作", () => {
-    expect(panelSource).toContain("data-testid=\"copy-reference-draft-btn\"");
-    expect(panelSource).toContain("data-testid=\"download-reference-draft-btn\"");
-    expect(panelSource).toContain("handleDownloadMarkdown");
-  });
-
-  it("必须区分本地规则生成与待人工复核，并在用户手动编辑后标记「已手动编辑，需复核」", () => {
-    expect(panelSource).toContain("本地规则生成");
-    expect(panelSource).toContain("待人工复核");
-    expect(panelSource).toContain("data-testid=\"badge-manually-edited\"");
-    expect(panelSource).toContain("已手动编辑，需复核");
-  });
-
-  it("必须通过独立命名空间进行任务隔离的本地暂存（localStorage）并在异常时降级", () => {
-    expect(panelSource).toContain("qingxuan:ref_draft:v2:");
-    expect(panelSource).toContain("safeLocalStorageGet");
-    expect(panelSource).toContain("safeLocalStorageSet");
-    expect(panelSource).toContain("storageUnavailable");
-    expect(panelSource).toContain("reqSeqRef");
-  });
-
-  it("必须分离生成时依据与最新准备度（generationSnapshot）", () => {
-    expect(panelSource).toContain("generationSnapshot");
-    expect(panelSource).toContain("DraftGenerationSnapshot");
-    expect(panelSource).toContain("isStale");
-  });
-
-  it("EvidenceWorkbench 必须就地挂载 ReferenceListingDraftPanel，不被正式交接状态挡住", () => {
-    expect(workbenchSource).toContain("import { ReferenceListingDraftPanel }");
-    expect(workbenchSource).toContain("<ReferenceListingDraftPanel");
+  it("TaskRecordDetail 必须挂载于下一步区域（aria-label=下一步：Listing 准备情况），且 EvidenceWorkbench 不再包含它", () => {
+    expect(taskDetailSource).toContain("import { ReferenceListingDraftPanel }");
+    expect(taskDetailSource).toContain("<ReferenceListingDraftPanel");
+    expect(taskDetailSource).toContain('aria-label="下一步：Listing 准备情况"');
+    expect(taskDetailSource).not.toContain('aria-label="下一步：参考初稿"');
+    expect(workbenchSource).not.toContain("<ReferenceListingDraftPanel");
+    expect(workbenchSource).not.toContain("import { ReferenceListingDraftPanel }");
   });
 });
+
