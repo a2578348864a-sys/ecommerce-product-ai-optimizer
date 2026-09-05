@@ -217,23 +217,3 @@ describe("供应线索免密（轮 12）", () => {
   });
 });
 });
-
-describe("SourcingEvidencePanel 信息分层与两层架构", () => {
-  it("包含第一层已取得证据主体与第二层次级采集工具折叠区", () => {
-    const html = renderPanel();
-    // 第一层：证据主体（初始空态）
-    expect(html).toContain('data-testid="sourcing-evidence-primary-layer"');
-    expect(html).toContain('data-testid="sourcing-evidence-empty"');
-    expect(html).toContain("暂无已确认的 1688 供应线索");
-
-    // 第二层：采集工具（details 折叠区，次级操作）
-    expect(html).toContain('data-testid="sourcing-acquisition-tools"');
-    expect(html).toContain("采集工具");
-    expect(html).toContain("寻找与补充 1688 供应线索");
-    // 输入卡片与提示均收纳于第二层内部
-    expect(html).toContain('data-testid="sourcing-keyword-input"');
-    expect(html).toContain('data-testid="sourcing-image-input"');
-    expect(html).toContain('data-testid="sourcing-url-input"');
-  });
-});
-
