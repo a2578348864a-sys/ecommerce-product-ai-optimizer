@@ -236,7 +236,7 @@ export function WorkspaceSidebar() {
                   ) : null}
                 </div>
                 <p className="mt-0.5 text-xs font-semibold text-slate-800 leading-snug">
-                  AI 跨境商品研究
+                  AI 跨境商品研究与上架准备工作台
                 </p>
                 <p className="text-[11px] text-slate-400 mt-0.5">辅助研究 · 人工决定</p>
                 {badge ? (
