@@ -41,6 +41,8 @@ export type SourcingErrorDetail = {
   status?: number;
 };
 
+export type ClassifiedSourcingError = SourcingErrorDetail;
+
 /**
  * 安全解析 1688 Sourcing API 响应：
  * 杜绝 response.json() 遇到 500/502/504 HTML 或空响应时抛出 SyntaxError。
@@ -224,7 +226,31 @@ export function classifySourcingRequestError(input: {
     };
   }
 
-  // 5. 1688 登录态缺失
+  // 5. 1688 登录态缺失与窗口唤起异常
+  if (rawCode === "sourcing_login_lock_busy" || rawMsg.includes("sourcing_login_lock_busy")) {
+    return {
+      category: "login_required",
+      layer: "1688 登录",
+      message: "1688 进程锁被占用（Daemon 正在运行中），请稍后重试。",
+      canRetry: true,
+      canRecheck: true,
+      code: "sourcing_login_lock_busy",
+      status: status ?? 503,
+    };
+  }
+
+  if (rawCode === "sourcing_login_window_launch_failed" || rawMsg.includes("sourcing_login_window_launch_failed")) {
+    return {
+      category: "login_required",
+      layer: "1688 登录",
+      message: "1688 登录窗口启动失败，请检查本机 Chrome 或稍后重试。",
+      canRetry: true,
+      canRecheck: true,
+      code: "sourcing_login_window_launch_failed",
+      status: status ?? 500,
+    };
+  }
+
   if (rawCode === "auth_required" || rawCode === "not_logged_in") {
     return {
       category: "login_required",
