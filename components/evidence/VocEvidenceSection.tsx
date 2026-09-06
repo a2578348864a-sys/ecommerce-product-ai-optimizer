@@ -261,6 +261,58 @@ export function parseVocEvidenceView(value: unknown): VocEvidenceView | null {
   };
 }
 
+export type VocCollectPreviewView = {
+  previewId: string;
+  items: Array<{
+    asin: string;
+    role: "current_candidate" | "competitor";
+    rating: number | null;
+    date: string | null;
+    title: string;
+    duplicate: boolean;
+  }>;
+  pageResults: Array<{ asin: string; status: string; note: string | null; extractedCount: number }>;
+  capturedAt: string;
+  expiresAt?: string;
+};
+
+export function parseVocCollectPreviewView(value: unknown): VocCollectPreviewView | null {
+  if (!isRecord(value)) return null;
+  const previewId = asString(value.previewId);
+  if (!previewId) return null;
+  const rawItems = Array.isArray(value.items) ? value.items : [];
+  const items = rawItems.map((raw): VocCollectPreviewView["items"][number] | null => {
+    if (!isRecord(raw)) return null;
+    const role = raw.role === "competitor" ? "competitor" : "current_candidate";
+    return {
+      asin: asString(raw.asin),
+      role,
+      rating: asNumber(raw.rating),
+      date: raw.date === null || raw.date === undefined ? null : asString(raw.date) || null,
+      title: asString(raw.title),
+      duplicate: raw.duplicate === true,
+    };
+  }).filter((item): item is VocCollectPreviewView["items"][number] => item !== null);
+  const rawPages = Array.isArray(value.pageResults) ? value.pageResults : [];
+  const pageResults = rawPages.map((raw): VocCollectPreviewView["pageResults"][number] | null => {
+    if (!isRecord(raw)) return null;
+    return {
+      asin: asString(raw.asin),
+      status: asString(raw.status, "unknown"),
+      note: raw.note === null || raw.note === undefined ? null : asString(raw.note) || null,
+      extractedCount: asNumber(raw.extractedCount) ?? 0,
+    };
+  }).filter((page): page is VocCollectPreviewView["pageResults"][number] => page !== null);
+
+  return {
+    previewId,
+    items,
+    pageResults,
+    capturedAt: asString(value.capturedAt, new Date().toISOString()),
+    expiresAt: value.expiresAt === null || value.expiresAt === undefined ? undefined : asString(value.expiresAt),
+  };
+}
+
 /* ── 展示工具 ── */
 
 const STRENGTH_LABEL: Record<VocThemeView["strength"], string> = {
@@ -512,6 +564,7 @@ export function VocEvidenceSection({
   analysis,
   storageVersion,
   capability,
+  pendingPreview,
   onChanged,
 }: {
   taskId: string;
@@ -522,6 +575,8 @@ export function VocEvidenceSection({
   storageVersion: { resultJsonHash: string; updatedAt: string } | null;
   /** 浏览器采集能力（服务端 DTO；自动采集评论依赖它；粘贴导入与 VOC 分析不受影响） */
   capability?: AcquisitionCapabilityView | null;
+  /** 服务端已就绪的待确认评论预览（Hydration 契约） */
+  pendingPreview?: VocCollectPreviewView | null;
   onChanged: () => void;
 }) {
   const [importOpen, setImportOpen] = useState(false);
@@ -552,20 +607,26 @@ export function VocEvidenceSection({
   const demoMode = getAccessMode() === "demo";
   const canCollectReviews = capability?.state === "available"
     || (capability?.state === "local_env_required" && demoMode);
-  const [collectPreview, setCollectPreview] = useState<{
-    previewId: string;
-    items: Array<{
-      asin: string;
-      role: "current_candidate" | "competitor";
-      rating: number | null;
-      date: string | null;
-      title: string;
-      duplicate: boolean;
-    }>;
-    pageResults: Array<{ asin: string; status: string; note: string | null; extractedCount: number }>;
-    capturedAt: string;
-  } | null>(null);
+  const [collectPreview, setCollectPreview] = useState<VocCollectPreviewView | null>(null);
   const [collectSelected, setCollectSelected] = useState<Set<number>>(new Set());
+  const userDismissedPreviewRef = useRef<string | null>(null);
+
+  // 服务端 Pending Preview 水合（Hydration）：用户从待确认入口进入或刷新页面时恢复
+  useEffect(() => {
+    if (!evidence && pendingPreview) {
+      if (userDismissedPreviewRef.current !== pendingPreview.previewId) {
+        setCollectPreview(pendingPreview);
+        const selected = new Set<number>();
+        pendingPreview.items.forEach((item, index) => {
+          if (!item.duplicate) {
+            selected.add(index);
+          }
+        });
+        setCollectSelected(selected);
+        setCollectOpen(true);
+      }
+    }
+  }, [evidence, pendingPreview]);
 
   // Package C：ASIN 预填——角色=当前商品且任务有 ASIN 时，填入并跟随任务 ASIN 更新
   useEffect(() => {
@@ -1105,7 +1166,13 @@ export function VocEvidenceSection({
                       </button>
                       <button
                         type="button"
-                        onClick={() => { setCollectPreview(null); setCollectSelected(new Set()); }}
+                        onClick={() => {
+                          if (collectPreview) {
+                            userDismissedPreviewRef.current = collectPreview.previewId;
+                          }
+                          setCollectPreview(null);
+                          setCollectSelected(new Set());
+                        }}
                         className="text-xs font-semibold text-slate-400 hover:text-slate-600"
                       >
                         取消

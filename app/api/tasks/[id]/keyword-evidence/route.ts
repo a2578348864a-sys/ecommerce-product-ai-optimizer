@@ -24,15 +24,40 @@ import {
   claimBrowserUsePreview,
   restoreBrowserUsePreviewClaim,
   takeBrowserUsePreview,
+  getPendingKeywordPreviewDto,
   type BrowserUsePreviewClaim,
+  type PendingKeywordPreviewDto,
 } from "@/lib/server/browserUseResearch";
+import { readBrowserEvidenceTaskAsin } from "@/lib/server/browserEvidence";
 import { getRuntimeMode } from "@/lib/server/runtimeMode";
 
 export const runtime = "nodejs";
 
 type StorageVersion = { resultJsonHash: string; updatedAt: string };
 
-function jsonResponse(body: unknown, status = 200) {
+type ApiResponse =
+  | {
+      ok: true;
+      data: {
+        evidence: KeywordEvidenceV1 | null;
+        storageVersion: StorageVersion;
+        pendingPreview: PendingKeywordPreviewDto | null;
+      };
+    }
+  | {
+      ok: true;
+      data: {
+        evidence: KeywordEvidenceV1;
+        storageVersion: StorageVersion;
+        saved: string[];
+      };
+    }
+  | {
+      ok: false;
+      error: { code: string; message: string };
+    };
+
+function jsonResponse(body: ApiResponse, status = 200) {
   return NextResponse.json(body, { status });
 }
 
@@ -114,9 +139,33 @@ export async function GET(
   try {
     const evidence = await getKeywordEvidence(resolved.context, id);
     const snapshot = await readKeywordEvidenceSnapshot(resolved.context, id);
+    let seedAsin: string | null = null;
+    try {
+      const record = (() => {
+        try {
+          const parsed = JSON.parse(snapshot.resultJson) as unknown;
+          return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+            ? (parsed as Record<string, unknown>)
+            : null;
+        } catch {
+          return null;
+        }
+      })();
+      seedAsin = resolveBrowserUseSeed(record)?.asin ?? null;
+    } catch {
+      seedAsin = null;
+    }
+    if (!seedAsin) {
+      seedAsin = await readBrowserEvidenceTaskAsin(resolved.context, id);
+    }
+    const pendingPreview = seedAsin ? getPendingKeywordPreviewDto(seedAsin) : null;
     return jsonResponse({
       ok: true,
-      data: { evidence, storageVersion: toStorageVersion(snapshot) },
+      data: {
+        evidence,
+        storageVersion: toStorageVersion(snapshot),
+        pendingPreview,
+      },
     });
   } catch (error) {
     return errorResponseFrom(error);
@@ -204,4 +253,4 @@ export async function POST(
   }
 }
 
-export type { KeywordEvidenceV1 };
+export type { KeywordEvidenceV1, PendingKeywordPreviewDto, ApiResponse };

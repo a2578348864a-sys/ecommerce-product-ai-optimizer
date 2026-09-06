@@ -381,12 +381,14 @@ export function marketplaceToAmazonTld(marketplace: string): string {
  */
 export function findPendingBrowserUsePreview(
   seedAsin: string,
+  kind?: BrowserUseResearchKind,
 ): { previewId: string; preview: BrowserUseResearchPreview; expiresAt: number } | null {
   if (typeof seedAsin !== "string" || !seedAsin.trim()) return null;
   const normalized = seedAsin.trim().toUpperCase();
   const now = Date.now();
   for (const [previewId, entry] of PREVIEW_CACHE.entries()) {
     if (entry.expiresAt > now && entry.preview.seedAsin.toUpperCase() === normalized) {
+      if (kind && entry.preview.kind !== kind) continue;
       return {
         previewId,
         preview: entry.preview,
@@ -396,4 +398,35 @@ export function findPendingBrowserUsePreview(
   }
   return null;
 }
+
+export type PendingKeywordPreviewDto = {
+  previewId: string;
+  seedAsin: string;
+  sourceUrl: string;
+  keywordCount: number;
+  capturedAt: string | null;
+  expiresAt: string;
+};
+
+/**
+ * 纯只读安全 DTO 投影：不消费、不删除 Preview，不泄漏内部凭证。
+ * 若有效，组装脱敏安全 DTO。
+ */
+export function getPendingKeywordPreviewDto(seedAsin: string): PendingKeywordPreviewDto | null {
+  if (typeof seedAsin !== "string" || !seedAsin.trim()) return null;
+  const match = findPendingBrowserUsePreview(seedAsin, "keyword") ?? findPendingBrowserUsePreview(seedAsin);
+  if (!match || match.expiresAt <= Date.now()) return null;
+  const { previewId, preview, expiresAt } = match;
+  if (preview.kind && preview.kind !== "keyword") return null;
+  const keywordCount = Array.isArray(preview.results) ? preview.results.length : 0;
+  return {
+    previewId,
+    seedAsin: preview.seedAsin,
+    sourceUrl: preview.sourceUrl,
+    keywordCount,
+    capturedAt: preview.capturedAt ?? null,
+    expiresAt: new Date(expiresAt).toISOString(),
+  };
+}
+
 

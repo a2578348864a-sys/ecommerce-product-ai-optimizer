@@ -18,7 +18,6 @@ import {
   RotateCw,
   Loader2,
   ArrowRight,
-  ExternalLink,
 } from "lucide-react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
 import {
@@ -106,7 +105,7 @@ const SOURCE_META: Record<
   },
   keywords_competitors: {
     title: "关键词与竞品",
-    anchorId: "#formal-v2-market-evidence",
+    anchorId: "formal-v2-market-evidence",
     tabKey: "market",
     defaultState: "pending",
     allowedStates: new Set(["ready", "pending_review", "pending", "failed", "needs_user"]),
@@ -366,9 +365,20 @@ export function computeSummary(
   if (serverText && serverText.trim()) {
     text = serverText.trim();
   } else if (allReady) {
-    text = "本轮资料整理完成";
+    text = "全部资料已就绪";
   } else {
-    text = `已复用 ${reusedCount} 项，待确认 ${pendingReviewCount} 项，${manualActionCount} 项需人工处理`;
+    const parts: string[] = [];
+    if (pendingReviewCount > 0) {
+      parts.push(`${pendingReviewCount} 项待确认`);
+    }
+    if (manualActionCount > 0) {
+      parts.push(`${manualActionCount} 项需要处理`);
+    }
+    if (parts.length > 0) {
+      text = parts.join(" · ");
+    } else {
+      text = `已就绪 ${reusedCount} 项`;
+    }
   }
 
   return {
@@ -378,6 +388,42 @@ export function computeSummary(
     manualActionCount,
     allReady,
   };
+}
+
+function getSourceDescription(
+  item: OrchestratorSourceItem,
+  isRetrying: boolean,
+  pendingItem?: PendingQueueItem,
+  needsUserItem?: NeedsUserQueueItem,
+): string {
+  if (isRetrying) {
+    return "正在重新采集关键词与竞品…";
+  }
+  if (item.state === "ready") {
+    return item.detail || (item.key === "amazon" ? "Amazon 详情资料已就绪" : "资料已就绪");
+  }
+  if (item.state === "pending_review") {
+    return pendingItem?.countText || item.detail || "存在待确认条目";
+  }
+  if (
+    item.state === "needs_action" ||
+    item.state === "needs_user" ||
+    item.state === "needs_supplement" ||
+    item.state === "needs_login"
+  ) {
+    return (
+      needsUserItem?.reasonText ||
+      item.detail ||
+      (item.key === "sourcing_1688" ? "需要登录" : "需要人工处理")
+    );
+  }
+  if (item.state === "failed") {
+    return item.detail || "上次采集未完成";
+  }
+  if (item.state === "pending") {
+    return item.detail || "待补齐";
+  }
+  return item.detail || "待补充";
 }
 
 /* ── 主组件 ───────────────────────────────────────────── */
@@ -401,7 +447,7 @@ export function ResearchCollectionOrchestratorCard({
     initialData?.summary,
   );
 
-  // 保存最新的 rawSources（用于派生待确认队列与需要处理队列）
+  // 保存最新的 rawSources（用于派生待确认队列与需要处理队列统计）
   const [rawSources, setRawSources] = useState<ResearchOrchestratorSources | undefined>(() => {
     if (initialData?.rawSources) return initialData.rawSources;
     if (initialData?.items) {
@@ -410,7 +456,7 @@ export function ResearchCollectionOrchestratorCard({
     return undefined;
   });
 
-  // 派生待确认队列与需要处理队列
+  // 派生待确认与需人工处理的队列数据项（用于说明文字和计数）
   const pendingItems = useMemo(() => derivePendingReviewQueue(rawSources), [rawSources]);
   const needsUserItems = useMemo(() => deriveNeedsUserQueue(rawSources), [rawSources]);
 
@@ -418,32 +464,41 @@ export function ResearchCollectionOrchestratorCard({
   const [rawItemStates, setRawItemStates] = useState<
     Record<OrchestratorSourceKey, { state: OrchestratorSourceState; detail?: string }>
   >(() => {
-    const init: Record<
-      OrchestratorSourceKey,
-      { state: OrchestratorSourceState; detail?: string }
-    > = {
-      amazon: {
-        state: initialData?.items?.amazon?.state ?? SOURCE_META.amazon.defaultState,
-        detail: sanitizeDetail(initialData?.items?.amazon?.detail),
-      },
-      keywords_competitors: {
-        state:
-          initialData?.items?.keywords_competitors?.state ??
-          SOURCE_META.keywords_competitors.defaultState,
-        detail: sanitizeDetail(initialData?.items?.keywords_competitors?.detail),
-      },
-      voc: {
-        state: initialData?.items?.voc?.state ?? SOURCE_META.voc.defaultState,
-        detail: sanitizeDetail(initialData?.items?.voc?.detail),
-      },
-      sourcing_1688: {
-        state:
-          initialData?.items?.sourcing_1688?.state ??
-          SOURCE_META.sourcing_1688.defaultState,
-        detail: sanitizeDetail(initialData?.items?.sourcing_1688?.detail),
-      },
+    const rawSrc = initialData?.rawSources;
+    const rawMap: Partial<Record<OrchestratorSourceKey, unknown>> = {
+      amazon: rawSrc?.amazon,
+      keywords_competitors: rawSrc?.keywordCompetitor,
+      voc: rawSrc?.voc,
+      sourcing_1688: rawSrc?.sourcing1688,
     };
-    return init;
+
+    const getStateAndDetail = (key: OrchestratorSourceKey) => {
+      const explicit = initialData?.items?.[key];
+      if (explicit) {
+        return {
+          state: explicit.state,
+          detail: sanitizeDetail(explicit.detail),
+        };
+      }
+      const fromSrc = rawMap[key];
+      if (fromSrc && typeof fromSrc === "object") {
+        const iv = fromSrc as Record<string, unknown>;
+        const state = normalizeState(key, iv.status ?? iv.state, iv.ready);
+        const detail = sanitizeDetail(extractDetailFromPayload(iv));
+        return { state, detail };
+      }
+      return {
+        state: SOURCE_META[key].defaultState,
+        detail: undefined,
+      };
+    };
+
+    return {
+      amazon: getStateAndDetail("amazon"),
+      keywords_competitors: getStateAndDetail("keywords_competitors"),
+      voc: getStateAndDetail("voc"),
+      sourcing_1688: getStateAndDetail("sourcing_1688"),
+    };
   });
 
   // 派生完整的 4 项列表
@@ -469,20 +524,12 @@ export function ResearchCollectionOrchestratorCard({
     return computeSummary(sourceItems, customSummaryText);
   }, [sourceItems, customSummaryText]);
 
-  // 第一个待确认或需处理的项，供快捷直达引导
-  const firstPendingItem = useMemo(() => {
-    return (
-      sourceItems.find((i) => i.state === "pending_review") ||
-      sourceItems.find((i) => i.state !== "ready")
-    );
-  }, [sourceItems]);
-
   const handleNavigate = useCallback(
     (tabKey: "market" | "buyers" | "sourcing" | "cost-risk", anchorId: string) => {
+      const cleanId = anchorId.replace(/^#+/, "").trim();
       if (onNavigate) {
-        onNavigate(tabKey, anchorId);
+        onNavigate(tabKey, cleanId);
       } else if (typeof window !== "undefined") {
-        const cleanId = anchorId.replace(/^#+/, "");
         window.location.hash = cleanId;
         const el = document.getElementById(cleanId);
         if (el) {
@@ -499,24 +546,6 @@ export function ResearchCollectionOrchestratorCard({
     },
     [onNavigate],
   );
-
-  // 顶部单一入口点击逻辑（若只有 1 项直达目标 anchor，>1 项滚动到队列区域）
-  const handleTopPendingClick = useCallback(() => {
-    if (pendingItems.length > 1) {
-      if (typeof window !== "undefined") {
-        const queueEl = document.getElementById("pending-review-queue");
-        if (queueEl) {
-          queueEl.scrollIntoView({ behavior: "smooth", block: "center" });
-          return;
-        }
-      }
-    }
-    if (firstPendingItem) {
-      handleNavigate(firstPendingItem.tabKey, firstPendingItem.anchorId);
-    } else if (pendingItems.length === 1) {
-      handleNavigate(pendingItems[0].tabKey, pendingItems[0].anchorId);
-    }
-  }, [pendingItems, firstPendingItem, handleNavigate]);
 
   // 解析后端响应
   const applyApiResponse = useCallback(
@@ -723,14 +752,14 @@ export function ResearchCollectionOrchestratorCard({
   return (
     <section
       data-testid="research-orchestrator-card"
-      className={`w-full max-w-full overflow-hidden rounded-2xl border border-slate-200/90 bg-slate-50/70 p-3 sm:p-4 shadow-sm transition-all ${className}`}
+      className={`w-full max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all ${className}`}
     >
       {/* ── 顶部标题、状态徽章与一键补齐操作 ── */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm sm:text-base font-bold text-slate-900">
-              研究资料编排
+              研究资料
             </h3>
             {/* 状态徽章 */}
             {isInspecting ? (
@@ -739,7 +768,7 @@ export function ResearchCollectionOrchestratorCard({
                 className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-xs font-medium text-slate-500"
               >
                 <Loader2 className="h-3 w-3 animate-spin text-slate-400" />
-                正在核对四项资料状态…
+                正在核对资料状态…
               </span>
             ) : (
               <span
@@ -811,57 +840,52 @@ export function ResearchCollectionOrchestratorCard({
       )}
 
       {/* ── 新预览待确认提示栏（绝不替用户自动确认） ── */}
-      {(hasNewPreviewAlert || pendingItems.length > 0) && (
+      {hasNewPreviewAlert && (
         <div
           data-testid="orchestrator-new-preview-alert"
-          className="mt-3 rounded-xl border border-amber-300 bg-amber-50/90 p-3 text-xs sm:text-sm text-amber-900"
+          className="mt-3 flex items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50/90 p-3 text-xs sm:text-sm text-amber-900"
         >
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
-              <span className="font-medium">
-                {pendingItems.length > 0
-                  ? `本轮已生成 ${pendingItems.length} 项待确认资料预览，请前往下方对应区域人工复核（系统绝不替用户代做确认）。`
-                  : "本轮已生成待确认资料预览，请前往下方对应区域人工复核（系统绝不替用户代做确认）。"}
-              </span>
-            </div>
-            {(pendingItems.length > 0 || firstPendingItem) && (
-              <button
-                type="button"
-                data-testid="orchestrator-goto-pending-btn"
-                onClick={handleTopPendingClick}
-                className="inline-flex items-center gap-1 self-start sm:self-auto rounded-lg bg-amber-700 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-800 transition-colors shrink-0 shadow-sm"
-              >
-                <span>
-                  {pendingItems.length === 1 ? "查看待确认结果" : "查看待确认列表"}
-                </span>
-                <ArrowRight className="h-3 w-3" />
-              </button>
-            )}
-          </div>
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+          <span className="font-medium">
+            本轮已生成待确认资料预览，请在下方列表查看并确认（系统绝不替用户代做确认）。
+          </span>
         </div>
       )}
 
-      {/* ── 4 项来源状态列表展示 ── */}
+      {/* ── 4 项来源状态紧凑列表展示 ── */}
       <div
-        data-testid="orchestrator-sources-grid"
-        className="mt-2.5 grid grid-cols-2 lg:grid-cols-4 gap-2"
+        data-testid="orchestrator-sources-list"
+        className="mt-3 divide-y divide-slate-100 rounded-xl border border-slate-100 bg-slate-50/50"
       >
         {sourceItems.map((item) => {
           const badge = formatBadgeLabel(item.state);
           const isRetryingThis = retryingSource === item.key;
+          const pendingItem = pendingItems.find((p) => p.sourceKey === item.key);
+          const needsUserItem = needsUserItems.find((n) => n.sourceKey === item.key);
+          const descriptionText = getSourceDescription(
+            item,
+            isRetryingThis,
+            pendingItem,
+            needsUserItem,
+          );
+
           return (
             <div
               key={item.key}
-              data-testid={`orchestrator-item-${item.key}`}
-              className="flex flex-col justify-between rounded-xl border border-slate-200/80 bg-white p-2.5 sm:p-3 shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-colors hover:border-slate-300/80"
+              data-testid={`source-row-${item.key}`}
+              className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 transition-colors hover:bg-slate-50/80"
             >
-              {/* 顶部行：名称 + 徽章 */}
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs sm:text-sm font-semibold text-slate-800">
+              {/* 左侧：来源名称 */}
+              <div className="flex items-center gap-2 shrink-0 sm:w-36 md:w-44">
+                <span className="text-sm font-semibold text-slate-800">
                   {item.title}
                 </span>
+                {/* 兼容可能查找 orchestrator-item-${item.key} 的测试 */}
+                <span data-testid={`orchestrator-item-${item.key}`} className="hidden" />
+              </div>
 
+              {/* 中间：状态徽章与说明文案 */}
+              <div className="flex flex-wrap items-center gap-2 min-w-0 flex-1">
                 {/* 状态徽章 */}
                 <span
                   data-testid={`badge-${item.key}`}
@@ -896,217 +920,82 @@ export function ResearchCollectionOrchestratorCard({
                     </>
                   )}
                 </span>
+
+                {/* 说明文字 */}
+                <span
+                  className="text-xs text-slate-500 truncate"
+                  title={descriptionText}
+                >
+                  {descriptionText}
+                </span>
               </div>
 
-              {/* 底部行：描述/明细 + 对应操作（直达锚点/重试） */}
-              <div className="mt-1.5 flex items-center justify-between gap-1.5 pt-1 border-t border-slate-100 text-[11px] sm:text-xs">
-                <span
-                  className="text-slate-500 truncate"
-                  title={isRetryingThis ? "正在重新采集关键词与竞品…" : item.detail}
-                >
-                  {isRetryingThis
-                    ? "正在重新采集关键词与竞品…"
-                    : item.detail || (
-                        item.state === "ready"
-                          ? "资料已就绪"
-                          : item.state === "pending_review"
-                            ? "存在待确认条目"
-                            : item.state === "needs_login"
-                              ? "需要 1688 授权"
-                              : item.state === "needs_supplement"
-                                ? "信息尚不完整"
-                                : item.state === "failed"
-                                  ? "上次采集未完成"
-                                  : item.state === "needs_user"
-                                    ? "需要人工处理"
-                                    : "待补充"
-                      )}
-                </span>
-
-                {/* 操作按钮 */}
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {item.state === "pending_review" && (
-                    <button
-                      type="button"
-                      data-testid={`action-anchor-${item.key}`}
-                      onClick={() => handleNavigate(item.tabKey, item.anchorId)}
-                      className="inline-flex items-center gap-0.5 rounded-lg border border-amber-300 bg-amber-50/80 px-2 py-0.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 transition-colors"
-                    >
-                      直达待确认
-                      <ArrowRight className="h-3 w-3" />
-                    </button>
-                  )}
-
-                  {item.key === "keywords_competitors" &&
-                    (item.state === "failed" || item.state === "needs_user" || isRetryingThis) && (
-                      <button
-                        type="button"
-                        data-testid="action-retry-keywords"
-                        onClick={handleRetryKeywords}
-                        disabled={isOrchestrating || retryingSource !== null}
-                        className={`inline-flex items-center gap-0.5 rounded-lg border px-2 py-0.5 text-[11px] font-semibold transition-colors disabled:opacity-50 ${
-                          isRetryingThis
-                            ? "border-amber-200 bg-amber-50 text-amber-800"
-                            : "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-                        }`}
-                      >
-                        {isRetryingThis ? (
-                          <>
-                            <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
-                            重试中…
-                          </>
-                        ) : (
-                          <>
-                            <RotateCw className="h-3 w-3 shrink-0" />
-                            重试
-                          </>
-                        )}
-                      </button>
-                    )}
-
-                  {item.key === "voc" &&
-                    (item.state === "needs_action" || item.state === "needs_user") && (
-                      <button
-                        type="button"
-                        data-testid="action-anchor-voc"
-                        onClick={() => handleNavigate(item.tabKey, item.anchorId)}
-                        className="inline-flex items-center gap-0.5 rounded-lg border border-amber-300 bg-amber-50/80 px-2 py-0.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 transition-colors"
-                      >
-                        前往处理
-                        <ArrowRight className="h-3 w-3" />
-                      </button>
-                    )}
-
-                  {item.key === "sourcing_1688" &&
-                    (item.state === "needs_login" || item.state === "needs_user") && (
-                      <button
-                        type="button"
-                        data-testid="action-login-sourcing"
-                        onClick={() => handleNavigate(item.tabKey, item.anchorId)}
-                        className="inline-flex items-center gap-0.5 rounded-lg border border-amber-300 bg-amber-50/80 px-2 py-0.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 transition-colors"
-                      >
-                        前往登录
-                        <ExternalLink className="h-3 w-3" />
-                      </button>
-                    )}
-
-                  {item.key === "amazon" &&
-                    (item.state === "needs_supplement" || item.state === "needs_user") && (
-                      <button
-                        type="button"
-                        data-testid="action-anchor-amazon"
-                        onClick={() => handleNavigate(item.tabKey, item.anchorId)}
-                        className="inline-flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100 transition-colors"
-                      >
-                        前往补充
-                        <ArrowRight className="h-3 w-3" />
-                      </button>
-                    )}
-                </div>
+              {/* 右侧：统一的单一操作按钮 */}
+              <div className="flex items-center gap-2 shrink-0">
+                {isRetryingThis ? (
+                  <button
+                    type="button"
+                    disabled
+                    data-testid={
+                      item.key === "keywords_competitors"
+                        ? "action-retry-keywords"
+                        : `action-retry-${item.key}`
+                    }
+                    className="inline-flex items-center justify-center gap-1 rounded-lg border border-slate-200 bg-slate-100 text-slate-400 px-3 py-1.5 text-xs font-semibold shadow-sm cursor-not-allowed"
+                  >
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <span>处理中…</span>
+                  </button>
+                ) : item.state === "pending_review" ? (
+                  <button
+                    type="button"
+                    data-testid={`action-review-${item.key}`}
+                    onClick={() => handleNavigate(item.tabKey, item.anchorId)}
+                    className="inline-flex items-center justify-center gap-1 rounded-lg bg-amber-700 hover:bg-amber-800 text-white px-3 py-1.5 text-xs font-semibold shadow-sm transition-colors"
+                  >
+                    <span>查看并确认</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </button>
+                ) : item.state === "failed" ? (
+                  <button
+                    type="button"
+                    data-testid={
+                      item.key === "keywords_competitors"
+                        ? "action-retry-keywords"
+                        : `action-retry-${item.key}`
+                    }
+                    onClick={() => {
+                      if (item.key === "keywords_competitors") {
+                        handleRetryKeywords();
+                      } else {
+                        void handleOrchestrate();
+                      }
+                    }}
+                    disabled={isOrchestrating || isInspecting || retryingSource !== null}
+                    className="inline-flex items-center justify-center gap-1 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 px-3 py-1.5 text-xs font-semibold shadow-sm transition-colors disabled:opacity-50"
+                  >
+                    <RotateCw className="h-3.5 w-3.5" />
+                    <span>重试</span>
+                  </button>
+                ) : item.state === "needs_user" ||
+                  item.state === "needs_action" ||
+                  item.state === "needs_login" ||
+                  item.state === "needs_supplement" ? (
+                  <button
+                    type="button"
+                    data-testid={`action-handle-${item.key}`}
+                    onClick={() => handleNavigate(item.tabKey, item.anchorId)}
+                    className="inline-flex items-center justify-center gap-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 px-3 py-1.5 text-xs font-semibold shadow-sm transition-colors"
+                  >
+                    <span>前往处理</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
               </div>
             </div>
           );
         })}
       </div>
-
-      {/* ── 待确认资料队列（有待确认项时展示） ── */}
-      {pendingItems.length > 0 && (
-        <div
-          id="pending-review-queue"
-          data-testid="pending-review-queue"
-          className="mt-3 rounded-xl border border-amber-200/80 bg-amber-50/50 p-3 sm:p-3.5"
-        >
-          {/* 标题栏 */}
-          <div className="flex flex-wrap items-center justify-between gap-1.5 pb-2 mb-2 border-b border-amber-200/70">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs sm:text-sm font-bold text-slate-900">
-                待确认资料 · {pendingItems.length}
-              </span>
-            </div>
-            <span className="text-[11px] text-slate-500">
-              人工复核确认后方可作为正式生成依据
-            </span>
-          </div>
-
-          {/* 列表项 */}
-          <div className="space-y-1.5">
-            {pendingItems.map((item) => (
-              <div
-                key={item.sourceKey}
-                data-testid={`pending-queue-item-${item.sourceKey}`}
-                className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-amber-200/60 bg-white px-3 py-2 text-xs shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-colors hover:border-amber-300"
-              >
-                <div className="flex flex-wrap items-center gap-2 min-w-0">
-                  <span className="font-semibold text-slate-900 shrink-0">
-                    {item.title}
-                  </span>
-                  <span className="text-slate-500 text-[11px] sm:text-xs">
-                    {item.countText}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  data-testid={`btn-queue-confirm-${item.sourceKey}`}
-                  onClick={() => handleNavigate(item.tabKey, item.anchorId)}
-                  className="inline-flex items-center justify-center gap-1 self-start sm:self-auto rounded-md bg-amber-700 hover:bg-amber-800 text-white px-2.5 py-1 text-xs font-semibold shadow-sm transition-colors shrink-0"
-                >
-                  <span>{item.actionLabel || "查看并确认"}</span>
-                  <ArrowRight className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── 需要你处理队列（有需人工处理项时展示） ── */}
-      {needsUserItems.length > 0 && (
-        <div
-          data-testid="needs-user-queue"
-          className="mt-3 rounded-xl border border-slate-200 bg-slate-100/70 p-3 sm:p-3.5"
-        >
-          {/* 标题栏 */}
-          <div className="flex flex-wrap items-center justify-between gap-1.5 pb-2 mb-2 border-b border-slate-200">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs sm:text-sm font-bold text-slate-900">
-                需要你处理 · {needsUserItems.length}
-              </span>
-            </div>
-            <span className="text-[11px] text-slate-500">
-              需要补齐授权或前往手动触发采集
-            </span>
-          </div>
-
-          {/* 列表项 */}
-          <div className="space-y-1.5">
-            {needsUserItems.map((item) => (
-              <div
-                key={item.sourceKey}
-                data-testid={`needs-user-queue-item-${item.sourceKey}`}
-                className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-colors hover:border-slate-300"
-              >
-                <div className="flex flex-wrap items-center gap-2 min-w-0">
-                  <span className="font-semibold text-slate-900 shrink-0">
-                    {item.title}
-                  </span>
-                  <span className="text-slate-500 text-[11px] sm:text-xs">
-                    {item.reasonText}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  data-testid={`btn-queue-action-${item.sourceKey}`}
-                  onClick={() => handleNavigate(item.tabKey, item.anchorId)}
-                  className="inline-flex items-center justify-center gap-1 self-start sm:self-auto rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 px-2.5 py-1 text-xs font-semibold shadow-sm transition-colors shrink-0"
-                >
-                  <span>{item.actionLabel || "前往处理"}</span>
-                  <ArrowRight className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </section>
   );
 }
