@@ -20,7 +20,119 @@ export function validateAiExtraction(raw: unknown, blocks: AmazonSellerContentBl
  }
  return {candidates:out.slice(0,40)} as AmazonUnstructuredFactExtractionV1;
 }
-async function extractNatural(blocks:AmazonSellerContentBlockV1[]):Promise<{candidates:AmazonFactCandidateV1[];status:"not_needed"|"completed"|"failed";message?:string}> { if(blocks.length===0) return {candidates:[],status:"not_needed"}; if(process.env.AMAZON_FACT_ENRICHMENT_AI_ENABLED!=="true") return {candidates:[],status:"failed",message:"自然语言内容整理暂时未启用，已保留确定性规格候选。"}; const config=getAiConfig(); if(!config.ok) return {candidates:[],status:"failed",message:`自然语言内容整理暂时失败（${config.error.code}），已保留确定性规格候选。`}; const source=blocks.map(b=>`[${b.sourceBlockId}] ${b.text}`).join("\n"); let failureCode="provider_unavailable"; try { const result=await callAiText({messages:[{role:"system",content:"Extract only explicit seller-authored product facts. Return strict JSON {candidates:[{field,value,sourceBlockId,evidenceText,qualifier,confidence}]}. Use only the 8 fields capacity,functional_feature,use_scenario,care,construction,operation,compatibility,other. EvidenceText must be copied exactly. No reviews, competitors, recommendations, or inferred claims."},{role:"user",content:source}],temperature:0,thinkingMode:"disabled",maxTokens:1800,timeoutMs:AI_TIMEOUT_MS,responseFormat:{type:"json_object"}}); if(!result.ok){failureCode=result.error.code; throw new Error(result.error.code);} let parsed: unknown; try { parsed=JSON.parse(result.data); } catch { failureCode="json_parse_error"; throw new Error(failureCode); } const valid=validateAiExtraction(parsed,blocks); const mapped=valid.candidates.map((c,i)=>({id:`amazon-enrichment:ai:${i}`,taskId:"",asin:"",field:c.field,value:c.value,status:(c.qualifier==="direct"?"direct":"review") as any,sourceType:blocks.find(b=>b.sourceBlockId===c.sourceBlockId)?.section||"description",sources:[{sourceBlockId:c.sourceBlockId,sourceUrl:blocks.find(b=>b.sourceBlockId===c.sourceBlockId)?.sourceUrl||"",section:blocks.find(b=>b.sourceBlockId===c.sourceBlockId)?.section||"description",label:"Amazon seller content",text:c.evidenceText}],evidenceTexts:[c.evidenceText],approximate:c.qualifier==="approximate",negative:c.qualifier==="negative",conflict:false,conflictReason:null,reviewRequired:c.qualifier!=="direct"||c.field==="compatibility",createdAt:new Date().toISOString()})); return {candidates:mapped,status:"completed"}; } catch(error){ const detail=error instanceof Error?error.message:""; if(["numeric_mismatch","strong_claim_upgrade","capacity_unit_mismatch","invalid_schema","evidence_not_found_in_source"].includes(detail)) failureCode="invalid_parameters"; return {candidates:[],status:"failed",message:`自然语言内容整理暂时失败（${failureCode}），已保留确定性规格候选。`}; } }
+
+type NaturalLanguageResult = {
+ status: "not_needed" | "completed" | "failed";
+ candidates: AmazonFactCandidateV1[];
+ message?: string;
+ failureStage?: "provider" | "response_parse" | "schema" | "evidence";
+ failureCode?:
+   | "provider_invalid_parameters" | "provider_timeout" | "provider_network_error"
+   | "provider_invalid_api_key" | "provider_insufficient_balance" | "provider_rate_limited"
+   | "provider_missing_api_key" | "provider_missing_model" | "provider_missing_base_url"
+   | "provider_unavailable" | "provider_error" | "provider_unknown_error"
+   | "ai_empty_response" | "ai_json_parse_error" | "ai_invalid_schema"
+   | "ai_evidence_not_found" | "ai_numeric_mismatch" | "ai_strong_claim_upgrade"
+   | "ai_capacity_unit_mismatch";
+ providerHttpStatusClass?: "not_started" | "success" | "client_error" | "rate_limited"
+   | "server_error" | "timeout" | "network_error" | "unknown";
+};
+
+function providerFailureCode(code: string): NonNullable<NaturalLanguageResult["failureCode"]> {
+ switch (code) {
+  case "missing_api_key": return "provider_missing_api_key";
+  case "missing_model": return "provider_missing_model";
+  case "missing_base_url": return "provider_missing_base_url";
+  case "invalid_parameters": return "provider_invalid_parameters";
+  case "timeout": return "provider_timeout";
+  case "network_error": return "provider_network_error";
+  case "invalid_api_key": return "provider_invalid_api_key";
+  case "insufficient_balance": return "provider_insufficient_balance";
+  case "rate_limited": return "provider_rate_limited";
+  case "provider_unavailable": return "provider_unavailable";
+  case "provider_error": return "provider_error";
+  default: return "provider_unknown_error";
+ }
+}
+
+function validationFailure(detail: string): Pick<NaturalLanguageResult, "failureStage" | "failureCode"> {
+ switch (detail) {
+  case "evidence_not_found_in_source": return { failureStage: "evidence", failureCode: "ai_evidence_not_found" };
+  case "numeric_mismatch": return { failureStage: "evidence", failureCode: "ai_numeric_mismatch" };
+  case "strong_claim_upgrade": return { failureStage: "evidence", failureCode: "ai_strong_claim_upgrade" };
+  case "capacity_unit_mismatch": return { failureStage: "evidence", failureCode: "ai_capacity_unit_mismatch" };
+  case "invalid_schema": return { failureStage: "schema", failureCode: "ai_invalid_schema" };
+  default: return { failureStage: "schema", failureCode: "ai_invalid_schema" };
+ }
+}
+
+async function extractNatural(blocks: AmazonSellerContentBlockV1[]): Promise<NaturalLanguageResult> {
+ if (blocks.length === 0) return { candidates: [], status: "not_needed" };
+ if (process.env.AMAZON_FACT_ENRICHMENT_AI_ENABLED !== "true") {
+  return { candidates: [], status: "failed", message: "自然语言内容整理暂时未启用，已保留确定性规格候选。" };
+ }
+ const config = getAiConfig();
+ if (!config.ok) {
+  return {
+   candidates: [], status: "failed", failureStage: "provider", failureCode: providerFailureCode(config.error.code),
+   message: "自然语言内容整理暂时失败，已保留确定性规格候选。",
+  };
+ }
+ const source = blocks.map((block) => `[${block.sourceBlockId}] ${block.text}`).join("\n");
+ const result = await callAiText({
+  messages: [
+   { role: "system", content: "Extract only explicit seller-authored product facts. Return strict JSON {candidates:[{field,value,sourceBlockId,evidenceText,qualifier,confidence}]}. Use only the 8 fields capacity,functional_feature,use_scenario,care,construction,operation,compatibility,other. EvidenceText must be copied exactly. No reviews, competitors, recommendations, or inferred claims." },
+   { role: "user", content: source },
+  ],
+  temperature: 0,
+  thinkingMode: "disabled",
+  maxTokens: 1800,
+  timeoutMs: AI_TIMEOUT_MS,
+  responseFormat: { type: "json_object" },
+ });
+ if (!result.ok) {
+  if (result.error.code === "empty_response") {
+   return { candidates: [], status: "failed", failureStage: "response_parse", failureCode: "ai_empty_response", providerHttpStatusClass: result.diagnostics?.providerHttpStatusClass, message: "自然语言内容整理暂时失败，已保留确定性规格候选。" };
+  }
+  return { candidates: [], status: "failed", failureStage: "provider", failureCode: providerFailureCode(result.error.code), providerHttpStatusClass: result.diagnostics?.providerHttpStatusClass, message: "自然语言内容整理暂时失败，已保留确定性规格候选。" };
+ }
+ let parsed: unknown;
+ try {
+  parsed = JSON.parse(result.data);
+ } catch {
+  return { candidates: [], status: "failed", failureStage: "response_parse", failureCode: "ai_json_parse_error", providerHttpStatusClass: result.diagnostics?.providerHttpStatusClass, message: "自然语言内容整理暂时失败，已保留确定性规格候选。" };
+ }
+ let valid: AmazonUnstructuredFactExtractionV1;
+ try {
+  valid = validateAiExtraction(parsed, blocks);
+ } catch (error) {
+  const detail = error instanceof Error ? error.message : "invalid_schema";
+  const failure = validationFailure(detail);
+  return { candidates: [], status: "failed", ...failure, providerHttpStatusClass: result.diagnostics?.providerHttpStatusClass, message: "自然语言内容整理暂时失败，已保留确定性规格候选。" };
+ }
+ const candidates = valid.candidates.map((candidate, index) => {
+  const block = blocks.find((item) => item.sourceBlockId === candidate.sourceBlockId);
+  return {
+   id: `amazon-enrichment:ai:${index}`,
+   taskId: "",
+   asin: "",
+   field: candidate.field,
+   value: candidate.value,
+   status: (candidate.qualifier === "direct" ? "direct" : "review") as AmazonFactCandidateV1["status"],
+   sourceType: block?.section || "description",
+   sources: [{ sourceBlockId: candidate.sourceBlockId, sourceUrl: block?.sourceUrl || "", section: block?.section || "description", label: "Amazon seller content", text: candidate.evidenceText }],
+   evidenceTexts: [candidate.evidenceText],
+   approximate: candidate.qualifier === "approximate",
+   negative: candidate.qualifier === "negative",
+   conflict: false,
+   conflictReason: null,
+   reviewRequired: candidate.qualifier !== "direct" || candidate.field === "compatibility",
+   createdAt: new Date().toISOString(),
+  };
+ });
+ return { candidates, status: "completed", providerHttpStatusClass: result.diagnostics?.providerHttpStatusClass };
+}
+
 export function resolveCandidateConflicts(candidates: AmazonFactCandidateV1[]): AmazonFactCandidateV1[] {
  const rows: AmazonFactCandidateV1[] = [];
  const byValue = new Map<string, AmazonFactCandidateV1>();
@@ -66,4 +178,33 @@ export function resolveCandidateConflicts(candidates: AmazonFactCandidateV1[]): 
  }
  return rows;
 }
-export async function buildAmazonFactEnrichmentPreview(input:{taskId:string;asin:string;blocks:AmazonSellerContentBlockV1[];structured?:Record<string,string>;collectedAt?:string;expiresAt?:number}):Promise<AmazonFactEnrichmentPreviewV1>{ const blocks=normalizeSellerBlocks(input.blocks); const deterministic=mapSellerBlocksToCandidates({taskId:input.taskId,asin:input.asin,blocks,structured:input.structured},input.collectedAt); const natural=await extractNatural(blocks); const candidates=resolveCandidateConflicts([...deterministic,...natural.candidates.map(c=>({...c,taskId:input.taskId,asin:input.asin,id:`${c.id}:${input.taskId}`}))]); return {schema:"amazon-fact-enrichment.v1",taskId:input.taskId,asin:input.asin,collectedAt:input.collectedAt||new Date().toISOString(),candidates,sourceBlocks:blocks,naturalLanguageStatus:natural.status,naturalLanguageMessage:natural.message,expiresAt:input.expiresAt||Date.now()+15*60*1000}; }
+export async function buildAmazonFactEnrichmentPreview(input: {
+ taskId: string;
+ asin: string;
+ blocks: AmazonSellerContentBlockV1[];
+ structured?: Record<string, string>;
+ collectedAt?: string;
+ expiresAt?: number;
+}): Promise<AmazonFactEnrichmentPreviewV1> {
+ const blocks = normalizeSellerBlocks(input.blocks);
+ const deterministic = mapSellerBlocksToCandidates({ taskId: input.taskId, asin: input.asin, blocks, structured: input.structured }, input.collectedAt);
+ const natural = await extractNatural(blocks);
+ const candidates = resolveCandidateConflicts([
+  ...deterministic,
+  ...natural.candidates.map((candidate) => ({ ...candidate, taskId: input.taskId, asin: input.asin, id: `${candidate.id}:${input.taskId}` })),
+ ]);
+ return {
+  schema: "amazon-fact-enrichment.v1",
+  taskId: input.taskId,
+  asin: input.asin,
+  collectedAt: input.collectedAt || new Date().toISOString(),
+  candidates,
+  sourceBlocks: blocks,
+  naturalLanguageStatus: natural.status,
+  naturalLanguageMessage: natural.message,
+  ...(natural.failureStage ? { naturalLanguageFailureStage: natural.failureStage } : {}),
+  ...(natural.failureCode ? { naturalLanguageFailureCode: natural.failureCode } : {}),
+  ...(natural.providerHttpStatusClass ? { naturalLanguageProviderHttpStatusClass: natural.providerHttpStatusClass } : {}),
+  expiresAt: input.expiresAt || Date.now() + 15 * 60 * 1000,
+ };
+}
