@@ -5,7 +5,7 @@ import { mapSellerBlocksToCandidates, normalizeSellerBlocks } from "./mapping";
 const AI_TIMEOUT_MS=12000;
 export function validateAiExtraction(raw: unknown, blocks: AmazonSellerContentBlockV1[]): AmazonUnstructuredFactExtractionV1 {
  const allowedIds=new Set(blocks.map(b=>b.sourceBlockId));
- if(!raw || typeof raw!=="object" || !Array.isArray((raw as any).candidates)) throw new Error("invalid_schema");
+ if(!raw || typeof raw!=="object" || Object.keys(raw as object).some(k=>k!=="candidates") || !Array.isArray((raw as any).candidates)) throw new Error("invalid_schema");
  const out=[]; const allowedKeys=new Set(["field","value","sourceBlockId","evidenceText","qualifier","confidence"]);
  for(const c of (raw as any).candidates){
   if(!c || typeof c!=="object" || Object.keys(c).some(k=>!allowedKeys.has(k)) || typeof c.field!=="string" || typeof c.value!=="string" || typeof c.sourceBlockId!=="string" || typeof c.evidenceText!=="string" || !["direct","approximate","negative","conditional"].includes(c.qualifier) || !["high","medium"].includes(c.confidence)) throw new Error("invalid_schema");
@@ -21,4 +21,37 @@ export function validateAiExtraction(raw: unknown, blocks: AmazonSellerContentBl
  return {candidates:out.slice(0,40)} as AmazonUnstructuredFactExtractionV1;
 }
 async function extractNatural(blocks:AmazonSellerContentBlockV1[]):Promise<{candidates:AmazonFactCandidateV1[];status:"not_needed"|"completed"|"failed";message?:string}> { if(blocks.length===0) return {candidates:[],status:"not_needed"}; if(process.env.AMAZON_FACT_ENRICHMENT_AI_ENABLED!=="true") return {candidates:[],status:"failed",message:"自然语言内容整理暂时未启用，已保留确定性规格候选。"}; const config=getAiConfig(); if(!config.ok) return {candidates:[],status:"failed",message:"自然语言内容整理暂时失败，已保留确定性规格候选。"}; const source=blocks.map(b=>`[${b.sourceBlockId}] ${b.text}`).join("\n"); try { const result=await callAiText({messages:[{role:"system",content:"Extract only explicit seller-authored product facts. Return strict JSON {candidates:[{field,value,sourceBlockId,evidenceText,qualifier,confidence}]}. Use only the 8 fields capacity,functional_feature,use_scenario,care,construction,operation,compatibility,other. EvidenceText must be copied exactly. No reviews, competitors, recommendations, or inferred claims."},{role:"user",content:source}],temperature:0,maxTokens:1800,timeoutMs:AI_TIMEOUT_MS,responseFormat:{type:"json_object"}}); if(!result.ok) throw new Error(result.error.code); const parsed=JSON.parse(result.data); const valid=validateAiExtraction(parsed,blocks); const mapped=valid.candidates.map((c,i)=>({id:`amazon-enrichment:ai:${i}`,taskId:"",asin:"",field:c.field,value:c.value,status:(c.qualifier==="direct"?"direct":"review") as any,sourceType:blocks.find(b=>b.sourceBlockId===c.sourceBlockId)?.section||"description",sources:[{sourceBlockId:c.sourceBlockId,sourceUrl:blocks.find(b=>b.sourceBlockId===c.sourceBlockId)?.sourceUrl||"",section:blocks.find(b=>b.sourceBlockId===c.sourceBlockId)?.section||"description",label:"Amazon seller content",text:c.evidenceText}],evidenceTexts:[c.evidenceText],approximate:c.qualifier==="approximate",negative:c.qualifier==="negative",conflict:false,conflictReason:null,reviewRequired:c.qualifier!=="direct"||c.field==="compatibility",createdAt:new Date().toISOString()})); return {candidates:mapped,status:"completed"}; } catch(error){ return {candidates:[],status:"failed",message:"自然语言内容整理暂时失败，已保留确定性规格候选。"}; } }
-export async function buildAmazonFactEnrichmentPreview(input:{taskId:string;asin:string;blocks:AmazonSellerContentBlockV1[];structured?:Record<string,string>;collectedAt?:string;expiresAt?:number}):Promise<AmazonFactEnrichmentPreviewV1>{ const blocks=normalizeSellerBlocks(input.blocks); const deterministic=mapSellerBlocksToCandidates({taskId:input.taskId,asin:input.asin,blocks,structured:input.structured},input.collectedAt); const natural=await extractNatural(blocks); const candidates=[...deterministic,...natural.candidates.map(c=>({...c,taskId:input.taskId,asin:input.asin,id:`${c.id}:${input.taskId}`}))]; return {schema:"amazon-fact-enrichment.v1",taskId:input.taskId,asin:input.asin,collectedAt:input.collectedAt||new Date().toISOString(),candidates,sourceBlocks:blocks,naturalLanguageStatus:natural.status,naturalLanguageMessage:natural.message,expiresAt:input.expiresAt||Date.now()+15*60*1000}; }
+export function resolveCandidateConflicts(candidates: AmazonFactCandidateV1[]): AmazonFactCandidateV1[] {
+ const rows: AmazonFactCandidateV1[] = [];
+ const byValue = new Map<string, AmazonFactCandidateV1>();
+ for (const candidate of candidates) {
+  const key = `${candidate.field}:${candidate.value.trim().toLowerCase()}`;
+  const existing = byValue.get(key);
+  if (existing) {
+   existing.sources.push(...candidate.sources);
+   existing.evidenceTexts.push(...candidate.evidenceTexts);
+   existing.reviewRequired = existing.reviewRequired || candidate.reviewRequired;
+   continue;
+  }
+  const copy: AmazonFactCandidateV1 = { ...candidate, sources: [...candidate.sources], evidenceTexts: [...candidate.evidenceTexts] };
+  byValue.set(key, copy);
+  rows.push(copy);
+ }
+ const byField = new Map<string, AmazonFactCandidateV1[]>();
+ for (const candidate of rows) {
+  const group = byField.get(candidate.field) ?? [];
+  group.push(candidate);
+  byField.set(candidate.field, group);
+ }
+ for (const group of byField.values()) {
+  if (group.length < 2) continue;
+  for (const candidate of group) {
+   candidate.conflict = true;
+   candidate.status = "conflict";
+   candidate.reviewRequired = true;
+   candidate.conflictReason = "multiple_values_same_field";
+  }
+ }
+ return rows;
+}
+export async function buildAmazonFactEnrichmentPreview(input:{taskId:string;asin:string;blocks:AmazonSellerContentBlockV1[];structured?:Record<string,string>;collectedAt?:string;expiresAt?:number}):Promise<AmazonFactEnrichmentPreviewV1>{ const blocks=normalizeSellerBlocks(input.blocks); const deterministic=mapSellerBlocksToCandidates({taskId:input.taskId,asin:input.asin,blocks,structured:input.structured},input.collectedAt); const natural=await extractNatural(blocks); const candidates=resolveCandidateConflicts([...deterministic,...natural.candidates.map(c=>({...c,taskId:input.taskId,asin:input.asin,id:`${c.id}:${input.taskId}`}))]); return {schema:"amazon-fact-enrichment.v1",taskId:input.taskId,asin:input.asin,collectedAt:input.collectedAt||new Date().toISOString(),candidates,sourceBlocks:blocks,naturalLanguageStatus:natural.status,naturalLanguageMessage:natural.message,expiresAt:input.expiresAt||Date.now()+15*60*1000}; }
