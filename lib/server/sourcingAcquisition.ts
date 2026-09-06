@@ -575,6 +575,50 @@ export type WindowProbeFn = (input: {
 }) => Promise<WindowProbeResult>;
 
 /**
+ * 精简 env 白名单：本机 agent/连接器会话会注入超过 64KB 的环境块，
+ * PowerShell `Add-Type`(csc.exe 子进程) 会因「环境块不能多于 65535 字节」直接失败，
+ * 导致 probe-1688-window.ps1 的 [Win32DesktopProbe] 类型编译不出来、探测永远返回
+ * not_visible（即使桌面已有真实可见 headed 窗口）。对 launcher/probe 子进程只传
+ * 白名单键，保证 ps1 内 Add-Type 可编译、CLI 不受巨型 env 干扰。
+ */
+export const SPAWN_ENV_ALLOWLIST: ReadonlyArray<string> = [
+  "PATH",
+  "SystemRoot",
+  "WINDIR",
+  "COMSPEC",
+  "TEMP",
+  "TMP",
+  "USERPROFILE",
+  "HOME",
+  "LOCALAPPDATA",
+  "APPDATA",
+  "SystemDrive",
+  "ProgramFiles",
+  "ProgramFiles(x86)",
+  "OS",
+  "PROCESSOR_ARCHITECTURE",
+  "NUMBER_OF_PROCESSORS",
+  "NODE_ENV",
+];
+
+export function sanitizedSpawnEnv(
+  source: NodeJS.ProcessEnv | Record<string, string | undefined> | undefined,
+): Record<string, string | undefined> {
+  if (!source) return {};
+  const out: Record<string, string | undefined> = {};
+  for (const key of Object.keys(source)) {
+    const keep =
+      SPAWN_ENV_ALLOWLIST.includes(key) ||
+      key.startsWith("BB1688_") ||
+      key.startsWith("V35_1688_") ||
+      key.startsWith("SOURCING_") ||
+      key.startsWith("FAKE_");
+    if (keep && source[key] !== undefined) out[key] = source[key];
+  }
+  return out;
+}
+
+/**
  * Windows 原生可见 Chrome 窗口探测：
  * 调用 scripts/probe-1688-window.ps1 脚本，检查 Chrome 顶层窗口 handle、可见性与屏幕区域有效性。
  */
@@ -662,6 +706,7 @@ export async function defaultWindowProbe(input: {
       {
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],
+        env: sanitizedSpawnEnv(env) as NodeJS.ProcessEnv,
       },
     );
 
@@ -734,7 +779,7 @@ export async function defaultWindowProbe(input: {
 export async function begin1688KeywordLogin(
   env: NodeJS.ProcessEnv = process.env,
   options?: { probeWindow?: WindowProbeFn },
-): Promise<{ started: boolean }> {
+): Promise<{ started: boolean; visibility?: "detected" | "unknown" }> {
   const status = getCliToolStatus(env);
   if (!status.available) {
     throw new SourcingAcquisitionError(
@@ -797,7 +842,7 @@ export async function begin1688KeywordLogin(
             status.cliPath,
             ...(logPath ? ["-LogPath", logPath] : []),
           ],
-          { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] },
+          { windowsHide: true, stdio: ["ignore", "pipe", "pipe"], env: sanitizedSpawnEnv(env) as NodeJS.ProcessEnv },
         );
         let stdout = "";
         let settled = false;
@@ -857,28 +902,26 @@ export async function begin1688KeywordLogin(
       // ignore JSON parse error if stdout had extra text
     }
 
-    // Windows 原生可见窗口探测
+    // Best-effort 可见性诊断（不再作为强门禁）：
+    // headed 窗口与探测存在天然时序 race（CLI 登录成功前窗口生命周期短、可能被自身 daemon
+    // 顶替），因此窗口未探测到不阻断请求——登录是否真正完成由 whoami / 重新检测唯一裁决。
     const probeFn = options?.probeWindow ?? defaultWindowProbe;
     const profileDir = rootDir ? join(rootDir, "profiles", "default") : "default";
-    const timeoutMs = Number(env.V35_1688_LOGIN_PROBE_TIMEOUT_MS) || 20000;
-    const intervalMs = Number(env.V35_1688_LOGIN_PROBE_INTERVAL_MS) || 500;
-
-    const probeResult = await probeFn({
-      profileDir,
-      timeoutMs,
-      intervalMs,
-      env,
-    });
-
-    if (!probeResult.found) {
-      throw new SourcingAcquisitionError(
-        "sourcing_login_window_not_visible",
-        504,
-        "1688 登录窗口未能在有效屏幕区域内显示。",
-      );
+    let visibility: "detected" | "unknown" = "unknown";
+    try {
+      const probeResult = await probeFn({
+        profileDir,
+        // 诊断窗口期收缩到 5s：仅作 best-effort 反馈，不让请求因探测等待过长
+        timeoutMs: Number(env.V35_1688_LOGIN_PROBE_TIMEOUT_MS) || 5000,
+        intervalMs: Number(env.V35_1688_LOGIN_PROBE_INTERVAL_MS) || 500,
+        env,
+      });
+      if (probeResult.found) visibility = "detected";
+    } catch {
+      // 探测异常不影响 login 请求成功（launcher 已 detach 启动）
     }
 
-    return { started: true };
+    return { started: true, visibility };
   }
 
   return await new Promise<{ started: boolean }>((resolve, reject) => {

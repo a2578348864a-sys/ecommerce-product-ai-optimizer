@@ -15,6 +15,7 @@ import {
   defaultWindowProbe,
   getOfferDetailById,
   resetCliVersionCacheForTests,
+  sanitizedSpawnEnv,
   searchOffersByKeyword,
   stop1688DaemonIfRunning,
   SOURCING_CLI_ENV_PATH,
@@ -461,4 +462,41 @@ describe("defaultWindowProbe", () => {
       expect(res.reason).toBe("timeout_no_visible_window");
     });
   }
+});
+
+describe("sanitizedSpawnEnv — launcher/probe 子进程环境块裁剪", () => {
+  it("巨型 env（>65535 环境块）被裁剪为白名单，Add-Type 可编译前提", () => {
+    const big = { ...process.env, SOME_HUGE: "x".repeat(600000) };
+    const out = sanitizedSpawnEnv(big);
+    const total = Object.entries(out).reduce((n, [k, v]) => n + k.length + (v?.length ?? 0), 0);
+    expect(total).toBeLessThan(65535);
+    expect(out.SOME_HUGE).toBeUndefined();
+  });
+
+  it("保留系统必要键与 BB1688_/V35_1688_/SOURCING_/FAKE_ 前缀", () => {
+    const out = sanitizedSpawnEnv({
+      PATH: "C:\\Windows",
+      SystemRoot: "C:\\Windows",
+      USERPROFILE: "C:\\Users\\a",
+      HOME: "C:\\Users\\a",
+      BB1688_HOME: "C:\\Users\\a\\.1688",
+      V35_1688_LOGIN_PROBE_TIMEOUT_MS: "20000",
+      SOURCING_CLI_PATH: "C:\\fake\\cli.js",
+      FAKE_CLI_MODE: "ok",
+      NOISE: "should-drop",
+    });
+    expect(out.PATH).toBe("C:\\Windows");
+    expect(out.SystemRoot).toBe("C:\\Windows");
+    expect(out.USERPROFILE).toBe("C:\\Users\\a");
+    expect(out.BB1688_HOME).toBe("C:\\Users\\a\\.1688");
+    expect(out.V35_1688_LOGIN_PROBE_TIMEOUT_MS).toBe("20000");
+    expect(out.SOURCING_CLI_PATH).toBe("C:\\fake\\cli.js");
+    expect(out.FAKE_CLI_MODE).toBe("ok");
+    expect(out.NOISE).toBeUndefined();
+  });
+
+  it("null/undefined source → 空对象", () => {
+    expect(sanitizedSpawnEnv(undefined)).toEqual({});
+    expect(sanitizedSpawnEnv(null as unknown as NodeJS.ProcessEnv)).toEqual({});
+  });
 });

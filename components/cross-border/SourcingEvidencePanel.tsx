@@ -406,7 +406,7 @@ export function SourcingEvidencePanel({
       }
       setErrorMessage("");
       setErrorDetail(null);
-      setLoginNotice((data.data as { hint?: string })?.hint ?? "已在电脑上打开 1688 登录窗口，请完成扫码；完成后点击「重新检测」确认登录。");
+      setLoginNotice((data.data as { hint?: string })?.hint ?? "已发起 1688 登录窗口，请查看桌面并完成登录；完成后点击「重新检测」。");
     } catch (err) {
       setLoginNotice("");
       const classified = classifySourcingRequestError({ error: err, method: "keyword" });

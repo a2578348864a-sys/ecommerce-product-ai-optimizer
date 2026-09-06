@@ -395,10 +395,19 @@ export async function POST(
   // ── action=begin-keyword-login：R1——固定安全登录 capability（打开 1688 登录窗口）──
   if (action === "begin-keyword-login") {
     try {
-      await begin1688KeywordLogin();
+      const login = await begin1688KeywordLogin();
+      const hint =
+        login.visibility === "detected"
+          ? "1688 登录窗口已打开，请完成登录；完成后点击「重新检测」确认。"
+          : "已发起 1688 登录窗口，请查看桌面并完成登录；若未看到窗口，请检查任务栏后重试。";
       return jsonResponse({
         ok: true,
-        data: { started: true, hint: "已在电脑上打开 1688 登录窗口，请完成扫码；完成后点击「重新检测」确认登录。" },
+        data: {
+          started: login.started,
+          state: "login_window_requested",
+          visibility: login.visibility ?? "unknown",
+          hint,
+        },
       });
     } catch (error) {
       return errorResponseFrom(error);
