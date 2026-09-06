@@ -9,7 +9,7 @@
  * 绝不自动代为确认用户数据，发现新 Preview 时引导用户前往对应区域人工复核。
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   AlertTriangle,
@@ -37,7 +37,8 @@ export type OrchestratorSourceState =
   | "pending" // ○ 待补齐 (关键词与竞品)
   | "failed" // ❌ 失败 (关键词与竞品)
   | "needs_action" // ⚠ 需要处理 (VOC)
-  | "needs_login"; // ⚠ 需要登录 (1688)
+  | "needs_login" // ⚠ 需要登录 (1688)
+  | "needs_user"; // ⚠ 需要人工处理
 
 export type OrchestratorSourceItem = {
   key: OrchestratorSourceKey;
@@ -91,28 +92,28 @@ const SOURCE_META: Record<
     anchorId: "workbench-browser-evidence",
     tabKey: "market",
     defaultState: "needs_supplement",
-    allowedStates: new Set(["ready", "needs_supplement"]),
+    allowedStates: new Set(["ready", "needs_supplement", "needs_user"]),
   },
   keywords_competitors: {
     title: "关键词与竞品",
-    anchorId: "workbench-keyword-strategy",
+    anchorId: "#formal-v2-market-evidence",
     tabKey: "market",
     defaultState: "pending",
-    allowedStates: new Set(["ready", "pending_review", "pending", "failed"]),
+    allowedStates: new Set(["ready", "pending_review", "pending", "failed", "needs_user"]),
   },
   voc: {
     title: "买家评论 / VOC",
     anchorId: "formal-v2-buyer-evidence",
     tabKey: "buyers",
     defaultState: "needs_action",
-    allowedStates: new Set(["ready", "needs_action"]),
+    allowedStates: new Set(["ready", "needs_action", "needs_user"]),
   },
   sourcing_1688: {
     title: "1688 供应链",
     anchorId: "formal-v2-sourcing-evidence",
     tabKey: "sourcing",
     defaultState: "pending_review",
-    allowedStates: new Set(["ready", "pending_review", "needs_login"]),
+    allowedStates: new Set(["ready", "pending_review", "needs_login", "needs_user"]),
   },
 };
 
@@ -122,6 +123,73 @@ const ORDERED_KEYS: OrchestratorSourceKey[] = [
   "voc",
   "sourcing_1688",
 ];
+
+/* ── 脱敏与字段提取工具 ───────────────────────────────── */
+
+/**
+ * 敏感信息与堆栈脱敏清理
+ * 过滤消除任何堆栈信息、本地绝对路径（如 C:\...）、token/cookie/auth 等敏感字样，
+ * 若命中脏信息则安全降级为“采集未成功，请稍后重试”。
+ */
+export function sanitizeDetail(text?: string): string | undefined {
+  if (typeof text !== "string") return undefined;
+  const trimmed = text.trim();
+  if (!trimmed) return undefined;
+
+  // 1. 堆栈信息检测（如 "at ...", "Error: ...", "Traceback"）
+  const hasStack =
+    /\b(?:at\s+[a-zA-Z0-9_$]+|\.js:\d+|\.ts:\d+|Traceback\s+\(most\s+recent\s+call\s+last\)|(?:Syntax|Type|Reference|Range|Internal)?Error:)/i.test(
+      trimmed,
+    ) || /^\s*at\s+/m.test(trimmed);
+
+  // 2. 本地绝对路径检测（如 "C:\...", "D:/...", "/Users/...", "/home/..."）
+  const hasAbsolutePath =
+    /(?:[a-zA-Z]:[\\/]|(?:^|[^\w])\/(?:Users|home|var|tmp|etc|app|node_modules|root)[\\/])/i.test(
+      trimmed,
+    );
+
+  // 3. 敏感凭证/鉴权信息检测（如 token, cookie, auth, bearer, password 等）
+  const hasSecret =
+    /\b(?:token|cookie|auth|authorization|bearer|password|passwd|secret|api[-_]?key)\b/i.test(
+      trimmed,
+    );
+
+  if (hasStack || hasAbsolutePath || hasSecret) {
+    return "采集未成功，请稍后重试";
+  }
+
+  return trimmed;
+}
+
+/**
+ * 从后端响应载荷中按优先级提取明细信息
+ * 优先级：
+ * 1. detail (string && trim)
+ * 2. message (string && trim)
+ * 3. error.message (string && trim)
+ */
+export function extractDetailFromPayload(itemVal: unknown): string | undefined {
+  if (typeof itemVal !== "object" || itemVal === null) return undefined;
+  const iv = itemVal as Record<string, unknown>;
+
+  if (typeof iv.detail === "string" && iv.detail.trim()) {
+    return iv.detail.trim();
+  }
+  if (typeof iv.message === "string" && iv.message.trim()) {
+    return iv.message.trim();
+  }
+  if (
+    iv.error &&
+    typeof iv.error === "object" &&
+    iv.error !== null &&
+    "message" in iv.error &&
+    typeof (iv.error as { message: unknown }).message === "string" &&
+    (iv.error as { message: string }).message.trim()
+  ) {
+    return (iv.error as { message: string }).message.trim();
+  }
+  return undefined;
+}
 
 /* ── 状态归一化工具 ───────────────────────────────────── */
 
@@ -157,7 +225,7 @@ export function normalizeState(
       if (key === "amazon") return "needs_supplement";
       if (key === "voc") return "needs_action";
       if (key === "sourcing_1688") return "needs_login";
-      return "pending";
+      return "needs_user";
     }
   }
   if (typeof rawReady === "boolean") {
@@ -180,6 +248,7 @@ export function formatBadgeLabel(state: OrchestratorSourceState): {
     case "pending_review":
       return { icon: "alert", text: "⚠ 待确认", variant: "amber" };
     case "needs_action":
+    case "needs_user":
       return { icon: "alert", text: "⚠ 需要处理", variant: "amber" };
     case "needs_login":
       return { icon: "alert", text: "⚠ 需要登录", variant: "amber" };
@@ -202,7 +271,8 @@ export function computeSummary(
       i.state === "needs_login" ||
       i.state === "needs_supplement" ||
       i.state === "failed" ||
-      i.state === "pending",
+      i.state === "pending" ||
+      i.state === "needs_user",
   ).length;
 
   const allReady = reusedCount === items.length;
@@ -237,6 +307,8 @@ export function ResearchCollectionOrchestratorCard({
 }: ResearchCollectionOrchestratorCardProps) {
   const [isInspecting, setIsInspecting] = useState(false);
   const [isOrchestrating, setIsOrchestrating] = useState(false);
+  const [retryingSource, setRetryingSource] = useState<OrchestratorSourceKey | null>(null);
+  const isOrchestratingRef = useRef(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hasNewPreviewAlert, setHasNewPreviewAlert] = useState(Boolean(initialData?.hasNewPreview));
   const [customSummaryText, setCustomSummaryText] = useState<string | undefined>(
@@ -253,23 +325,23 @@ export function ResearchCollectionOrchestratorCard({
     > = {
       amazon: {
         state: initialData?.items?.amazon?.state ?? SOURCE_META.amazon.defaultState,
-        detail: initialData?.items?.amazon?.detail,
+        detail: sanitizeDetail(initialData?.items?.amazon?.detail),
       },
       keywords_competitors: {
         state:
           initialData?.items?.keywords_competitors?.state ??
           SOURCE_META.keywords_competitors.defaultState,
-        detail: initialData?.items?.keywords_competitors?.detail,
+        detail: sanitizeDetail(initialData?.items?.keywords_competitors?.detail),
       },
       voc: {
         state: initialData?.items?.voc?.state ?? SOURCE_META.voc.defaultState,
-        detail: initialData?.items?.voc?.detail,
+        detail: sanitizeDetail(initialData?.items?.voc?.detail),
       },
       sourcing_1688: {
         state:
           initialData?.items?.sourcing_1688?.state ??
           SOURCE_META.sourcing_1688.defaultState,
-        detail: initialData?.items?.sourcing_1688?.detail,
+        detail: sanitizeDetail(initialData?.items?.sourcing_1688?.detail),
       },
     };
     return init;
@@ -287,7 +359,9 @@ export function ResearchCollectionOrchestratorCard({
         detail: raw?.detail,
         anchorId: meta.anchorId,
         tabKey: meta.tabKey,
-        canRetry: k === "keywords_competitors" && raw?.state === "failed",
+        canRetry:
+          k === "keywords_competitors" &&
+          (raw?.state === "failed" || raw?.state === "needs_user"),
       };
     });
   }, [rawItemStates]);
@@ -310,7 +384,8 @@ export function ResearchCollectionOrchestratorCard({
         onNavigate(tabKey, anchorId);
       } else if (typeof window !== "undefined") {
         window.location.hash = anchorId;
-        const el = document.getElementById(anchorId);
+        const targetId = anchorId.replace(/^#/, "");
+        const el = document.getElementById(targetId);
         if (el) {
           el.scrollIntoView({ behavior: "smooth" });
         }
@@ -356,9 +431,10 @@ export function ResearchCollectionOrchestratorCard({
             if (itemVal && typeof itemVal === "object") {
               const iv = itemVal as Record<string, unknown>;
               const state = normalizeState(k, iv.state ?? iv.status, iv.ready);
+              const extractedDetail = extractDetailFromPayload(iv);
               nextRaw[k] = {
                 state,
-                detail: typeof iv.detail === "string" ? iv.detail : undefined,
+                detail: sanitizeDetail(extractedDetail),
               };
               if (state === "pending_review" && (iv.previewId || iv.hasPreview)) {
                 hasPreview = true;
@@ -378,9 +454,10 @@ export function ResearchCollectionOrchestratorCard({
               );
               if (targetKey) {
                 const state = normalizeState(targetKey, it.state ?? it.status, it.ready);
+                const extractedDetail = extractDetailFromPayload(it);
                 nextRaw[targetKey] = {
                   state,
-                  detail: typeof it.detail === "string" ? it.detail : undefined,
+                  detail: sanitizeDetail(extractedDetail),
                 };
                 if (state === "pending_review" && (it.previewId || it.hasPreview)) {
                   hasPreview = true;
@@ -449,7 +526,8 @@ export function ResearchCollectionOrchestratorCard({
 
   // 点击「补齐研究资料」
   const handleOrchestrate = useCallback(async () => {
-    if (isOrchestrating) return;
+    if (isOrchestrating || isOrchestratingRef.current) return;
+    isOrchestratingRef.current = true;
     setIsOrchestrating(true);
     setErrorMessage(null);
     try {
@@ -480,9 +558,20 @@ export function ResearchCollectionOrchestratorCard({
     } catch {
       setErrorMessage("网络异常，请求编排服务失败。");
     } finally {
+      isOrchestratingRef.current = false;
       setIsOrchestrating(false);
+      setRetryingSource(null);
     }
   }, [taskId, isOrchestrating, applyApiResponse]);
+
+  // 点击关键词重试
+  const handleRetryKeywords = useCallback(() => {
+    if (isOrchestrating || retryingSource !== null || isOrchestratingRef.current) {
+      return;
+    }
+    setRetryingSource("keywords_competitors");
+    void handleOrchestrate();
+  }, [isOrchestrating, retryingSource, handleOrchestrate]);
 
   return (
     <section
@@ -531,7 +620,7 @@ export function ResearchCollectionOrchestratorCard({
             type="button"
             data-testid="btn-orchestrate"
             onClick={handleOrchestrate}
-            disabled={isOrchestrating || isInspecting}
+            disabled={isOrchestrating || isInspecting || retryingSource !== null}
             className="inline-flex h-9 w-full sm:w-auto items-center justify-center gap-1.5 rounded-xl bg-slate-900 px-4 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-slate-800 active:bg-slate-950 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
           >
             {isOrchestrating ? (
@@ -611,6 +700,7 @@ export function ResearchCollectionOrchestratorCard({
       >
         {sourceItems.map((item) => {
           const badge = formatBadgeLabel(item.state);
+          const isRetryingThis = retryingSource === item.key;
           return (
             <div
               key={item.key}
@@ -627,43 +717,61 @@ export function ResearchCollectionOrchestratorCard({
                 <span
                   data-testid={`badge-${item.key}`}
                   className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-semibold ${
-                    badge.variant === "emerald"
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                      : badge.variant === "amber"
-                        ? "border-amber-200 bg-amber-50 text-amber-800"
-                        : badge.variant === "rose"
-                          ? "border-rose-200 bg-rose-50 text-rose-700"
-                          : "border-slate-200 bg-slate-100 text-slate-600"
+                    isRetryingThis
+                      ? "border-amber-200 bg-amber-50 text-amber-800"
+                      : badge.variant === "emerald"
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        : badge.variant === "amber"
+                          ? "border-amber-200 bg-amber-50 text-amber-800"
+                          : badge.variant === "rose"
+                            ? "border-rose-200 bg-rose-50 text-rose-700"
+                            : "border-slate-200 bg-slate-100 text-slate-600"
                   }`}
                 >
-                  {badge.icon === "check" && <Check className="h-3 w-3 shrink-0" />}
-                  {badge.icon === "alert" && (
-                    <AlertTriangle className="h-3 w-3 shrink-0 text-amber-600" />
+                  {isRetryingThis ? (
+                    <>
+                      <Loader2 className="h-3 w-3 shrink-0 animate-spin text-amber-600" />
+                      <span>正在重试</span>
+                    </>
+                  ) : (
+                    <>
+                      {badge.icon === "check" && <Check className="h-3 w-3 shrink-0" />}
+                      {badge.icon === "alert" && (
+                        <AlertTriangle className="h-3 w-3 shrink-0 text-amber-600" />
+                      )}
+                      {badge.icon === "circle" && (
+                        <Circle className="h-2.5 w-2.5 shrink-0 text-slate-400" />
+                      )}
+                      {badge.icon === "x" && <XCircle className="h-3 w-3 shrink-0 text-rose-600" />}
+                      <span>{badge.text}</span>
+                    </>
                   )}
-                  {badge.icon === "circle" && (
-                    <Circle className="h-2.5 w-2.5 shrink-0 text-slate-400" />
-                  )}
-                  {badge.icon === "x" && <XCircle className="h-3 w-3 shrink-0 text-rose-600" />}
-                  <span>{badge.text}</span>
                 </span>
               </div>
 
               {/* 底部行：描述/明细 + 对应操作（直达锚点/重试） */}
               <div className="mt-1.5 flex items-center justify-between gap-1.5 pt-1 border-t border-slate-100 text-[11px] sm:text-xs">
-                <span className="text-slate-500 truncate" title={item.detail}>
-                  {item.detail || (
-                    item.state === "ready"
-                      ? "资料已就绪"
-                      : item.state === "pending_review"
-                        ? "存在待确认条目"
-                        : item.state === "needs_login"
-                          ? "需要 1688 授权"
-                          : item.state === "needs_supplement"
-                            ? "信息尚不完整"
-                            : item.state === "failed"
-                              ? "上次采集未完成"
-                              : "待补充"
-                  )}
+                <span
+                  className="text-slate-500 truncate"
+                  title={isRetryingThis ? "正在重新采集关键词与竞品…" : item.detail}
+                >
+                  {isRetryingThis
+                    ? "正在重新采集关键词与竞品…"
+                    : item.detail || (
+                        item.state === "ready"
+                          ? "资料已就绪"
+                          : item.state === "pending_review"
+                            ? "存在待确认条目"
+                            : item.state === "needs_login"
+                              ? "需要 1688 授权"
+                              : item.state === "needs_supplement"
+                                ? "信息尚不完整"
+                                : item.state === "failed"
+                                  ? "上次采集未完成"
+                                  : item.state === "needs_user"
+                                    ? "需要人工处理"
+                                    : "待补充"
+                      )}
                 </span>
 
                 {/* 操作按钮 */}
@@ -680,54 +788,71 @@ export function ResearchCollectionOrchestratorCard({
                     </button>
                   )}
 
-                  {item.key === "keywords_competitors" && item.state === "failed" && (
-                    <button
-                      type="button"
-                      data-testid="action-retry-keywords"
-                      onClick={handleOrchestrate}
-                      disabled={isOrchestrating}
-                      className="inline-flex items-center gap-0.5 rounded-lg border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-100 transition-colors disabled:opacity-50"
-                    >
-                      <RotateCw className="h-3 w-3" />
-                      重试
-                    </button>
-                  )}
+                  {item.key === "keywords_competitors" &&
+                    (item.state === "failed" || item.state === "needs_user" || isRetryingThis) && (
+                      <button
+                        type="button"
+                        data-testid="action-retry-keywords"
+                        onClick={handleRetryKeywords}
+                        disabled={isOrchestrating || retryingSource !== null}
+                        className={`inline-flex items-center gap-0.5 rounded-lg border px-2 py-0.5 text-[11px] font-semibold transition-colors disabled:opacity-50 ${
+                          isRetryingThis
+                            ? "border-amber-200 bg-amber-50 text-amber-800"
+                            : "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                        }`}
+                      >
+                        {isRetryingThis ? (
+                          <>
+                            <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                            重试中…
+                          </>
+                        ) : (
+                          <>
+                            <RotateCw className="h-3 w-3 shrink-0" />
+                            重试
+                          </>
+                        )}
+                      </button>
+                    )}
 
-                  {item.key === "voc" && item.state === "needs_action" && (
-                    <button
-                      type="button"
-                      data-testid="action-anchor-voc"
-                      onClick={() => handleNavigate(item.tabKey, item.anchorId)}
-                      className="inline-flex items-center gap-0.5 rounded-lg border border-amber-300 bg-amber-50/80 px-2 py-0.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 transition-colors"
-                    >
-                      前往处理
-                      <ArrowRight className="h-3 w-3" />
-                    </button>
-                  )}
+                  {item.key === "voc" &&
+                    (item.state === "needs_action" || item.state === "needs_user") && (
+                      <button
+                        type="button"
+                        data-testid="action-anchor-voc"
+                        onClick={() => handleNavigate(item.tabKey, item.anchorId)}
+                        className="inline-flex items-center gap-0.5 rounded-lg border border-amber-300 bg-amber-50/80 px-2 py-0.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 transition-colors"
+                      >
+                        前往处理
+                        <ArrowRight className="h-3 w-3" />
+                      </button>
+                    )}
 
-                  {item.key === "sourcing_1688" && item.state === "needs_login" && (
-                    <button
-                      type="button"
-                      data-testid="action-login-sourcing"
-                      onClick={() => handleNavigate(item.tabKey, item.anchorId)}
-                      className="inline-flex items-center gap-0.5 rounded-lg border border-amber-300 bg-amber-50/80 px-2 py-0.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 transition-colors"
-                    >
-                      前往登录
-                      <ExternalLink className="h-3 w-3" />
-                    </button>
-                  )}
+                  {item.key === "sourcing_1688" &&
+                    (item.state === "needs_login" || item.state === "needs_user") && (
+                      <button
+                        type="button"
+                        data-testid="action-login-sourcing"
+                        onClick={() => handleNavigate(item.tabKey, item.anchorId)}
+                        className="inline-flex items-center gap-0.5 rounded-lg border border-amber-300 bg-amber-50/80 px-2 py-0.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 transition-colors"
+                      >
+                        前往登录
+                        <ExternalLink className="h-3 w-3" />
+                      </button>
+                    )}
 
-                  {item.key === "amazon" && item.state === "needs_supplement" && (
-                    <button
-                      type="button"
-                      data-testid="action-anchor-amazon"
-                      onClick={() => handleNavigate(item.tabKey, item.anchorId)}
-                      className="inline-flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100 transition-colors"
-                    >
-                      前往补充
-                      <ArrowRight className="h-3 w-3" />
-                    </button>
-                  )}
+                  {item.key === "amazon" &&
+                    (item.state === "needs_supplement" || item.state === "needs_user") && (
+                      <button
+                        type="button"
+                        data-testid="action-anchor-amazon"
+                        onClick={() => handleNavigate(item.tabKey, item.anchorId)}
+                        className="inline-flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100 transition-colors"
+                      >
+                        前往补充
+                        <ArrowRight className="h-3 w-3" />
+                      </button>
+                    )}
                 </div>
               </div>
             </div>

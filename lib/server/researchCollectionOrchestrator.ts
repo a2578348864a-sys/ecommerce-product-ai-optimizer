@@ -135,6 +135,9 @@ export function sanitizeErrorMessage(error: unknown): string {
     /(password|passwd|pwd|token|secret|api[-_]?key|cookie)\s*[:=]\s*[^\s,;]+/gi,
     "$1=***",
   );
+  // 屏蔽文件路径（Windows 驱动器路径及 Unix 路径）
+  msg = msg.replace(/[a-zA-Z]:\\[^\s:;,?"*|<>]+/gi, "[filepath]");
+  msg = msg.replace(/\/(?:Users|home|root|var|etc|opt|tmp|private)\/[^\s:;,?"*|<>]*/gi, "[filepath]");
   // 防止未经处理的原生堆栈暴露，只保留第一行有界描述
   const firstLine = msg.split("\n")[0] ?? msg;
   return firstLine.length > 200 ? firstLine.slice(0, 200) + "..." : firstLine;
@@ -323,12 +326,14 @@ async function handleAmazonSource(
       message: "Amazon 详情采集完成，等待人工确认",
     };
   } catch (error) {
+    const sanitized = sanitizeErrorMessage(error);
     return {
       status: "failed",
       hasEvidence: false,
+      message: sanitized,
       error: {
         code: "amazon_collect_failed",
-        message: sanitizeErrorMessage(error),
+        message: sanitized,
       },
     };
   }
@@ -400,6 +405,7 @@ async function handleKeywordCompetitorSource(
       return {
         status: "failed",
         hasEvidence: false,
+        message: "自动采集仅限本机环境与 Owner 使用",
         error: {
           code: "browser_use_local_owner_only",
           message: "自动采集仅限本机环境与 Owner 使用",
@@ -415,15 +421,56 @@ async function handleKeywordCompetitorSource(
       productUrl: seed.productUrl,
     });
     if (!kwRun.ok) {
+      const code =
+        kwRun.failureReason === "collector_unavailable"
+          ? "seller_sprite_collector_unavailable"
+          : "seller_sprite_keyword_failed";
+      const message =
+        kwRun.failureReason === "collector_unavailable"
+          ? "SellerSprite 采集引擎不可用（未启动或超时）"
+          : "SellerSprite 关键词采集失败：未获得有效页面观察";
       return {
         status: "failed",
         hasEvidence: false,
+        message,
         error: {
-          code: "seller_sprite_keyword_failed",
-          message:
-            kwRun.failureReason === "collector_unavailable"
-              ? "SellerSprite 采集引擎不可用（未启动或超时）"
-              : "SellerSprite 关键词采集失败：未获得有效页面观察",
+          code,
+          message,
+        },
+      };
+    }
+
+    // 显式白名单失败原因检查（kwRun.preview.failureReason）
+    if (kwRun.preview.failureReason === "login_required") {
+      return {
+        status: "needs_user",
+        hasEvidence: false,
+        message: "SellerSprite 插件未登录，请在浏览器中登录后重试",
+        error: {
+          code: "seller_sprite_login_required",
+          message: "SellerSprite 插件未登录，请在浏览器中登录后重试",
+        },
+      };
+    }
+    if (kwRun.preview.failureReason === "captcha_required") {
+      return {
+        status: "needs_user",
+        hasEvidence: false,
+        message: "SellerSprite 遇到图形验证码，请在浏览器中完成验证",
+        error: {
+          code: "seller_sprite_captcha_required",
+          message: "SellerSprite 遇到图形验证码，请在浏览器中完成验证",
+        },
+      };
+    }
+    if (kwRun.preview.failureReason === "panel_not_detected") {
+      return {
+        status: "failed",
+        hasEvidence: false,
+        message: "未检测到 SellerSprite 插件面板，请确认插件已开启",
+        error: {
+          code: "seller_sprite_panel_not_detected",
+          message: "未检测到 SellerSprite 插件面板，请确认插件已开启并刷新页面",
         },
       };
     }
@@ -437,9 +484,10 @@ async function handleKeywordCompetitorSource(
       return {
         status: "failed",
         hasEvidence: false,
+        message: "SellerSprite 关键词没有可用的非品牌查询词，已停止",
         error: {
           code: "no_reliable_search_keyword",
-          message: "SellerSprite 关键词没有可用的非品牌查询词，已停止",
+          message: "SellerSprite 关键词没有可用的非品牌查询词，已停止自动竞品采集",
         },
       };
     }
@@ -451,15 +499,21 @@ async function handleKeywordCompetitorSource(
       keyword,
     });
     if (!compRun.ok) {
+      const code =
+        compRun.failureReason === "collector_unavailable"
+          ? "amazon_competitor_collector_unavailable"
+          : "amazon_competitor_collect_failed";
+      const message =
+        compRun.failureReason === "collector_unavailable"
+          ? "Amazon 竞品采集引擎不可用（未启动或超时）"
+          : "Amazon 搜索采集失败：未获得有效页面观察";
       return {
         status: "failed",
         hasEvidence: false,
+        message,
         error: {
-          code: "amazon_competitor_collect_failed",
-          message:
-            compRun.failureReason === "collector_unavailable"
-              ? "Amazon 竞品采集引擎不可用（未启动或超时）"
-              : "Amazon 搜索采集失败：未获得有效页面观察",
+          code,
+          message,
         },
       };
     }
@@ -482,12 +536,14 @@ async function handleKeywordCompetitorSource(
     };
   } catch (error) {
     // 捕获所有未知异常，实现严格的 Failure Isolation，绝不向外抛出 500
+    const sanitized = sanitizeErrorMessage(error);
     return {
       status: "failed",
       hasEvidence: false,
+      message: sanitized,
       error: {
         code: "keyword_competitor_failed",
-        message: sanitizeErrorMessage(error),
+        message: sanitized,
       },
     };
   }
@@ -518,12 +574,14 @@ async function handleVocSource(
       message: "需要用户选择待分析 ASIN 或导入评论样本",
     };
   } catch (error) {
+    const sanitized = sanitizeErrorMessage(error);
     return {
       status: "failed",
       hasEvidence: false,
+      message: sanitized,
       error: {
         code: "voc_check_failed",
-        message: sanitizeErrorMessage(error),
+        message: sanitized,
       },
     };
   }
@@ -567,12 +625,14 @@ async function handleSourcingSource(
       message: "待搜索或导入 1688 货源",
     };
   } catch (error) {
+    const sanitized = sanitizeErrorMessage(error);
     return {
       status: "failed",
       hasEvidence: false,
+      message: sanitized,
       error: {
         code: "sourcing_check_failed",
-        message: sanitizeErrorMessage(error),
+        message: sanitized,
       },
     };
   }
