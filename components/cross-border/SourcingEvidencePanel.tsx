@@ -395,16 +395,20 @@ export function SourcingEvidencePanel({
       if (!response.ok || !data.ok) {
         const classified = classifySourcingRequestError({
           status: response.status,
-          code: data.error?.code,
-          message: data.error?.message,
+          code: data?.error?.code,
+          message: data?.error?.message,
           method: "keyword",
         });
+        setLoginNotice("");
         setErrorMessage(classified.message || "无法打开 1688 登录窗口，请稍后重试。");
         setErrorDetail(classified);
         return;
       }
-      setLoginNotice((data.data as { hint?: string }).hint ?? "已在电脑上打开 1688 登录窗口，请完成扫码。");
+      setErrorMessage("");
+      setErrorDetail(null);
+      setLoginNotice((data.data as { hint?: string })?.hint ?? "已在电脑上打开 1688 登录窗口，请完成扫码；完成后点击「重新检测」确认登录。");
     } catch (err) {
+      setLoginNotice("");
       const classified = classifySourcingRequestError({ error: err, method: "keyword" });
       setErrorMessage(classified.message || "无法打开 1688 登录窗口，请稍后重试。");
       setErrorDetail(classified);
@@ -699,7 +703,12 @@ export function SourcingEvidencePanel({
                   </button>
                 </div>
               )}
-              {loginNotice ? <p className="mt-2 text-sm font-semibold text-teal-700">{loginNotice}</p> : null}
+              {errorMessage ? (
+                <p data-testid="sourcing-login-error" className="mt-2 text-xs text-rose-600">
+                  {errorMessage}
+                </p>
+              ) : null}
+              {loginNotice ? <p className="mt-2 text-sm font-semibold text-teal-700" data-testid="sourcing-login-notice">{loginNotice}</p> : null}
               {caps.cliToolAvailable ? (
                 <details className="mt-2">
                   <summary className="cursor-pointer text-sm font-semibold text-amber-700">登录步骤（2 步）</summary>

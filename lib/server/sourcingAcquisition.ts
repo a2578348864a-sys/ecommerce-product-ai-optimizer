@@ -15,7 +15,7 @@
 import "server-only";
 
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { SourcingAcquisitionError, READ_ONLY_COMMANDS, type ReadOnlyCommand } from "@/lib/upstream/1688/contracts";
 import {
@@ -223,6 +223,22 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** 宽松解析 JSON（用于探测状态、容忍头部杂质日志） */
+function tryParseJson(raw: string): Record<string, unknown> | null {
+  try {
+    const trimmed = raw.trim();
+    const firstBrace = trimmed.indexOf("{");
+    if (firstBrace < 0) return null;
+    const candidate = trimmed.slice(firstBrace);
+    const lastBrace = candidate.lastIndexOf("}");
+    const body = lastBrace > 0 ? candidate.slice(0, lastBrace + 1) : candidate;
+    const parsed = JSON.parse(body);
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 /** 从 stdout 提取 JSON：容忍头部日志行（首个 { 开始，末尾可能截断则取最后一个 }） */
 function parseCliJson(stdout: string): unknown {
   const trimmed = stdout.trim();
@@ -426,12 +442,97 @@ export function buildCliLoginHint(env: NodeJS.ProcessEnv = process.env): { comma
 }
 
 /**
+ * 启动前 Daemon 冲突排查与释放：
+ * 检查 daemon 是否正在运行（通过 cli daemon status --json 或 ~/.1688/daemon.pid），
+ * 若存活则执行 cli daemon stop --json（3000ms 超时）等待其优雅停止并释放 .lock；
+ * 若 daemon.status 失败或超时，记录告警但不阻塞后续流程。
+ */
+export async function stop1688DaemonIfRunning(
+  cliPath: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
+  let isRunning = false;
+  let statusDetermined = false;
+
+  try {
+    const statusResult = await runCliProcessCore(
+      [cliPath, "daemon", "status", "--json"],
+      3000,
+      env,
+    );
+    if (statusResult.exitCode === 0 && statusResult.stdout) {
+      const parsed = tryParseJson(statusResult.stdout);
+      if (parsed && typeof parsed.running === "boolean") {
+        isRunning = parsed.running;
+        statusDetermined = true;
+      }
+    }
+  } catch (statusError) {
+    console.warn(
+      "[1688-cli] daemon status check failed or timed out:",
+      errorMessage(statusError),
+    );
+  }
+
+  if (!statusDetermined) {
+    try {
+      const homeDir = env.USERPROFILE ?? env.HOME;
+      if (homeDir) {
+        const pidPath = join(homeDir, ".1688", "daemon.pid");
+        if (existsSync(pidPath)) {
+          const pidStr = readFileSync(pidPath, "utf8").trim();
+          const pid = parseInt(pidStr, 10);
+          if (!isNaN(pid) && pid > 0) {
+            try {
+              process.kill(pid, 0);
+              isRunning = true;
+            } catch (killErr: unknown) {
+              const code = (killErr as { code?: string })?.code;
+              if (code === "EPERM") {
+                isRunning = true;
+              }
+            }
+          }
+        }
+      }
+    } catch (pidError) {
+      console.warn("[1688-cli] daemon pid check failed:", errorMessage(pidError));
+    }
+  }
+
+  if (isRunning) {
+    try {
+      await runCliProcessCore([cliPath, "daemon", "stop", "--json"], 3000, env);
+    } catch (stopError) {
+      console.warn(
+        "[1688-cli] daemon stop failed or timed out:",
+        errorMessage(stopError),
+      );
+    }
+  }
+}
+
+/**
  * Package A（R1）：固定安全登录 capability——从 Web UI 启动 1688 关键词登录。
- * 安全边界（任务 13 节）：
- * - fixed executable + 固定参数 ["login", "--headed"]；shell=false；不接受任何用户输入。
- * - detached 后台运行，不等待完成（扫码动作由用户在 CLI 打开的真实浏览器窗口中完成）。
- * - 不捕获/不导出 cookie、token、password；login 会话由 CLI 自身管理。
- * - 返回后由用户点击「重新检测」（whoami）确认登录结果。
+ * 安全边界与启动自检：
+ * - 启动前排查并释放已有 daemon 冲突（stop1688DaemonIfRunning）。
+ * - fixed executable + 固定参数 [status.cliPath, "login", "--headed", "--force", "--no-daemon"]；shell=false；不接受任何用户输入。
+ * - --force：保证即使本地有历史 state.json 也强制打开 headed 扫码窗口，绝不秒退；
+ * - --no-daemon：避免登录成功后在后台常驻拉起 daemon 导致后续冲突。
+ * - 1000ms Health Probe（健康存活自检）：
+ *   - 使用 stdio: ["ignore", "pipe", "pipe"], windowsHide: false, detached: true；
+ *   - 监听 child.on("error") 和 child.on("exit")，收集 stderr 文本；
+ *   - 等待约 1000ms：
+ *     - 若在窗口期内提前退出（child.exitCode !== null）或触发 error：
+ *       - 若 stderr 包含 "LOCK_BUSY" 或 child.exitCode === 5：
+ *         抛出 new SourcingAcquisitionError("sourcing_login_lock_busy", 503, "1688 进程锁被占用，请稍后重试。");
+ *       - 其他异常退出：
+ *         const sanitized = stderr.trim().split(/\r?\n/)[0] || `进程异常退出（exitCode: ${child.exitCode}）`;
+ *         抛出 new SourcingAcquisitionError("sourcing_login_window_launch_failed", 500, `无法启动 1688 登录窗口: ${sanitized}`);
+ *     - 若 1000ms 后 child 仍处于存活状态（child.exitCode === null 且未触发 error）：
+ *       - 说明 headed Chrome 窗口已经成功启动！
+ *       - 关闭 stdio 管道（child.stdout?.destroy(); child.stderr?.destroy();），调用 child.unref()；
+ *       - 返回 { started: true }。
  */
 export async function begin1688KeywordLogin(env: NodeJS.ProcessEnv = process.env): Promise<{ started: boolean }> {
   const status = getCliToolStatus(env);
@@ -444,15 +545,98 @@ export async function begin1688KeywordLogin(env: NodeJS.ProcessEnv = process.env
         : "1688 采集工具路径无效，无法打开登录窗口。",
     );
   }
-  const child = spawn(process.execPath, [status.cliPath, "login", "--headed"], {
-    shell: false,
-    windowsHide: false,
-    detached: true,
-    stdio: "ignore",
-    env,
+
+  await stop1688DaemonIfRunning(status.cliPath, env);
+
+  const args = [status.cliPath, "login", "--headed", "--force", "--no-daemon"];
+
+  return await new Promise<{ started: boolean }>((resolve, reject) => {
+    let stderr = "";
+    let settled = false;
+
+    const child = spawn(process.execPath, args, {
+      shell: false,
+      windowsHide: false,
+      detached: true,
+      stdio: ["ignore", "pipe", "pipe"],
+      ...(env ? { env } : {}),
+    });
+
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+
+    const finishFailure = (exitCode: number | null, err?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try {
+        child.stdout?.destroy();
+        child.stderr?.destroy();
+      } catch {
+        // ignore
+      }
+
+      if (err) {
+        reject(
+          new SourcingAcquisitionError(
+            "sourcing_login_window_launch_failed",
+            500,
+            `无法启动 1688 登录窗口: ${err.message || String(err)}`,
+          ),
+        );
+        return;
+      }
+
+      const effectiveExitCode = child.exitCode ?? exitCode;
+      if (stderr.includes("LOCK_BUSY") || effectiveExitCode === 5) {
+        reject(
+          new SourcingAcquisitionError(
+            "sourcing_login_lock_busy",
+            503,
+            "1688 进程锁被占用，请稍后重试。",
+          ),
+        );
+        return;
+      }
+
+      const sanitized = stderr.trim().split(/\r?\n/)[0] || `进程异常退出（exitCode: ${effectiveExitCode}）`;
+      reject(
+        new SourcingAcquisitionError(
+          "sourcing_login_window_launch_failed",
+          500,
+          `无法启动 1688 登录窗口: ${sanitized}`,
+        ),
+      );
+    };
+
+    child.once("error", (err) => {
+      finishFailure(child.exitCode, err);
+    });
+
+    child.once("exit", (code) => {
+      setTimeout(() => {
+        finishFailure(code ?? child.exitCode);
+      }, 50);
+    });
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      if (child.exitCode !== null) {
+        finishFailure(child.exitCode);
+        return;
+      }
+      settled = true;
+      try {
+        child.stdout?.destroy();
+        child.stderr?.destroy();
+      } catch {
+        // ignore
+      }
+      child.unref();
+      resolve({ started: true });
+    }, 1000);
   });
-  child.unref();
-  return { started: true };
 }
 
 /** 登录状态检测（只读）——只返回 loggedIn 布尔，账号标识一律丢弃 */
