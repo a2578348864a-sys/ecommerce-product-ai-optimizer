@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   runSellerSpriteCollection: vi.fn(),
   runAmazonCompetitorCollection: vi.fn(),
   getReviewEvidence: vi.fn(),
+  createReviewCollectPreview: vi.fn(),
+  findPendingReviewCollectPreview: vi.fn(),
   getSourcingEvidence: vi.fn(),
   getRuntimeMode: vi.fn(),
 }));
@@ -40,9 +42,13 @@ vi.mock("@/lib/server/browserEvidenceCollect", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/server/acquisitionCapability", () => ({
-  resolveBrowserAcquisitionCapability: mocks.resolveBrowserAcquisitionCapability,
-}));
+vi.mock("@/lib/server/acquisitionCapability", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/server/acquisitionCapability")>();
+  return {
+    ...actual,
+    resolveBrowserAcquisitionCapability: mocks.resolveBrowserAcquisitionCapability,
+  };
+});
 
 vi.mock("@/lib/server/keywordEvidence", () => ({
   getKeywordEvidence: mocks.getKeywordEvidence,
@@ -89,6 +95,15 @@ vi.mock("@/tools/collectors/browser-use/amazonCompetitorCollector", () => ({
 vi.mock("@/lib/server/reviewEvidence", () => ({
   getReviewEvidence: mocks.getReviewEvidence,
 }));
+
+vi.mock("@/lib/server/reviewCollector", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/server/reviewCollector")>();
+  return {
+    ...actual,
+    createReviewCollectPreview: mocks.createReviewCollectPreview,
+    findPendingReviewCollectPreview: mocks.findPendingReviewCollectPreview,
+  };
+});
 
 vi.mock("@/lib/server/runtimeMode", () => ({
   getRuntimeMode: mocks.getRuntimeMode,
@@ -206,6 +221,8 @@ describe("researchCollectionOrchestrator", () => {
     mocks.getKeywordEvidence.mockResolvedValue(null);
     mocks.getCompetitorEvidence.mockResolvedValue(null);
     mocks.getReviewEvidence.mockResolvedValue(null);
+    mocks.findPendingReviewCollectPreview.mockReturnValue(null);
+    mocks.createReviewCollectPreview.mockReset();
     mocks.getSourcingEvidence.mockResolvedValue(null);
   });
 
@@ -937,3 +954,214 @@ describe("researchCollectionOrchestrator", () => {
   });
 });
 
+
+// ── 第十一版：VOC 自动采集合同（Review Preview 幂等 / Human Gate / Provider=0）──
+describe("VOC auto collection contract (v11)", { timeout: 30000 }, () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _clearOrchestratorRunningStateForTests();
+    _clearBrowserUsePreviewCacheForTests();
+    resetSourcingPreviewStoreForTests();
+    mocks.getRuntimeMode.mockReturnValue("local_owner");
+    mocks.findFirst.mockResolvedValue({
+      id: "task-001",
+      updatedAt: new Date("2026-09-01T00:00:00.000Z"),
+      resultJson: buildTaskResultJson("B0SAMPLE01"),
+    });
+    mocks.readBrowserEvidence.mockResolvedValue(null);
+    mocks.readBrowserEvidenceTaskAsin.mockResolvedValue("B0SAMPLE01");
+    mocks.resolveBrowserAcquisitionCapability.mockReturnValue({ state: "available" });
+    mocks.getKeywordEvidence.mockResolvedValue(null);
+    mocks.getCompetitorEvidence.mockResolvedValue(null);
+    mocks.getReviewEvidence.mockResolvedValue(null);
+    mocks.getSourcingEvidence.mockResolvedValue(null);
+    mocks.findPendingReviewCollectPreview.mockReturnValue(null);
+    // 重置并发测试遗留的 hanging collector 实现（否则 v11 orchestrate 永久挂起）
+    mocks.runSellerSpriteCollection.mockResolvedValue(undefined);
+    mocks.runAmazonCompetitorCollection.mockResolvedValue(undefined);
+    mocks.collectBrowserEvidencePreview.mockResolvedValue(buildSampleBrowserCollectPreview("B0SAMPLE01"));
+  });
+
+  function sampleReviewPreview() {
+    return {
+      previewId: "rcp_test_001",
+      items: [
+        { asin: "B0SAMPLE01", role: "current_candidate", rating: 5, date: "2026-01-01", title: "Great product", sourceUrl: "https://www.amazon.com/gp/customer-reviews/x", bindingNote: null },
+        { asin: "B0SAMPLE01", role: "current_candidate", rating: 2, date: "2026-01-02", title: "Broke quickly", sourceUrl: "https://www.amazon.com/gp/customer-reviews/y", bindingNote: null },
+      ],
+      pageResults: [{ asin: "B0SAMPLE01", status: "ok", note: null, extractedCount: 2 }],
+      capturedAt: new Date().toISOString(),
+      expiresAt: Date.now() + 15 * 60 * 1000,
+    };
+  }
+
+  it("V1 已有正式 Review Evidence → ready 且 collector 不被调用", async () => {
+    mocks.getReviewEvidence.mockResolvedValue({
+      dataset: { reviews: [{ evidenceId: "e1" }, { evidenceId: "e2" }] },
+    });
+    const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    expect(result.sources.voc.status).toBe("ready");
+    expect(result.sources.voc.hasEvidence).toBe(true);
+    expect(result.sources.voc.itemCount).toBe(2);
+    expect(mocks.createReviewCollectPreview).not.toHaveBeenCalled();
+  });
+
+  it("V2 已有 Pending Review Preview → awaiting_confirmation 且 collector 不被调用", async () => {
+    mocks.findPendingReviewCollectPreview.mockReturnValue({
+      previewId: "rcp_pending_1",
+      items: [{ asin: "B0SAMPLE01", role: "current_candidate", rating: 5, date: null, title: "t", sourceUrl: "", bindingNote: null }],
+      pageResults: [],
+      capturedAt: new Date().toISOString(),
+      expiresAt: Date.now() + 15 * 60 * 1000,
+      subjectKey: "owner:v1",
+      taskId: "task-001",
+    });
+    const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    expect(result.sources.voc.status).toBe("awaiting_confirmation");
+    expect(result.sources.voc.previewId).toBe("rcp_pending_1");
+    expect(result.sources.voc.itemCount).toBe(1);
+    expect(mocks.createReviewCollectPreview).not.toHaveBeenCalled();
+  });
+
+  it("V3 inspect 模式：无 Evidence / 无 Pending → needs_user 且 collector 不被调用", async () => {
+    const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "inspect" });
+    expect(result.sources.voc.status).toBe("needs_user");
+    expect(result.sources.voc.message).toContain("待采集买家评论");
+    expect(mocks.createReviewCollectPreview).not.toHaveBeenCalled();
+  });
+
+  it("V4 orchestrate + 权威 ASIN + capability available → 恰好采集一次并生成 Preview", async () => {
+    mocks.createReviewCollectPreview.mockResolvedValue(sampleReviewPreview());
+    const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    expect(result.sources.voc.status).toBe("awaiting_confirmation");
+    expect(result.sources.voc.previewId).toBe("rcp_test_001");
+    expect(result.sources.voc.itemCount).toBe(2);
+    expect(mocks.createReviewCollectPreview).toHaveBeenCalledTimes(1);
+    expect(mocks.createReviewCollectPreview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        context: ownerContext,
+        taskId: "task-001",
+        asins: [{ asin: "B0SAMPLE01", role: "current_candidate" }],
+      }),
+    );
+  });
+
+  it("V5 无权威 ASIN → needs_user 且 collector 不被调用", async () => {
+    mocks.readBrowserEvidenceTaskAsin.mockResolvedValue(null);
+    const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    expect(result.sources.voc.status).toBe("needs_user");
+    expect(result.sources.voc.message).toContain("缺少可验证的 Amazon 商品身份");
+    expect(mocks.createReviewCollectPreview).not.toHaveBeenCalled();
+  });
+
+  it("V6 capability local_env_required → needs_user 与 typed message（owner 模式）", async () => {
+    mocks.resolveBrowserAcquisitionCapability.mockReturnValue({ state: "local_env_required", reasonCategory: "local_environment_required" });
+    const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    expect(result.sources.voc.status).toBe("needs_user");
+    expect(result.sources.voc.error?.code).toBe("local_environment_required");
+    expect(mocks.createReviewCollectPreview).not.toHaveBeenCalled();
+  });
+
+  it("V7 ReviewCollectorError browser_not_available → needs_user（typed）", async () => {
+    const { ReviewCollectorError } = await import("@/lib/server/reviewCollector");
+    mocks.createReviewCollectPreview.mockRejectedValue(new ReviewCollectorError("browser_not_available", 503, "no browser"));
+    const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    expect(result.sources.voc.status).toBe("needs_user");
+    expect(result.sources.voc.error?.code).toBe("browser_not_available");
+    // Failure isolation：其他来源正常返回
+    expect(result.sources.amazon).toBeDefined();
+    expect(result.sources.sourcing1688).toBeDefined();
+  });
+
+  it("V8 未知内部错误 → failed + 脱敏 message，Failure Isolation 不拖死其他源", async () => {
+    mocks.createReviewCollectPreview.mockRejectedValue(new Error("boom at C:\\secret\\path.ts with token=abc"));
+    const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    expect(result.sources.voc.status).toBe("failed");
+    expect(result.sources.voc.error?.code).toBe("voc_collect_failed");
+    expect(result.sources.voc.message).not.toContain("path.ts");
+    expect(result.sources.voc.message).not.toContain("token=abc");
+    // 其他源继续
+    expect(result.sources.keywordCompetitor).toBeDefined();
+  });
+
+  it("V9 连续两次 orchestrate（同 task/subject）：第二次复用 Pending（collector 总调用 = 1）", async () => {
+    let stored: { previewId: string } | null = null;
+    mocks.createReviewCollectPreview.mockImplementation(async () => {
+      const preview = sampleReviewPreview();
+      stored = preview;
+      return preview;
+    });
+    // findPending 先返回 null（第一次），collect 后返回注册的 pending（第二次）
+    mocks.findPendingReviewCollectPreview.mockImplementationOnce(() => null);
+    mocks.findPendingReviewCollectPreview.mockImplementation(() => stored);
+    const r1 = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    expect(r1.sources.voc.status).toBe("awaiting_confirmation");
+    const r2 = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    expect(r2.sources.voc.status).toBe("awaiting_confirmation");
+    expect(r2.sources.voc.previewId).toBe((stored as unknown as { previewId: string }).previewId);
+    expect(mocks.createReviewCollectPreview).toHaveBeenCalledTimes(1);
+  });
+
+  it("V10 任务隔离：task-002 不得复用 task-001 的 Pending", async () => {
+    mocks.createReviewCollectPreview.mockResolvedValue(sampleReviewPreview());
+    const storedTaskId = "task-001";
+    mocks.findPendingReviewCollectPreview.mockReset();
+    mocks.findPendingReviewCollectPreview.mockImplementation((query: { taskId: string }) => {
+      return query.taskId === storedTaskId
+        ? { previewId: "rcp_t1", items: [{ asin: "B0SAMPLE01", role: "current_candidate", rating: 5, date: null, title: "t", sourceUrl: "", bindingNote: null }], pageResults: [], capturedAt: "", expiresAt: Date.now() + 60000, subjectKey: "owner:v1", taskId: storedTaskId }
+        : null;
+    });
+    mocks.createReviewCollectPreview.mockResolvedValue(sampleReviewPreview());
+    await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    const r2 = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-002", action: "orchestrate" });
+    expect(r2.sources.voc.status).toBe("awaiting_confirmation");
+    // task-002 的 pending 查询返回 null → 走 collect
+    // task-001 的 Pending 被复用（0 次 collect）；task-002 无 pending → 1 次 collect
+    expect(mocks.createReviewCollectPreview).toHaveBeenCalledTimes(1);
+    expect(mocks.createReviewCollectPreview).toHaveBeenLastCalledWith(expect.objectContaining({ taskId: "task-002" }));
+  });
+
+  it("V11 主体隔离：visitor 不得复用 owner 的 Pending", async () => {
+    mocks.createReviewCollectPreview.mockResolvedValue(sampleReviewPreview());
+    mocks.findPendingReviewCollectPreview.mockReset();
+    mocks.findPendingReviewCollectPreview.mockImplementation((query: { subjectKey: string }) => {
+      return query.subjectKey === "owner:v1"
+        ? { previewId: "rcp_owner", items: [{ asin: "B0SAMPLE01", role: "current_candidate", rating: 5, date: null, title: "t", sourceUrl: "", bindingNote: null }], pageResults: [], capturedAt: "", expiresAt: Date.now() + 60000, subjectKey: "owner:v1", taskId: "task-001" }
+        : null;
+    });
+    mocks.createReviewCollectPreview.mockResolvedValue(sampleReviewPreview());
+    await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    const visitorContext = { mode: "demo", token: "tok", demoAccessId: "demo-1", isActive: true, isExpired: false, remainingAiCalls: 5 } as never;
+    // Owner 的 findPending 查询使用 owner:v1
+    expect(mocks.findPendingReviewCollectPreview).toHaveBeenCalledWith(
+      expect.objectContaining({ subjectKey: "owner:v1" }),
+    );
+    // subjectKey 函数级隔离证明：同一 demoAccessId 的 visitor 与 owner 永远不同 key
+    const { reviewCollectSubjectKey: getSubjectKey } = await import("@/lib/server/reviewCollector");
+    const ownerKey = getSubjectKey({ mode: "owner", token: "t" } as never);
+    const visitorKey = getSubjectKey({ mode: "demo", demoAccessId: "demo-1" } as never);
+    expect(ownerKey).toBe("owner:v1");
+    expect(visitorKey).toBe("visitor:demo-1");
+    expect(ownerKey).not.toBe(visitorKey);
+  });
+
+  it("V12 过期 Pending 不得复用（findPending 返回 null → 重新采集）", async () => {
+    mocks.createReviewCollectPreview.mockResolvedValue(sampleReviewPreview());
+    mocks.findPendingReviewCollectPreview.mockReturnValue(null);
+    await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    expect(mocks.createReviewCollectPreview).toHaveBeenCalledTimes(2);
+  });
+
+  it("V13 Human Gate：orchestrator 无 collect-confirm / analyzeVoc / importReviews / takeReviewCollectPreview 调用", async () => {
+    const fs = await import("node:fs");
+    // 去除注释后检查实际代码调用（注释中的提及不算调用）
+    const src = fs.readFileSync("lib/server/researchCollectionOrchestrator.ts", "utf8");
+    const codeOnly = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+    expect(codeOnly).not.toContain("collectConfirmAction");
+    expect(codeOnly).not.toContain("analyzeVoc");
+    expect(codeOnly).not.toContain("importReviews");
+    expect(codeOnly).not.toContain("collect-confirm");
+    expect(codeOnly).not.toContain("takeReviewCollectPreview");
+  });
+});

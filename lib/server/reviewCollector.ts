@@ -101,6 +101,23 @@ class ReviewCollectPreviewStore {
     return entry;
   }
 
+  /** 第十一版：无副作用查询（prune 先行；subjectKey/taskId 严格匹配；仅返回最新未过期 Preview） */
+  clearForTests(): void {
+    this.entries.clear();
+  }
+
+  findPending(query: { subjectKey: string; taskId: string }): ReviewCollectPreview | null {
+    this.prune();
+    const now = Date.now();
+    let match: ReviewCollectPreview | null = null;
+    for (const entry of this.entries.values()) {
+      if (entry.subjectKey === query.subjectKey && entry.taskId === query.taskId && entry.expiresAt > now) {
+        match = entry;
+      }
+    }
+    return match;
+  }
+
   private prune(): void {
     const now = Date.now();
     for (const [id, entry] of this.entries) {
@@ -124,6 +141,19 @@ export function takeReviewCollectPreview(
   claim: { subjectKey: string; taskId: string },
 ): ReviewCollectPreview | null {
   return previewStore.take(previewId, claim);
+}
+
+/** 第十一版：无副作用 Pending Preview 查询（不消费、不删除有效 Preview；跨主体/跨任务 fail-closed；过期不复用） */
+export function findPendingReviewCollectPreview(query: {
+  subjectKey: string;
+  taskId: string;
+}): ReviewCollectPreview | null {
+  return previewStore.findPending(query);
+}
+
+/** 测试专用：清空内存 Preview Store（仅测试文件使用） */
+export function resetReviewCollectPreviewStoreForTests(): void {
+  previewStore.clearForTests();
 }
 
 export function assertReviewCollectRequest(
