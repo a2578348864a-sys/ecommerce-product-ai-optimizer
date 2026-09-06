@@ -1145,6 +1145,101 @@ describe("VOC auto collection contract (v11)", { timeout: 30000 }, () => {
     expect(ownerKey).not.toBe(visitorKey);
   });
 
+  it("V14 同 task + 同 subject + 同 ASIN → 复用 Pending（collector delta = 0）", async () => {
+    mocks.createReviewCollectPreview.mockResolvedValue({
+      previewId: "rcp_asin_a",
+      items: [{ asin: "B0SAMPLE01", role: "current_candidate", rating: 5, date: null, title: "t", sourceUrl: "", bindingNote: null }],
+      pageResults: [], capturedAt: new Date().toISOString(), expiresAt: Date.now() + 60000,
+    });
+    // 模拟真实 store：第一次 findPending → null（collect 后注册），第二次 → 同 ASIN pending
+    let storedPreview: { previewId: string; items: Array<{ asin: string; role: string }>; pageResults: unknown[]; capturedAt: string; expiresAt: number; subjectKey: string; taskId: string } | null = null;
+    mocks.findPendingReviewCollectPreview.mockImplementation((query) => {
+      if (!storedPreview) return null;
+      const match = storedPreview.items.some((item) => item.role === "current_candidate" && item.asin.toUpperCase() === query.asin?.toUpperCase());
+      return match ? storedPreview : null;
+    });
+    mocks.createReviewCollectPreview.mockImplementation(async (input: { taskId: string }) => {
+      const preview = {
+        previewId: "rcp_asin_a_" + input.taskId,
+        items: [{ asin: "B0SAMPLE01", role: "current_candidate", rating: 5, date: null, title: "t", sourceUrl: "", bindingNote: null }],
+        pageResults: [] as unknown[],
+        capturedAt: new Date().toISOString(),
+        expiresAt: Date.now() + 60000,
+        subjectKey: "owner:v1",
+        taskId: input.taskId,
+      };
+      storedPreview = preview;
+      return preview;
+    });
+    // 首次 orchestrate：collect ASIN A → Preview A
+    const r1 = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    expect(r1.sources.voc.status).toBe("awaiting_confirmation");
+    expect(mocks.createReviewCollectPreview).toHaveBeenCalledTimes(1);
+    // 第二次：同 ASIN → 复用 Pending，不再 collect
+    const r2 = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    expect(r2.sources.voc.status).toBe("awaiting_confirmation");
+    expect(r2.sources.voc.previewId).toBe(r1.sources.voc.previewId);
+    expect(mocks.createReviewCollectPreview).toHaveBeenCalledTimes(1);
+  });
+
+  it("V15 同 task + 同 subject + 不同 ASIN → 不复用旧 Pending，为 B collect 1 次", async () => {
+    // 首次 collect ASIN A
+    mocks.createReviewCollectPreview.mockResolvedValueOnce({
+      previewId: "rcp_asin_a",
+      items: [{ asin: "B0OLDSIN01", role: "current_candidate", rating: 5, date: null, title: "t", sourceUrl: "", bindingNote: null }],
+      pageResults: [], capturedAt: new Date().toISOString(), expiresAt: Date.now() + 60000,
+    });
+    await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    expect(mocks.createReviewCollectPreview).toHaveBeenCalledTimes(1);
+    // 权威 ASIN 变为 B
+    mocks.readBrowserEvidenceTaskAsin.mockResolvedValue("B0NEWSIN02");
+    mocks.createReviewCollectPreview.mockResolvedValueOnce({
+      previewId: "rcp_asin_b",
+      items: [{ asin: "B0NEWSIN02", role: "current_candidate", rating: 4, date: null, title: "t2", sourceUrl: "", bindingNote: null }],
+      pageResults: [], capturedAt: new Date().toISOString(), expiresAt: Date.now() + 60000,
+    });
+    // 第二次 orchestrate：ASIN B 的 pending 查询为 null → collect B
+    const r2 = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    expect(r2.sources.voc.status).toBe("awaiting_confirmation");
+    expect(r2.sources.voc.previewId).toBe("rcp_asin_b");
+    expect(mocks.createReviewCollectPreview).toHaveBeenCalledTimes(2);
+    expect(mocks.createReviewCollectPreview).toHaveBeenLastCalledWith(
+      expect.objectContaining({ asins: [{ asin: "B0NEWSIN02", role: "current_candidate" }] }),
+    );
+  });
+
+  it("V16 Mixed / wrong Preview identity：findPending 正确过滤 competitor-only Preview → orchestrator collect", async () => {
+    // findPending 模拟真实过滤行为：Preview 只有 competitor ASIN → 不匹配 → 返回 null
+    mocks.findPendingReviewCollectPreview.mockImplementation((query) => {
+      // 真实 findPending 会检查 current_candidate ASIN 匹配 → competitor-only Preview 返回 null
+      return null;
+    });
+    mocks.createReviewCollectPreview.mockResolvedValue({
+      previewId: "rcp_correct",
+      items: [{ asin: "B0SAMPLE01", role: "current_candidate", rating: 5, date: null, title: "t", sourceUrl: "", bindingNote: null }],
+      pageResults: [], capturedAt: new Date().toISOString(), expiresAt: Date.now() + 60000,
+    });
+    const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    expect(result.sources.voc.status).toBe("awaiting_confirmation");
+    expect(result.sources.voc.previewId).toBe("rcp_correct");
+    expect(mocks.createReviewCollectPreview).toHaveBeenCalledTimes(1);
+  });
+
+  it("V17 Case normalization：ASIN 大小写差异正常匹配", async () => {
+    // Pending 存的 ASIN 是小写，authoritative 是大写 → 应该匹配
+    mocks.findPendingReviewCollectPreview.mockImplementation((query) => {
+      if (!query.asin) return null;
+      const normalized = query.asin.trim().toUpperCase();
+      // 模拟 store 行为：items 中有 b0sample01 (小写) 但匹配 b0sample01.toUpperCase() === B0SAMPLE01
+      return normalized === "B0SAMPLE01"
+        ? { previewId: "rcp_case_test", items: [{ asin: "b0sample01", role: "current_candidate", rating: 5, date: null, title: "t", sourceUrl: "", bindingNote: null }], pageResults: [], capturedAt: "", expiresAt: Date.now() + 60000, subjectKey: "owner:v1", taskId: "task-001" }
+        : null;
+    });
+    const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    expect(result.sources.voc.status).toBe("awaiting_confirmation");
+    expect(mocks.createReviewCollectPreview).not.toHaveBeenCalled();
+  });
+
   it("V12 过期 Pending 不得复用（findPending 返回 null → 重新采集）", async () => {
     mocks.createReviewCollectPreview.mockResolvedValue(sampleReviewPreview());
     mocks.findPendingReviewCollectPreview.mockReturnValue(null);

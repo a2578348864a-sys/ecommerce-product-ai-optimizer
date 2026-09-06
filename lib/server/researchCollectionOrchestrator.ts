@@ -594,7 +594,7 @@ async function handleVocSource(
 
     // 3. Pending Review Preview 幂等（无副作用查询；subjectKey/taskId 严格匹配；过期不复用）
     const subjectKey = reviewCollectSubjectKey(context);
-    const pending = findPendingReviewCollectPreview({ subjectKey, taskId });
+    const pending = findPendingReviewCollectPreview({ subjectKey, taskId, asin });
     if (pending !== null) {
       return {
         status: "awaiting_confirmation",
