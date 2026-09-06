@@ -304,7 +304,19 @@ async function probeImageCapability(): Promise<{
       bridge.start(process.env),
       new Promise((resolve) => setTimeout(resolve, 3_000)),
     ]);
-    const status = await bridge.getStatus();
+    let status = await bridge.getStatus();
+    if (!status.extensionSeen) {
+      const deadline = Date.now() + 1200;
+      while (Date.now() < deadline) {
+        await new Promise((resolveWait) => setTimeout(resolveWait, 200));
+        try {
+          status = await bridge.getStatus();
+          if (status.extensionSeen) break;
+        } catch {
+          // ignore
+        }
+      }
+    }
     if (!status.extensionSeen) {
       return { extensionAvailable: false, versionCompatible: false, extensionSwVersion: null, reasonCode: "extension_not_seen" };
     }

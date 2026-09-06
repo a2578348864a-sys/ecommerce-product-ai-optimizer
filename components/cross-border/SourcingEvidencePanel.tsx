@@ -798,6 +798,8 @@ export function SourcingEvidencePanel({
                     <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">需要本地研究环境</span>
                   ) : capabilityLoadFailed ? (
                     <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700" data-testid="sourcing-kw-status-failed">状态未知 / 检测失败</span>
+                  ) : checkingTools || toolStatus === null ? (
+                    <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600" data-testid="sourcing-kw-status-checking">正在检测…</span>
                   ) : caps.cliReady ? (
                     <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-700">1688 登录 ✓</span>
                   ) : caps.cliToolAvailable ? (
@@ -825,7 +827,7 @@ export function SourcingEvidencePanel({
                     搜索
                   </button>
                 </div>
-                {!localEnvRequired && !capabilityLoadFailed ? (
+                {!localEnvRequired && !capabilityLoadFailed && !checkingTools && toolStatus !== null ? (
                   !caps.cliToolAvailable ? (
                     <p className="mt-1.5 text-xs text-amber-600">关键词找货组件尚未安装，安装完成后即可使用（见顶部提示）。</p>
                   ) : !caps.cliReady ? (
@@ -841,6 +843,8 @@ export function SourcingEvidencePanel({
                     <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">需要本地研究环境</span>
                   ) : capabilityLoadFailed ? (
                     <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700" data-testid="sourcing-img-status-failed">状态未知 / 检测失败</span>
+                  ) : checkingTools || toolStatus === null ? (
+                    <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600" data-testid="sourcing-img-status-checking">正在检测浏览器助手…</span>
                   ) : caps.imageReady ? (
                     <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-700">浏览器助手 ✓</span>
                   ) : caps.imageReasonCode === "extension_version_mismatch" || (caps.imageExtensionSwVersion !== null && !caps.imageVersionCompatible) ? (
@@ -881,7 +885,7 @@ export function SourcingEvidencePanel({
                     </button>
                   </p>
                 ) : null}
-                {!localEnvRequired && !capabilityLoadFailed && !caps.imageReady ? (
+                {!localEnvRequired && !capabilityLoadFailed && !checkingTools && toolStatus !== null && !caps.imageReady ? (
                   caps.imageReasonCode === "extension_version_mismatch" || (caps.imageExtensionSwVersion !== null && !caps.imageVersionCompatible) ? (
                     <div className="mt-1.5">
                       <p className="text-xs font-semibold text-rose-700" data-testid="sourcing-helper-outdated">
