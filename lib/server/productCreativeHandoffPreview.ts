@@ -1033,6 +1033,9 @@ export async function getCreativeHandoffDetail(
       value: String(f.value),
       usageScopes: [...f.usageScopes],
       sourceKind: f.sourceRef.sourceKind,
+      ...(f.sourceRef.sourceKind === "user_confirmation" && f.sourceRef.origin
+        ? { origin: f.sourceRef.origin }
+        : {}),
     })) || [],
     listingFactSummary: summarizeListingHandoffFacts(handoff),
     prohibitedClaims: handoff.versions[handoff.versions.length - 1]?.prohibitedClaims?.map((c) => ({
