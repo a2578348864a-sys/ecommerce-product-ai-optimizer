@@ -106,14 +106,20 @@ class ReviewCollectPreviewStore {
     this.entries.clear();
   }
 
-  findPending(query: { subjectKey: string; taskId: string }): ReviewCollectPreview | null {
+  findPending(query: { subjectKey: string; taskId: string; asin?: string }): ReviewCollectPreview | null {
     this.prune();
     const now = Date.now();
+    const normalizedAsin = query.asin ? query.asin.trim().toUpperCase() : null;
     let match: ReviewCollectPreview | null = null;
     for (const entry of this.entries.values()) {
-      if (entry.subjectKey === query.subjectKey && entry.taskId === query.taskId && entry.expiresAt > now) {
-        match = entry;
+      if (entry.subjectKey !== query.subjectKey || entry.taskId !== query.taskId || entry.expiresAt <= now) continue;
+      if (normalizedAsin !== null) {
+        const hasCurrentCandidateAsin = entry.items.some(
+          (item) => item.role === "current_candidate" && item.asin.trim().toUpperCase() === normalizedAsin,
+        );
+        if (!hasCurrentCandidateAsin) continue;
       }
+      match = entry;
     }
     return match;
   }
@@ -147,6 +153,7 @@ export function takeReviewCollectPreview(
 export function findPendingReviewCollectPreview(query: {
   subjectKey: string;
   taskId: string;
+  asin?: string;
 }): ReviewCollectPreview | null {
   return previewStore.findPending(query);
 }
