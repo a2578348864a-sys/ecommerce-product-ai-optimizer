@@ -1229,4 +1229,284 @@ describe("ResearchCollectionOrchestratorCard (Phase 3 UI / Interaction)", () => 
       });
     });
   });
+
+  describe("5. 待确认资料队列与需要处理队列（Queue UI 与精确导航）", () => {
+    it("pendingItems.length > 0 时展示待确认资料队列与条数", async () => {
+      const mockRawSources: any = {
+        amazon: { source: "amazon", status: "ready", ready: true },
+        keywordCompetitor: {
+          source: "keyword_competitor",
+          status: "awaiting_confirmation",
+          ready: false,
+          itemCount: 5,
+        },
+        voc: {
+          source: "voc",
+          status: "awaiting_confirmation",
+          ready: false,
+          itemCount: 2,
+        },
+        sourcing1688: { source: "sourcing_1688", status: "ready", ready: true },
+      };
+
+      root = createRoot(container as unknown as Element);
+      await act(async () => {
+        root?.render(
+          createElement(ResearchCollectionOrchestratorCard, {
+            taskId: "task-queue-1",
+            skipAutoInspect: true,
+            initialData: {
+              rawSources: mockRawSources,
+            },
+          }),
+        );
+      });
+      await flush();
+
+      // 1. 待确认队列容器存在
+      const queueContainer = container.querySelector('[data-testid="pending-review-queue"]');
+      expect(queueContainer).toBeTruthy();
+      expect(queueContainer?.textContent).toContain("待确认资料 · 2");
+
+      // 2. 关键词与竞品项展示
+      const kwItem = container.querySelector('[data-testid="pending-queue-item-keywords_competitors"]');
+      expect(kwItem).toBeTruthy();
+      expect(kwItem?.textContent).toContain("关键词与竞品");
+      expect(kwItem?.textContent).toContain("5 项采集结果等待确认");
+
+      // 3. 买家评论 VOC 项展示
+      const vocItem = container.querySelector('[data-testid="pending-queue-item-voc"]');
+      expect(vocItem).toBeTruthy();
+      expect(vocItem?.textContent).toContain("买家评论 / VOC");
+      expect(vocItem?.textContent).toContain("2 条评论等待确认");
+    });
+
+    it("点击 [查看并确认] 触发 onNavigate 并携带正确 tabKey 和无 # 的 anchorId", async () => {
+      const onNavigate = vi.fn();
+      const mockRawSources: any = {
+        amazon: { source: "amazon", status: "ready", ready: true },
+        keywordCompetitor: {
+          source: "keyword_competitor",
+          status: "awaiting_confirmation",
+          ready: false,
+          itemCount: 5,
+        },
+        voc: {
+          source: "voc",
+          status: "awaiting_confirmation",
+          ready: false,
+          itemCount: 2,
+        },
+        sourcing1688: { source: "sourcing_1688", status: "ready", ready: true },
+      };
+
+      root = createRoot(container as unknown as Element);
+      await act(async () => {
+        root?.render(
+          createElement(ResearchCollectionOrchestratorCard, {
+            taskId: "task-queue-nav",
+            skipAutoInspect: true,
+            onNavigate,
+            initialData: {
+              rawSources: mockRawSources,
+            },
+          }),
+        );
+      });
+      await flush();
+
+      // 点击关键词 [查看并确认]
+      const kwBtn = container.querySelector(
+        '[data-testid="btn-queue-confirm-keywords_competitors"]',
+      );
+      expect(kwBtn).toBeTruthy();
+      await act(async () => {
+        kwBtn?.click();
+      });
+
+      // 验证导航：tabKey 为 market，anchorId 严格无前导 #
+      expect(onNavigate).toHaveBeenCalledWith("market", "formal-v2-market-evidence");
+
+      // 点击 VOC [查看并确认]
+      const vocBtn = container.querySelector('[data-testid="btn-queue-confirm-voc"]');
+      expect(vocBtn).toBeTruthy();
+      await act(async () => {
+        vocBtn?.click();
+      });
+
+      // 验证导航：tabKey 为 buyers，anchorId 严格无前导 #
+      expect(onNavigate).toHaveBeenCalledWith("buyers", "formal-v2-buyer-evidence");
+    });
+
+    it("needsUserItems 独立展示且点击触发导航", async () => {
+      const onNavigate = vi.fn();
+      const mockRawSources: any = {
+        amazon: {
+          source: "amazon",
+          status: "needs_user",
+          ready: false,
+          message: "待采集 Amazon 详情资料",
+        },
+        keywordCompetitor: { source: "keyword_competitor", status: "ready", ready: true },
+        voc: { source: "voc", status: "ready", ready: true },
+        sourcing1688: {
+          source: "sourcing_1688",
+          status: "needs_user",
+          ready: false,
+          message: "需要登录或选择采集方式",
+        },
+      };
+
+      root = createRoot(container as unknown as Element);
+      await act(async () => {
+        root?.render(
+          createElement(ResearchCollectionOrchestratorCard, {
+            taskId: "task-needs-user",
+            skipAutoInspect: true,
+            onNavigate,
+            initialData: {
+              rawSources: mockRawSources,
+            },
+          }),
+        );
+      });
+      await flush();
+
+      // 1. 需要你处理队列容器独立存在
+      const needsUserContainer = container.querySelector('[data-testid="needs-user-queue"]');
+      expect(needsUserContainer).toBeTruthy();
+      expect(needsUserContainer?.textContent).toContain("需要你处理 · 2");
+
+      // 2. 检查 1688 和 Amazon 项
+      const sourcingItem = container.querySelector(
+        '[data-testid="needs-user-queue-item-sourcing_1688"]',
+      );
+      expect(sourcingItem).toBeTruthy();
+      expect(sourcingItem?.textContent).toContain("1688 货源");
+      expect(sourcingItem?.textContent).toContain("需要登录或选择采集方式");
+
+      // 3. 点击 1688 [前往处理] 触发导航
+      const actionBtn = container.querySelector(
+        '[data-testid="btn-queue-action-sourcing_1688"]',
+      );
+      expect(actionBtn).toBeTruthy();
+      await act(async () => {
+        actionBtn?.click();
+      });
+
+      expect(onNavigate).toHaveBeenCalledWith("sourcing", "formal-v2-sourcing-evidence");
+    });
+
+    it("pendingItems.length === 0 时不展示待确认队列（严禁渲染空白卡）", async () => {
+      const mockRawSources: any = {
+        amazon: { source: "amazon", status: "ready", ready: true },
+        keywordCompetitor: { source: "keyword_competitor", status: "ready", ready: true },
+        voc: { source: "voc", status: "ready", ready: true },
+        sourcing1688: { source: "sourcing_1688", status: "ready", ready: true },
+      };
+
+      root = createRoot(container as unknown as Element);
+      await act(async () => {
+        root?.render(
+          createElement(ResearchCollectionOrchestratorCard, {
+            taskId: "task-no-pending",
+            skipAutoInspect: true,
+            initialData: {
+              rawSources: mockRawSources,
+            },
+          }),
+        );
+      });
+      await flush();
+
+      // 待确认队列绝对不渲染
+      const queueContainer = container.querySelector('[data-testid="pending-review-queue"]');
+      expect(queueContainer).toBeNull();
+    });
+
+    it("dataRevision 变化且大于 0 时触发重新 inspect 刷新状态", async () => {
+      const fetchSpy = vi.fn().mockImplementation((_url, opts) => {
+        const body = JSON.parse(opts?.body as string);
+        if (body.action === "inspect") {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              ok: true,
+              data: {
+                summary: "已刷新状态",
+                sources: {
+                  amazon: { source: "amazon", status: "ready", ready: true },
+                  keywordCompetitor: { source: "keyword_competitor", status: "ready", ready: true },
+                  voc: { source: "voc", status: "ready", ready: true },
+                  sourcing1688: { source: "sourcing_1688", status: "ready", ready: true },
+                },
+              },
+            }),
+          });
+        }
+        return Promise.reject(new Error("unexpected"));
+      });
+      globalThis.fetch = fetchSpy;
+
+      root = createRoot(container as unknown as Element);
+      // 初始 dataRevision = 0, skipAutoInspect = true
+      await act(async () => {
+        root?.render(
+          createElement(ResearchCollectionOrchestratorCard, {
+            taskId: "task-revision-test",
+            skipAutoInspect: true,
+            dataRevision: 0,
+          }),
+        );
+      });
+      await flush();
+
+      // 此时尚未触发 inspect
+      expect(fetchSpy).not.toHaveBeenCalled();
+
+      // 模拟下游完成确认，dataRevision 从 0 变为 1
+      await act(async () => {
+        root?.render(
+          createElement(ResearchCollectionOrchestratorCard, {
+            taskId: "task-revision-test",
+            skipAutoInspect: true,
+            dataRevision: 1,
+          }),
+        );
+      });
+      await flush();
+      await flush();
+
+      // 触发了 inspect 请求
+      const inspectCalls = fetchSpy.mock.calls.filter((call) => {
+        return JSON.parse(call[1]?.body).action === "inspect";
+      });
+      expect(inspectCalls.length).toBe(1);
+    });
+
+    it("严禁任何 autoConfirm / autoSave 调用！保证用户是唯一裁决者", () => {
+      // 源码审查
+      expect(cardSource).not.toContain("autoConfirm");
+      expect(cardSource).not.toContain("autoSave");
+      expect(workbenchSource).not.toContain("autoConfirm");
+      expect(workbenchSource).not.toContain("autoSave");
+    });
+
+    it("顺畅导航联动：EvidenceWorkbench 规范剔除前导 # 并展开所有祖先 <details>", () => {
+      // 1. 验证清理 anchorId 前导 # 逻辑
+      expect(workbenchSource).toContain('anchorId.replace(/^#+/, "")');
+
+      // 2. 验证递归展开祖先 <details>
+      expect(workbenchSource).toContain('parent.tagName === "DETAILS"');
+      expect(workbenchSource).toContain("(parent as HTMLDetailsElement).open = true");
+
+      // 3. 验证平滑居中滚动
+      expect(workbenchSource).toContain('scrollIntoView({ behavior: "smooth", block: "center" })');
+
+      // 4. 验证 dataRevision 状态在 EvidenceWorkbench 中维护并传递
+      expect(workbenchSource).toContain("const [dataRevision, setDataRevision] = useState(0)");
+      expect(workbenchSource).toContain("dataRevision={dataRevision}");
+      expect(workbenchSource).toContain("handleDataChanged");
+    });
+  });
 });

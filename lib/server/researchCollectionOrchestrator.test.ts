@@ -378,6 +378,7 @@ describe("researchCollectionOrchestrator", () => {
 
       expect(result.sources.amazon.status).toBe("awaiting_confirmation");
       expect(result.sources.amazon.previewId).toBe(amazonPreviewId);
+      expect(result.sources.amazon.itemCount).toBe(1);
       expect(result.sources.keywordCompetitor.status).toBe("awaiting_confirmation");
       expect(result.sources.keywordCompetitor.previewId).toBe(previewId);
       expect(result.sources.sourcing1688.status).toBe("awaiting_confirmation");
@@ -399,6 +400,7 @@ describe("researchCollectionOrchestrator", () => {
 
       expect(result1.sources.amazon.status).toBe("awaiting_confirmation");
       expect(result1.sources.amazon.hasEvidence).toBe(false);
+      expect(result1.sources.amazon.itemCount).toBe(1);
       const firstPreviewId = result1.sources.amazon.previewId;
       expect(firstPreviewId).toBeTruthy();
       expect(mocks.collectBrowserEvidencePreview).toHaveBeenCalledTimes(1);
@@ -412,6 +414,7 @@ describe("researchCollectionOrchestrator", () => {
 
       expect(result2.sources.amazon.status).toBe("awaiting_confirmation");
       expect(result2.sources.amazon.hasEvidence).toBe(false);
+      expect(result2.sources.amazon.itemCount).toBe(1);
       expect(result2.sources.amazon.previewId).toBe(firstPreviewId);
       expect(result2.sources.amazon.message).toBe("Amazon 详情已有待确认采集预览");
       expect(mocks.collectBrowserEvidencePreview).toHaveBeenCalledTimes(1); // delta = 0
