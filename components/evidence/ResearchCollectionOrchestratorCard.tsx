@@ -21,6 +21,13 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
+import {
+  derivePendingReviewQueue,
+  deriveNeedsUserQueue,
+  type PendingQueueItem,
+  type NeedsUserQueueItem,
+} from "@/lib/evidence/pendingReviewQueue";
+import type { ResearchOrchestratorSources } from "@/lib/server/researchCollectionOrchestrator";
 
 /* ── 类型定义 ─────────────────────────────────────────── */
 
@@ -70,9 +77,12 @@ export type ResearchCollectionOrchestratorCardProps = {
     summary?: string;
     items?: Partial<Record<OrchestratorSourceKey, { state: OrchestratorSourceState; detail?: string }>>;
     hasNewPreview?: boolean;
+    rawSources?: ResearchOrchestratorSources;
   };
   /** 测试时跳过自动 inspect */
   skipAutoInspect?: boolean;
+  /** 外部驱动的数据版本号，递增且大于0时自动重新 inspect 刷新状态 */
+  dataRevision?: number;
 };
 
 /* ── 权威元数据定义 ───────────────────────────────────── */
@@ -191,6 +201,81 @@ export function extractDetailFromPayload(itemVal: unknown): string | undefined {
   return undefined;
 }
 
+/**
+ * 将任意数据源载荷规范化为标准 ResearchOrchestratorSources
+ */
+export function normalizeSourcesToRaw(
+  sourcesObj: unknown,
+): ResearchOrchestratorSources | undefined {
+  if (typeof sourcesObj !== "object" || sourcesObj === null || Array.isArray(sourcesObj)) {
+    return undefined;
+  }
+  const s = sourcesObj as Record<string, unknown>;
+  const amazon = (s.amazon ?? {}) as Record<string, unknown>;
+  const keywordCompetitor = (s.keywordCompetitor ?? s.keywords_competitors ?? s.keywords ?? {}) as Record<string, unknown>;
+  const voc = (s.voc ?? {}) as Record<string, unknown>;
+  const sourcing1688 = (s.sourcing1688 ?? s.sourcing_1688 ?? s.sourcing ?? {}) as Record<string, unknown>;
+
+  const normDetail = (obj: Record<string, unknown>, defaultSourceKey: string) => {
+    const rawStatus = (obj.status ?? obj.state ?? "idle") as string;
+    let status = rawStatus;
+    if (
+      rawStatus === "pending_review" ||
+      rawStatus === "待确认" ||
+      rawStatus === "to_confirm" ||
+      rawStatus === "preview" ||
+      rawStatus === "awaiting_confirmation"
+    ) {
+      status = "awaiting_confirmation";
+    } else if (
+      rawStatus === "needs_action" ||
+      rawStatus === "needs_login" ||
+      rawStatus === "needs_supplement" ||
+      rawStatus === "需要处理" ||
+      rawStatus === "需要登录" ||
+      rawStatus === "需要补充" ||
+      rawStatus === "needs_user"
+    ) {
+      status = "needs_user";
+    }
+    const ready = Boolean(
+      obj.ready ||
+        status === "ready" ||
+        status === "completed" ||
+        status === "confirmed" ||
+        rawStatus === "ready" ||
+        rawStatus === "已有",
+    );
+    return {
+      source: (obj.source as string) || defaultSourceKey,
+      status: status as any,
+      ready,
+      message:
+        typeof obj.message === "string"
+          ? obj.message
+          : typeof obj.detail === "string"
+            ? obj.detail
+            : undefined,
+      itemCount:
+        typeof obj.itemCount === "number"
+          ? obj.itemCount
+          : typeof obj.count === "number"
+            ? obj.count
+            : undefined,
+      previewId: (obj.previewId as string) || null,
+      storageVersion: (obj.storageVersion as string) || null,
+      error: (obj.error as any) || null,
+    };
+  };
+
+  return {
+    amazon: normDetail(amazon, "amazon"),
+    keywordCompetitor: normDetail(keywordCompetitor, "keyword_competitor"),
+    voc: normDetail(voc, "voc"),
+    sourcing1688: normDetail(sourcing1688, "sourcing_1688"),
+  };
+}
+
 /* ── 状态归一化工具 ───────────────────────────────────── */
 
 export function normalizeState(
@@ -304,6 +389,7 @@ export function ResearchCollectionOrchestratorCard({
   className = "",
   initialData,
   skipAutoInspect = false,
+  dataRevision,
 }: ResearchCollectionOrchestratorCardProps) {
   const [isInspecting, setIsInspecting] = useState(false);
   const [isOrchestrating, setIsOrchestrating] = useState(false);
@@ -314,6 +400,19 @@ export function ResearchCollectionOrchestratorCard({
   const [customSummaryText, setCustomSummaryText] = useState<string | undefined>(
     initialData?.summary,
   );
+
+  // 保存最新的 rawSources（用于派生待确认队列与需要处理队列）
+  const [rawSources, setRawSources] = useState<ResearchOrchestratorSources | undefined>(() => {
+    if (initialData?.rawSources) return initialData.rawSources;
+    if (initialData?.items) {
+      return normalizeSourcesToRaw(initialData.items);
+    }
+    return undefined;
+  });
+
+  // 派生待确认队列与需要处理队列
+  const pendingItems = useMemo(() => derivePendingReviewQueue(rawSources), [rawSources]);
+  const needsUserItems = useMemo(() => deriveNeedsUserQueue(rawSources), [rawSources]);
 
   // 初始化 4 项状态
   const [rawItemStates, setRawItemStates] = useState<
@@ -383,16 +482,41 @@ export function ResearchCollectionOrchestratorCard({
       if (onNavigate) {
         onNavigate(tabKey, anchorId);
       } else if (typeof window !== "undefined") {
-        window.location.hash = anchorId;
-        const targetId = anchorId.replace(/^#/, "");
-        const el = document.getElementById(targetId);
+        const cleanId = anchorId.replace(/^#+/, "");
+        window.location.hash = cleanId;
+        const el = document.getElementById(cleanId);
         if (el) {
-          el.scrollIntoView({ behavior: "smooth" });
+          let parent = el.parentElement;
+          while (parent) {
+            if (parent.tagName === "DETAILS" || parent.nodeName === "DETAILS") {
+              (parent as HTMLDetailsElement).open = true;
+            }
+            parent = parent.parentElement;
+          }
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
         }
       }
     },
     [onNavigate],
   );
+
+  // 顶部单一入口点击逻辑（若只有 1 项直达目标 anchor，>1 项滚动到队列区域）
+  const handleTopPendingClick = useCallback(() => {
+    if (pendingItems.length > 1) {
+      if (typeof window !== "undefined") {
+        const queueEl = document.getElementById("pending-review-queue");
+        if (queueEl) {
+          queueEl.scrollIntoView({ behavior: "smooth", block: "center" });
+          return;
+        }
+      }
+    }
+    if (firstPendingItem) {
+      handleNavigate(firstPendingItem.tabKey, firstPendingItem.anchorId);
+    } else if (pendingItems.length === 1) {
+      handleNavigate(pendingItems[0].tabKey, pendingItems[0].anchorId);
+    }
+  }, [pendingItems, firstPendingItem, handleNavigate]);
 
   // 解析后端响应
   const applyApiResponse = useCallback(
@@ -419,6 +543,10 @@ export function ResearchCollectionOrchestratorCard({
 
         // 兼容 sources 对象或 items 数组
         if (d.sources && typeof d.sources === "object" && !Array.isArray(d.sources)) {
+          const rawNormalized = normalizeSourcesToRaw(d.sources);
+          if (rawNormalized) {
+            setRawSources(rawNormalized);
+          }
           const s = d.sources as Record<string, unknown>;
           for (const k of ORDERED_KEYS) {
             const itemVal =
@@ -442,10 +570,12 @@ export function ResearchCollectionOrchestratorCard({
             }
           }
         } else if (Array.isArray(d.items)) {
+          const reconstructedSources: Record<string, unknown> = {};
           for (const item of d.items) {
             if (item && typeof item === "object" && "key" in item) {
               const it = item as Record<string, unknown>;
               const keyStr = String(it.key);
+              reconstructedSources[keyStr] = it;
               const targetKey = ORDERED_KEYS.find(
                 (k) =>
                   k === keyStr ||
@@ -464,6 +594,10 @@ export function ResearchCollectionOrchestratorCard({
                 }
               }
             }
+          }
+          const rawNormalized = normalizeSourcesToRaw(reconstructedSources);
+          if (rawNormalized) {
+            setRawSources(rawNormalized);
           }
         }
         return nextRaw;
@@ -523,6 +657,19 @@ export function ResearchCollectionOrchestratorCard({
     void executeInspect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId, skipAutoInspect]);
+
+  // 监听外部 dataRevision 变化，自动重新触发 inspect 刷新状态
+  const prevDataRevisionRef = useRef(dataRevision);
+  useEffect(() => {
+    if (
+      typeof dataRevision === "number" &&
+      dataRevision > 0 &&
+      dataRevision !== prevDataRevisionRef.current
+    ) {
+      prevDataRevisionRef.current = dataRevision;
+      void executeInspect();
+    }
+  }, [dataRevision, executeInspect]);
 
   // 点击「补齐研究资料」
   const handleOrchestrate = useCallback(async () => {
@@ -664,7 +811,7 @@ export function ResearchCollectionOrchestratorCard({
       )}
 
       {/* ── 新预览待确认提示栏（绝不替用户自动确认） ── */}
-      {hasNewPreviewAlert && (
+      {(hasNewPreviewAlert || pendingItems.length > 0) && (
         <div
           data-testid="orchestrator-new-preview-alert"
           className="mt-3 rounded-xl border border-amber-300 bg-amber-50/90 p-3 text-xs sm:text-sm text-amber-900"
@@ -673,19 +820,21 @@ export function ResearchCollectionOrchestratorCard({
             <div className="flex items-center gap-1.5 min-w-0">
               <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
               <span className="font-medium">
-                本轮已生成待确认资料预览，请前往下方对应区域人工复核（系统绝不替用户代做确认）。
+                {pendingItems.length > 0
+                  ? `本轮已生成 ${pendingItems.length} 项待确认资料预览，请前往下方对应区域人工复核（系统绝不替用户代做确认）。`
+                  : "本轮已生成待确认资料预览，请前往下方对应区域人工复核（系统绝不替用户代做确认）。"}
               </span>
             </div>
-            {firstPendingItem && (
+            {(pendingItems.length > 0 || firstPendingItem) && (
               <button
                 type="button"
                 data-testid="orchestrator-goto-pending-btn"
-                onClick={() =>
-                  handleNavigate(firstPendingItem.tabKey, firstPendingItem.anchorId)
-                }
+                onClick={handleTopPendingClick}
                 className="inline-flex items-center gap-1 self-start sm:self-auto rounded-lg bg-amber-700 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-800 transition-colors shrink-0 shadow-sm"
               >
-                前往待确认区域
+                <span>
+                  {pendingItems.length === 1 ? "查看待确认结果" : "查看待确认列表"}
+                </span>
                 <ArrowRight className="h-3 w-3" />
               </button>
             )}
@@ -859,6 +1008,105 @@ export function ResearchCollectionOrchestratorCard({
           );
         })}
       </div>
+
+      {/* ── 待确认资料队列（有待确认项时展示） ── */}
+      {pendingItems.length > 0 && (
+        <div
+          id="pending-review-queue"
+          data-testid="pending-review-queue"
+          className="mt-3 rounded-xl border border-amber-200/80 bg-amber-50/50 p-3 sm:p-3.5"
+        >
+          {/* 标题栏 */}
+          <div className="flex flex-wrap items-center justify-between gap-1.5 pb-2 mb-2 border-b border-amber-200/70">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs sm:text-sm font-bold text-slate-900">
+                待确认资料 · {pendingItems.length}
+              </span>
+            </div>
+            <span className="text-[11px] text-slate-500">
+              人工复核确认后方可作为正式生成依据
+            </span>
+          </div>
+
+          {/* 列表项 */}
+          <div className="space-y-1.5">
+            {pendingItems.map((item) => (
+              <div
+                key={item.sourceKey}
+                data-testid={`pending-queue-item-${item.sourceKey}`}
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-amber-200/60 bg-white px-3 py-2 text-xs shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-colors hover:border-amber-300"
+              >
+                <div className="flex flex-wrap items-center gap-2 min-w-0">
+                  <span className="font-semibold text-slate-900 shrink-0">
+                    {item.title}
+                  </span>
+                  <span className="text-slate-500 text-[11px] sm:text-xs">
+                    {item.countText}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  data-testid={`btn-queue-confirm-${item.sourceKey}`}
+                  onClick={() => handleNavigate(item.tabKey, item.anchorId)}
+                  className="inline-flex items-center justify-center gap-1 self-start sm:self-auto rounded-md bg-amber-700 hover:bg-amber-800 text-white px-2.5 py-1 text-xs font-semibold shadow-sm transition-colors shrink-0"
+                >
+                  <span>{item.actionLabel || "查看并确认"}</span>
+                  <ArrowRight className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── 需要你处理队列（有需人工处理项时展示） ── */}
+      {needsUserItems.length > 0 && (
+        <div
+          data-testid="needs-user-queue"
+          className="mt-3 rounded-xl border border-slate-200 bg-slate-100/70 p-3 sm:p-3.5"
+        >
+          {/* 标题栏 */}
+          <div className="flex flex-wrap items-center justify-between gap-1.5 pb-2 mb-2 border-b border-slate-200">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs sm:text-sm font-bold text-slate-900">
+                需要你处理 · {needsUserItems.length}
+              </span>
+            </div>
+            <span className="text-[11px] text-slate-500">
+              需要补齐授权或前往手动触发采集
+            </span>
+          </div>
+
+          {/* 列表项 */}
+          <div className="space-y-1.5">
+            {needsUserItems.map((item) => (
+              <div
+                key={item.sourceKey}
+                data-testid={`needs-user-queue-item-${item.sourceKey}`}
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-colors hover:border-slate-300"
+              >
+                <div className="flex flex-wrap items-center gap-2 min-w-0">
+                  <span className="font-semibold text-slate-900 shrink-0">
+                    {item.title}
+                  </span>
+                  <span className="text-slate-500 text-[11px] sm:text-xs">
+                    {item.reasonText}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  data-testid={`btn-queue-action-${item.sourceKey}`}
+                  onClick={() => handleNavigate(item.tabKey, item.anchorId)}
+                  className="inline-flex items-center justify-center gap-1 self-start sm:self-auto rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 px-2.5 py-1 text-xs font-semibold shadow-sm transition-colors shrink-0"
+                >
+                  <span>{item.actionLabel || "前往处理"}</span>
+                  <ArrowRight className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

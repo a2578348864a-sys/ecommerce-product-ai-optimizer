@@ -564,6 +564,14 @@ export function EvidenceWorkbench({
   const [internalTab, setInternalTab] = useState<EvidenceTabKey>("market");
   const currentTab = activeTabProp ?? internalTab;
 
+  // 维护数据变更版本号，递增驱动资料编排卡片自动核对并刷新真实状态
+  const [dataRevision, setDataRevision] = useState(0);
+
+  const handleDataChanged = useCallback(() => {
+    setDataRevision((prev) => prev + 1);
+    onDataChanged?.();
+  }, [onDataChanged]);
+
   const handleTabSelect = useCallback((tab: EvidenceTabKey) => {
     setInternalTab(tab);
     onTabChange?.(tab);
@@ -839,17 +847,47 @@ export function EvidenceWorkbench({
       {/* 资料编排卡片（置顶于当前研究资料/分类导航之上，紧贴研究资料主区域） */}
       <ResearchCollectionOrchestratorCard
         taskId={taskId}
-        onDataChanged={onDataChanged}
+        dataRevision={dataRevision}
+        onDataChanged={handleDataChanged}
         onNavigate={(tab, anchorId) => {
           handleTabSelect(tab);
           if (anchorId && typeof window !== "undefined") {
-            window.location.hash = anchorId;
-            setTimeout(() => {
-              const el = document.getElementById(anchorId);
+            const cleanId = anchorId.replace(/^#+/, "");
+            window.location.hash = cleanId;
+
+            const scrollAndHighlight = () => {
+              const el = document.getElementById(cleanId);
               if (el) {
-                el.scrollIntoView({ behavior: "smooth" });
+                // 递归展开所有祖先 <details>
+                let parent = el.parentElement;
+                while (parent) {
+                  if (parent.tagName === "DETAILS" || parent.nodeName === "DETAILS") {
+                    (parent as HTMLDetailsElement).open = true;
+                  }
+                  parent = parent.parentElement;
+                }
+                // 平滑滚动居中对齐
+                el.scrollIntoView({ behavior: "smooth", block: "center" });
+                try {
+                  if (typeof el.focus === "function") {
+                    el.focus({ preventScroll: true });
+                  }
+                } catch {
+                  /* best-effort */
+                }
+                return true;
               }
-            }, 60);
+              return false;
+            };
+
+            // React 切换 Tab 后需等待 DOM 节点渲染就绪
+            if (!scrollAndHighlight()) {
+              setTimeout(() => {
+                if (!scrollAndHighlight()) {
+                  setTimeout(scrollAndHighlight, 120);
+                }
+              }, 60);
+            }
           }
         }}
       />
@@ -980,7 +1018,7 @@ export function EvidenceWorkbench({
                   setKeywordPending(null); loadKeywordEvidence();
                   setIsPendingExpired(false);
                   loadKeywordBriefState();
-                  onDataChanged?.();
+                  handleDataChanged();
                 }}
                 onCancel={() => {
                   setKeywordPending(null);
@@ -1011,7 +1049,7 @@ export function EvidenceWorkbench({
               });
               const body = await res.json().catch(() => null) as { ok?: boolean; error?: { message?: string } } | null;
               if (!res.ok) return body?.error?.message ?? "保存失败，请稍后重试。";
-              onDataChanged?.();
+              handleDataChanged();
               return null;
             } catch { return "网络错误，请重试。"; }
           }}
@@ -1074,7 +1112,7 @@ export function EvidenceWorkbench({
               } catch { /* refresh best-effort */ }
             })();
             void loadKeywordEvidence();
-            onDataChanged?.();
+            handleDataChanged();
           }}
         />
         {/* ── Amazon 商品资料（V3.3） ── */}
@@ -1091,7 +1129,7 @@ export function EvidenceWorkbench({
             taskAsin={browserTaskAsin}
             storageVersion={browserEvidenceStorageVersion}
             capability={browserCapability}
-            onChanged={() => { loadBrowserEvidence(); onDataChanged?.(); }}
+            onChanged={() => { loadBrowserEvidence(); handleDataChanged(); }}
           />
         </div>
       </div>
@@ -1113,7 +1151,7 @@ export function EvidenceWorkbench({
             analysis={vocAnalysis}
             storageVersion={vocStorageVersion}
             capability={vocCapability}
-            onChanged={() => { loadVoc(); onDataChanged?.(); }}
+            onChanged={() => { loadVoc(); handleDataChanged(); }}
           />
         </div>
       </div>
@@ -1125,7 +1163,10 @@ export function EvidenceWorkbench({
           <SourcingEvidencePanel
             taskId={taskId}
             amazonContext={{ title: null, image: sourceImageUrl ?? null, asin: null }}
-            onEvidenceChange={setSourcingConfirmed}
+            onEvidenceChange={(confirmed) => {
+              setSourcingConfirmed(confirmed);
+              handleDataChanged();
+            }}
           />
         </section>
       </div>
@@ -1134,14 +1175,14 @@ export function EvidenceWorkbench({
       <div className={currentTab === "cost-risk" ? "space-y-4" : "hidden"} data-testid="workbench-panel-cost-risk">
         {/* ── 待补资料 ── */}
         <MissingSection gaps={gaps} />
-        <CommercialInputsCard taskId={taskId} onChanged={() => onDataChanged?.()} />
+        <CommercialInputsCard taskId={taskId} onChanged={() => handleDataChanged()} />
       </div>
 
       {/* ── 04: 紧凑的商品事实确认（折叠入口） ── */}
       <FactCandidateReview
         taskId={taskId}
         storageVersion={storageVersion}
-        onChanged={() => onDataChanged?.()}
+        onChanged={() => handleDataChanged()}
       />
 
       {/* ── 待补资料 ── */}

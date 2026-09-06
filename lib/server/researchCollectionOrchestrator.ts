@@ -273,6 +273,7 @@ async function handleAmazonSource(
         status: "awaiting_confirmation",
         hasEvidence: false,
         previewId: pending.evidenceId,
+        itemCount: 1,
         message: "Amazon 详情已有待确认采集预览",
       };
     }
@@ -303,6 +304,7 @@ async function handleAmazonSource(
         status: "awaiting_confirmation",
         hasEvidence: false,
         previewId: DEMO_ACQUISITION_EVIDENCE_ID,
+        itemCount: 1,
         message: "Amazon 详情采集完成（演示数据），等待人工确认",
       };
     }
@@ -337,6 +339,7 @@ async function handleAmazonSource(
       status: "awaiting_confirmation",
       hasEvidence: false,
       previewId: evidenceId,
+      itemCount: 1,
       message: "Amazon 详情采集完成，等待人工确认",
     };
   } catch (error) {
