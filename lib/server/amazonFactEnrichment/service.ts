@@ -1,7 +1,7 @@
 import { callAiText, getAiConfig } from "@/lib/server/aiClient";
 import { AMAZON_FACT_FIELDS } from "./contract";
 import type { AmazonFactCandidateV1, AmazonFactEnrichmentPreviewV1, AmazonSellerContentBlockV1, AmazonUnstructuredFactExtractionV1 } from "./contract";
-import { mapSellerBlocksToCandidates, normalizeSellerBlocks } from "./mapping";
+import { isWeightLike, mapSellerBlocksToCandidates, normalizeSellerBlocks } from "./mapping";
 const AI_TIMEOUT_MS=12000;
 export function validateAiExtraction(raw: unknown, blocks: AmazonSellerContentBlockV1[]): AmazonUnstructuredFactExtractionV1 {
  const allowedIds=new Set(blocks.map(b=>b.sourceBlockId));
@@ -14,7 +14,7 @@ export function validateAiExtraction(raw: unknown, blocks: AmazonSellerContentBl
   if(!value || !evidence || !block.text.includes(evidence)) throw new Error("evidence_not_found_in_source");
   const nums=(v:string)=>[...v.matchAll(/\b\d+(?:\.\d+)?\b/g)].map(m=>m[0]); const sourceNums=nums(evidence); const valueNums=nums(value);
   if(valueNums.some(n=>!sourceNums.includes(n))) throw new Error("numeric_mismatch");
-  if(c.field==="capacity" && /\b(?:pounds?|lbs?|lb|kilograms?|kgs?|kg|grams?|g)\b/i.test(value)) throw new Error("capacity_unit_mismatch");
+  if(c.field==="capacity" && isWeightLike(value)) throw new Error("capacity_unit_mismatch");
   if(/\b(?:dishwasher[- ]?safe|waterproof|rustproof|stainless steel|never falls|guaranteed|100% leak[- ]?proof)\b/i.test(value) && !/\b(?:dishwasher[- ]?safe|waterproof|rustproof|stainless steel|never falls|guaranteed|100% leak[- ]?proof)\b/i.test(evidence)) throw new Error("strong_claim_upgrade");
   out.push({field:c.field,value,sourceBlockId:c.sourceBlockId,evidenceText:evidence,qualifier:c.qualifier,confidence:c.confidence});
  }
