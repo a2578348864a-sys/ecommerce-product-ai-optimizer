@@ -98,6 +98,7 @@ export function useCreativeHandoffApi(taskId: string) {
       requestId: string;
       selectedFactCandidateIds: string[];
       manualConfirmedFacts?: Array<{ field: string; value: string }>;
+      amazonFactEnrichmentSelection?: { evidenceId: string; selectionIds: string[] };
       selectedVisualReferenceCandidateIds?: string[];
       expectedStorageVersion: { resultJsonHash: string; updatedAt: string };
       expectedResearchRevision: number;
@@ -121,6 +122,9 @@ export function useCreativeHandoffApi(taskId: string) {
         // 零候选兜底：手工确认事实（受控字段白名单，服务端构造）
         ...(input.manualConfirmedFacts && input.manualConfirmedFacts.length > 0
           ? { manualConfirmedFacts: input.manualConfirmedFacts }
+          : {}),
+        ...(input.amazonFactEnrichmentSelection
+          ? { amazonFactEnrichmentSelection: input.amazonFactEnrichmentSelection }
           : {}),
         // V2 Final Integration: 视觉参考批准只提交服务端确定的 selectionId；
         // 浏览器绝不提交图片 URL 或完整 visualReference 对象。

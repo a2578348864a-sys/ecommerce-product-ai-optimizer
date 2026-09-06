@@ -369,15 +369,18 @@ export const PRODUCT_INFO_LABEL_MAP: ReadonlyArray<readonly [string, readonly st
   ["product_type", ["Item Type Name", "Bottle Type"]],
   ["series_or_model", ["Model Name", "Model Number"]],
   ["material", ["Material Type", "Material"]],
-  ["capacity", ["Total Capacity", "Capacity"]],
+  ["capacity", ["Total Capacity", "Capacity", "Item Capacity", "Volume", "Metric Capacity"]],
   ["dimensions", ["Item Dimensions L x W x H", "Item Dimensions L x W x Thickness", "Item Dimensions W x H", "Product Dimensions", "Size (inches)"]],
   ["weight", ["Item Weight"]],
   ["color_or_variant", ["Color", "Theme"]],
   ["quantity_or_pack_size", ["Unit Count", "Number of Items", "Package Quantity"]],
-  ["functional_feature", ["Other Special Features of the Product", "Additional Features", "Special Feature", "Material Features", "Material Feature"]],
+  ["functional_feature", ["Other Special Features of the Product", "Additional Features", "Special Feature", "Material Features", "Material Feature", "Features"]],
   ["care", ["Product Care Instructions", "Care Instructions"]],
   ["included_components", ["Included Components"]],
-  ["operation", ["Lid Type", "Cap Type", "Closure Type"]],
+  ["operation", ["Lid Type", "Cap Type", "Closure Type", "Operation Mode", "Installation Type", "Assembly Required"]],
+  ["use_scenario", ["Recommended Uses For Product", "Recommended Uses", "Uses"]],
+  ["compatibility", ["Compatible Devices", "Compatible With", "Compatibility"]],
+  ["construction", ["Construction Type", "Finish Type"]],
 ];
 
 const PRODUCT_INFO_CONTAINER_SELECTORS = [
@@ -523,3 +526,7 @@ export { buildAmazonDetailPageExtractionExpression } from "@/tools/collectors/am
 export type { AmazonDetailPageExpressionOptions } from "@/tools/collectors/amazon/detail-page-expression-source";
 export { buildAmazonProductInfoExtractionExpression } from "@/tools/collectors/amazon/detail-page-expression-source";
 export type { AmazonProductInfoExpressionOptions } from "@/tools/collectors/amazon/detail-page-expression-source";
+
+export { extractAmazonSellerContent } from '@/lib/server/amazonFactEnrichment/sellerContent';
+export type { AmazonSellerContentBlockV1 } from '@/lib/server/amazonFactEnrichment/contract';
+

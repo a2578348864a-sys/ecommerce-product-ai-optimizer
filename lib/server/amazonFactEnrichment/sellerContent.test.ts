@@ -1,0 +1,4 @@
+import { describe,it,expect } from "vitest";
+import { extractAmazonSellerContent } from "./sellerContent";
+function node(text:string,children:any[]=[]){return {textContent:text,innerText:text,querySelector:(s:string)=>s==='img'?{getAttribute:()=>"alt text"}:null};}
+describe("Amazon seller content extractor",()=>{it("reads bullets description and aplus only when bound",()=>{const map:any={"#feature-bullets li":[node("Feature one")],"#productDescription":[node("Long description")],"#aplus":[node("A+ heading") ]};const root:any={querySelectorAll:(s:string)=>map[s]||[],querySelector:()=>null};const out=extractAmazonSellerContent(root,"https://www.amazon.com/dp/B000000000",true);expect(out.map(x=>x.section)).toEqual(["bullet","description","aplus"]);});it("fails closed on wrong entity",()=>{const root:any={querySelectorAll:()=>[node("secret")],querySelector:()=>null};expect(extractAmazonSellerContent(root,"https://www.amazon.com/dp/B000000000",false)).toEqual([]);});});

@@ -138,6 +138,12 @@ export type HandoffDetailConfirmedFact = {
   value: string;
   usageScopes: string[];
   sourceKind: "candidate_snapshot" | "seller_sprite_snapshot" | "research_result" | "user_confirmation";
+  origin?: {
+    kind: "amazon_fact_enrichment";
+    asin: string;
+    capturedAt: string;
+    sources: Array<{ sourceUrl: string; sourceSection: string; sourceLabel: string; sourceBlockId: string; evidenceText: string }>;
+  };
 };
 
 /** V3 Final HWF（FIX-6）：研究阶段已确认事实（factCandidates 权威，只读展示，不写入创作链） */

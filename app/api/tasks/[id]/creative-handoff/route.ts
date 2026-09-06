@@ -14,6 +14,11 @@ import {
 import { buildRequestFingerprint } from "@/lib/creativeHandoffRequestLedger";
 import type { ProductCreativeHandoffCandidate } from "@/lib/productCreativeHandoff";
 import { ProductCreativeHandoffError } from "@/lib/productCreativeHandoff";
+import { readBrowserEvidenceTaskAsin } from "@/lib/server/browserEvidence";
+import {
+  resolveAmazonFactEnrichmentSelections,
+  AmazonFactEnrichmentPreviewError,
+} from "@/lib/server/amazonFactEnrichment/previewStore";
 import {
   isManualFactField,
   normalizeManualFactValue,
@@ -46,6 +51,7 @@ const CREATE_TOP_LEVEL_FIELDS = new Set([
   "selectedFactCandidateIds",
   "selectedVisualReferenceCandidateIds",
   "manualConfirmedFacts",
+  "amazonFactEnrichmentSelection",
   "confirmed",
   "creativePreferences",
 ]);
@@ -184,6 +190,14 @@ function parseRequestId(value: unknown): string | null {
   if (typeof value !== "string" || value.length === 0 || value.length > 128) return null;
   if (!UUID_PATTERN.test(value)) return null;
   return value.toLowerCase();
+}
+
+function parseAmazonFactEnrichmentSelection(value: unknown): { evidenceId: string; selectionIds: string[] } | null {
+  if (!isRecord(value) || Object.keys(value).length !== 2) return null;
+  const evidenceId = parseRequestId(value.evidenceId);
+  const selectionIds = parseSelectionIds(value.selectionIds);
+  if (!evidenceId || !selectionIds) return null;
+  return { evidenceId, selectionIds };
 }
 
 function parseExpectedRevision(value: unknown): number | null {
@@ -413,6 +427,29 @@ export async function POST(
     if (manualConfirmedFacts === null) {
       return errorResponse(400, "invalid_manual_fact", "手工商品事实无效。");
     }
+    const amazonFactEnrichmentSelection = body.amazonFactEnrichmentSelection === undefined
+      ? undefined
+      : parseAmazonFactEnrichmentSelection(body.amazonFactEnrichmentSelection);
+    if (body.amazonFactEnrichmentSelection !== undefined && !amazonFactEnrichmentSelection) {
+      return errorResponse(400, "invalid_amazon_enrichment_selection", "Amazon 商品事实选择无效。");
+    }
+    let amazonConfirmedCandidates: import("@/lib/server/amazonFactEnrichment/contract").AmazonFactCandidateV1[] = [];
+    if (amazonFactEnrichmentSelection) {
+      const asin = await readBrowserEvidenceTaskAsin(ctx, id);
+      if (!asin) return errorResponse(422, "task_asin_unbound", "当前任务缺少权威 Amazon ASIN。");
+      try {
+        amazonConfirmedCandidates = resolveAmazonFactEnrichmentSelections({
+          context: ctx,
+          taskId: id,
+          authoritativeAsin: asin,
+          evidenceId: amazonFactEnrichmentSelection.evidenceId,
+          selectionIds: amazonFactEnrichmentSelection.selectionIds,
+        });
+      } catch (err) {
+        if (err instanceof AmazonFactEnrichmentPreviewError) return errorResponse(err.status, err.code, err.message);
+        throw err;
+      }
+    }
     // V2 Final Integration: 视觉参考候选选择（用户勾选「批准作为产品视觉参考」；未提供=空=不批准）
     const selectedVisualReferenceIds = body.selectedVisualReferenceCandidateIds === undefined
       ? []
@@ -428,6 +465,7 @@ export async function POST(
       selectedFactCandidateIds.length < 1 &&
       manualConfirmedFacts.length < 1 &&
       selectedVisualReferenceIds.length < 1 &&
+      amazonConfirmedCandidates.length < 1 &&
       !hasResearchConfirmed
     ) {
       return errorResponse(400, "no_facts_selected", "请至少选择一项或填写一项可用的商品事实。");
@@ -438,6 +476,7 @@ export async function POST(
       selectedFactIds: selectedFactCandidateIds,
       selectedVisualReferenceIds: selectedVisualReferenceIds,
       ...(manualConfirmedFacts.length > 0 ? { manualConfirmedFacts } : {}),
+      ...(amazonFactEnrichmentSelection ? { amazonFactEnrichmentSelection } : {}),
       creativePreferences,
       expectedStorageVersion,
       expectedResearchRevision,
@@ -453,6 +492,7 @@ export async function POST(
       selectedFactCandidateIds,
       selectedVisualReferenceCandidateIds: selectedVisualReferenceIds,
       ...(manualConfirmedFacts.length > 0 ? { manualConfirmedFacts } : {}),
+      ...(amazonConfirmedCandidates.length > 0 ? { amazonConfirmedCandidates } : {}),
       ...(creativePreferences && Object.keys(creativePreferences).length > 0
         ? { creativePreferences: creativePreferences as Record<string, string> }
         : {}),

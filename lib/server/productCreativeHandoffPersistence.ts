@@ -42,6 +42,7 @@ import {
   confirmManualProductFacts,
   type ManualFactInput,
 } from "@/lib/server/manualFactConfirmation";
+import { confirmSelectedAmazonProductFacts } from "@/lib/server/amazonFactEnrichment/confirmation";
 
 export class CreativeHandoffPersistenceError extends Error {
   constructor(
@@ -61,6 +62,8 @@ export type CreateHandoffInput = {
   expectedStorageVersion: TaskResultJsonStorageVersionHash;
   /** 浏览器提交的 confirmable selectionIds（服务端锁内重新投影后匹配） */
   selectedFactCandidateIds: string[];
+  /** 服务端已解析的 Amazon enrichment 候选确认结果；浏览器不得直接提交事实对象。 */
+  amazonConfirmedCandidates?: import("@/lib/server/amazonFactEnrichment/contract").AmazonFactCandidateV1[];
   /** 零候选兜底：用户手工确认的商品事实（受控字段白名单，服务端构造 confirmedFact） */
   manualConfirmedFacts?: ManualFactInput[];
   /** V2 Final Integration: 浏览器提交的视觉参考候选 selectionIds（用户勾选「批准作为产品视觉参考」） */
@@ -360,6 +363,20 @@ export async function createOrAppendCreativeHandoff(
       if (conversion.confirmedFacts.length !== resolvedKeys.length) {
         throw new CreativeHandoffPersistenceError("invalid_selection", 400, "部分选择项不可确认。");
       }
+      let amazonConfirmed: ProductCreativeHandoffConfirmedFact[] = [];
+      if (input.amazonConfirmedCandidates && input.amazonConfirmedCandidates.length > 0) {
+        try {
+          amazonConfirmed = confirmSelectedAmazonProductFacts({
+            candidates: input.amazonConfirmedCandidates,
+            actor,
+            confirmedAt: now,
+            confirmationReference: buildConfirmationReference(requestKeyHash, now),
+          });
+        } catch (error) {
+          const code = error instanceof Error ? error.message : "amazon_enrichment_selection_invalid";
+          throw new CreativeHandoffPersistenceError(code, code === "amazon_enrichment_duplicate_field_selection" ? 409 : 400, "Amazon 商品事实候选选择无效。");
+        }
+      }
       // 手工事实确认（受控字段白名单；与候选确认同一 revision/CAS 原子写入）
       let manualConfirmed: Array<ReturnType<typeof confirmManualProductFacts>["confirmedFacts"][number]> = [];
       if (manualFacts.length > 0) {
@@ -403,7 +420,7 @@ export async function createOrAppendCreativeHandoff(
       // manual 撞 research field → manual_fact_research_authority（回研究修改）。不再抛 confirmed_fact_conflict。
       const effectiveConfirmed = resolveAuthoritativeFactSnapshot({
         previousSnapshot: existingConfirmedFacts,
-        selected: conversion.confirmedFacts,
+        selected: [...conversion.confirmedFacts, ...amazonConfirmed],
         manual: manualConfirmed,
         research: researchBridge.facts,
       }).facts;

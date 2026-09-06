@@ -43,6 +43,32 @@ function titleDerivedHint(canonicalField: string): string {
   return MANUAL_FIELD_LABELS[canonicalField] ?? canonicalField;
 }
 
+function AmazonFactEnrichmentInline({taskId, preview, create, refresh, onCommitted, existingFields}:{taskId:string; preview:CreativeHandoffPreview|null; create:ListingFactSupplementPanelProps["create"]; refresh:()=>Promise<unknown>; onCommitted?:()=>void; existingFields:Set<string>}) {
+  const [state, setState] = useState<"idle"|"loading"|"ready"|"error">("idle");
+  const [data, setData] = useState<{ evidenceId: string; candidates: Array<{ id: string; field: string; value: string; reviewRequired?: boolean }> } | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [notice, setNotice] = useState("");
+  async function collect() {
+    setState("loading"); setNotice("");
+    try {
+      const r = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/amazon-fact-enrichment`, { method: "POST" });
+      const j = await r.json();
+      if (!r.ok || !j.ok) throw new Error(j.error?.message || "采集失败");
+      setData({ evidenceId: j.data.evidenceId, candidates: j.data.preview.candidates ?? [] });
+      setSelected([]); setState("ready");
+    } catch (e) { setState("error"); setNotice(e instanceof Error ? e.message : "Amazon 补充资料暂时不可用，不影响 Listing 主流程。"); }
+  }
+  async function confirm() {
+    if (!data || selected.length === 0 || !preview?.storageVersion) return;
+    setState("loading");
+    try {
+      await create({ requestId: createBrowserUuid(), selectedFactCandidateIds: [], amazonFactEnrichmentSelection: { evidenceId: data.evidenceId, selectionIds: selected }, expectedStorageVersion: preview.storageVersion!, expectedResearchRevision: preview.expectedResearchRevision!, expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision ?? 0 });
+      await refresh(); onCommitted?.(); setNotice("已提交人工确认，创作资料已刷新。"); setSelected([]); setState("ready");
+    } catch { setNotice("确认失败，请刷新后重试。"); setState("ready"); }
+  }
+  return <div className="mt-2 rounded-lg border border-cyan-200 bg-cyan-50/40 p-2.5" data-testid="amazon-fact-enrichment"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-bold text-cyan-900">Amazon 商品事实建议</p><p className="text-[11px] text-slate-600">仅读取当前任务绑定 ASIN 的卖家详情内容；同一字段只能选择一个值。</p></div><button type="button" onClick={()=>void collect()} disabled={state==="loading"} className="inline-flex h-8 items-center rounded-md bg-cyan-700 px-3 text-xs font-bold text-white disabled:opacity-50" data-testid="amazon-fact-enrichment-collect">{state==="loading"?"查找中…":"自动查找"}</button></div>{notice?<p role="status" className="mt-2 text-xs text-amber-800">{notice}</p>:null}{data?<details className="mt-2" open={false}><summary className="cursor-pointer text-xs font-semibold text-cyan-900">发现 {data.candidates.length} 条候选（展开查看）</summary><div className="mt-2 grid gap-1.5 md:grid-cols-2">{data.candidates.map((c)=><label key={c.id} className="flex gap-2 rounded border border-cyan-100 bg-white p-2 text-xs"><input type="radio" name={`amazon-fact-${c.field}`} disabled={existingFields.has(c.field)} checked={selected.includes(c.id)} onChange={()=>setSelected(cur=>[...cur.filter(id=>data.candidates.find(x=>x.id===id)?.field!==c.field),c.id])}/><span><strong>{c.field}</strong>：{c.value}<span className="block text-[10px] text-slate-500">{c.reviewRequired?"需要重点复核":"来自卖家详情原文"}</span></span></label>)}</div>{selected.length>0?<button type="button" onClick={()=>void confirm()} className="mt-2 inline-flex h-8 items-center rounded-md border border-cyan-300 bg-white px-3 text-xs font-bold text-cyan-800">确认所选事实</button>:null}</details>:null}</div>;
+}
+type ListingFactSupplementPanelProps = { create: any };
 export type ManualFactInput = { field: string; value: string };
 
 /** V3 Final HWF（FIX-6）：Evidence Workbench 已确认事实（factCandidates namespace，只读展示） */
@@ -85,6 +111,7 @@ export type CreativeHandoffCreateOptions = {
   requestId: string;
   selectedFactCandidateIds: string[];
   manualConfirmedFacts?: ManualFactInput[];
+  amazonFactEnrichmentSelection?: { evidenceId: string; selectionIds: string[] };
   expectedStorageVersion: { resultJsonHash: string; updatedAt: string };
   expectedResearchRevision: number;
   expectedCurrentHandoffRevision: number;
@@ -142,6 +169,7 @@ export function ListingFactSupplementPanel({
     requestId: string;
     selectedFactCandidateIds: string[];
     manualConfirmedFacts?: ManualFactInput[];
+    amazonFactEnrichmentSelection?: { evidenceId: string; selectionIds: string[] };
     expectedStorageVersion: { resultJsonHash: string; updatedAt: string };
     expectedResearchRevision: number;
     expectedCurrentHandoffRevision: number;
@@ -158,8 +186,8 @@ export function ListingFactSupplementPanel({
   const mergedFacts = useMemo(
     () => {
       const seen = new Set(existingFacts.map((fact) => fact.field));
-      const merged: Array<{ field: string; label: string; value: string | number; sourceKind: string }> = [
-        ...existingFacts.map((fact) => ({ field: fact.field, label: fact.label, value: fact.value, sourceKind: fact.sourceKind })),
+      const merged: Array<{ field: string; label: string; value: string | number; sourceKind: string; origin?: HandoffDetailConfirmedFact["origin"] }> = [
+        ...existingFacts.map((fact) => ({ field: fact.field, label: fact.label, value: fact.value, sourceKind: fact.sourceKind, ...(fact.origin ? { origin: fact.origin } : {}) })),
       ];
       for (const fact of workbenchConfirmedFacts) {
         if (seen.has(fact.field)) continue;
@@ -274,7 +302,9 @@ export function ListingFactSupplementPanel({
               <div key={fact.field} className="rounded-lg border border-teal-100 bg-white p-2.5 text-sm text-slate-700 shadow-2xs">
                 <strong>{fact.label}</strong>：{fact.value}
                 <span className="mt-1 block text-xs text-teal-700">
-                  {fact.sourceKind === "human_manual"
+                  {fact.origin?.kind === "amazon_fact_enrichment"
+                    ? `人工核实确认 · Amazon 来源（${fact.origin.asin}）`
+                    : fact.sourceKind === "human_manual"
                     ? "人工核实（手动补充）"
                     : fact.sourceKind === "user_confirmation"
                       ? "人工核实确认"
@@ -285,6 +315,8 @@ export function ListingFactSupplementPanel({
           </div>
         </details>
       ) : null}
+
+      <AmazonFactEnrichmentInline taskId={taskId} preview={preview} create={create} refresh={refresh} onCommitted={onCommitted} existingFields={existingFields} />
 
       <details className="mt-2.5 rounded-lg border border-slate-200 bg-slate-50/50 p-2.5" data-testid="supplement-facts-details">
         <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 text-xs font-semibold text-slate-800">
@@ -439,3 +471,4 @@ function friendlySupplementError(error: { status: number; code: string; message:
   }
   return error.message || "保存失败，请稍后重试。";
 }
+

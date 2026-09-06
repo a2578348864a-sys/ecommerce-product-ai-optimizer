@@ -195,6 +195,7 @@ export function buildRequestFingerprint(input: {
   selectedVisualReferenceIds?: string[];
   /** 零候选兜底手工事实：按 field+value 规范化后参与指纹（防同 requestId 不同内容静默 replay） */
   manualConfirmedFacts?: Array<{ field: string; value: string }>;
+  amazonFactEnrichmentSelection?: { evidenceId: string; selectionIds: string[] };
   creativePreferences?: Record<string, unknown>;
   expectedStorageVersion?: { resultJsonHash?: string; resultJson?: string; updatedAt: string | Date };
   expectedResearchRevision?: number;
@@ -209,6 +210,12 @@ export function buildRequestFingerprint(input: {
     selectedFactIds: (input.selectedFactIds ?? []).slice().sort(),
     selectedVisualReferenceIds: (input.selectedVisualReferenceIds ?? []).slice().sort(),
     manualConfirmedFacts: (input.manualConfirmedFacts ?? []).slice().sort((a, b) => a.field.localeCompare(b.field)),
+    amazonFactEnrichmentSelection: input.amazonFactEnrichmentSelection === undefined
+      ? undefined
+      : {
+          evidenceId: input.amazonFactEnrichmentSelection.evidenceId,
+          selectionIds: input.amazonFactEnrichmentSelection.selectionIds.slice().sort(),
+        },
     creativePreferences: input.creativePreferences ?? undefined,
     expectedStorageVersion: input.expectedStorageVersion === undefined
       ? undefined
