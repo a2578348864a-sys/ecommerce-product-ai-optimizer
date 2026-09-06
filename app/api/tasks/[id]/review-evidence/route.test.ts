@@ -8,6 +8,7 @@ import { createTrustedSandboxTask, getSandboxTask } from "@/lib/server/demoSandb
 import { POST as routePost, GET as routeGet } from "@/app/api/tasks/[id]/review-evidence/route";
 import { callAiJson } from "@/lib/server/aiClient";
 import { resolveSystemBrowser } from "@/tools/collectors/amazon/browser-control";
+import { resetReviewCollectPreviewStoreForTests } from "@/lib/server/reviewCollector";
 
 vi.hoisted(() => {
   const { join } = require("node:path");
@@ -116,6 +117,14 @@ async function postJson(body: unknown, taskId: string, token = `tok-${DEMO}`) {
   return routePost(request, { params: Promise.resolve({ id: taskId }) });
 }
 
+async function getJson(taskId: string, token = `tok-${DEMO}`) {
+  const request = new NextRequest("http://localhost/api/tasks/x/review-evidence", {
+    method: "GET",
+    headers: { "x-access-token": token },
+  });
+  return routeGet(request, { params: Promise.resolve({ id: taskId }) });
+}
+
 function aiOk(data: unknown) {
   return {
     ok: true as const,
@@ -141,6 +150,7 @@ let taskId: string;
 let root: string;
 
 beforeEach(async () => {
+  resetReviewCollectPreviewStoreForTests();
   vi.mocked(callAiJson).mockReset();
   root = mkdtempSync(join(tmpdir(), "review-evidence-route-"));
   const task = await createTrustedSandboxTask(DEMO, {
@@ -475,5 +485,71 @@ describe("POST collect / collect-confirm（Package C 半自动采集）", () => 
       if (saved === undefined) delete process.env.LOCAL_ACQUISITION_ENABLED;
       else process.env.LOCAL_ACQUISITION_ENABLED = saved;
     }
+  });
+
+  it("GET 路由：无 pending 缓存时返回 pendingPreview: null", async () => {
+    const res = await getJson(taskId);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.data.pendingPreview).toBeNull();
+  });
+
+  it("GET 路由：collect 生成 Preview 后，GET 返回 pendingPreview 且纯只读不消费", async () => {
+    const collectRes = await postJson({
+      action: "collect",
+      asins: [{ asin: ASIN, sourceProductRole: "current_candidate" }],
+    }, taskId);
+    expect(collectRes.status).toBe(200);
+    const collectBody = await collectRes.json();
+    const previewId = collectBody.data.preview.previewId;
+
+    const res1 = await getJson(taskId);
+    expect(res1.status).toBe(200);
+    const body1 = await res1.json();
+    expect(body1.ok).toBe(true);
+    expect(body1.data.pendingPreview).not.toBeNull();
+    expect(body1.data.pendingPreview.previewId).toBe(previewId);
+    expect(body1.data.pendingPreview.items.length).toBeGreaterThan(0);
+    expect(body1.data.pendingPreview.items[0]).toMatchObject({
+      asin: ASIN,
+      role: "current_candidate",
+      duplicate: false,
+    });
+    expect(body1.data.pendingPreview.pageResults.length).toBeGreaterThan(0);
+    expect(body1.data.pendingPreview.expiresAt).toBeDefined();
+
+    // 纯只读验证：二次读取仍存在
+    const res2 = await getJson(taskId);
+    expect(res2.status).toBe(200);
+    const body2 = await res2.json();
+    expect(body2.data.pendingPreview).toEqual(body1.data.pendingPreview);
+
+    // 严禁泄露内部 subjectKey / taskId / 凭证
+    expect(body1.data.pendingPreview.subjectKey).toBeUndefined();
+    expect(body1.data.pendingPreview.taskId).toBeUndefined();
+  });
+
+  it("GET 路由：collect-confirm 消费后，GET 再次查询返回 pendingPreview: null", async () => {
+    const collectRes = await postJson({
+      action: "collect",
+      asins: [{ asin: ASIN, sourceProductRole: "current_candidate" }],
+    }, taskId);
+    const previewId = (await collectRes.json()).data.preview.previewId;
+
+    // 人工确认写入（take 消费）
+    const confirmRes = await postJson({
+      action: "collect-confirm",
+      previewId,
+      selectedIndices: [0],
+      expectedStorageVersion: toStorageVersion(taskId),
+    }, taskId);
+    expect(confirmRes.status).toBe(200);
+
+    // 消费后再 GET，pendingPreview 应当为 null
+    const resAfterConfirm = await getJson(taskId);
+    const body = await resAfterConfirm.json();
+    expect(body.ok).toBe(true);
+    expect(body.data.pendingPreview).toBeNull();
   });
 });

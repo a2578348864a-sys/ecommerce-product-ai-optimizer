@@ -27,8 +27,10 @@ import {
   VocEvidenceSection,
   parseVocAnalysisView,
   parseVocEvidenceView,
+  parseVocCollectPreviewView,
   type VocAnalysisView,
   type VocEvidenceView,
+  type VocCollectPreviewView,
 } from "@/components/evidence/VocEvidenceSection";
 import { CommercialInputsCard } from "@/components/product-research/CommercialInputsCard";
 import { BrowserUseCollectButton } from "@/components/evidence/BrowserUseCollectButton";
@@ -649,6 +651,7 @@ export function EvidenceWorkbench({
   const [vocAnalysis, setVocAnalysis] = useState<VocAnalysisView | null>(null);
   const [vocStorageVersion, setVocStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
   const [vocCapability, setVocCapability] = useState<AcquisitionCapabilityView | null>(null);
+  const [vocPendingPreview, setVocPendingPreview] = useState<VocCollectPreviewView | null>(null);
 
   // P1-A：区分 loading / empty / error / ready（不再把加载失败伪装成"没有数据"）
   const [sectionLoading, setSectionLoading] = useState(true);
@@ -672,13 +675,14 @@ export function EvidenceWorkbench({
         signal: AbortSignal.timeout(60_000),
       });
       const json = await res.json() as
-        | { ok: true; data: { evidence: unknown; analysis: unknown; storageVersion: { resultJsonHash: string; updatedAt: string }; capability?: unknown } }
+        | { ok: true; data: { evidence: unknown; analysis: unknown; storageVersion: { resultJsonHash: string; updatedAt: string }; capability?: unknown; pendingPreview?: unknown } }
         | { ok: false };
       if (res.ok && json.ok) {
         setVocEvidence(parseVocEvidenceView(json.data.evidence));
         setVocAnalysis(parseVocAnalysisView(json.data.analysis));
         setVocStorageVersion(json.data.storageVersion);
         setVocCapability(parseAcquisitionCapability(json.data.capability));
+        setVocPendingPreview(parseVocCollectPreviewView(json.data.pendingPreview));
         clearSectionError("voc");
       } else {
         setSectionError("voc", "买家评论读取失败，请稍后重试。");
@@ -732,11 +736,32 @@ export function EvidenceWorkbench({
         signal: AbortSignal.timeout(60_000),
       });
       const json = await res.json() as
-        | { ok: true; data: { evidence: KeywordEvidenceView | null; storageVersion: { resultJsonHash: string; updatedAt: string } } }
+        | { ok: true; data: { evidence: KeywordEvidenceView | null; storageVersion: { resultJsonHash: string; updatedAt: string }; pendingPreview?: unknown } }
         | { ok: false };
       if (res.ok && json.ok) {
         setKeywordReportEvidence(json.data.evidence);
         setKeywordReportStorageVersion(json.data.storageVersion);
+        if (json.data.pendingPreview && typeof json.data.pendingPreview === "object") {
+          const pp = json.data.pendingPreview as {
+            previewId?: string;
+            seedAsin?: string;
+            sourceUrl?: string;
+            keywordCount?: number;
+            capturedAt?: string | null;
+          };
+          if (pp.previewId) {
+            setKeywordPending({
+              previewId: pp.previewId,
+              seedAsin: pp.seedAsin ?? "",
+              sourceUrl: pp.sourceUrl ?? "",
+              keywordCount: pp.keywordCount ?? 0,
+              capturedAt: pp.capturedAt ?? null,
+            });
+            setIsPendingExpired(false);
+          }
+        } else if (!json.data.pendingPreview) {
+          setKeywordPending(null);
+        }
         clearSectionError("keyword");
       } else {
         setSectionError("keyword", "关键词证据读取失败，请稍后重试。");
@@ -1151,6 +1176,7 @@ export function EvidenceWorkbench({
             analysis={vocAnalysis}
             storageVersion={vocStorageVersion}
             capability={vocCapability}
+            pendingPreview={vocPendingPreview}
             onChanged={() => { loadVoc(); handleDataChanged(); }}
           />
         </div>

@@ -45,6 +45,8 @@ import {
   takeReviewCollectPreview,
   reviewCollectSubjectKey,
   buildSnippetPreviewDedupeKey,
+  getPendingReviewCollectPreviewDto,
+  type PendingReviewCollectPreviewDto,
 } from "@/lib/server/reviewCollector";
 import { readBrowserEvidenceTaskAsin } from "@/lib/server/browserEvidence";
 import type { AccessContext } from "@/lib/server/accessPassword";
@@ -69,7 +71,17 @@ export const runtime = "nodejs";
 
 type StorageVersion = { resultJsonHash: string; updatedAt: string };
 type ApiResponse =
-  | { ok: true; data: { evidence: ReviewEvidenceV1 | null; analysis: VocAnalysisV1 | null; storageVersion: StorageVersion; taskAsin: string | null; capability: AcquisitionCapability } }
+  | {
+      ok: true;
+      data: {
+        evidence: ReviewEvidenceV1 | null;
+        analysis: VocAnalysisV1 | null;
+        storageVersion: StorageVersion;
+        taskAsin: string | null;
+        capability: AcquisitionCapability;
+        pendingPreview?: PendingReviewCollectPreviewDto | null;
+      };
+    }
   | { ok: true; data: { outcome: { kind: string; importedCount: number; duplicateCount: number; rejectedCount: number }; evidence: ReviewEvidenceV1; storageVersion: StorageVersion } }
   | { ok: true; data: { analysis: VocAnalysisV1; unverified: number; gateResult: string; storageVersion: StorageVersion; demo?: boolean } }
   | { ok: true; data: { cleared: boolean; storageVersion: StorageVersion } }
@@ -207,9 +219,22 @@ export async function GET(
       getVocAnalysis(resolved.context, id),
       readBrowserEvidenceTaskAsin(resolved.context, id),
     ]);
+    const pendingPreview = getPendingReviewCollectPreviewDto({
+      subjectKey: reviewCollectSubjectKey(resolved.context),
+      taskId: id,
+      asin: taskAsin ?? undefined,
+      currentDatasetReviews: evidence?.dataset.reviews,
+    });
     return jsonResponse({
       ok: true,
-      data: { evidence, analysis, storageVersion: toStorageVersion(snapshot), taskAsin, capability: resolveBrowserAcquisitionCapability() },
+      data: {
+        evidence,
+        analysis,
+        storageVersion: toStorageVersion(snapshot),
+        taskAsin,
+        capability: resolveBrowserAcquisitionCapability(),
+        pendingPreview,
+      },
     });
   } catch (error) {
     return errorResponse(error);

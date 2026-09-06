@@ -19,7 +19,13 @@ import {
   type BrowserExecutableCandidate,
 } from "@/tools/collectors/amazon/browser-control";
 import { buildReviewSnippetExtractionExpression, type ReviewSnippet } from "@/tools/collectors/amazon/review-snippet-extract";
-import { isValidAsin, type ReviewSourceProductRole } from "@/lib/server/reviewEvidence";
+import {
+  isValidAsin,
+  buildReviewDuplicateKey,
+  buildReviewContentHash,
+  type ReviewSourceProductRole,
+  type ReviewEvidenceV1,
+} from "@/lib/server/reviewEvidence";
 import type { AccessContext } from "@/lib/server/accessPassword";
 
 export const REVIEW_COLLECTOR_VERSION = "amazon-review-snippet-collector.v1";
@@ -117,7 +123,10 @@ class ReviewCollectPreviewStore {
         const hasCurrentCandidateAsin = entry.items.some(
           (item) => item.role === "current_candidate" && item.asin.trim().toUpperCase() === normalizedAsin,
         );
-        if (!hasCurrentCandidateAsin) continue;
+        const hasPageResultAsin = entry.pageResults.some(
+          (p) => p.asin.trim().toUpperCase() === normalizedAsin,
+        );
+        if (!hasCurrentCandidateAsin && !hasPageResultAsin) continue;
       }
       match = entry;
     }
@@ -156,6 +165,77 @@ export function findPendingReviewCollectPreview(query: {
   asin?: string;
 }): ReviewCollectPreview | null {
   return previewStore.findPending(query);
+}
+
+export type PendingReviewCollectPreviewDto = {
+  previewId: string;
+  items: Array<{
+    asin: string;
+    role: ReviewSourceProductRole;
+    rating: number | null;
+    date: string | null;
+    title: string;
+    duplicate: boolean;
+  }>;
+  pageResults: Array<{ asin: string; status: string; note: string | null; extractedCount: number }>;
+  capturedAt: string;
+  expiresAt: string;
+};
+
+/**
+ * 纯只读安全 DTO 投影：不消费、不删除 Preview，不泄漏内部凭证与 subjectKey。
+ * 若有效，计算每条评论片段相对于 currentDatasetReviews 的 duplicate 标记。
+ */
+export function getPendingReviewCollectPreviewDto(query: {
+  subjectKey: string;
+  taskId: string;
+  asin?: string;
+  currentDatasetReviews?: ReviewEvidenceV1["dataset"]["reviews"];
+}): PendingReviewCollectPreviewDto | null {
+  const preview = findPendingReviewCollectPreview({
+    subjectKey: query.subjectKey,
+    taskId: query.taskId,
+    asin: query.asin,
+  });
+  if (!preview) return null;
+  const now = Date.now();
+  if (preview.expiresAt <= now) return null;
+
+  const existingKeys = new Set(
+    (query.currentDatasetReviews ?? []).map((review) => review.duplicateKey),
+  );
+  const items = preview.items.map((item) => {
+    const duplicateKey = buildReviewDuplicateKey({
+      reviewId: null,
+      asin: item.asin,
+      contentHash: buildReviewContentHash(item.title),
+      rating: item.rating,
+      reviewDate: item.date,
+    });
+    return {
+      asin: item.asin,
+      role: item.role,
+      rating: item.rating,
+      date: item.date,
+      title: item.title,
+      duplicate: existingKeys.has(duplicateKey),
+    };
+  });
+
+  const pageResults = preview.pageResults.map((page) => ({
+    asin: page.asin,
+    status: page.status,
+    note: page.note,
+    extractedCount: page.extractedCount,
+  }));
+
+  return {
+    previewId: preview.previewId,
+    items,
+    pageResults,
+    capturedAt: preview.capturedAt,
+    expiresAt: new Date(preview.expiresAt).toISOString(),
+  };
 }
 
 /** 测试专用：清空内存 Preview Store（仅测试文件使用） */
