@@ -12,9 +12,10 @@
 
 import "server-only";
 
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, execSync, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { SourcingAcquisitionError } from "@/lib/upstream/1688/contracts";
 
 export const NATIVE_1688_BRIDGE_VERSION = "authenticated-loopback-bridge.v1";
@@ -43,6 +44,143 @@ function fail(code: string, status: number, message: string): never {
   throw new SourcingAcquisitionError(code, status, message);
 }
 
+const BRIDGE_TOKEN_ENV = "QINGXUAN_1688_BRIDGE_TOKEN";
+const BRIDGE_TOKEN_FILE = resolve(process.cwd(), ".next", "1688-bridge-token.txt");
+
+function resolveBridgeToken(providedToken?: string): string {
+  if (providedToken && /^[a-f0-9]{64}$/.test(providedToken)) {
+    return providedToken;
+  }
+  const envToken = process.env[BRIDGE_TOKEN_ENV];
+  if (envToken && /^[a-f0-9]{64}$/.test(envToken)) {
+    return envToken;
+  }
+  try {
+    if (existsSync(BRIDGE_TOKEN_FILE)) {
+      const saved = readFileSync(BRIDGE_TOKEN_FILE, "utf8").trim();
+      if (/^[a-f0-9]{64}$/.test(saved)) {
+        return saved;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  const token = randomBytes(32).toString("hex");
+  try {
+    const dir = dirname(BRIDGE_TOKEN_FILE);
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+    writeFileSync(BRIDGE_TOKEN_FILE, token, "utf8");
+  } catch {
+    // ignore
+  }
+  return token;
+}
+
+/**
+ * 验证目标 PID 是否属于当前项目自己的 1688 bridge 进程（P0 安全边界）。
+ * 只有同时满足以下条件才判定为 owned：
+ * 1. 进程可执行文件为 node
+ * 2. 命令行包含 qingxuan-1688-helper、bridge、server.mjs
+ * 3. 脚本路径属于当前项目工作区
+ */
+export function verifyBridgeProcessOwnership(pid: number): boolean {
+  if (!pid || pid <= 0) return false;
+  try {
+    let cmd = "";
+    if (process.platform === "win32") {
+      const res = spawnSync("powershell.exe", [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; (Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}').CommandLine`,
+      ], { encoding: "utf8", windowsHide: true, timeout: 3000 });
+      cmd = (res.stdout || "").trim();
+    } else {
+      const res = spawnSync("ps", ["-p", String(pid), "-o", "command="], {
+        encoding: "utf8",
+        timeout: 3000,
+      });
+      cmd = (res.stdout || "").trim();
+    }
+    if (!cmd) return false;
+    const lowerCmd = cmd.toLowerCase().replace(/\\/g, "/");
+    // 1. 验证可执行程序为 node
+    if (!/node(\.exe)?/i.test(cmd)) return false;
+    // 2. 验证 CommandLine 必须包含助手 bridge server 特征
+    if (!lowerCmd.includes("qingxuan-1688-helper") || !lowerCmd.includes("bridge") || !lowerCmd.includes("server.mjs")) {
+      return false;
+    }
+    // 3. 验证 script 路径属于当前工作区
+    const lowerExpected = BRIDGE_SCRIPT.toLowerCase().replace(/\\/g, "/");
+    if (!lowerCmd.includes(lowerExpected)) {
+      const worktreeDir = process.cwd().toLowerCase().replace(/\\/g, "/");
+      if (!lowerCmd.includes(worktreeDir)) {
+        return false;
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function freePortIfOccupied(port: number): Promise<void> {
+  const pids: number[] = [];
+  if (process.platform === "win32") {
+    try {
+      const out = execSync(`netstat -ano | findstr :${port}`, { encoding: "utf8" });
+      const lines = out.split(/\r?\n/).filter((l) => l.includes(`:${port}`) && l.includes("LISTENING"));
+      for (const line of lines) {
+        const parts = line.trim().split(/\s+/);
+        const pid = parseInt(parts[parts.length - 1], 10);
+        if (pid && pid !== process.pid && !pids.includes(pid)) {
+          pids.push(pid);
+        }
+      }
+    } catch {
+      // 端口未监听
+    }
+  } else {
+    try {
+      const out = execSync(`lsof -t -i :${port} -sTCP:LISTEN`, { encoding: "utf8" });
+      for (const line of out.trim().split(/\s+/)) {
+        const pid = parseInt(line, 10);
+        if (pid && pid !== process.pid && !pids.includes(pid)) {
+          pids.push(pid);
+        }
+      }
+    } catch {
+      // 端口未监听
+    }
+  }
+
+  if (pids.length === 0) return;
+
+  for (const pid of pids) {
+    const isOwned = verifyBridgeProcessOwnership(pid);
+    if (!isOwned) {
+      fail(
+        "native_1688_bridge_port_conflict",
+        503,
+        `1688 图片扩展桥接端口 (${port}) 被外部非项目进程 (PID ${pid}) 占用，请释放该端口后重试。`
+      );
+    }
+    // ownership 已严格证明为当前工作区自己的孤儿 bridge 进程，安全终止该 exact PID
+    try {
+      if (process.platform === "win32") {
+        spawnSync("taskkill.exe", ["/PID", String(pid), "/F"], { windowsHide: true, stdio: "ignore" });
+      } else {
+        process.kill(pid, "SIGTERM");
+      }
+    } catch {
+      // 进程可能已退出
+    }
+  }
+  await new Promise((resolveWait) => setTimeout(resolveWait, 400));
+}
+
 export class Native1688BridgeClient {
   private readonly token: string;
   private child: ChildProcess | null = null;
@@ -50,7 +188,7 @@ export class Native1688BridgeClient {
   private readonly baseHost = BRIDGE_HOST;
 
   constructor(token?: string) {
-    this.token = token ?? randomBytes(32).toString("hex");
+    this.token = resolveBridgeToken(token);
   }
 
   /** 探测候选端口中是否有同 token 的活 bridge（含本实例已解析端口） */
@@ -81,7 +219,15 @@ export class Native1688BridgeClient {
       this.port = existing;
       return;
     }
-    this.child = spawn(process.execPath, [BRIDGE_SCRIPT, "--token", this.token], {
+    // 若 53318 被孤儿/旧 token 桥占用，先清理释放，防止 split-brain 到 53319
+    await freePortIfOccupied(BRIDGE_PORT_START);
+
+    const args = [
+      BRIDGE_SCRIPT,
+      "--token", this.token,
+      "--parent-pid", String(process.pid),
+    ];
+    this.child = spawn(process.execPath, args, {
       shell: false,
       windowsHide: true,
       stdio: "ignore",
@@ -93,7 +239,7 @@ export class Native1688BridgeClient {
     this.child.once("exit", () => {
       this.child = null;
     });
-    // 等待任一候选端口 health 就绪（bridge 内部端口冲突自动重试）
+    // 等待任一候选端口 health 就绪（优先 53318）
     const deadline = Date.now() + 6_000;
     while (Date.now() < deadline) {
       const found = await this.findActivePort();
@@ -111,6 +257,7 @@ export class Native1688BridgeClient {
       this.child.kill("SIGTERM");
       this.child = null;
     }
+    this.port = null;
   }
 
   private async request(path: string, options: RequestInit = {}): Promise<Response> {
@@ -217,20 +364,22 @@ export const NATIVE_1688_BRIDGE_CONFIG = {
   version: NATIVE_1688_BRIDGE_VERSION,
 } as const;
 
-/** 进程级共享 bridge 单例：重复获取/调用复用同一子进程（避免端口冲突与多次 spawn） */
-let sharedBridge: Native1688BridgeClient | null = null;
+/** 进程级共享 bridge 单例（globalThis 持久化，防止 Next.js HMR/模块重载导致多实例分裂） */
+const globalForBridge = globalThis as unknown as {
+  sharedBridgeClient?: Native1688BridgeClient;
+};
 
 export function getSharedBridge(): Native1688BridgeClient {
-  if (!sharedBridge) {
-    sharedBridge = new Native1688BridgeClient();
+  if (!globalForBridge.sharedBridgeClient) {
+    globalForBridge.sharedBridgeClient = new Native1688BridgeClient();
   }
-  return sharedBridge;
+  return globalForBridge.sharedBridgeClient;
 }
 
 /** 测试/关闭：停止共享 bridge 子进程 */
 export async function stopSharedBridge(): Promise<void> {
-  if (sharedBridge) {
-    await sharedBridge.stop();
-    sharedBridge = null;
+  if (globalForBridge.sharedBridgeClient) {
+    await globalForBridge.sharedBridgeClient.stop();
+    globalForBridge.sharedBridgeClient = undefined;
   }
 }
