@@ -467,6 +467,20 @@ describe("ListingPlan.v2 卖点策略（真实 DOM 三态）", () => {
     expect(raw).not.toContain("Hash");
     expect(text).not.toContain("usedFactIds");
   });
+
+  it("C. 默认折叠并展示摘要，不占用首屏主视图", async () => {
+    const { ListingSellingPointStrategy } = await import("@/components/listing-handoff/ListingHandoffSection");
+    await act(async () => {
+      root = createRoot(container as unknown as Element);
+      root.render(createElement(ListingSellingPointStrategy, { plan: PLAN_CARDS as never }));
+    });
+    await flush();
+    const strategyEl = container.firstChild as any;
+    expect(strategyEl).not.toBeNull();
+    expect(strategyEl?.tagName).toBe("DETAILS");
+    expect(strategyEl?.hasAttribute("open")).toBe(false);
+    expect(documentInstance.body.textContent).toContain("展开策略详情 ↓");
+  });
 });
 
 describe("ListingPlan.v2 草稿类型标签（draftKindLabel 三态）", () => {
