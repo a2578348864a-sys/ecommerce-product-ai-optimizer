@@ -87,6 +87,30 @@ describe("ListingFactSupplementPanel", () => {
     }
     expect(html).toContain("我已核对，这是商品真实信息");
   });
+
+  it("默认折叠已确认事实与手动补充输入，避免喧宾夺主", () => {
+    const html = renderToStaticMarkup(createElement(ListingFactSupplementPanel, {
+      taskId: "sandbox-task-collapsed",
+      preview: previewWith([
+        { field: "material", value: "Stainless Steel", scopes: ["internal", "listing"] },
+      ]),
+      create: async () => ({}),
+      refresh: async () => ({}),
+      existingFacts: [
+        { field: "brand", label: "品牌", value: "Owala", usageScopes: ["listing"], sourceKind: "candidate_snapshot" },
+      ],
+    }));
+
+    // 两处均使用 details 标签包裹
+    expect(html).toContain("data-testid=\"confirmed-facts-details\"");
+    expect(html).toContain("data-testid=\"supplement-facts-details\"");
+    // 默认均不带 open 属性（折叠状态）
+    expect(html).not.toMatch(/<details[^>]+data-testid="confirmed-facts-details"[^>]*open/);
+    expect(html).not.toMatch(/<details[^>]+data-testid="supplement-facts-details"[^>]*open/);
+    // 外部 summary 依然渲染关键提示
+    expect(html).toContain("已确认商品事实");
+    expect(html).toContain("建议补充商品事实");
+  });
 });
 
 
