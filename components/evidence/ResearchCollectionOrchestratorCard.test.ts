@@ -10,6 +10,8 @@ import {
   computeSummary,
   formatBadgeLabel,
   normalizeState,
+  sanitizeDetail,
+  extractDetailFromPayload,
   type OrchestratorSourceItem,
 } from "./ResearchCollectionOrchestratorCard";
 
@@ -752,7 +754,7 @@ describe("ResearchCollectionOrchestratorCard (Phase 3 UI / Interaction)", () => 
         gotoBtn?.click();
       });
 
-      expect(onNavigate).toHaveBeenCalledWith("market", "workbench-keyword-strategy");
+      expect(onNavigate).toHaveBeenCalledWith("market", "#formal-v2-market-evidence");
     });
 
     it("各项操作按钮点击行为（直达锚点、重试、登录）正确派发导航或重试回调", async () => {
@@ -836,6 +838,395 @@ describe("ResearchCollectionOrchestratorCard (Phase 3 UI / Interaction)", () => 
       await flush();
 
       expect(fetchSpy).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("5. 重试 UX、防重复并发与错误安全脱敏（子 Agent C 核心验收）", () => {
+    describe("纯函数脱敏与载荷提取（sanitizeDetail & extractDetailFromPayload）", () => {
+      it("extractDetailFromPayload: 严格按照优先级提取 detail > message > error.message", () => {
+        // 1. detail 优先
+        expect(
+          extractDetailFromPayload({
+            detail: "优先 detail",
+            message: "次选 message",
+            error: { message: "最低 error" },
+          }),
+        ).toBe("优先 detail");
+
+        // 2. detail 缺失或为空白，回退到 message
+        expect(
+          extractDetailFromPayload({
+            detail: "  ",
+            message: "有效 message",
+            error: { message: "最低 error" },
+          }),
+        ).toBe("有效 message");
+
+        // 3. detail & message 缺失，回退到 error.message
+        expect(
+          extractDetailFromPayload({
+            error: { message: "错误详情说明" },
+          }),
+        ).toBe("错误详情说明");
+
+        // 4. 全部为空
+        expect(extractDetailFromPayload({})).toBeUndefined();
+        expect(extractDetailFromPayload(null)).toBeUndefined();
+        expect(extractDetailFromPayload("string")).toBeUndefined();
+      });
+
+      it("sanitizeDetail: 过滤消除堆栈、本地绝对路径及 token/cookie 等敏感信息并安全降级", () => {
+        // 正常业务文案原样保留
+        expect(sanitizeDetail("SellerSprite 采集引擎不可用（未启动或超时）")).toBe(
+          "SellerSprite 采集引擎不可用（未启动或超时）",
+        );
+        expect(
+          sanitizeDetail("任务未绑定权威商品身份（批次/卖家精灵事实缺失），无法启动自动采集"),
+        ).toBe("任务未绑定权威商品身份（批次/卖家精灵事实缺失），无法启动自动采集");
+
+        // 堆栈信息：降级
+        expect(
+          sanitizeDetail("Error: connection refused at Object.<anonymous> (file.ts:12:34)"),
+        ).toBe("采集未成功，请稍后重试");
+        expect(
+          sanitizeDetail("Traceback (most recent call last):\n  File 'main.py', line 5"),
+        ).toBe("采集未成功，请稍后重试");
+
+        // 本地绝对路径：降级
+        expect(sanitizeDetail("Failed to open C:\\Users\\Administrator\\app\\cache.json")).toBe(
+          "采集未成功，请稍后重试",
+        );
+        expect(sanitizeDetail("Permission denied at /home/user/project/file")).toBe(
+          "采集未成功，请稍后重试",
+        );
+
+        // 敏感凭证：降级
+        expect(sanitizeDetail("invalid access token in authorization header")).toBe(
+          "采集未成功，请稍后重试",
+        );
+        expect(sanitizeDetail("session cookie missing or expired")).toBe(
+          "采集未成功，请稍后重试",
+        );
+        expect(sanitizeDetail("api-key is invalid")).toBe(
+          "采集未成功，请稍后重试",
+        );
+
+        // 空白防呆
+        expect(sanitizeDetail("   ")).toBeUndefined();
+        expect(sanitizeDetail(undefined)).toBeUndefined();
+      });
+    });
+
+    describe("运行时重试交互与状态流转", () => {
+      it("点击重试立即（<100ms 内）展示局部重试状态，按钮与徽章即时反馈", async () => {
+        let resolveOrchestrate: (val: any) => void;
+        const fetchPromise = new Promise((res) => {
+          resolveOrchestrate = res;
+        });
+
+        const fetchSpy = vi.fn().mockImplementation((_url, opts) => {
+          const body = JSON.parse(opts?.body as string);
+          if (body.action === "inspect") {
+            return Promise.resolve({
+              ok: true,
+              json: async () => ({
+                ok: true,
+                data: {
+                  sources: {
+                    amazon: { state: "ready" },
+                    keywords_competitors: { state: "failed", detail: "上次采集未完成" },
+                    voc: { state: "ready" },
+                    sourcing_1688: { state: "ready" },
+                  },
+                },
+              }),
+            });
+          }
+          if (body.action === "orchestrate") {
+            return fetchPromise;
+          }
+          return Promise.reject(new Error("unexpected"));
+        });
+        globalThis.fetch = fetchSpy;
+
+        root = createRoot(container as unknown as Element);
+        await act(async () => {
+          root?.render(
+            createElement(ResearchCollectionOrchestratorCard, {
+              taskId: "task-retry-001",
+            }),
+          );
+        });
+        await flush();
+        await flush();
+
+        // 初始状态：关键词卡片失败
+        const retryBtn = container.querySelector('[data-testid="action-retry-keywords"]');
+        expect(retryBtn).toBeTruthy();
+        expect(retryBtn?.disabled).toBe(false);
+        expect(retryBtn?.textContent).toContain("重试");
+
+        const initialBadge = container.querySelector('[data-testid="badge-keywords_competitors"]');
+        expect(initialBadge?.textContent).toContain("失败");
+
+        // 点击重试按钮
+        await act(async () => {
+          retryBtn?.click();
+        });
+
+        // 验证即时视觉反馈（进行中）：
+        // 1. 徽章立即变为“正在重试”
+        const retryingBadge = container.querySelector('[data-testid="badge-keywords_competitors"]');
+        expect(retryingBadge?.textContent).toContain("正在重试");
+
+        // 2. 底部 detail 立即展示“正在重新采集关键词与竞品…”
+        const itemContainer = container.querySelector('[data-testid="orchestrator-item-keywords_competitors"]');
+        expect(itemContainer?.textContent).toContain("正在重新采集关键词与竞品…");
+
+        // 3. 关键词重试按钮 disabled={true}，文案变为“重试中…”
+        expect(retryBtn?.disabled).toBe(true);
+        expect(retryBtn?.textContent).toContain("重试中…");
+
+        // 结束请求
+        await act(async () => {
+          resolveOrchestrate!({
+            ok: true,
+            json: async () => ({
+              ok: true,
+              data: {
+                sources: {
+                  keywords_competitors: { state: "ready", detail: "关键词与竞品已就绪" },
+                },
+              },
+            }),
+          });
+        });
+        await flush();
+        await flush();
+
+        // 4. 请求结束后状态复位，呈现成功状态
+        const finishedBadge = container.querySelector('[data-testid="badge-keywords_competitors"]');
+        expect(finishedBadge?.textContent).toContain("已有");
+      });
+
+      it("重试期间按钮 disabled，多次快速点击不重复发送请求（request delta = 1）", async () => {
+        let resolveOrchestrate: (val: any) => void;
+        const fetchPromise = new Promise((res) => {
+          resolveOrchestrate = res;
+        });
+
+        const fetchSpy = vi.fn().mockImplementation((_url, opts) => {
+          const body = JSON.parse(opts?.body as string);
+          if (body.action === "inspect") {
+            return Promise.resolve({
+              ok: true,
+              json: async () => ({
+                ok: true,
+                data: {
+                  sources: {
+                    keywords_competitors: { state: "failed", detail: "失败重试中测试" },
+                  },
+                },
+              }),
+            });
+          }
+          if (body.action === "orchestrate") {
+            return fetchPromise;
+          }
+          return Promise.reject(new Error("unexpected"));
+        });
+        globalThis.fetch = fetchSpy;
+
+        root = createRoot(container as unknown as Element);
+        await act(async () => {
+          root?.render(
+            createElement(ResearchCollectionOrchestratorCard, {
+              taskId: "task-retry-002",
+            }),
+          );
+        });
+        await flush();
+        await flush();
+
+        const retryBtn = container.querySelector('[data-testid="action-retry-keywords"]');
+        expect(retryBtn).toBeTruthy();
+
+        // 第一次点击
+        await act(async () => {
+          retryBtn?.click();
+        });
+
+        // 模拟用户在 loading 期间多次连击
+        await act(async () => {
+          retryBtn?.click();
+          retryBtn?.click();
+          retryBtn?.click();
+        });
+
+        const orchestrateCalls = fetchSpy.mock.calls.filter((call) => {
+          return JSON.parse(call[1]?.body).action === "orchestrate";
+        });
+        // 彻底防止重复并发请求：request delta 严格为 1
+        expect(orchestrateCalls.length).toBe(1);
+
+        // 释放请求
+        await act(async () => {
+          resolveOrchestrate!({
+            ok: true,
+            json: async () => ({
+              ok: true,
+              data: {
+                sources: {
+                  keywords_competitors: { state: "failed", detail: "再次失败" },
+                },
+              },
+            }),
+          });
+        });
+        await flush();
+        await flush();
+
+        // finally 阶段重置，重试按钮再次恢复可点击
+        expect(retryBtn?.disabled).toBe(false);
+        expect(retryBtn?.textContent).toContain("重试");
+      });
+
+      it("后端返回 error.message / message 时，detail 能正确渲染真实脱敏错误信息", async () => {
+        const fetchSpy = vi.fn().mockImplementation((_url, opts) => {
+          const body = JSON.parse(opts?.body as string);
+          if (body.action === "inspect") {
+            return Promise.resolve({
+              ok: true,
+              json: async () => ({
+                ok: true,
+                data: {
+                  sources: {
+                    // 后端通过 message 字段返回错误原因
+                    keywords_competitors: {
+                      status: "failed",
+                      error: {
+                        code: "seller_sprite_keyword_failed",
+                        message: "SellerSprite 采集引擎不可用（未启动或超时）",
+                      },
+                    },
+                    amazon: {
+                      status: "needs_user",
+                      message: "任务未绑定权威商品身份（批次/卖家精灵事实缺失）",
+                    },
+                  },
+                },
+              }),
+            });
+          }
+          return Promise.reject(new Error("unexpected"));
+        });
+        globalThis.fetch = fetchSpy;
+
+        root = createRoot(container as unknown as Element);
+        await act(async () => {
+          root?.render(
+            createElement(ResearchCollectionOrchestratorCard, {
+              taskId: "task-error-mapping",
+            }),
+          );
+        });
+        await flush();
+        await flush();
+
+        // 关键词项应当渲染真实的 error.message，而非默认的“上次采集未完成”
+        const kwItem = container.querySelector('[data-testid="orchestrator-item-keywords_competitors"]');
+        expect(kwItem?.textContent).toContain("SellerSprite 采集引擎不可用（未启动或超时）");
+        expect(kwItem?.textContent).not.toContain("上次采集未完成");
+
+        // Amazon 项应当渲染真实的 message
+        const amazonItem = container.querySelector('[data-testid="orchestrator-item-amazon"]');
+        expect(amazonItem?.textContent).toContain("任务未绑定权威商品身份（批次/卖家精灵事实缺失）");
+      });
+
+      it("采集成功转为 pending_review 并展示“直达待确认”按钮，点击平滑滚动并切换 Tab", async () => {
+        const onNavigate = vi.fn();
+        const onDataChanged = vi.fn();
+
+        const fetchSpy = vi.fn().mockImplementation((_url, opts) => {
+          const body = JSON.parse(opts?.body as string);
+          if (body.action === "inspect") {
+            return Promise.resolve({
+              ok: true,
+              json: async () => ({
+                ok: true,
+                data: {
+                  sources: {
+                    keywords_competitors: { status: "failed" },
+                  },
+                },
+              }),
+            });
+          }
+          if (body.action === "orchestrate") {
+            return Promise.resolve({
+              ok: true,
+              json: async () => ({
+                ok: true,
+                data: {
+                  hasNewPreview: true,
+                  sources: {
+                    keywords_competitors: {
+                      status: "pending_review",
+                      detail: "已生成 20 条待复核关键词",
+                      hasPreview: true,
+                      previewId: "prev-kw-999",
+                    },
+                  },
+                },
+              }),
+            });
+          }
+          return Promise.reject(new Error("unexpected"));
+        });
+        globalThis.fetch = fetchSpy;
+
+        root = createRoot(container as unknown as Element);
+        await act(async () => {
+          root?.render(
+            createElement(ResearchCollectionOrchestratorCard, {
+              taskId: "task-preview-success",
+              onNavigate,
+              onDataChanged,
+            }),
+          );
+        });
+        await flush();
+        await flush();
+
+        // 点击重试
+        const retryBtn = container.querySelector('[data-testid="action-retry-keywords"]');
+        await act(async () => {
+          retryBtn?.click();
+        });
+        await flush();
+        await flush();
+
+        // 1. onDataChanged 触发
+        expect(onDataChanged).toHaveBeenCalled();
+
+        // 2. 关键词项状态自动变为 pending_review（⚠ 待确认）
+        const kwBadge = container.querySelector('[data-testid="badge-keywords_competitors"]');
+        expect(kwBadge?.textContent).toContain("待确认");
+
+        // 3. 显示“直达待确认”按钮
+        const anchorBtn = container.querySelector(
+          '[data-testid="action-anchor-keywords_competitors"]',
+        );
+        expect(anchorBtn).toBeTruthy();
+        expect(anchorBtn?.textContent).toContain("直达待确认");
+
+        // 4. 点击“直达待确认”触发 handleNavigate("market", "#formal-v2-market-evidence")
+        await act(async () => {
+          anchorBtn?.click();
+        });
+
+        expect(onNavigate).toHaveBeenCalledWith("market", "#formal-v2-market-evidence");
+      });
     });
   });
 });

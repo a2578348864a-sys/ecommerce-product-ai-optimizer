@@ -225,6 +225,14 @@ describe("researchCollectionOrchestrator", () => {
       expect(sanitized).toBe("First line error");
       expect(sanitized).not.toContain("at Function.execute");
     });
+
+    it("脱敏文件路径（Windows 与 Unix filepath）", () => {
+      const msg = "Failed to run C:\\Users\\a2578\\.local\\bin\\browser-use.exe and /home/user/app/script.py";
+      const sanitized = sanitizeErrorMessage(new Error(msg));
+      expect(sanitized).not.toContain("C:\\Users\\a2578\\.local\\bin\\browser-use.exe");
+      expect(sanitized).not.toContain("/home/user/app/script.py");
+      expect(sanitized).toContain("[filepath]");
+    });
   });
 
   describe("inspect action", () => {
@@ -516,9 +524,9 @@ describe("researchCollectionOrchestrator", () => {
     });
   });
 
-  describe("Failure Isolation", () => {
-    it("Keyword+Competitor 采集失败绝不导致整次请求 throw，返回 sources.keywordCompetitor.status = failed", async () => {
-      // 模拟 SellerSprite 采集失败
+  describe("Failure Isolation and explicit white-list error classification", () => {
+    it("SellerSprite 采集引擎不可用（未启动或超时）时返回 typed error 与脱敏 message", async () => {
+      // 模拟 SellerSprite 采集引擎不可用
       mocks.runSellerSpriteCollection.mockResolvedValue({
         ok: false,
         failureReason: "collector_unavailable",
@@ -533,7 +541,11 @@ describe("researchCollectionOrchestrator", () => {
       // 整体不抛出异常，返回结果结构完整
       expect(result).toBeDefined();
       expect(result.sources.keywordCompetitor.status).toBe("failed");
-      expect(result.sources.keywordCompetitor.error?.code).toBe("seller_sprite_keyword_failed");
+      expect(result.sources.keywordCompetitor.message).toBe("SellerSprite 采集引擎不可用（未启动或超时）");
+      expect(result.sources.keywordCompetitor.error).toEqual({
+        code: "seller_sprite_collector_unavailable",
+        message: "SellerSprite 采集引擎不可用（未启动或超时）",
+      });
 
       // 其他来源正常执行探测，未受牵连
       expect(result.sources.amazon).toBeDefined();
@@ -541,8 +553,212 @@ describe("researchCollectionOrchestrator", () => {
       expect(result.sources.sourcing1688).toBeDefined();
     });
 
-    it("Amazon 竞品搜寻异常时进行隔离，不影响其他源", async () => {
-      // SellerSprite 成功，但 Amazon 竞品搜寻失败
+    it("SellerSprite 采集失败（未获得有效页面观察）时返回 typed error", async () => {
+      mocks.runSellerSpriteCollection.mockResolvedValue({
+        ok: false,
+        failureReason: "collect_failed",
+      });
+
+      const result = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "orchestrate",
+      });
+
+      expect(result.sources.keywordCompetitor.status).toBe("failed");
+      expect(result.sources.keywordCompetitor.message).toBe("SellerSprite 关键词采集失败：未获得有效页面观察");
+      expect(result.sources.keywordCompetitor.error).toEqual({
+        code: "seller_sprite_keyword_failed",
+        message: "SellerSprite 关键词采集失败：未获得有效页面观察",
+      });
+    });
+
+    it("login_required 返回 needs_user 与 typed error", async () => {
+      mocks.runSellerSpriteCollection.mockResolvedValue({
+        ok: true,
+        preview: {
+          schema: "browser-use-research-preview.v1",
+          version: 1,
+          kind: "keyword",
+          seedAsin: "B0SAMPLE01",
+          marketplace: "Amazon US",
+          seedProductUrl: null,
+          sourceUrl: "https://www.amazon.com/dp/B0SAMPLE01",
+          capturedAt: new Date().toISOString(),
+          results: [],
+          missing: ["sellersprite_keyword_rows"],
+          failureReason: "login_required",
+          collector: { tool: "browser-use", version: "1.0.0" },
+        },
+      });
+
+      const result = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "orchestrate",
+      });
+
+      expect(result.sources.keywordCompetitor.status).toBe("needs_user");
+      expect(result.sources.keywordCompetitor.message).toBe("SellerSprite 插件未登录，请在浏览器中登录后重试");
+      expect(result.sources.keywordCompetitor.error).toEqual({
+        code: "seller_sprite_login_required",
+        message: "SellerSprite 插件未登录，请在浏览器中登录后重试",
+      });
+      expect(mocks.runAmazonCompetitorCollection).not.toHaveBeenCalled();
+    });
+
+    it("captcha_required 返回 needs_user 与 typed error", async () => {
+      mocks.runSellerSpriteCollection.mockResolvedValue({
+        ok: true,
+        preview: {
+          schema: "browser-use-research-preview.v1",
+          version: 1,
+          kind: "keyword",
+          seedAsin: "B0SAMPLE01",
+          marketplace: "Amazon US",
+          seedProductUrl: null,
+          sourceUrl: "https://www.amazon.com/dp/B0SAMPLE01",
+          capturedAt: new Date().toISOString(),
+          results: [],
+          missing: ["sellersprite_keyword_rows"],
+          failureReason: "captcha_required",
+          collector: { tool: "browser-use", version: "1.0.0" },
+        },
+      });
+
+      const result = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "orchestrate",
+      });
+
+      expect(result.sources.keywordCompetitor.status).toBe("needs_user");
+      expect(result.sources.keywordCompetitor.message).toBe("SellerSprite 遇到图形验证码，请在浏览器中完成验证");
+      expect(result.sources.keywordCompetitor.error).toEqual({
+        code: "seller_sprite_captcha_required",
+        message: "SellerSprite 遇到图形验证码，请在浏览器中完成验证",
+      });
+      expect(mocks.runAmazonCompetitorCollection).not.toHaveBeenCalled();
+    });
+
+    it("panel_not_detected 返回 failed 与 typed error", async () => {
+      mocks.runSellerSpriteCollection.mockResolvedValue({
+        ok: true,
+        preview: {
+          schema: "browser-use-research-preview.v1",
+          version: 1,
+          kind: "keyword",
+          seedAsin: "B0SAMPLE01",
+          marketplace: "Amazon US",
+          seedProductUrl: null,
+          sourceUrl: "https://www.amazon.com/dp/B0SAMPLE01",
+          capturedAt: new Date().toISOString(),
+          results: [],
+          missing: ["sellersprite_keyword_rows"],
+          failureReason: "panel_not_detected",
+          collector: { tool: "browser-use", version: "1.0.0" },
+        },
+      });
+
+      const result = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "orchestrate",
+      });
+
+      expect(result.sources.keywordCompetitor.status).toBe("failed");
+      expect(result.sources.keywordCompetitor.message).toBe("未检测到 SellerSprite 插件面板，请确认插件已开启");
+      expect(result.sources.keywordCompetitor.error).toEqual({
+        code: "seller_sprite_panel_not_detected",
+        message: "未检测到 SellerSprite 插件面板，请确认插件已开启并刷新页面",
+      });
+      expect(mocks.runAmazonCompetitorCollection).not.toHaveBeenCalled();
+    });
+
+    it("no_reliable_search_keyword 返回 failed 与 typed error", async () => {
+      mocks.runSellerSpriteCollection.mockResolvedValue({
+        ok: true,
+        preview: {
+          schema: "browser-use-research-preview.v1",
+          version: 1,
+          kind: "keyword",
+          seedAsin: "B0SAMPLE01",
+          marketplace: "Amazon US",
+          seedProductUrl: null,
+          sourceUrl: "https://www.amazon.com/dp/B0SAMPLE01",
+          capturedAt: new Date().toISOString(),
+          results: [], // 空关键词列表，selectReliableSearchKeyword 返回 null
+          missing: [],
+          failureReason: null,
+          collector: { tool: "browser-use", version: "1.0.0" },
+        },
+      });
+
+      const result = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "orchestrate",
+      });
+
+      expect(result.sources.keywordCompetitor.status).toBe("failed");
+      expect(result.sources.keywordCompetitor.message).toBe("SellerSprite 关键词没有可用的非品牌查询词，已停止");
+      expect(result.sources.keywordCompetitor.error).toEqual({
+        code: "no_reliable_search_keyword",
+        message: "SellerSprite 关键词没有可用的非品牌查询词，已停止自动竞品采集",
+      });
+      expect(mocks.runAmazonCompetitorCollection).not.toHaveBeenCalled();
+    });
+
+    it("Amazon 竞品搜寻引擎不可用时返回 amazon_competitor_collector_unavailable", async () => {
+      mocks.runSellerSpriteCollection.mockResolvedValue({
+        ok: true,
+        preview: {
+          schema: "browser-use-research-preview.v1",
+          version: 1,
+          kind: "keyword",
+          seedAsin: "B0SAMPLE01",
+          marketplace: "Amazon US",
+          seedProductUrl: null,
+          sourceUrl: "https://www.amazon.com/dp/B0SAMPLE01",
+          capturedAt: new Date().toISOString(),
+          results: [
+            {
+              keyword: "bento lunch box",
+              keywordTranslation: "午餐盒",
+              searchVolume: 5000,
+              abaWeeklyRank: 10,
+              purchaseVolume: 500,
+              relevance: null,
+              competition: 0.8,
+              capturedAt: new Date().toISOString(),
+            },
+          ],
+          missing: [],
+          failureReason: null,
+          collector: { tool: "browser-use", version: "1.0.0" },
+        },
+      });
+
+      mocks.runAmazonCompetitorCollection.mockResolvedValue({
+        ok: false,
+        failureReason: "collector_unavailable",
+      });
+
+      const result = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "orchestrate",
+      });
+
+      expect(result.sources.keywordCompetitor.status).toBe("failed");
+      expect(result.sources.keywordCompetitor.message).toBe("Amazon 竞品采集引擎不可用（未启动或超时）");
+      expect(result.sources.keywordCompetitor.error).toEqual({
+        code: "amazon_competitor_collector_unavailable",
+        message: "Amazon 竞品采集引擎不可用（未启动或超时）",
+      });
+    });
+
+    it("Amazon 竞品搜寻未获得有效观察时返回 amazon_competitor_collect_failed", async () => {
       mocks.runSellerSpriteCollection.mockResolvedValue({
         ok: true,
         preview: {
@@ -584,7 +800,39 @@ describe("researchCollectionOrchestrator", () => {
       });
 
       expect(result.sources.keywordCompetitor.status).toBe("failed");
-      expect(result.sources.keywordCompetitor.error?.code).toBe("amazon_competitor_collect_failed");
+      expect(result.sources.keywordCompetitor.message).toBe("Amazon 搜索采集失败：未获得有效页面观察");
+      expect(result.sources.keywordCompetitor.error).toEqual({
+        code: "amazon_competitor_collect_failed",
+        message: "Amazon 搜索采集失败：未获得有效页面观察",
+      });
+    });
+
+    it("top-level message 存在且脱敏（异常中禁止输出 token/cookie/filepath/stack）", async () => {
+      mocks.runSellerSpriteCollection.mockRejectedValue(
+        new Error(
+          "Fatal error at C:\\Users\\admin\\secret.ts with bearer secret_token_123 and cookie: session=abc\n at Layer.run (stack.ts:1:1)",
+        ),
+      );
+
+      const result = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "orchestrate",
+      });
+
+      expect(result.sources.keywordCompetitor.status).toBe("failed");
+      const topMsg = result.sources.keywordCompetitor.message;
+      const errMsg = result.sources.keywordCompetitor.error?.message;
+      expect(topMsg).toBeTruthy();
+      expect(errMsg).toBeTruthy();
+      expect(topMsg).toBe(errMsg);
+      expect(topMsg).not.toContain("secret_token_123");
+      expect(topMsg).not.toContain("session=abc");
+      expect(topMsg).not.toContain("C:\\Users\\admin\\secret.ts");
+      expect(topMsg).not.toContain("at Layer.run");
+      expect(topMsg).toContain("bearer ***");
+      expect(topMsg).toContain("cookie=***");
+      expect(topMsg).toContain("[filepath]");
     });
   });
 
