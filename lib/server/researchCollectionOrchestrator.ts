@@ -38,10 +38,14 @@ import {
 } from "@/lib/server/browserEvidenceCollect";
 import {
   resolveBrowserAcquisitionCapability,
+  browserUnavailableMessage,
+  REVIEW_LOCAL_ENV_REQUIRED_MESSAGE,
 } from "@/lib/server/acquisitionCapability";
 import {
   DEMO_ACQUISITION_EVIDENCE_ID,
   buildDemoBrowserCollectPreview,
+  buildDemoReviewCollectPageResults,
+  buildDemoReviewCollectPreviewItems,
 } from "@/lib/server/demoAcquisitionSamples";
 
 // 来源 2：Keyword + Competitor (Browser Use)
@@ -70,6 +74,16 @@ import { getRuntimeMode } from "@/lib/server/runtimeMode";
 import {
   getReviewEvidence,
 } from "@/lib/server/reviewEvidence";
+import {
+  createReviewCollectPreview,
+  storeReviewCollectPreview,
+  findPendingReviewCollectPreview,
+  reviewCollectSubjectKey,
+  ReviewCollectorError,
+  type ReviewSnippetPreviewItem,
+  type ReviewCollectPageResult,
+} from "@/lib/server/reviewCollector";
+
 
 // 来源 4：1688 Sourcing Evidence
 import {
@@ -554,9 +568,10 @@ async function handleKeywordCompetitorSource(
 async function handleVocSource(
   context: AccessContext,
   taskId: string,
-  _action: OrchestratorAction,
+  action: OrchestratorAction,
 ): Promise<OrchestratorSourceDetail> {
   try {
+    // 1. 已有正式 Review Evidence → ready（collector calls = 0）
     const reviewEv = await getReviewEvidence(context, taskId);
     if (reviewEv !== null && reviewEv.dataset.reviews.length > 0) {
       return {
@@ -567,25 +582,125 @@ async function handleVocSource(
       };
     }
 
-    // 评论采集属于半自动/人工导入，通常需用户选定 ASIN 或粘贴样本
+    // 2. 解析权威当前商品 ASIN（readBrowserEvidenceTaskAsin；不猜、不信客户端）
+    const asin = await readBrowserEvidenceTaskAsin(context, taskId);
+    if (!asin) {
+      return {
+        status: "needs_user",
+        hasEvidence: false,
+        message: "当前任务缺少可验证的 Amazon 商品身份，无法自动采集评论",
+      };
+    }
+
+    // 3. Pending Review Preview 幂等（无副作用查询；subjectKey/taskId 严格匹配；过期不复用）
+    const subjectKey = reviewCollectSubjectKey(context);
+    const pending = findPendingReviewCollectPreview({ subjectKey, taskId });
+    if (pending !== null) {
+      return {
+        status: "awaiting_confirmation",
+        hasEvidence: false,
+        previewId: pending.previewId,
+        itemCount: pending.items.length,
+        message: "买家评论已有待确认采集预览",
+      };
+    }
+
+    // 4. inspect 模式仅返回状态，绝不采集
+    if (action === "inspect") {
+      return {
+        status: "needs_user",
+        hasEvidence: false,
+        message: "待采集买家评论",
+      };
+    }
+
+    // 5. orchestrate：Demo 模式回放预置 Preview（与 review-evidence route 行为一致）
+    const capability = resolveBrowserAcquisitionCapability();
+    if (capability.state === "local_env_required" && context.mode === "demo") {
+      const items = buildDemoReviewCollectPreviewItems().map((item) => ({ ...item, duplicate: false }));
+      const pageResults = buildDemoReviewCollectPageResults();
+      storeDemoReviewPreview({ subjectKey, taskId, items, pageResults });
+      return {
+        status: "awaiting_confirmation",
+        hasEvidence: false,
+        previewId: DEMO_ACQUISITION_EVIDENCE_ID,
+        itemCount: items.length,
+        message: "买家评论预览已生成（演示数据），等待人工确认",
+      };
+    }
+
+    // 6. capability gate：不可用 → needs_user（typed message，不泄露内部信息）
+    if (capability.state !== "available") {
+      const message = capability.state === "local_env_required"
+        ? REVIEW_LOCAL_ENV_REQUIRED_MESSAGE
+        : browserUnavailableMessage(capability.reasonCategory);
+      return {
+        status: "needs_user",
+        hasEvidence: false,
+        message,
+        error: {
+          code: capability.state === "local_env_required" ? "local_environment_required" : "acquisition_unavailable",
+          message,
+        },
+      };
+    }
+
+    // 7. orchestrate：调用现有 Review Collector（V1 仅 current_candidate 单 ASIN）
+    //    只创建 Preview，绝不 collect-confirm / analyze / importReviews
+    const preview = await createReviewCollectPreview({
+      context,
+      taskId,
+      asins: [{ asin, role: "current_candidate" }],
+    });
     return {
-      status: "needs_user",
+      status: "awaiting_confirmation",
       hasEvidence: false,
-      message: "需要用户选择待分析 ASIN 或导入评论样本",
+      previewId: preview.previewId,
+      itemCount: preview.items.length,
+      message: "买家评论预览已生成，等待人工确认",
     };
   } catch (error) {
+    if (error instanceof ReviewCollectorError) {
+      // typed collector failures → 按现有分类归入安全状态
+      const needsUser = error.code === "browser_not_available";
+      return {
+        status: needsUser ? "needs_user" : "failed",
+        hasEvidence: false,
+        message: needsUser ? "本机未检测到可用的系统浏览器，无法自动采集评论" : "买家评论采集失败，可稍后重试或手动导入",
+        error: { code: error.code, message: needsUser ? "本机未检测到可用的系统浏览器，无法自动采集评论" : "买家评论采集失败" },
+      };
+    }
     const sanitized = sanitizeErrorMessage(error);
     return {
       status: "failed",
       hasEvidence: false,
       message: sanitized,
       error: {
-        code: "voc_check_failed",
+        code: "voc_collect_failed",
         message: sanitized,
       },
     };
   }
 }
+
+/** Demo 模式回放：把预置评论样本作为 Pending Preview 存储（不写入正式 Evidence） */
+function storeDemoReviewPreview(input: {
+  subjectKey: string;
+  taskId: string;
+  items: ReviewSnippetPreviewItem[];
+  pageResults: ReviewCollectPageResult[];
+}): void {
+  storeReviewCollectPreview({
+    previewId: DEMO_ACQUISITION_EVIDENCE_ID,
+    items: input.items,
+    pageResults: input.pageResults,
+    capturedAt: new Date().toISOString(),
+    expiresAt: Date.now() + 15 * 60 * 1000,
+    subjectKey: input.subjectKey,
+    taskId: input.taskId,
+  });
+}
+
 
 /* ── Source 4: 1688 货源处理 ───────────────────────────────────────────── */
 

@@ -106,7 +106,7 @@ const SOURCE_META: Record<
     anchorId: "formal-v2-buyer-evidence",
     tabKey: "buyers",
     defaultState: "needs_action",
-    allowedStates: new Set(["ready", "needs_action", "needs_user"]),
+    allowedStates: new Set(["ready", "pending_review", "needs_action", "needs_user", "failed"]),
   },
   sourcing_1688: {
     title: "1688 供应链",
