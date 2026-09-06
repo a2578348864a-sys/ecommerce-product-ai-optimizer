@@ -23,6 +23,9 @@ import {
 } from "@/tools/collectors/amazon/detail-page-extract";
 import { BrowserEvidenceError, type BrowserEvidenceSnapshot } from "@/lib/server/browserEvidence";
 import type { AccessContext } from "@/lib/server/accessPassword";
+import { buildAmazonSellerContentExtractionExpression } from "@/tools/collectors/amazon/seller-content-expression-source";
+import { normalizeSellerBlocks } from "@/lib/server/amazonFactEnrichment/mapping";
+import type { AmazonSellerContentBlockV1 } from "@/lib/server/amazonFactEnrichment/contract";
 
 export const BROWSER_EVIDENCE_ALLOWED_ORIGINS = ["https://www.amazon.com"] as const;
 export const BROWSER_EVIDENCE_COLLECTOR_VERSION = "amazon-detail-page-extractor.v1";
@@ -42,6 +45,7 @@ export type BrowserEvidenceCollectPreview = {
   calibration: AmazonEnvironmentCalibration | null;
   /** V3 Final PHASE 1：Product Information 提取（规格行 + canonical 映射；实体绑定前提；失败时 null） */
   productInfo?: AmazonProductInfoExtraction | null;
+  sellerContent?: AmazonSellerContentBlockV1[];
 };
 
 export type BrowserEvidenceStoredPreview = {
@@ -356,3 +360,4 @@ export function buildConfirmedSnapshot(input: {
     confirmedAt: new Date().toISOString(),
   };
 }
+
