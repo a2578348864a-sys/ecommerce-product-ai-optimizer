@@ -1,15 +1,47 @@
 import { callAiText, getAiConfig } from "@/lib/server/aiClient";
 import { AMAZON_FACT_FIELDS } from "./contract";
-import type { AmazonFactCandidateV1, AmazonFactEnrichmentPreviewV1, AmazonSellerContentBlockV1, AmazonUnstructuredFactExtractionV1 } from "./contract";
+import type { AmazonFactCandidateV1, AmazonFactEnrichmentPreviewV1, AmazonNaturalLanguageSchemaFailureCode, AmazonSellerContentBlockV1, AmazonUnstructuredFactExtractionV1 } from "./contract";
 import { isWeightLike, mapSellerBlocksToCandidates, normalizeSellerBlocks } from "./mapping";
 const AI_TIMEOUT_MS=30000;
+
+export const AMAZON_FACT_ENRICHMENT_SYSTEM_PROMPT = `Extract only explicit seller-authored product facts.
+Return exactly one JSON object with exactly one top-level key: "candidates". No markdown, explanations, or additional top-level keys.
+Each candidate must contain exactly these six keys: field, value, sourceBlockId, evidenceText, qualifier, confidence. No additional candidate keys.
+field must be exactly one of: capacity, functional_feature, use_scenario, care, construction, operation, compatibility, other.
+qualifier must be exactly one of: direct (explicit positive fact), approximate (about, approximately, range, or estimated wording), negative (explicit negation or incompatibility), conditional (true only under an explicit condition).
+confidence must be exactly high or medium.
+Copy sourceBlockId exactly from one bracketed source ID in the user message, such as "bullet:0"; never create or alter an ID.
+Copy evidenceText verbatim from exactly one source block. Do not paraphrase, translate, combine blocks, or invent evidence.
+value must be a string containing only what the evidence explicitly supports; preserve its numbers. If no safe, explicit fact exists, return {"candidates":[]}.
+Use no reviews, competitors, recommendations, or inferred claims.
+Valid example: {"candidates":[{"field":"care","value":"Easy to wipe clean","sourceBlockId":"bullet:0","evidenceText":"Easy to wipe clean","qualifier":"direct","confidence":"high"}]}`;
+
+export class AmazonSchemaValidationError extends Error {
+ readonly schemaFailureCode: AmazonNaturalLanguageSchemaFailureCode;
+ constructor(schemaFailureCode: AmazonNaturalLanguageSchemaFailureCode) {
+  super(schemaFailureCode);
+  this.name = "AmazonSchemaValidationError";
+  this.schemaFailureCode = schemaFailureCode;
+ }
+}
+
 export function validateAiExtraction(raw: unknown, blocks: AmazonSellerContentBlockV1[]): AmazonUnstructuredFactExtractionV1 {
  const allowedIds=new Set(blocks.map(b=>b.sourceBlockId));
- if(!raw || typeof raw!=="object" || Object.keys(raw as object).some(k=>k!=="candidates") || !Array.isArray((raw as any).candidates)) throw new Error("invalid_schema");
+ if(!raw || typeof raw!=="object" || Array.isArray(raw)) throw new AmazonSchemaValidationError("top_level_not_object");
+ const topLevelKeys=Object.keys(raw as object);
+ if(topLevelKeys.some(k=>k!=="candidates")) throw new AmazonSchemaValidationError("top_level_extra_keys");
+ if(!Array.isArray((raw as any).candidates)) throw new AmazonSchemaValidationError("candidates_not_array");
  const out=[]; const allowedKeys=new Set(["field","value","sourceBlockId","evidenceText","qualifier","confidence"]);
  for(const c of (raw as any).candidates){
-  if(!c || typeof c!=="object" || Object.keys(c).some(k=>!allowedKeys.has(k)) || typeof c.field!=="string" || typeof c.value!=="string" || typeof c.sourceBlockId!=="string" || typeof c.evidenceText!=="string" || !["direct","approximate","negative","conditional"].includes(c.qualifier) || !["high","medium"].includes(c.confidence)) throw new Error("invalid_schema");
-  if(!AMAZON_FACT_FIELDS.includes(c.field) || !allowedIds.has(c.sourceBlockId)) throw new Error("invalid_schema");
+  if(!c || typeof c!=="object" || Array.isArray(c)) throw new AmazonSchemaValidationError("candidate_not_object");
+  if(Object.keys(c).some(k=>!allowedKeys.has(k))) throw new AmazonSchemaValidationError("candidate_extra_keys");
+  if(typeof c.field!=="string" || !AMAZON_FACT_FIELDS.includes(c.field)) throw new AmazonSchemaValidationError("field_invalid");
+  if(typeof c.value!=="string") throw new AmazonSchemaValidationError("value_not_string");
+  if(typeof c.sourceBlockId!=="string") throw new AmazonSchemaValidationError("source_block_id_not_string");
+  if(!allowedIds.has(c.sourceBlockId)) throw new AmazonSchemaValidationError("source_block_unknown");
+  if(typeof c.evidenceText!=="string") throw new AmazonSchemaValidationError("evidence_text_not_string");
+  if(!["direct","approximate","negative","conditional"].includes(c.qualifier)) throw new AmazonSchemaValidationError("qualifier_invalid");
+  if(!["high","medium"].includes(c.confidence)) throw new AmazonSchemaValidationError("confidence_invalid");
   const block=blocks.find(b=>b.sourceBlockId===c.sourceBlockId)!; const evidence=c.evidenceText.trim(); const value=c.value.trim();
   if(!value || !evidence || !block.text.includes(evidence)) throw new Error("evidence_not_found_in_source");
   const nums=(v:string)=>[...v.matchAll(/\b\d+(?:\.\d+)?\b/g)].map(m=>m[0]); const sourceNums=nums(evidence); const valueNums=nums(value);
@@ -33,7 +65,8 @@ type NaturalLanguageResult = {
    | "provider_unavailable" | "provider_error" | "provider_unknown_error"
    | "ai_empty_response" | "ai_json_parse_error" | "ai_invalid_schema"
    | "ai_evidence_not_found" | "ai_numeric_mismatch" | "ai_strong_claim_upgrade"
-   | "ai_capacity_unit_mismatch";
+ | "ai_capacity_unit_mismatch";
+ schemaFailureCode?: AmazonNaturalLanguageSchemaFailureCode;
  providerHttpStatusClass?: "not_started" | "success" | "client_error" | "rate_limited"
    | "server_error" | "timeout" | "network_error" | "unknown";
 };
@@ -55,7 +88,7 @@ function providerFailureCode(code: string): NonNullable<NaturalLanguageResult["f
  }
 }
 
-function validationFailure(detail: string): Pick<NaturalLanguageResult, "failureStage" | "failureCode"> {
+function validationFailure(detail: string): Pick<NaturalLanguageResult, "failureStage" | "failureCode" | "schemaFailureCode"> {
  switch (detail) {
   case "evidence_not_found_in_source": return { failureStage: "evidence", failureCode: "ai_evidence_not_found" };
   case "numeric_mismatch": return { failureStage: "evidence", failureCode: "ai_numeric_mismatch" };
@@ -81,7 +114,7 @@ async function extractNatural(blocks: AmazonSellerContentBlockV1[]): Promise<Nat
  const source = blocks.map((block) => `[${block.sourceBlockId}] ${block.text}`).join("\n");
  const result = await callAiText({
   messages: [
-   { role: "system", content: "Extract only explicit seller-authored product facts. Return strict JSON {candidates:[{field,value,sourceBlockId,evidenceText,qualifier,confidence}]}. Use only the 8 fields capacity,functional_feature,use_scenario,care,construction,operation,compatibility,other. EvidenceText must be copied exactly. No reviews, competitors, recommendations, or inferred claims." },
+   { role: "system", content: AMAZON_FACT_ENRICHMENT_SYSTEM_PROMPT },
    { role: "user", content: source },
   ],
   temperature: 0,
@@ -106,8 +139,9 @@ async function extractNatural(blocks: AmazonSellerContentBlockV1[]): Promise<Nat
  try {
   valid = validateAiExtraction(parsed, blocks);
  } catch (error) {
-  const detail = error instanceof Error ? error.message : "invalid_schema";
+  const detail = error instanceof AmazonSchemaValidationError ? "invalid_schema" : error instanceof Error ? error.message : "invalid_schema";
   const failure = validationFailure(detail);
+  if (error instanceof AmazonSchemaValidationError) failure.schemaFailureCode = error.schemaFailureCode;
   return { candidates: [], status: "failed", ...failure, providerHttpStatusClass: result.diagnostics?.providerHttpStatusClass, message: "自然语言内容整理暂时失败，已保留确定性规格候选。" };
  }
  const candidates = valid.candidates.map((candidate, index) => {
@@ -204,6 +238,7 @@ export async function buildAmazonFactEnrichmentPreview(input: {
   naturalLanguageMessage: natural.message,
   ...(natural.failureStage ? { naturalLanguageFailureStage: natural.failureStage } : {}),
   ...(natural.failureCode ? { naturalLanguageFailureCode: natural.failureCode } : {}),
+  ...(natural.schemaFailureCode ? { naturalLanguageSchemaFailureCode: natural.schemaFailureCode } : {}),
   ...(natural.providerHttpStatusClass ? { naturalLanguageProviderHttpStatusClass: natural.providerHttpStatusClass } : {}),
   expiresAt: input.expiresAt || Date.now() + 15 * 60 * 1000,
  };

@@ -44,6 +44,19 @@ export type AmazonNaturalLanguageFailureCode =
   | "ai_numeric_mismatch"
   | "ai_strong_claim_upgrade"
   | "ai_capacity_unit_mismatch";
+export type AmazonNaturalLanguageSchemaFailureCode =
+  | "top_level_not_object"
+  | "top_level_extra_keys"
+  | "candidates_not_array"
+  | "candidate_not_object"
+  | "candidate_extra_keys"
+  | "field_invalid"
+  | "value_not_string"
+  | "source_block_id_not_string"
+  | "source_block_unknown"
+  | "evidence_text_not_string"
+  | "qualifier_invalid"
+  | "confidence_invalid";
 export type AmazonFactEnrichmentPreviewV1 = {
   schema: typeof AMAZON_FACT_ENRICHMENT_SCHEMA; taskId: string; asin: string; collectedAt: string;
   candidates: AmazonFactCandidateV1[]; sourceBlocks: AmazonSellerContentBlockV1[];
@@ -51,6 +64,7 @@ export type AmazonFactEnrichmentPreviewV1 = {
   naturalLanguageMessage?: string;
   naturalLanguageFailureStage?: AmazonNaturalLanguageFailureStage;
   naturalLanguageFailureCode?: AmazonNaturalLanguageFailureCode;
+  naturalLanguageSchemaFailureCode?: AmazonNaturalLanguageSchemaFailureCode;
   naturalLanguageProviderHttpStatusClass?: "not_started" | "success" | "client_error" | "rate_limited" | "server_error" | "timeout" | "network_error" | "unknown";
   expiresAt: number;
 };
