@@ -37,6 +37,7 @@ import { BrowserUseCollectButton } from "@/components/evidence/BrowserUseCollect
 import { KeywordPendingSubmitCard, type KeywordPendingPreview } from "@/components/evidence/KeywordPendingSubmitCard";
 import { KeywordStrategyCard } from "./KeywordStrategyCard";
 import { CompetitorStrategyCard } from "./CompetitorStrategyCard";
+import { CompetitorPendingSubmitCard, type CompetitorPendingPreview } from "@/components/evidence/CompetitorPendingSubmitCard";
 import { SourcingEvidencePanel } from "@/components/cross-border/SourcingEvidencePanel";
 import { ResearchCollectionOrchestratorCard } from "./ResearchCollectionOrchestratorCard";
 import { RESEARCH_MATERIAL_ROWS } from "@/lib/client/evidenceCompletion";
@@ -441,7 +442,14 @@ export type CompetitorAsinView = {
 };
 
 type CompetitorApiResponse =
-  | { ok: true; data: { evidence: { asins: CompetitorAsinView[] }; storageVersion: { resultJsonHash: string; updatedAt: string } } }
+  | {
+      ok: true;
+      data: {
+        evidence: { asins: CompetitorAsinView[] };
+        storageVersion: { resultJsonHash: string; updatedAt: string };
+        pendingPreview?: CompetitorPendingPreview | null;
+      };
+    }
   | { ok: false; error?: { code?: string; message?: string } };
 
 function buildFetchHeaders(extra?: Record<string, string>): Headers {
@@ -635,6 +643,9 @@ export function EvidenceWorkbench({
   // 轮 10 合并：竞品采集同时产出的关键词预览（待确认卡片）
   const [keywordPending, setKeywordPending] = useState<KeywordPendingPreview | null>(null);
   const [isPendingExpired, setIsPendingExpired] = useState(false);
+  // 竞品采集待确认预览状态
+  const [competitorPending, setCompetitorPending] = useState<CompetitorPendingPreview | null>(null);
+  const [isCompetitorPendingExpired, setIsCompetitorPendingExpired] = useState(false);
   // 竞品采集命令式句柄：卡片内「自动采集竞品」与下方 BrowserUseCollectButton 共用同一采集链路
   const competitorCollectRef = useRef<(() => void) | null>(null);
 
@@ -748,6 +759,15 @@ export function EvidenceWorkbench({
             sourceUrl?: string;
             keywordCount?: number;
             capturedAt?: string | null;
+            items?: Array<{
+              keyword: string;
+              keywordTranslation?: string;
+              searchVolume?: number;
+              abaWeeklyRank?: number;
+              purchaseVolume?: number;
+              relevance?: number;
+              competition?: string;
+            }>;
           };
           if (pp.previewId) {
             setKeywordPending({
@@ -756,6 +776,7 @@ export function EvidenceWorkbench({
               sourceUrl: pp.sourceUrl ?? "",
               keywordCount: pp.keywordCount ?? 0,
               capturedAt: pp.capturedAt ?? null,
+              items: pp.items,
             });
             setIsPendingExpired(false);
           }
@@ -797,6 +818,12 @@ export function EvidenceWorkbench({
       }
       setCompetitors(json.data.evidence.asins);
       setStorageVersion(json.data.storageVersion);
+      if (json.data.pendingPreview && typeof json.data.pendingPreview === "object") {
+        setCompetitorPending(json.data.pendingPreview);
+        setIsCompetitorPendingExpired(false);
+      } else if (!json.data.pendingPreview) {
+        setCompetitorPending(null);
+      }
     } catch {
       setCompetitorError("竞品列表读取失败。");
     } finally {
@@ -808,6 +835,14 @@ export function EvidenceWorkbench({
     void loadCompetitors();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
+
+  useEffect(() => {
+    if (dataRevision > 0) {
+      void loadCompetitors();
+      void loadKeywordEvidence();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataRevision]);
 
   async function mutateCompetitor(method: "POST" | "DELETE", body: Record<string, unknown>) {
     setCompetitorBusy(true);
@@ -1021,7 +1056,10 @@ export function EvidenceWorkbench({
         {/* ── 关键词策略（第2轮：默认摘要，编辑/原始资料折叠） ── */}
         <div id="workbench-keyword-strategy" className="scroll-mt-6">
         <KeywordStrategyCard
-          rows={(keywordReportEvidence?.rows ?? []).map((r) => ({ keyword: r.keyword, rowNumber: r.rowNumber }))}
+          rows={(keywordReportEvidence?.rows && keywordReportEvidence.rows.length > 0
+            ? keywordReportEvidence.rows
+            : (keywordPending?.items ?? [])
+          ).map((r) => ({ keyword: r.keyword, rowNumber: (r as { rowNumber?: number }).rowNumber }))}
           productName={productNameForBrief}
           briefPrimary={keywordBriefState?.primaryKeyword ?? null}
           briefSource={keywordBriefState?.source ?? null}
@@ -1042,6 +1080,7 @@ export function EvidenceWorkbench({
                 onSaved={() => {
                   setKeywordPending(null); loadKeywordEvidence();
                   setIsPendingExpired(false);
+                  void loadCompetitors();
                   loadKeywordBriefState();
                   handleDataChanged();
                 }}
@@ -1094,6 +1133,35 @@ export function EvidenceWorkbench({
             addedAt: c.addedAt ?? null,
             detailBulletsCount: Array.isArray(c.detailBullets?.bullets) ? c.detailBullets.bullets.length : 0,
           }))}
+          pendingPreview={competitorPending}
+          pendingPanel={
+            competitorPending ? (
+              <CompetitorPendingSubmitCard
+                taskId={taskId}
+                preview={competitorPending}
+                storageVersion={storageVersion}
+                onSaved={() => {
+                  setCompetitorPending(null);
+                  setIsCompetitorPendingExpired(false);
+                  void loadCompetitors();
+                  void loadKeywordEvidence();
+                  handleDataChanged();
+                }}
+                onCancel={() => {
+                  setCompetitorPending(null);
+                  setIsCompetitorPendingExpired(false);
+                }}
+                onExpired={() => {
+                  setIsCompetitorPendingExpired(true);
+                }}
+                onRecollect={() => {
+                  setCompetitorPending(null);
+                  setIsCompetitorPendingExpired(false);
+                  competitorCollectRef.current?.();
+                }}
+              />
+            ) : null
+          }
           onCollect={() => { competitorCollectRef.current?.(); }}
           onAdd={async (input) => {
             await mutateCompetitor("POST", { asin: input.asin, note: input.note });
@@ -1113,9 +1181,13 @@ export function EvidenceWorkbench({
           showTrigger={false}
           onCollectStart={() => {
             setKeywordPending(null);
+            setCompetitorPending(null);
             setIsPendingExpired(false);
+            setIsCompetitorPendingExpired(false);
           }}
           onCollected={({ keywordPreviewId, keywordCount, seedAsin, sourceUrl }) => {
+            void loadCompetitors();
+            void loadKeywordEvidence();
             if (keywordPreviewId) {
               setIsPendingExpired(false);
               setKeywordPending({
@@ -1128,14 +1200,7 @@ export function EvidenceWorkbench({
             }
           }}
           onSaved={() => {
-            void (async () => {
-              try {
-                const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/competitor-evidence`, { headers: buildFetchHeaders() });
-                const body = await res.json();
-                if (res.ok && body.ok && Array.isArray(body.data?.evidence?.asins)) setCompetitors(body.data.evidence.asins);
-                if (body.ok && body.data?.storageVersion) setStorageVersion(body.data.storageVersion);
-              } catch { /* refresh best-effort */ }
-            })();
+            void loadCompetitors();
             void loadKeywordEvidence();
             handleDataChanged();
           }}

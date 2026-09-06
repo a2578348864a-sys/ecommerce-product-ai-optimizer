@@ -58,7 +58,7 @@ export type BrowserUseResearchPreview =
       capturedAt: string;
       results: BrowserUseCompetitorPreviewItem[];
       missing: string[];
-      failureReason: "collector_unavailable" | "login_required" | "captcha_required" | "permission_insufficient" | "panel_not_detected" | "collect_failed" | "identity_unavailable" | null;
+      failureReason: "collector_unavailable" | "login_required" | "captcha_required" | "permission_insufficient" | "panel_not_detected" | "collect_failed" | "identity_unavailable" | "seller_sprite_keyword_timeout" | null;
       collector: BrowserUseCollectorInfo;
     }
   | {
@@ -72,7 +72,7 @@ export type BrowserUseResearchPreview =
       capturedAt: string;
       results: BrowserUseKeywordPreviewItem[];
       missing: string[];
-      failureReason: "collector_unavailable" | "login_required" | "captcha_required" | "permission_insufficient" | "panel_not_detected" | "collect_failed" | "identity_unavailable" | null;
+      failureReason: "collector_unavailable" | "login_required" | "captcha_required" | "permission_insufficient" | "panel_not_detected" | "collect_failed" | "identity_unavailable" | "seller_sprite_keyword_timeout" | null;
       collector: BrowserUseCollectorInfo;
     };
 
@@ -97,7 +97,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 const FAILURE_REASONS = new Set([
   "collector_unavailable", "login_required", "captcha_required", "permission_insufficient",
-  "panel_not_detected", "collect_failed", "identity_unavailable",
+  "panel_not_detected", "collect_failed", "identity_unavailable", "seller_sprite_keyword_timeout",
 ]);
 
 const ASIN_PATTERN = /^[A-Z0-9]{10}$/;
@@ -399,6 +399,16 @@ export function findPendingBrowserUsePreview(
   return null;
 }
 
+export type PendingKeywordPreviewItem = {
+  keyword: string;
+  keywordTranslation?: string;
+  searchVolume?: number;
+  abaWeeklyRank?: number;
+  purchaseVolume?: number;
+  relevance?: number;
+  competition?: string;
+};
+
 export type PendingKeywordPreviewDto = {
   previewId: string;
   seedAsin: string;
@@ -406,6 +416,7 @@ export type PendingKeywordPreviewDto = {
   keywordCount: number;
   capturedAt: string | null;
   expiresAt: string;
+  items: PendingKeywordPreviewItem[];
 };
 
 /**
@@ -418,15 +429,106 @@ export function getPendingKeywordPreviewDto(seedAsin: string): PendingKeywordPre
   if (!match || match.expiresAt <= Date.now()) return null;
   const { previewId, preview, expiresAt } = match;
   if (preview.kind && preview.kind !== "keyword") return null;
-  const keywordCount = Array.isArray(preview.results) ? preview.results.length : 0;
+  const rawResults = Array.isArray(preview.results) ? preview.results : [];
+  const items: PendingKeywordPreviewItem[] = rawResults.map((r) => {
+    const item: PendingKeywordPreviewItem = {
+      keyword: typeof r.keyword === "string" ? r.keyword.trim() : "",
+    };
+    if (typeof r.keywordTranslation === "string" && r.keywordTranslation.trim()) {
+      item.keywordTranslation = r.keywordTranslation.trim();
+    }
+    if (typeof r.searchVolume === "number" && !Number.isNaN(r.searchVolume)) {
+      item.searchVolume = r.searchVolume;
+    }
+    if (typeof r.abaWeeklyRank === "number" && !Number.isNaN(r.abaWeeklyRank)) {
+      item.abaWeeklyRank = r.abaWeeklyRank;
+    }
+    if (typeof r.purchaseVolume === "number" && !Number.isNaN(r.purchaseVolume)) {
+      item.purchaseVolume = r.purchaseVolume;
+    }
+    if (typeof r.relevance === "number" && !Number.isNaN(r.relevance)) {
+      item.relevance = r.relevance;
+    }
+    if (r.competition !== null && r.competition !== undefined) {
+      item.competition = String(r.competition).trim();
+    }
+    return item;
+  });
   return {
     previewId,
     seedAsin: preview.seedAsin,
     sourceUrl: preview.sourceUrl,
-    keywordCount,
+    keywordCount: items.length,
     capturedAt: preview.capturedAt ?? null,
     expiresAt: new Date(expiresAt).toISOString(),
+    items,
   };
 }
 
+export type PendingCompetitorPreviewItem = {
+  asin: string;
+  title: string;
+  imageUrl?: string;
+  price?: number;
+  rating?: number;
+  reviews?: number;
+  bsr?: string;
+  sourceUrl?: string;
+};
 
+export type PendingCompetitorPreviewDto = {
+  previewId: string;
+  seedAsin: string;
+  sourceUrl: string;
+  competitorCount: number;
+  capturedAt: string | null;
+  expiresAt: string;
+  items: PendingCompetitorPreviewItem[];
+};
+
+/**
+ * 纯只读竞品预览安全 DTO 投影：从 PREVIEW_CACHE 中查找 kind === "competitor" 的有效预览，
+ * 纯只读返回安全脱敏项，不消费、不删除缓存。
+ */
+export function getPendingCompetitorPreviewDto(seedAsin: string): PendingCompetitorPreviewDto | null {
+  if (typeof seedAsin !== "string" || !seedAsin.trim()) return null;
+  const match = findPendingBrowserUsePreview(seedAsin, "competitor");
+  if (!match || match.expiresAt <= Date.now()) return null;
+  const { previewId, preview, expiresAt } = match;
+  if (preview.kind !== "competitor") return null;
+  const rawResults = Array.isArray(preview.results) ? preview.results : [];
+  const items: PendingCompetitorPreviewItem[] = rawResults.map((r) => {
+    const item: PendingCompetitorPreviewItem = {
+      asin: typeof r.asin === "string" ? r.asin.trim() : "",
+      title: typeof r.title === "string" ? r.title.trim() : "",
+    };
+    if (typeof r.imageUrl === "string" && r.imageUrl.trim()) {
+      item.imageUrl = r.imageUrl.trim();
+    }
+    if (typeof r.price === "number" && !Number.isNaN(r.price)) {
+      item.price = r.price;
+    }
+    if (typeof r.rating === "number" && !Number.isNaN(r.rating)) {
+      item.rating = r.rating;
+    }
+    if (typeof r.reviews === "number" && !Number.isNaN(r.reviews)) {
+      item.reviews = r.reviews;
+    }
+    if (r.bsr !== null && r.bsr !== undefined) {
+      item.bsr = String(r.bsr).trim();
+    }
+    if (typeof r.sourceUrl === "string" && r.sourceUrl.trim()) {
+      item.sourceUrl = r.sourceUrl.trim();
+    }
+    return item;
+  });
+  return {
+    previewId,
+    seedAsin: preview.seedAsin,
+    sourceUrl: preview.sourceUrl,
+    competitorCount: items.length,
+    capturedAt: preview.capturedAt ?? null,
+    expiresAt: new Date(expiresAt).toISOString(),
+    items,
+  };
+}

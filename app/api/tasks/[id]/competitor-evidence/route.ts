@@ -28,8 +28,11 @@ import {
   claimBrowserUsePreview,
   restoreBrowserUsePreviewClaim,
   takeBrowserUsePreview,
+  getPendingCompetitorPreviewDto,
   type BrowserUsePreviewClaim,
+  type PendingCompetitorPreviewDto,
 } from "@/lib/server/browserUseResearch";
+import { readBrowserEvidenceTaskAsin } from "@/lib/server/browserEvidence";
 import { runSellerSpriteCollection } from "@/tools/collectors/browser-use/sellerSpriteCollector";
 import { runAmazonCompetitorCollection, amazonCompetitorObservationToPreview } from "@/tools/collectors/browser-use/amazonCompetitorCollector";
 import { getRuntimeMode } from "@/lib/server/runtimeMode";
@@ -39,7 +42,7 @@ export const runtime = "nodejs";
 
 type StorageVersion = { resultJsonHash: string; updatedAt: string };
 type ApiResponse =
-  | { ok: true; data: { evidence: CompetitorEvidenceV1; storageVersion: StorageVersion } }
+  | { ok: true; data: { evidence: CompetitorEvidenceV1; storageVersion: StorageVersion; pendingPreview?: PendingCompetitorPreviewDto | null } }
   | { ok: true; data: { kind: "competitor"; preview: import("@/lib/server/browserUseResearch").BrowserUseResearchPreview; previewId: string; keywordPreviewId?: string; keywordCount?: number } }
   | { ok: true; data: { evidence: CompetitorEvidenceV1; storageVersion: StorageVersion; saved: string[]; skipped: { asin: string; code: string }[] } }
   | { ok: false; error: { code: string; message: string; detail?: string } };
@@ -122,9 +125,33 @@ export async function GET(
   try {
     const snapshot = await readCompetitorEvidenceSnapshot(resolved.context, id);
     const evidence = await getCompetitorEvidence(resolved.context, id);
+    let seedAsin: string | null = null;
+    try {
+      const record = (() => {
+        try {
+          const parsed = JSON.parse(snapshot.resultJson) as unknown;
+          return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+            ? (parsed as Record<string, unknown>)
+            : null;
+        } catch {
+          return null;
+        }
+      })();
+      seedAsin = resolveBrowserUseSeed(record)?.asin ?? null;
+    } catch {
+      seedAsin = null;
+    }
+    if (!seedAsin) {
+      seedAsin = await readBrowserEvidenceTaskAsin(resolved.context, id);
+    }
+    const pendingPreview = seedAsin ? getPendingCompetitorPreviewDto(seedAsin) : null;
     return jsonResponse({
       ok: true,
-      data: { evidence, storageVersion: toStorageVersion(snapshot) },
+      data: {
+        evidence,
+        storageVersion: toStorageVersion(snapshot),
+        pendingPreview,
+      },
     });
   } catch (error) {
     return errorResponse(error);

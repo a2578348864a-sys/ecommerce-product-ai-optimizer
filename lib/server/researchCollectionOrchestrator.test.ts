@@ -695,6 +695,40 @@ describe("researchCollectionOrchestrator", () => {
       expect(mocks.runAmazonCompetitorCollection).not.toHaveBeenCalled();
     });
 
+    it("seller_sprite_keyword_timeout 返回 failed 与 typed error", async () => {
+      mocks.runSellerSpriteCollection.mockResolvedValue({
+        ok: true,
+        preview: {
+          schema: "browser-use-research-preview.v1",
+          version: 1,
+          kind: "keyword",
+          seedAsin: "B0SAMPLE01",
+          marketplace: "Amazon US",
+          seedProductUrl: null,
+          sourceUrl: "https://www.amazon.com/dp/B0SAMPLE01",
+          capturedAt: new Date().toISOString(),
+          results: [],
+          missing: ["sellersprite_panel_rows"],
+          failureReason: "seller_sprite_keyword_timeout",
+          collector: { tool: "browser-use", version: "1.0.0" },
+        },
+      });
+
+      const result = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "orchestrate",
+      });
+
+      expect(result.sources.keywordCompetitor.status).toBe("failed");
+      expect(result.sources.keywordCompetitor.message).toContain("SellerSprite 关键词加载超时");
+      expect(result.sources.keywordCompetitor.error).toEqual({
+        code: "seller_sprite_keyword_timeout",
+        message: "SellerSprite 关键词加载超时，请确认网络连接或重试",
+      });
+      expect(mocks.runAmazonCompetitorCollection).not.toHaveBeenCalled();
+    });
+
     it("no_reliable_search_keyword 返回 failed 与 typed error", async () => {
       mocks.runSellerSpriteCollection.mockResolvedValue({
         ok: true,

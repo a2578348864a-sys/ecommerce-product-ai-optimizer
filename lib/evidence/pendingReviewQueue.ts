@@ -87,11 +87,17 @@ export function derivePendingReviewQueue(
   // 2. 关键词与竞品
   if (sources.keywordCompetitor?.status === "awaiting_confirmation") {
     const count = sources.keywordCompetitor.itemCount || 5;
+    let countText = `${count} 项采集结果等待确认`;
+    const msg = sources.keywordCompetitor.message;
+    if (msg && (/关键词\s*\d+\s*条/.test(msg) || /竞品\s*\d+\s*个/.test(msg))) {
+      const cleaned = msg.replace(/，?等待人工确认/, "").replace(/预览已生成/, "").trim();
+      countText = cleaned ? `${cleaned}待确认` : countText;
+    }
     queue.push({
       sourceKey: "keywords_competitors",
       backendKey: "keywordCompetitor",
       title: "关键词与竞品",
-      countText: `${count} 项采集结果等待确认`,
+      countText,
       previewId: sources.keywordCompetitor.previewId ?? null,
       actionLabel: "查看并确认",
       tabKey: "market",
