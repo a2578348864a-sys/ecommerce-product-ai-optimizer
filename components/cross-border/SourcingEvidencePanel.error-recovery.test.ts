@@ -196,6 +196,20 @@ describe("classifySourcingRequestError 错误分层判定", () => {
     expect(result.message).toBe("1688 登录窗口启动失败，请检查本机 Chrome 或稍后重试。");
   });
 
+  it("sourcing_login_window_not_visible 准确映射为 1688 登录分层并给出窗口未在有效屏幕区域显示的中文提示（504，允许重试）", () => {
+    const result = classifySourcingRequestError({
+      code: "sourcing_login_window_not_visible",
+      status: 504,
+      method: "keyword",
+    });
+    expect(result.category).toBe("login_required");
+    expect(result.layer).toBe("1688 登录");
+    expect(result.status).toBe(504);
+    expect(result.canRetry).toBe(true);
+    expect(result.canRecheck).toBe(true);
+    expect(result.message).toContain("1688 登录窗口未能在有效屏幕区域显示");
+  });
+
   it("risk_control_required 判定为 1688 平台风控并提示人工验证", () => {
     const result = classifySourcingRequestError({
       status: 403,
@@ -1249,6 +1263,76 @@ describe("SourcingEvidencePanel 真实 DOM 挂载与错误卡片交互", () => {
     const loginNotice = findByTestId(container, "sourcing-login-notice");
     expect(loginNotice).not.toBeNull();
     expect(loginNotice?.textContent).toContain("已在电脑上打开 1688 登录窗口");
+  });
+
+  it("打开登录窗口遇到 sourcing_login_window_not_visible 时渲染窗口未在屏幕显示红字错误", async () => {
+    const GET_TOOL_NEED_LOGIN = {
+      ok: true,
+      data: {
+        evidence: null,
+        storageVersion: { resultJsonHash: "b".repeat(64), updatedAt: "2026-08-14T02:00:00.000Z" },
+        toolStatus: {
+          loggedIn: false,
+          toolAvailable: true,
+          cli: { loggedIn: false, toolAvailable: true },
+          image: { extensionAvailable: true, versionCompatible: true, extensionSwVersion: "0.3.1", reasonCode: "extension_seen" },
+          checkedAt: new Date().toISOString(),
+        },
+        capabilities: {
+          keyword: { state: "login_required", reasonCategory: "login_required" },
+          image: { state: "available", reasonCategory: null },
+          detail: { state: "login_required", reasonCategory: "login_required" },
+        },
+      },
+    };
+
+    let postCall = false;
+    (globalThis as Record<string, unknown>).fetch = vi.fn(async (url: string, init?: { method?: string }) => {
+      const urlStr = String(url);
+      if (urlStr.includes("/api/tasks/task-not-visible/sourcing")) {
+        if (!init?.method || init.method === "GET") {
+          return new Response(JSON.stringify(GET_TOOL_NEED_LOGIN), { status: 200, headers: { "content-type": "application/json" } });
+        }
+        if (init.method === "POST") {
+          postCall = true;
+          return new Response(JSON.stringify({
+            ok: false,
+            error: {
+              code: "sourcing_login_window_not_visible",
+              message: "1688 登录窗口未能在有效屏幕区域内显示。",
+            },
+          }), { status: 504, headers: { "content-type": "application/json" } });
+        }
+      }
+      return new Response(JSON.stringify({ ok: false }), { status: 404 });
+    });
+
+    await act(async () => {
+      root = createRoot(container as unknown as Element);
+      root.render(createElement(SourcingEvidencePanel, {
+        taskId: "task-not-visible",
+        amazonContext: { title: "测试商品", image: null, asin: null },
+      } as never));
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    const openBtn = findByTestId(container, "sourcing-open-login-window");
+    expect(openBtn).not.toBeNull();
+
+    await act(async () => {
+      const btnProps = getReactProps(openBtn);
+      (btnProps?.onClick as () => void)();
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    expect(postCall).toBe(true);
+    const loginError = findByTestId(container, "sourcing-login-error");
+    expect(loginError).not.toBeNull();
+    expect(loginError?.textContent).toContain("1688 登录窗口未能在有效屏幕区域");
   });
 });
 

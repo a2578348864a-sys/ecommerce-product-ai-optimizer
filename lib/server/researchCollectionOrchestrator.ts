@@ -104,6 +104,8 @@ export type OrchestratorSourceDetail = {
   status: SourceStatus;
   message?: string;
   previewId?: string | null;
+  keywordPreviewId?: string | null;
+  competitorPreviewId?: string | null;
   hasEvidence?: boolean;
   itemCount?: number;
   error?: {
@@ -394,16 +396,30 @@ async function handleKeywordCompetitorSource(
     }
 
     // 3. 检查是否有待确认的 Pending 预览（无副作用只读检测）
-    const pendingPreview = findPendingBrowserUsePreview(seed.asin);
-    if (pendingPreview !== null) {
+    const pendingKw = findPendingBrowserUsePreview(seed.asin, "keyword");
+    const pendingComp = findPendingBrowserUsePreview(seed.asin, "competitor");
+    const kwNeedsConfirm = !hasKw && pendingKw !== null;
+    const compNeedsConfirm = !hasComp && pendingComp !== null;
+
+    if (kwNeedsConfirm || compNeedsConfirm) {
+      const kwCount = kwNeedsConfirm && Array.isArray(pendingKw.preview.results) ? pendingKw.preview.results.length : 0;
+      const compCount = compNeedsConfirm && Array.isArray(pendingComp.preview.results) ? pendingComp.preview.results.length : 0;
+      let msg = "";
+      if (kwNeedsConfirm && compNeedsConfirm) {
+        msg = `关键词 ${kwCount} 条 · 竞品 ${compCount} 个预览已生成，等待人工确认`;
+      } else if (kwNeedsConfirm) {
+        msg = `关键词 ${kwCount} 条预览已生成，等待人工确认`;
+      } else {
+        msg = `竞品 ${compCount} 个预览已生成，等待人工确认`;
+      }
       return {
         status: "awaiting_confirmation",
         hasEvidence: false,
-        previewId: pendingPreview.previewId,
-        itemCount: Array.isArray(pendingPreview.preview.results)
-          ? pendingPreview.preview.results.length
-          : 0,
-        message: "关键词与竞品已有待确认采集预览",
+        previewId: pendingComp?.previewId ?? pendingKw?.previewId ?? null,
+        keywordPreviewId: pendingKw?.previewId ?? null,
+        competitorPreviewId: pendingComp?.previewId ?? null,
+        itemCount: kwCount + compCount,
+        message: msg,
       };
     }
 
@@ -491,6 +507,17 @@ async function handleKeywordCompetitorSource(
         },
       };
     }
+    if (kwRun.preview.failureReason === "seller_sprite_keyword_timeout") {
+      return {
+        status: "failed",
+        hasEvidence: false,
+        message: "SellerSprite 关键词加载超时，请确认网络连接或重试",
+        error: {
+          code: "seller_sprite_keyword_timeout",
+          message: "SellerSprite 关键词加载超时，请确认网络连接或重试",
+        },
+      };
+    }
 
     // ② 选取可靠搜索词（非品牌词，fail-closed）
     const keyword = selectReliableSearchKeyword(
@@ -542,14 +569,18 @@ async function handleKeywordCompetitorSource(
       kwRun.preview.collector.version,
     );
     const competitorPreviewId = storeBrowserUsePreview(competitorPreview);
-    storeBrowserUsePreview(kwRun.preview);
+    const keywordPreviewId = storeBrowserUsePreview(kwRun.preview);
+    const kwCount = Array.isArray(kwRun.preview.results) ? kwRun.preview.results.length : 0;
+    const compCount = Array.isArray(competitorPreview.results) ? competitorPreview.results.length : 0;
 
     return {
       status: "awaiting_confirmation",
       hasEvidence: false,
       previewId: competitorPreviewId,
-      itemCount: competitorPreview.results.length,
-      message: "关键词与竞品预览已生成，等待人工确认",
+      keywordPreviewId,
+      competitorPreviewId,
+      itemCount: kwCount + compCount,
+      message: `关键词 ${kwCount} 条 · 竞品 ${compCount} 个预览已生成，等待人工确认`,
     };
   } catch (error) {
     // 捕获所有未知异常，实现严格的 Failure Isolation，绝不向外抛出 500

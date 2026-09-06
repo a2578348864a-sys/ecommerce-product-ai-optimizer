@@ -12,8 +12,10 @@ import { join } from "node:path";
 import {
   begin1688KeywordLogin,
   checkCliLogin,
+  defaultWindowProbe,
   getOfferDetailById,
   resetCliVersionCacheForTests,
+  sanitizedSpawnEnv,
   searchOffersByKeyword,
   stop1688DaemonIfRunning,
   SOURCING_CLI_ENV_PATH,
@@ -69,6 +71,25 @@ if (cmd === "login") {
   }
   if (mode === "login-silent-crash") {
     process.exit(1);
+  }
+  if (mode === "login-window-not-visible") {
+    console.error("Window was rendered off-screen or failed to map HWND");
+    setTimeout(() => {}, 2000);
+    return;
+  }
+  if (mode === "login-epipe-simulation") {
+    const iv = setInterval(() => {
+      try {
+        process.stderr.write("Opening 1688 login page in a browser window...\\n");
+      } catch (err) {
+        if (process.env.FAKE_CLI_LOGIN_LOG) {
+          require("node:fs").writeFileSync(process.env.FAKE_CLI_LOGIN_LOG, "EPIPE_CRASH:" + err.message, "utf8");
+        }
+        process.exit(10);
+      }
+    }, 100);
+    setTimeout(() => { clearInterval(iv); }, 2000);
+    return;
   }
   // 正常存活：等待 1500ms 后退出，让 1000ms 的 probe 成功，且进程自然退出不悬挂
   setTimeout(() => {}, 1500);
@@ -347,5 +368,135 @@ describe("begin1688KeywordLogin", () => {
     expect(existsSync(stopLog)).toBe(true);
     expect(existsSync(loginLog)).toBe(true);
   });
+
+  it("窗口探测超时未检测到有效顶层窗口时抛出 sourcing_login_window_not_visible（504）且包含 CLI 报错", async () => {
+    const env = fakeEnv({ FAKE_CLI_MODE: "login-window-not-visible" });
+    await expect(begin1688KeywordLogin(env)).rejects.toMatchObject({
+      code: "sourcing_login_window_not_visible",
+      status: 504,
+      message: expect.stringContaining("Window was rendered off-screen or failed to map HWND"),
+    });
+  });
+
+  it("彻底避免管道主动销毁：CLI 持续向 stderr 写入日志时不触发 EPIPE 且正常 resolve", async () => {
+    const loginLog = join(tempDir, "login.log");
+    const env = fakeEnv({
+      FAKE_CLI_MODE: "login-epipe-simulation",
+      FAKE_CLI_LOGIN_LOG: loginLog,
+    });
+    const result = await begin1688KeywordLogin(env);
+    expect(result).toEqual({ started: true });
+
+    // 验证未发生 EPIPE crash
+    if (existsSync(loginLog)) {
+      const content = readFileSync(loginLog, "utf8");
+      expect(content).not.toContain("EPIPE_CRASH");
+    }
+  });
+
+  it("支持通过 options.probeWindow 注入自定义探针并校验参数", async () => {
+    const env = fakeEnv();
+    let probeCalled = false;
+    let receivedProfile = "";
+
+    const customProbe = async (input: { profileDir: string; timeoutMs: number; intervalMs: number }) => {
+      probeCalled = true;
+      receivedProfile = input.profileDir;
+      return { ok: true, found: true, pid: 777, hwnd: 888 };
+    };
+
+    const result = await begin1688KeywordLogin(env, { probeWindow: customProbe });
+    expect(result).toEqual({ started: true });
+    expect(probeCalled).toBe(true);
+    expect(receivedProfile).toContain("default");
+  });
+
+  it("若存在死进程残留的 daemon.pid 与 stale .lock.lock，启动前由 stop1688DaemonIfRunning 安全清理", async () => {
+    const homeDir = join(tempDir, "fake-1688-home");
+    const lockDir = join(homeDir, ".lock.lock");
+    const pidFile = join(homeDir, "daemon.pid");
+    const { mkdirSync, writeFileSync } = require("node:fs");
+    mkdirSync(lockDir, { recursive: true });
+    // 写入一个不可能存在的极大 PID（死进程）
+    writeFileSync(pidFile, "99999999\n", "utf8");
+
+    const cli = fakeCliPath();
+    const env = {
+      ...process.env,
+      BB1688_HOME: homeDir,
+      [SOURCING_CLI_ENV_PATH]: cli,
+      FAKE_DAEMON_RUNNING: "false",
+    };
+
+    await stop1688DaemonIfRunning(cli, env);
+
+    expect(existsSync(lockDir)).toBe(false);
+    expect(existsSync(pidFile)).toBe(false);
+  });
 });
 
+describe("defaultWindowProbe", () => {
+  it("在 mock/fake CLI 环境下默认返回成功", async () => {
+    const env = { [SOURCING_CLI_ENV_PATH]: "/path/to/fake-1688-cli.js" };
+    const res = await defaultWindowProbe({ profileDir: "default", timeoutMs: 100, intervalMs: 50, env });
+    expect(res.ok).toBe(true);
+    expect(res.found).toBe(true);
+  });
+
+  it("当 FAKE_WINDOW_PROBE=false 时返回 found=false", async () => {
+    const env = { FAKE_WINDOW_PROBE: "false" };
+    const res = await defaultWindowProbe({ profileDir: "default", timeoutMs: 100, intervalMs: 50, env });
+    expect(res.found).toBe(false);
+  });
+
+  if (process.platform === "win32") {
+    it("Windows 原生 probe 脚本在无对应 Chrome 窗口时返回 timeout_no_visible_window", async () => {
+      const res = await defaultWindowProbe({
+        profileDir: "totally-nonexistent-chrome-profile-dir-9999",
+        timeoutMs: 800,
+        intervalMs: 200,
+        env: { ...process.env, FAKE_CLI_MODE: "", FAKE_WINDOW_PROBE: "", [SOURCING_CLI_ENV_PATH]: "" },
+      });
+      expect(res.ok).toBe(true);
+      expect(res.found).toBe(false);
+      expect(res.reason).toBe("timeout_no_visible_window");
+    });
+  }
+});
+
+describe("sanitizedSpawnEnv — launcher/probe 子进程环境块裁剪", () => {
+  it("巨型 env（>65535 环境块）被裁剪为白名单，Add-Type 可编译前提", () => {
+    const big = { ...process.env, SOME_HUGE: "x".repeat(600000) };
+    const out = sanitizedSpawnEnv(big);
+    const total = Object.entries(out).reduce((n, [k, v]) => n + k.length + (v?.length ?? 0), 0);
+    expect(total).toBeLessThan(65535);
+    expect(out.SOME_HUGE).toBeUndefined();
+  });
+
+  it("保留系统必要键与 BB1688_/V35_1688_/SOURCING_/FAKE_ 前缀", () => {
+    const out = sanitizedSpawnEnv({
+      PATH: "C:\\Windows",
+      SystemRoot: "C:\\Windows",
+      USERPROFILE: "C:\\Users\\a",
+      HOME: "C:\\Users\\a",
+      BB1688_HOME: "C:\\Users\\a\\.1688",
+      V35_1688_LOGIN_PROBE_TIMEOUT_MS: "20000",
+      SOURCING_CLI_PATH: "C:\\fake\\cli.js",
+      FAKE_CLI_MODE: "ok",
+      NOISE: "should-drop",
+    });
+    expect(out.PATH).toBe("C:\\Windows");
+    expect(out.SystemRoot).toBe("C:\\Windows");
+    expect(out.USERPROFILE).toBe("C:\\Users\\a");
+    expect(out.BB1688_HOME).toBe("C:\\Users\\a\\.1688");
+    expect(out.V35_1688_LOGIN_PROBE_TIMEOUT_MS).toBe("20000");
+    expect(out.SOURCING_CLI_PATH).toBe("C:\\fake\\cli.js");
+    expect(out.FAKE_CLI_MODE).toBe("ok");
+    expect(out.NOISE).toBeUndefined();
+  });
+
+  it("null/undefined source → 空对象", () => {
+    expect(sanitizedSpawnEnv(undefined)).toEqual({});
+    expect(sanitizedSpawnEnv(null as unknown as NodeJS.ProcessEnv)).toEqual({});
+  });
+});

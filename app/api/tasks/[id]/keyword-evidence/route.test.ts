@@ -113,8 +113,22 @@ describe("GET /api/tasks/[id]/keyword-evidence 纯只读 Pending Preview Contrac
     expect(body.data.pendingPreview).toBeNull();
   });
 
-  it("有 pending 缓存时返回 pendingPreview 且纯只读不消费", async () => {
-    const preview = keywordPreview({ seedAsin: "B0SAMPLE12" });
+  it("有 pending 缓存时返回 pendingPreview 且纯只读不消费，并安全脱敏 items", async () => {
+    const preview = keywordPreview({
+      seedAsin: "B0SAMPLE12",
+      results: [
+        {
+          keyword: "insulated tumbler",
+          keywordTranslation: "保温杯",
+          searchVolume: 45000,
+          abaWeeklyRank: 120,
+          purchaseVolume: 3500,
+          relevance: 0.95,
+          competition: 0.5,
+          capturedAt: "2026-08-14T02:00:01.000Z",
+        },
+      ],
+    });
     const previewId = storeBrowserUsePreview(preview);
 
     const res1 = await GET(ownerGetRequest(), { params: Promise.resolve({ id: "task-k" }) });
@@ -128,6 +142,17 @@ describe("GET /api/tasks/[id]/keyword-evidence 纯只读 Pending Preview Contrac
       keywordCount: 1,
       capturedAt: preview.capturedAt,
       expiresAt: expect.any(String),
+      items: [
+        {
+          keyword: "insulated tumbler",
+          keywordTranslation: "保温杯",
+          searchVolume: 45000,
+          abaWeeklyRank: 120,
+          purchaseVolume: 3500,
+          relevance: 0.95,
+          competition: "0.5",
+        },
+      ],
     });
 
     // 纯只读验证：再次读取仍能获取到
@@ -136,7 +161,7 @@ describe("GET /api/tasks/[id]/keyword-evidence 纯只读 Pending Preview Contrac
     const body2 = await res2.json();
     expect(body2.data.pendingPreview).toEqual(body1.data.pendingPreview);
 
-    // 严禁泄露内部凭证或完整 results
+    // 严禁泄露内部凭证或完整 raw results
     expect(body1.data.pendingPreview.results).toBeUndefined();
   });
 

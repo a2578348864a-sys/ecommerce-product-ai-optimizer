@@ -147,12 +147,13 @@ export function classifySourcingRequestError(input: {
   const rawCode = input.code || (error && typeof error === "object" && "code" in error && typeof (error as { code?: unknown }).code === "string" ? (error as { code: string }).code : "");
   const rawMsg = input.message || (error instanceof Error ? error.message : "");
 
-  // 1. 超时检测（AbortSignal.timeout、DOMException TimeoutError、或者 504 timeout）
+  // 1. 超时检测（AbortSignal.timeout、DOMException TimeoutError、或者未指定特定业务错误码的 504）
   const isTimeout =
-    rawCode === "timeout" ||
-    status === 504 ||
-    (error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError")) ||
-    /timeout|timed out|aborted/i.test(rawMsg);
+    rawCode !== "sourcing_login_window_not_visible" &&
+    (rawCode === "timeout" ||
+      status === 504 ||
+      (error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError")) ||
+      /timeout|timed out|aborted/i.test(rawMsg));
 
   if (isTimeout) {
     return {
@@ -248,6 +249,18 @@ export function classifySourcingRequestError(input: {
       canRecheck: true,
       code: "sourcing_login_window_launch_failed",
       status: status ?? 500,
+    };
+  }
+
+  if (rawCode === "sourcing_login_window_not_visible" || rawMsg.includes("sourcing_login_window_not_visible")) {
+    return {
+      category: "login_required",
+      layer: "1688 登录",
+      message: rawMsg || "1688 登录窗口未能在有效屏幕区域显示，请检查 Chrome 或稍后重试。",
+      canRetry: true,
+      canRecheck: true,
+      code: "sourcing_login_window_not_visible",
+      status: status ?? 504,
     };
   }
 

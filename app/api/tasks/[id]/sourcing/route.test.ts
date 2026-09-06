@@ -43,7 +43,13 @@ const [cmd] = process.argv.slice(2);
 if (cmd === "--version") { console.log("0.1.47"); process.exit(0); }
 if (cmd === "whoami") { console.log(JSON.stringify({loggedIn:true})); process.exit(0); }
 if (cmd === "daemon") { console.log(JSON.stringify({ running: false })); process.exit(0); }
-if (cmd === "login") { setTimeout(() => {}, 1500); return; }
+if (cmd === "login") {
+  const mode = process.env.FAKE_CLI_MODE;
+  if (mode === "login-lock-busy") { process.exit(5); }
+  if (mode === "login-launch-failed") { console.error("Chrome failed to launch: binary not found"); process.exit(1); }
+  setTimeout(() => {}, 1500);
+  return;
+}
 if (cmd === "search") { console.log(JSON.stringify({keyword:process.argv[3],total:2,offers:[{offerId:"674035283676",title:"测试保温杯A",price:{text:"¥16",min:16,max:16},supplier:{name:"测试供应商A",shopUrl:"http://shop-a.example.test",years:3},location:{province:"浙江",city:"武义县"},bizType:"生产加工",verified:{factory:true,business:false,superFactory:false},tags:[],demand:{orderCount:1},isP4P:false,turnover:"1",url:"https://detail.1688.com/offer/674035283676.html",image:"https://img.example.test/a.jpg"},{offerId:"930374004918",title:"测试保温杯B",price:{text:"¥16.5",min:16.5,max:16.5},supplier:{name:"测试供应商B",shopUrl:"http://shop-b.example.test",years:2},location:{province:"浙江",city:"金华市"},bizType:"生产加工",verified:{factory:true,business:false,superFactory:false},tags:[],demand:{orderCount:2},isP4P:false,turnover:"2",url:"https://detail.1688.com/offer/930374004918.html",image:"https://img.example.test/b.jpg"}]})); process.exit(0); }
 if (cmd === "offer") { const id = process.argv[3]; console.log(JSON.stringify({offerId:id,title:"测试保温杯A",url:"https://detail.1688.com/offer/"+id+".html",priceRange:"￥21.30",priceMin:21.3,priceMax:21.3,unitName:"个",minOrderQty:1,priceTiers:[{minQty:1,price:16.5}],detailUrl:"https://itemcdn.example.test/fake",attributes:[],packageInfo:[],supplier:{name:"测试供应商A",loginId:"fake",memberId:null,userId:"FAKE-USER-ID"},freight:{receiveAddress:"某省某市"},saledCount:1,categoryId:"1",options:[],skus:[],mainImage:"https://img.example.test/a.jpg",images:[]})); process.exit(0); }
 process.exit(2);
@@ -285,6 +291,36 @@ describe("POST begin-keyword-login（R1 固定安全登录 capability）", () =>
     const body = await json(response);
     expect(response.status).toBe(503);
     expect((body.error as { code: string }).code).toBe("acquisition_tool_not_available");
+  });
+
+  it("窗口探测超时未显示在有效屏幕区域 → 504 sourcing_login_window_not_visible", async () => {
+    process.env.FAKE_WINDOW_PROBE = "false";
+    const response = await POST(request({ action: "begin-keyword-login" }), context());
+    delete process.env.FAKE_WINDOW_PROBE;
+    expect(response.status).toBe(504);
+    const body = await json(response);
+    expect(body.ok).toBe(false);
+    expect((body.error as { code: string }).code).toBe("sourcing_login_window_not_visible");
+  });
+
+  it("子进程进程锁占用（LOCK_BUSY）→ 503 sourcing_login_lock_busy", async () => {
+    process.env.FAKE_CLI_MODE = "login-lock-busy";
+    const response = await POST(request({ action: "begin-keyword-login" }), context());
+    delete process.env.FAKE_CLI_MODE;
+    expect(response.status).toBe(503);
+    const body = await json(response);
+    expect(body.ok).toBe(false);
+    expect((body.error as { code: string }).code).toBe("sourcing_login_lock_busy");
+  });
+
+  it("子进程启动失败（异常退出）→ 500 sourcing_login_window_launch_failed", async () => {
+    process.env.FAKE_CLI_MODE = "login-launch-failed";
+    const response = await POST(request({ action: "begin-keyword-login" }), context());
+    delete process.env.FAKE_CLI_MODE;
+    expect(response.status).toBe(500);
+    const body = await json(response);
+    expect(body.ok).toBe(false);
+    expect((body.error as { code: string }).code).toBe("sourcing_login_window_launch_failed");
   });
 });
 
