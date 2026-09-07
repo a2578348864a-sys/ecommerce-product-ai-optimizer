@@ -882,6 +882,8 @@ export type ControlledBulletsResult = {
   bullets: string[];
   /** 每条受控句实际锚定的事实（与 bullets 一一对应；供阶段B编辑器构建 factRefs） */
   factRefsByBullet: Array<Array<{ field: string; value: string }>>;
+  /** 每条受控句实际对应的计划角色（与 bullets/factRefsByBullet 一一对应；跳过中间不可渲染组后仍保持对齐） */
+  rolesByBullet: Array<ListingPlanRole | undefined>;
   /** 形态不可识别或不足词数而被跳过的事实（质量不足记录；不参与凑句） */
   unrenderable: Array<{ field: string; value: string; reason: string }>;
 };
@@ -897,6 +899,7 @@ export function composeControlledBullets(
   const typeLabel = typeLabelOf(input);
   const bullets: string[] = [];
   const factRefsByBullet: Array<Array<{ field: string; value: string }>> = [];
+  const rolesByBullet: Array<ListingPlanRole | undefined> = [];
   const unrenderable: Array<{ field: string; value: string; reason: string }> = [];
   for (const bp of plan.bulletPlans) {
     const candidates = planBulletCandidates(input, bp.featureFactIds);
@@ -937,19 +940,20 @@ export function composeControlledBullets(
       }
       bullets.push(sentence);
       factRefsByBullet.push([{ field: picked.field, value: picked.value }]);
+      rolesByBullet.push(bp.role);
       rendered = true;
       break;
     }
     unrenderable.push(...groupFailures);
   }
-  return { bullets: bullets.slice(0, 5), factRefsByBullet, unrenderable };
+  return { bullets: bullets.slice(0, 5), factRefsByBullet: factRefsByBullet.slice(0, 5), rolesByBullet: rolesByBullet.slice(0, 5), unrenderable };
 }
 
 function composeOptimizedBullets(input: ListingGenerationInput, plan: ListingPlan): { bullets: string[]; factRefsByBullet: Array<Array<{ field: string; value: string }>> } {
   // v2：计划必须真实驱动生成——绝不无差别退回 composeBullets。
   // 关键词只出现在标题（主词一次）与 Keywords 字段；正文不内嵌关键词词面
   // （市场词可能越过 Claim Evidence 允许表 → 保 claim 安全零风险）。
-  const { bullets, factRefsByBullet } = composeControlledBullets(input, plan);
+  const { bullets, factRefsByBullet, rolesByBullet } = composeControlledBullets(input, plan);
   // 受控句 ≥1 条即采用（即使 <3 条——模板回退句含 "for ... use" 模板尾，违反无模板尾合同）；
   // 仅受控句为 0（全部 fail-closed）时才退回既有安全模板路径（旧行为）。
   if (bullets.length === 0) {
@@ -962,7 +966,7 @@ function composeOptimizedBullets(input: ListingGenerationInput, plan: ListingPla
   const roles: Array<ListingPlanRole | undefined> = [];
   for (let i = 0; i < sliced.length; i += 1) {
     factMap.push(factRefsByBullet[i] ?? []);
-    roles.push(plan.bulletPlans[i]?.role);
+    roles.push(rolesByBullet[i]);
   }
   const edited = applyStageBToBullets(sliced, factMap, roles);
   return { bullets: edited.bullets, factRefsByBullet: factRefsByBullet.slice(0, 5) };

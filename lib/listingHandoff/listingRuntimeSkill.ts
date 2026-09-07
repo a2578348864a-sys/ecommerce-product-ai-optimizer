@@ -121,17 +121,56 @@ function exactWordCount(text: string, needle: string): number {
   return words.filter((w) => w === key).length;
 }
 
-export function validateRuntimeQualityContract(input: RuntimeQualityInput): RuntimeQualityResult {
-  const issues: RuntimeIssue[] = [];
-  const facts = input.facts ?? [];
-  const used = input.usedFactIds ?? [];
-  const usedValues = used
+/** usedFactIds → 锚定用事实值集合（factId/field 双匹配；与 Runtime 合同锚点判定同源）。 */
+export function usedFactValuesOf(facts: RuntimeFact[], usedFactIds: ReadonlyArray<string>): string[] {
+  const used = usedFactIds ?? [];
+  return used
     .map((id) => valueOf(facts, id))
     .concat(used.map((id) => {
       const f = facts.find((x) => x.factId === id || x.field === id);
       return f ? String(f.value).trim() : "";
     }))
     .filter((v) => v.length > 0);
+}
+
+/**
+ * 单条 Bullet 运行时合同（唯一判定出口）：
+ * validateRuntimeQualityContract（整稿）与 Bullet salvage（逐条剔除）共用同一套阈值与判定，
+ * 禁止任何一侧另设词数/锚点规则。
+ */
+export function validateRuntimeBulletContract(input: {
+  bullet: string;
+  anchorValues: ReadonlyArray<string>;
+  label?: string;
+}): RuntimeIssue[] {
+  const label = input.label ?? "Bullet";
+  const bullet = String(input.bullet ?? "");
+  const issues: RuntimeIssue[] = [];
+  const wc = wordCount(bullet);
+  if (wc < RUNTIME_QUALITY_LIMITS.bulletWordsMin) {
+    issues.push({
+      target: "bullets",
+      code: wc < 3 ? "fragment" : "too_short",
+      message: label + " 不是合格句（" + wc + " 个词，需 " + RUNTIME_QUALITY_LIMITS.bulletWordsMin + "-" + RUNTIME_QUALITY_LIMITS.bulletWordsMax + " 词）。",
+    });
+  } else if (wc > RUNTIME_QUALITY_LIMITS.bulletWordsMax) {
+    issues.push({ target: "bullets", code: "too_long", message: label + " 超过 " + RUNTIME_QUALITY_LIMITS.bulletWordsMax + " 词（" + wc + "）。" });
+  }
+  if (!/[.!?]$/.test(bullet.trim())) {
+    issues.push({ target: "bullets", code: "fragment", message: label + " 不是完整句（缺少句末标点）。" });
+  }
+  const lower = bullet.toLowerCase();
+  const anchored = (input.anchorValues ?? []).some((v) => lower.includes(v.toLowerCase()));
+  if (!anchored) {
+    issues.push({ target: "bullets", code: "no_fact_anchor", message: label + " 未绑定已确认事实值。" });
+  }
+  return issues;
+}
+
+export function validateRuntimeQualityContract(input: RuntimeQualityInput): RuntimeQualityResult {
+  const issues: RuntimeIssue[] = [];
+  const facts = input.facts ?? [];
+  const usedValues = usedFactValuesOf(facts, input.usedFactIds ?? []);
 
   // 标题品牌重复
   const brand = valueOf(facts, "brand");
@@ -149,24 +188,7 @@ export function validateRuntimeQualityContract(input: RuntimeQualityInput): Runt
     issues.push({ target: "bullets", code: "count", message: "五点数量应为 3-5 条（当前 " + bullets.length + "）。" });
   }
   bullets.forEach((b, index) => {
-    const wc = wordCount(b);
-    if (wc < RUNTIME_QUALITY_LIMITS.bulletWordsMin) {
-      issues.push({
-        target: "bullets",
-        code: wc < 3 ? "fragment" : "too_short",
-        message: "Bullet " + (index + 1) + " 不是合格句（" + wc + " 个词，需 " + RUNTIME_QUALITY_LIMITS.bulletWordsMin + "-" + RUNTIME_QUALITY_LIMITS.bulletWordsMax + " 词）。",
-      });
-    } else if (wc > 30) {
-      issues.push({ target: "bullets", code: "too_long", message: "Bullet " + (index + 1) + " 超过 30 词（" + wc + "）。" });
-    }
-    if (!/[.!?]$/.test(b.trim())) {
-      issues.push({ target: "bullets", code: "fragment", message: "Bullet " + (index + 1) + " 不是完整句（缺少句末标点）。" });
-    }
-    const lower = b.toLowerCase();
-    const anchored = usedValues.some((v) => lower.includes(v.toLowerCase()));
-    if (!anchored) {
-      issues.push({ target: "bullets", code: "no_fact_anchor", message: "Bullet " + (index + 1) + " 未绑定已确认事实值。" });
-    }
+    issues.push(...validateRuntimeBulletContract({ bullet: b, anchorValues: usedValues, label: "Bullet " + (index + 1) }));
   });
 
   // 关键词：大小写不敏感去重 + 保序

@@ -19,6 +19,13 @@ type ListingDraftSafeSummary = {
   backendSearchTerms?: string[];
   /** R2：实际使用的已确认商品事实（服务端只返回 label/value） */
   usedFactTrace?: Array<{ label: string; value: string }>;
+  generationInputFactCount?: number;
+  generationInputResearchReferenceCount?: number;
+  generationInputReferenceCounts?: { voc: number; keyword: number; competitor: number; sourcing: number; aiReference: number };
+  dedupeRemovedBulletCount?: number;
+  claimRejectedBulletCount?: number;
+  qualityRejectedBulletCount?: number;
+  salvagedBulletCount?: number;
   /** R2：最终文案实际采用的关键词文本 */
   usedKeywordTrace?: string[];
   /** ListingPlan.v2：仅进入搜索词字段、未进入正文的关键词（诚实分离，不称正文采用） */
@@ -64,6 +71,23 @@ type ListingDraftSafeSummary = {
   }>;
   /** HISTORICAL_KEYWORD_READ_GUARD：历史草稿关键词按当前规则过滤后的固定中文提示（仅在过滤发生时返回） */
   historicalKeywordFilteredNotice?: string;
+  generationMode?: "planner_guided" | "deterministic_only";
+  plannerAttempted?: boolean;
+  plannerSucceeded?: boolean;
+  plannerDecisionApplied?: boolean;
+  plannerSelectedRoles?: string[];
+  plannerSelectedFactCount?: number;
+  plannerSelectedKeywordCount?: number;
+  plannerValidSelectionCount?: number;
+  plannerFilledSelectionCount?: number;
+  plannerSemanticStatus?: "full" | "partial" | "none";
+  plannerFailureStage?: string;
+  plannerSchemaFailureCode?: string;
+  plannerUnknownKeys?: string[];
+  rendererQualifiedOptionCount?: number;
+  rendererQualifiedRoleCount?: number;
+  plannerSelectedOptionCount?: number;
+  plannerDecisionUsedInFinalDraft?: boolean;
 };
 
 type ListingStateResponse = {
@@ -289,12 +313,60 @@ export function ListingGenerationBasis({ draft }: { draft: ListingDraftSafeSumma
         <div className="flex items-center gap-2">
           <span>生成依据</span>
           <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-normal text-slate-600">
-            {aiAttempted ? "AI 创作" : "安全草稿"} · {(draft.usedFactTrace ?? []).length} 项命中事实
+            {draft.generationInputFactCount !== undefined
+              ? (draft.fallbackApplied
+                ? `生成输入：${draft.generationInputFactCount} 项已确认事实`
+                : `生成输入：${draft.generationInputFactCount} 项已确认事实 · 最终引用 ${(draft.usedFactTrace ?? []).length} 项`)
+              : `${aiAttempted ? "AI 创作" : "安全草稿"} · ${(draft.usedFactTrace ?? []).length} 项命中事实`}
           </span>
         </div>
         <span className="text-xs font-normal text-teal-700 hover:underline">展开生成依据 ↓</span>
       </summary>
       <div className="mt-2.5 border-t border-slate-200/60 pt-2">
+        {draft.generationMode ? (
+          <p className="mt-1 text-xs leading-5 text-slate-600" data-testid="generation-mode">
+            生成模式：{draft.generationMode === "planner_guided" ? "AI 卖点规划 · 安全规则生成" : "安全规则生成"}
+            {draft.plannerSelectedRoles?.length ? ` · 采用 ${draft.plannerSelectedRoles.length} 个卖点角色` : ""}
+          </p>
+        ) : null}
+        {draft.plannerSelectedFactCount !== undefined ? (
+          <p className="mt-1 text-xs leading-5 text-slate-600" data-testid="planner-selected-facts">
+            规划采用：{draft.plannerSelectedFactCount} 项已确认事实 · {draft.plannerSelectedKeywordCount ?? 0} 项已确认关键词
+          </p>
+        ) : null}
+        {draft.rendererQualifiedOptionCount !== undefined ? (
+          <p className="mt-1 text-xs leading-5 text-slate-600" data-testid="renderer-qualified-options">
+            渲染器可用：{draft.rendererQualifiedOptionCount} 个卖点组合 · {draft.rendererQualifiedRoleCount ?? 0} 个角色
+            {draft.plannerSelectedOptionCount !== undefined ? ` · 最终采用 ${draft.plannerSelectedOptionCount} 个组合` : ""}
+          </p>
+        ) : null}
+        {draft.plannerValidSelectionCount !== undefined && draft.plannerSemanticStatus !== "none" ? (
+          <p className="mt-1 text-xs leading-5 text-slate-600" data-testid="planner-selection-summary">
+            AI 采用卖点：{draft.plannerValidSelectionCount} · 安全补齐卖点：{draft.plannerFilledSelectionCount ?? 0}
+          </p>
+        ) : null}
+        {draft.generationInputFactCount !== undefined ? (
+          <p className="mt-1 text-xs leading-5 text-slate-600" data-testid="generation-input-facts">
+            生成输入：{draft.generationInputFactCount} 项已确认事实
+            {!draft.fallbackApplied ? ` · 最终引用 ${(draft.usedFactTrace ?? []).length} 项` : ""}
+          </p>
+        ) : null}
+        {draft.fallbackApplied ? (
+          <p className="mt-1 text-xs leading-5 text-amber-800" data-testid="fallback-truth-notice">
+            AI 稿未通过质量门禁，当前展示安全回退稿{(draft.usedFactTrace ?? []).length > 0 ? `；当前回退稿采用 ${(draft.usedFactTrace ?? []).length} 项事实` : ""}。
+          </p>
+        ) : null}
+        {!draft.fallbackApplied && draft.salvagedBulletCount !== undefined
+          && ((draft.claimRejectedBulletCount ?? 0) + (draft.qualityRejectedBulletCount ?? 0) + (draft.dedupeRemovedBulletCount ?? 0)) > 0 ? (
+          <p className="mt-1 text-xs leading-5 text-slate-600" data-testid="ai-bullet-salvage-notice">
+            AI 草稿已自动剔除 {(draft.claimRejectedBulletCount ?? 0) + (draft.qualityRejectedBulletCount ?? 0) + (draft.dedupeRemovedBulletCount ?? 0)} 条不合格内容，保留 {draft.salvagedBulletCount} 条合格 Bullet。
+          </p>
+        ) : null}
+        {draft.generationInputReferenceCounts && draft.generationInputResearchReferenceCount !== undefined ? (
+          <p className="mt-1 text-xs leading-5 text-slate-600" data-testid="generation-input-references">
+            研究参考：VOC {draft.generationInputReferenceCounts.voc} · 关键词 {draft.generationInputReferenceCounts.keyword} · 竞品 {draft.generationInputReferenceCounts.competitor} · 供应链 {draft.generationInputReferenceCounts.sourcing}
+          </p>
+        ) : null}
         {!aiAttempted ? (
           <p className="mt-1 text-xs leading-5 text-slate-600" data-testid="non-ai-basis-notice">
             本次未调用 AI，当前内容为基于已确认事实生成的安全草稿。
@@ -1296,7 +1368,11 @@ export function ListingHandoffSection({
             {/* v2.2.14：区分"当前草稿类型"与"生成能力"，不再把能力与结果混在一起 */}
             <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-700">
               <span className="rounded-full bg-slate-100 px-2.5 py-1">
-                {draft?.draftKind === "ai_optimized_listing"
+                {draft?.generationMode === "planner_guided"
+                  ? "当前草稿：AI 卖点规划 · 安全规则生成"
+                  : draft?.generationMode === "deterministic_only"
+                    ? "当前草稿：安全规则生成"
+                    : draft?.draftKind === "ai_optimized_listing"
                   ? "当前草稿：AI 优化草稿 · 已按卖点策略生成运营优化稿"
                   : draft?.draftKind === "structured_listing_draft"
                     ? "当前草稿：结构化草稿 · 安全事实草稿，不是运营优化版"

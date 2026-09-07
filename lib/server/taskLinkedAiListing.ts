@@ -62,6 +62,11 @@ export function setTaskLinkedAiListingClientForTests(client: TaskLinkedAiListing
   injectedTaskLinkedClient = client;
 }
 
+/** 仅用于保留既有单元/集成测试注入契约；生产默认路径不会启用旧正文 Provider。 */
+export function hasInjectedTaskLinkedAiListingClientForTests(): boolean {
+  return injectedTaskLinkedClient !== null;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -116,6 +121,9 @@ function buildTaskLinkedAiPrompt(input: {
     "- LISTING_CREATION_BRIEF is optional marketing guidance, not a confirmed product fact. Use it only for emphasis, ordering, audience framing and tone; never turn it into a product attribute, certification, performance, safety or guarantee claim.",
     "- Each bullet MUST be based on at least one factId from the provided facts and express Feature → shopper relevance.",
     "- Produce 3 to 5 bullets. Do not just repeat the title or print field labels (do not write 'Brand: Owala').",
+    "- Follow BULLET_PLANS in order where possible; each bullet must correspond to a different bullet role.",
+    "- Each bullet must communicate a different shopper value. Do not repeat the same feature, shopper angle, sentence, or fact combination in multiple bullets.",
+    "- If only 3 distinct supported bullet ideas exist, return 3 strong bullets instead of padding to 5.",
     "- Title: clear, readable, no keyword stuffing, no unconfirmed attributes.",
     "- Description: 2-4 natural sentences; do not copy the title verbatim; explain purpose, key features, use context, buyer value.",
     "- backendSearchTerms: use ONLY terms from the keyword brief backendSearchTerms. Do not invent search volume, do not say high-volume/high-converting/top keyword.",

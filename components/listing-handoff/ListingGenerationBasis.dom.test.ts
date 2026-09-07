@@ -314,6 +314,54 @@ describe("R2 Listing 生成依据（真实行为 fixture）", () => {
   });
 });
 
+describe("LISTING_FINAL_QUALITY_CLOSURE 输入计数与回退口径", () => {
+  it("fallback 显示生成输入事实数，不显示误导性的 0 项命中事实", async () => {
+    const { ListingGenerationBasis } = await import("@/components/listing-handoff/ListingHandoffSection");
+    const fallbackDraft = {
+      ...FULL_DRAFT,
+      providerAttempted: true,
+      providerSucceeded: true,
+      fallbackApplied: true,
+      generationInputFactCount: 16,
+      generationInputResearchReferenceCount: 31,
+      generationInputReferenceCounts: { voc: 12, keyword: 10, competitor: 5, sourcing: 4, aiReference: 0 },
+      usedFactTrace: [],
+      researchReferenceTrace: [],
+    };
+    await act(async () => {
+      root = createRoot(container as unknown as Element);
+      root.render(createElement(ListingGenerationBasis, { draft: fallbackDraft as never }));
+    });
+    await flush();
+    const text = documentInstance.body.textContent;
+    expect(text).toContain("生成输入：16 项已确认事实");
+    expect(text).toContain("AI 稿未通过质量门禁，当前展示安全回退稿");
+    expect(text).not.toContain("AI 创作 · 0 项命中事实");
+  });
+
+  it("AI 成功稿同时显示生成输入数与最终引用数", async () => {
+    const { ListingGenerationBasis } = await import("@/components/listing-handoff/ListingHandoffSection");
+    const aiDraft = {
+      ...FULL_DRAFT,
+      providerAttempted: true,
+      providerSucceeded: true,
+      fallbackApplied: false,
+      generationInputFactCount: 16,
+      generationInputResearchReferenceCount: 31,
+      generationInputReferenceCounts: { voc: 12, keyword: 10, competitor: 5, sourcing: 4, aiReference: 0 },
+      usedFactTrace: FULL_DRAFT.usedFactTrace.slice(0, 2),
+    };
+    await act(async () => {
+      root = createRoot(container as unknown as Element);
+      root.render(createElement(ListingGenerationBasis, { draft: aiDraft as never }));
+    });
+    await flush();
+    const text = documentInstance.body.textContent;
+    expect(text).toContain("生成输入：16 项已确认事实 · 最终引用 2 项");
+    expect(text).toContain("研究参考：VOC 12 · 关键词 10 · 竞品 5 · 供应链 4");
+  });
+});
+
 describe("R3 Listing AI 来源口径（providerAttempted 三态）", () => {
   it("B. 非 AI 安全草稿（providerAttempted=false 但有 aiReferences）→ 不显示「提供给 AI」，显示非 AI 诚实说明", async () => {
     const { ListingGenerationBasis } = await import("@/components/listing-handoff/ListingHandoffSection");
