@@ -1,9 +1,8 @@
 <div align="center">
 
-# 轻选工作台 · QingXuan Workbench
+# 轻选工作台
 
-**证据驱动型 AI 跨境电商商品研究与 Listing 创作工作台**<br />
-*Evidence-Driven AI Commerce Workbench for Amazon Product Research & High-Converting Listings*
+**面向跨境电商（Amazon）的证据驱动型 AI 商品研究与 Listing 创作工作台**
 
 <p align="center">
   <a href="https://nextjs.org"><img src="https://img.shields.io/badge/Next.js-16.3-000000?style=flat-square&logo=nextdotjs&logoColor=white" alt="Next.js 16" /></a>
@@ -30,7 +29,7 @@
 
 ## 📖 项目定位
 
-**轻选工作台** 是专为跨境电商（以 Amazon 为核心）卖家打造的**本地可运行、商业级 AI 辅助工作台**。
+**轻选工作台** 是专为跨境电商（以 Amazon 为核心）卖家打造的**本地可运行 AI 辅助工作台**。
 
 常见的电商 AI 辅助工具通常采用“单一提示词 + 一键生成文案”的黑盒模式，在对合规与精确度要求极高的跨境电商场景中，极易产生**无源事实幻觉**（如编造 FDA 认证）、**竞品卖点抄袭**（误将竞品专有配件当成本品规格）、**机械假通过病句**以及**脱离供应链现实**等严重问题。
 
