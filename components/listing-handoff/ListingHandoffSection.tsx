@@ -5,6 +5,7 @@ import { buildAccessHeaders, updateDemoAccessSnapshot, type DemoAccessInfo } fro
 import { createBrowserUuid } from "@/lib/browserUuid";
 import { copyPlainText } from "@/lib/client/copyPlainText";
 import { resolveEvidenceConflictRecovery } from "@/lib/client/evidenceConflictRecovery";
+import { evaluateListingQualityPolicy, type ListingQualityReport } from "@/lib/listingHandoff/listingQualityPolicy";
 
 type ListingStatus = "ready" | "active" | "stale" | "revoked" | "legacy_unbound" | "invalid";
 
@@ -42,6 +43,7 @@ type ListingDraftSafeSummary = {
   keywordPlanSource?: "manual" | "auto_suggested" | "none";
   draftKind?: "ai_optimized_listing" | "structured_listing_draft" | "safe_fact_draft";
   qualityIssues?: string[];
+  qualityReport?: ListingQualityReport;
   providerAttempted?: boolean;
   providerSucceeded?: boolean;
   fallbackApplied?: boolean;
@@ -1023,6 +1025,12 @@ export function ListingHandoffSection({
 
   const renderDraftBody = () => {
     if (!draft) return null;
+    const qualityReport = draft.qualityReport ?? evaluateListingQualityPolicy({
+      title: draft.titles[0] ?? "",
+      bullets: draft.bullets,
+      description: draft.description ?? "",
+      facts: draft.usedFactTrace ?? [],
+    });
     /** v2.2.14：复制按钮（独立"已复制 ✓"/"复制失败"反馈，约 1.8 秒恢复） */
     const copyButton = (key: string, label: string, text: string, isPrimary = false) => {
       const showCopied = copiedButton === key;
@@ -1066,6 +1074,43 @@ export function ListingHandoffSection({
             <p className="mt-1.5 text-slate-400">暂未生成标题。</p>
           )}
         </div>
+
+        {qualityReport ? (
+          <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-3" data-testid="listing-quality-report">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-bold uppercase tracking-wide text-violet-700">Listing Quality Policy · 只读质量报告</p>
+              <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-700">综合 {qualityReport.overallScore}/100</span>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-600 sm:grid-cols-4">
+              <span>标题 {qualityReport.titleScore}</span>
+              <span>卖点 {qualityReport.bulletScore}</span>
+              <span>描述 {qualityReport.descriptionScore}</span>
+              <span>合规 {qualityReport.complianceScore}</span>
+            </div>
+            {qualityReport.issues.length > 0 ? (
+              <details className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2" open>
+                <summary className="cursor-pointer text-xs font-semibold text-amber-800">发现 {qualityReport.issues.length} 项质量问题</summary>
+                <ul className="mt-1.5 list-disc space-y-1 pl-4 text-xs leading-5 text-amber-900">
+                  {qualityReport.issues.slice(0, 8).map((item, index) => <li key={`quality-issue-${index}`}>{item.message}</li>)}
+                </ul>
+              </details>
+            ) : (
+              <p className="mt-2 text-xs text-emerald-700">未发现质量问题。</p>
+            )}
+            {qualityReport.suggestions.length > 0 ? (
+              <details className="mt-2 rounded-lg border border-violet-200 bg-white px-2.5 py-2">
+                <summary className="cursor-pointer text-xs font-semibold text-violet-800">查看 {qualityReport.suggestions.length} 项优化建议</summary>
+                <ul className="mt-1.5 list-disc space-y-1 pl-4 text-xs leading-5 text-violet-900">
+                  {qualityReport.suggestions.slice(0, 8).map((item, index) => <li key={`quality-suggestion-${index}`}>{item.message}</li>)}
+                </ul>
+              </details>
+            ) : null}
+            {qualityReport.missingSections.length > 0 ? (
+              <p className="mt-2 text-xs text-slate-600">描述待补充部分：{qualityReport.missingSections.join("、")}</p>
+            ) : null}
+            <p className="mt-2 text-[11px] text-slate-500">报告只读分析当前草稿，不会覆盖标题、卖点、事实或证据；仍需人工复核。</p>
+          </div>
+        ) : null}
 
         {/* 2. 五点描述 Bullet Points */}
         <div className="rounded-xl border border-slate-200 bg-white p-3">

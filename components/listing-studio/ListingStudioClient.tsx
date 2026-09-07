@@ -52,6 +52,7 @@ import { createBrowserUuid } from "@/lib/browserUuid";
 import { useSessionDraft } from "@/lib/client/useSessionDraft";
 import { TaskStudioPreparation } from "@/components/studio/TaskStudioPreparation";
 import { ListingHandoffSection } from "@/components/listing-handoff/ListingHandoffSection";
+import { CopyStrategyPanel } from "@/components/listing-handoff/CopyStrategyPanel";
 import { studioApiErrorCode, studioErrorMessage } from "@/lib/client/studioErrorMessage";
 import { StudioProgressRail } from "@/components/studio/StudioProgressRail";
 import { deriveListingStudioProgress } from "@/lib/client/studioProgress";
@@ -198,6 +199,7 @@ export function ListingStudioClient({ taskId = "" }: { taskId?: string }) {
       <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600" data-testid="listing-mode-standalone">
         独立工具（STANDALONE）· 资料由你提供，未经商品研究验证
       </div>
+      <CopyStrategyPanel strategy={null} />
       <ManualListingStudioClient onProgressChange={handleManualProgress} />
     </div>
   );

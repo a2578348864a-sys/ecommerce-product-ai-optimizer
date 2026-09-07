@@ -13,6 +13,13 @@ import {
 } from "@/components/creative-handoff/types";
 import { ImageScenePresetPicker } from "@/components/image-studio/ImageScenePresetPicker";
 import { ListingFactSupplementPanel } from "@/components/studio/ListingFactSupplementPanel";
+import { MarketingIntelligencePanel } from "@/components/listing-handoff/MarketingIntelligencePanel";
+import { marketingReferenceFromSummary } from "@/components/listing-handoff/MarketingIntelligencePanel";
+import { CopyStrategyPanel } from "@/components/listing-handoff/CopyStrategyPanel";
+import { CopyStrategyPlannerSuggestionPanel } from "@/components/listing-handoff/CopyStrategyPlannerSuggestionPanel";
+import { analyzeMarketingIntelligence } from "@/lib/listingHandoff/marketingIntelligence/analyzer";
+import { buildCopyStrategy } from "@/lib/listingHandoff/copyStrategy/analyzer";
+import { buildCopyStrategyPlannerSuggestion } from "@/lib/listingHandoff/copyStrategy/plannerSuggestion";
 import { useSessionDraft } from "@/lib/client/useSessionDraft";
 import { authorityCounts } from "@/lib/productCreativeHandoffFactAuthority";
 import {
@@ -223,6 +230,24 @@ export function TaskStudioPreparation({
   const successful = api.result?.kind === "ok" ? api.result : null;
   const preview = successful?.preview ?? null;
   const detail = successful?.detail ?? null;
+  const marketingInsight = useMemo(
+    () => analyzeMarketingIntelligence(marketingReferenceFromSummary(preview?.creativeContextSummary)),
+    [preview?.creativeContextSummary],
+  );
+  const copyStrategy = useMemo(
+    () => buildCopyStrategy({
+      marketingInsight,
+      confirmedFactSummary: {
+        count: detail?.confirmedFacts?.length ?? 0,
+        labels: (detail?.confirmedFacts ?? []).map((fact) => fact.label),
+      },
+    }),
+    [detail?.confirmedFacts, marketingInsight],
+  );
+  const plannerSuggestion = useMemo(
+    () => buildCopyStrategyPlannerSuggestion(copyStrategy),
+    [copyStrategy],
+  );
   const isActive = detail?.effectiveStatus === "active" && detail.controlState === "active";
   const sceneDraft = useSessionDraft({
     pageKind: "image-studio-task-scene",
@@ -428,6 +453,10 @@ export function TaskStudioPreparation({
             </details>
           </div>
         </section>
+        {/* Marketing Intelligence 是研究参考旁路，只在 Listing Studio 展示，不进入创作确认或 Listing 主链。 */}
+        {kind === "listing" ? <MarketingIntelligencePanel summary={preview?.creativeContextSummary} /> : null}
+        {kind === "listing" ? <CopyStrategyPanel strategy={copyStrategy} /> : null}
+        {kind === "listing" ? <CopyStrategyPlannerSuggestionPanel suggestion={plannerSuggestion} /> : null}
         {/* V4R：创作侧人工补充事实（独立面板；有则显示，无则不显示空面板） */}
         {supplementalFacts.length > 0 ? (
           <div className="mb-2.5 rounded-xl border border-sky-200 bg-sky-50/40 p-2.5 text-xs" data-testid="studio-supplemental-facts">
@@ -685,6 +714,11 @@ export function TaskStudioPreparation({
           返回研究记录
         </Link>
       </div>
+
+      {/* Marketing Intelligence 是研究参考旁路，只在 Listing Studio 展示，不进入创作确认或 Listing 主链。 */}
+      {kind === "listing" ? <MarketingIntelligencePanel summary={preview?.creativeContextSummary} /> : null}
+      {kind === "listing" ? <CopyStrategyPanel strategy={copyStrategy} /> : null}
+      {kind === "listing" ? <CopyStrategyPlannerSuggestionPanel suggestion={plannerSuggestion} /> : null}
 
       {/* V3 Evidence → Creative Context Bridge：创作参考资料摘要（§51 Context Visibility） */}
       {preview?.creativeContextSummary ? (
