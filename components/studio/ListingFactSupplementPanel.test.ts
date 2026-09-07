@@ -7,6 +7,7 @@ import {
   prefillManualValues,
   changedManualFacts,
   runCreativeHandoffCreate,
+  prepareSelectableAmazonCandidates,
   type HandoffNotice,
 } from "./ListingFactSupplementPanel";
 import { ListingFactSupplementPanel } from "@/components/studio/ListingFactSupplementPanel";
@@ -33,6 +34,26 @@ function previewWith(candidates: Array<{ field: string; value: string; scopes: s
 }
 
 describe("ListingFactSupplementPanel", () => {
+  it("filters existing fields, removes duplicate cards, and leaves every visible radio enabled", () => {
+    const prepared = prepareSelectableAmazonCandidates([
+      { id: "care-1", field: "care", value: "Hand wash only" },
+      { id: "feature-1", field: "functional_feature", value: "Leak-proof", evidenceTexts: ["Leak-proof"] },
+      { id: "feature-2", field: "functional_feature", value: "Leak-proof", evidenceTexts: ["Leak-proof"] },
+    ], new Set(["care"]));
+    expect(prepared.candidates.map((candidate) => candidate.id)).toEqual(["feature-1"]);
+    expect(prepared.hiddenCount).toBe(2);
+  });
+
+  it("keeps two different values in one field as selectable radio options", () => {
+    const prepared = prepareSelectableAmazonCandidates([
+      { id: "capacity-1", field: "capacity", value: "10 utensils" },
+      { id: "capacity-2", field: "capacity", value: "15 utensils" },
+      { id: "care-1", field: "care", value: "Hand wash only" },
+    ], new Set());
+    expect(prepared.candidates).toHaveLength(3);
+    expect(prepared.candidates.every((candidate) => candidate.field !== "capacity" || candidate.id.startsWith("capacity"))).toBe(true);
+  });
+
   it("listing-eligible 候选展示且标记需人工核实；market_signal 候选被过滤", () => {
     const html = renderToStaticMarkup(createElement(ListingFactSupplementPanel, {
       taskId: "sandbox-task-1",

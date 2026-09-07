@@ -43,9 +43,34 @@ function titleDerivedHint(canonicalField: string): string {
   return MANUAL_FIELD_LABELS[canonicalField] ?? canonicalField;
 }
 
+type AmazonInlineCandidate = { id: string; field: string; value: string; reviewRequired?: boolean; sources?: Array<{ sourceBlockId?: string; text?: string }>; evidenceTexts?: string[] };
+
+function normalizeAmazonCandidateText(value: string): string {
+  return value.toLowerCase().replace(/^(?:product description|click to play video)\s*[:：-]?\s*/i, "").replace(/\s+/g, " ").trim();
+}
+
+export function prepareSelectableAmazonCandidates(candidates: AmazonInlineCandidate[], existingFields: ReadonlySet<string>) {
+  const hiddenExisting = candidates.filter((candidate) => existingFields.has(candidate.field)).length;
+  const selectable = candidates.filter((candidate) => !existingFields.has(candidate.field));
+  const exact = new Map<string, AmazonInlineCandidate>();
+  for (const candidate of selectable) {
+    const evidence = (candidate.evidenceTexts || candidate.sources?.map((source) => source.text || "") || []).map(normalizeAmazonCandidateText).sort().join("|");
+    const key = `${normalizeAmazonCandidateText(candidate.value)}|${evidence}`;
+    const previous = exact.get(key);
+    if (!previous) {
+      exact.set(key, { ...candidate, sources: candidate.sources ? [...candidate.sources] : undefined, evidenceTexts: candidate.evidenceTexts ? [...candidate.evidenceTexts] : undefined });
+      continue;
+    }
+    previous.sources = [...(previous.sources || []), ...(candidate.sources || [])].filter((source, index, all) => all.findIndex((item) => item.sourceBlockId === source.sourceBlockId && item.text === source.text) === index);
+    previous.evidenceTexts = [...new Set([...(previous.evidenceTexts || []), ...(candidate.evidenceTexts || [])])];
+  }
+  const deduplicated = [...exact.values()];
+  return { candidates: deduplicated, hiddenCount: hiddenExisting + selectable.length - deduplicated.length };
+}
+
 function AmazonFactEnrichmentInline({taskId, preview, create, refresh, onCommitted, existingFields}:{taskId:string; preview:CreativeHandoffPreview|null; create:ListingFactSupplementPanelProps["create"]; refresh:()=>Promise<unknown>; onCommitted?:()=>void; existingFields:Set<string>}) {
   const [state, setState] = useState<"idle"|"loading"|"ready"|"error">("idle");
-  const [data, setData] = useState<{ evidenceId: string; candidates: Array<{ id: string; field: string; value: string; reviewRequired?: boolean }> } | null>(null);
+  const [data, setData] = useState<{ evidenceId: string; candidates: AmazonInlineCandidate[] } | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [notice, setNotice] = useState("");
   async function collect() {
@@ -66,7 +91,8 @@ function AmazonFactEnrichmentInline({taskId, preview, create, refresh, onCommitt
       await refresh(); onCommitted?.(); setNotice("已提交人工确认，创作资料已刷新。"); setSelected([]); setState("ready");
     } catch { setNotice("确认失败，请刷新后重试。"); setState("ready"); }
   }
-  return <div className="mt-2 rounded-lg border border-cyan-200 bg-cyan-50/40 p-2.5" data-testid="amazon-fact-enrichment"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-bold text-cyan-900">Amazon 商品事实建议</p><p className="text-[11px] text-slate-600">仅读取当前任务绑定 ASIN 的卖家详情内容；同一字段只能选择一个值。</p></div><button type="button" onClick={()=>void collect()} disabled={state==="loading"} className="inline-flex h-8 items-center rounded-md bg-cyan-700 px-3 text-xs font-bold text-white disabled:opacity-50" data-testid="amazon-fact-enrichment-collect">{state==="loading"?"查找中…":"自动查找"}</button></div>{notice?<p role="status" className="mt-2 text-xs text-amber-800">{notice}</p>:null}{data?<details className="mt-2" open={false}><summary className="cursor-pointer text-xs font-semibold text-cyan-900">发现 {data.candidates.length} 条候选（展开查看）</summary><div className="mt-2 grid gap-1.5 md:grid-cols-2">{data.candidates.map((c)=><label key={c.id} className="flex gap-2 rounded border border-cyan-100 bg-white p-2 text-xs"><input type="radio" name={`amazon-fact-${c.field}`} disabled={existingFields.has(c.field)} checked={selected.includes(c.id)} onChange={()=>setSelected(cur=>[...cur.filter(id=>data.candidates.find(x=>x.id===id)?.field!==c.field),c.id])}/><span><strong>{c.field}</strong>：{c.value}<span className="block text-[10px] text-slate-500">{c.reviewRequired?"需要重点复核":"来自卖家详情原文"}</span></span></label>)}</div>{selected.length>0?<button type="button" onClick={()=>void confirm()} className="mt-2 inline-flex h-8 items-center rounded-md border border-cyan-300 bg-white px-3 text-xs font-bold text-cyan-800">确认所选事实</button>:null}</details>:null}</div>;
+  const prepared = data ? prepareSelectableAmazonCandidates(data.candidates, existingFields) : null;
+  return <div className="mt-2 rounded-lg border border-cyan-200 bg-cyan-50/40 p-2.5" data-testid="amazon-fact-enrichment"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-bold text-cyan-900">Amazon 商品事实建议</p><p className="text-[11px] text-slate-600">仅读取当前任务绑定 ASIN 的卖家详情内容；同一字段只能选择一个值。</p></div><button type="button" onClick={()=>void collect()} disabled={state==="loading"} className="inline-flex h-8 items-center rounded-md bg-cyan-700 px-3 text-xs font-bold text-white disabled:opacity-50" data-testid="amazon-fact-enrichment-collect">{state==="loading"?"查找中…":"自动查找"}</button></div>{notice?<p role="status" className="mt-2 text-xs text-amber-800">{notice}</p>:null}{prepared?<details className="mt-2" open={false}><summary className="cursor-pointer text-xs font-semibold text-cyan-900">{prepared.candidates.length>0?`发现 ${prepared.candidates.length} 条可选事实${prepared.hiddenCount>0?" · 已自动整理重复/已确认内容":""}`:"没有新的可补充商品事实。"}</summary>{prepared.candidates.length>0?<div className="mt-2 grid gap-1.5 md:grid-cols-2">{prepared.candidates.map((c)=><label key={c.id} className="flex gap-2 rounded border border-cyan-100 bg-white p-2 text-xs"><input type="radio" name={`amazon-fact-${c.field}`} checked={selected.includes(c.id)} onChange={()=>setSelected(cur=>[...cur.filter(id=>data?.candidates.find(x=>x.id===id)?.field!==c.field),c.id])}/><span><strong>{c.field}</strong>：{c.value}<span className="block text-[10px] text-slate-500">{c.reviewRequired?"需要重点复核":"来自卖家详情原文"}</span></span></label>)}</div>:null}{selected.length>0?<button type="button" onClick={()=>void confirm()} className="mt-2 inline-flex h-8 items-center rounded-md border border-cyan-300 bg-white px-3 text-xs font-bold text-cyan-800">确认所选事实</button>:null}</details>:null}</div>;
 }
 type ListingFactSupplementPanelProps = { create: any };
 export type ManualFactInput = { field: string; value: string };
