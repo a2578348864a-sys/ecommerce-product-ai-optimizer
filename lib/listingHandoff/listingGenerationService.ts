@@ -33,6 +33,7 @@ import { filterListingClaims } from "@/lib/listingClaimFilter";
 import { parseProductCreativeHandoff } from "@/lib/productCreativeHandoff";
 import { getProductResearchRecord, getProductResearchVerification, verifyProductResearchHash } from "@/lib/productResearchRecord";
 import { applyListingPlannerDecision, buildFinalizablePlannerCatalog, buildRendererQualifiedOptions, completePlannerSelectionsToFinalizablePlan, generateListingPlanDecision, renderPlannerListing } from "@/lib/listingHandoff/listingPlanner";
+import { evaluateListingQualityPolicy, parseListingQualityReport, type ListingQualityReport } from "@/lib/listingHandoff/listingQualityPolicy";
 
 export class ListingHandoffError extends Error {
   constructor(public readonly code: string, public readonly status: number, message: string) {
@@ -93,6 +94,7 @@ export type ListingDraftSafeSummary = {
   keywordPlanSource?: "manual" | "auto_suggested" | "none";
   draftKind?: "ai_optimized_listing" | "structured_listing_draft" | "safe_fact_draft";
   qualityIssues?: string[];
+  qualityReport?: ListingQualityReport;
   providerAttempted?: boolean;
   providerSucceeded?: boolean;
   fallbackApplied?: boolean;
@@ -619,6 +621,7 @@ export function draftSafeSummary(value: unknown, keywordContext?: HistoricalKeyw
     qualityIssues: Array.isArray(value.qualityIssues)
       ? value.qualityIssues.filter((item): item is string => typeof item === "string").slice(0, 10)
       : undefined,
+    qualityReport: parseListingQualityReport(value.qualityReport),
     providerAttempted: typeof value.providerAttempted === "boolean" ? value.providerAttempted : undefined,
     providerSucceeded: typeof value.providerSucceeded === "boolean" ? value.providerSucceeded : undefined,
     generationMode: value.generationMode === "planner_guided" || value.generationMode === "deterministic_only" ? value.generationMode : undefined,
@@ -1142,6 +1145,13 @@ export async function generateListingDraftFromHandoff(
   const generatedAt = new Date().toISOString();
 
   const deterministicDraft = buildDeterministicListingPackDraft(generationInput, generatedAt);
+  // Listing Quality Policy 只读检查 Renderer 输出；报告不参与 Claim Evidence 判定，也不改写正文。
+  const deterministicQualityReport = evaluateListingQualityPolicy({
+    title: deterministicDraft.titles[0] ?? "",
+    bullets: deterministicDraft.bullets,
+    description: deterministicDraft.description,
+    facts: generationInput.productFacts,
+  });
   const deterministicSchema = validateAiListingPackDraft(deterministicDraft);
   const deterministicFiltered = deterministicSchema.ok
     ? filterListingClaims(deterministicSchema.data, {
@@ -1169,7 +1179,7 @@ export async function generateListingDraftFromHandoff(
         blockedClaims: [],
         reviewChecklist: ["请人工核对事实、表达与搜索词后完善。"],
       };
-  const safeDraft = deterministicSeed as unknown as Record<string, unknown>;
+  const safeDraft: Record<string, unknown> = { ...(deterministicSeed as unknown as Record<string, unknown>), qualityReport: deterministicQualityReport };
 
   // ── 幂等预检（阶段A，Provider 调用之前）──
   // 同 requestId 同 fingerprint → 不调用 Provider，直接进入锁内重放确认；
@@ -1388,11 +1398,17 @@ export async function generateListingDraftFromHandoff(
 
 
   /** 运行时 Skill 合同所需事实（已确认事实；id = field；值优先英文渲染——与正式 bullets 一致，锚定才能命中） */
-  const runtimeFacts = generationInput.productFacts.map((f): RuntimeFact => {
+      const runtimeFacts = generationInput.productFacts.map((f): RuntimeFact => {
     const rendered = generationInput.englishRenderings?.renderings.find((r) => r.field === f.field)?.english;
     const value = (rendered && rendered.trim() && !/[一-鿿㐀-䶿]/.test(rendered) ? rendered : String(f.value ?? "")).trim();
     return { factId: f.field, field: f.field, label: f.label, value };
-  });
+      });
+      const qualityReportOfDraft = (draft: { titles?: string[]; bullets?: string[]; description?: string }): ListingQualityReport => evaluateListingQualityPolicy({
+        title: draft.titles?.[0] ?? "",
+        bullets: draft.bullets ?? [],
+        description: draft.description ?? "",
+        facts: runtimeFacts,
+      });
   const runtimeUsedIds = runtimeFacts.map((f) => f.factId);
   const asRejected = (issues: RuntimeIssue[], bullets: string[]): Array<{ text: string; reason: string }> => {
     const out: Array<{ text: string; reason: string }> = [];
@@ -1450,6 +1466,7 @@ export async function generateListingDraftFromHandoff(
               : ["结构化草稿基于已确认事实生成；未进行关键词优化，所有表述仍需人工复核。"],
             reviewChecklist: ["请人工核对事实、表达与搜索词后完善。"],
           };
+          const optimizedQualityReport = qualityReportOfDraft(optimizedDraft);
           const optimizedSchema = validateAiListingPackDraft(optimizedDraft);
           const optimizedFiltered = optimizedSchema.ok
             ? filterListingClaims(optimizedSchema.data, {
@@ -1483,6 +1500,7 @@ export async function generateListingDraftFromHandoff(
             const optimizedUsedFactIds = deriveFinalUsedFactIds(generationInput, optimizedFiltered.cleaned);
             finalDraft.usedFactIds = optimizedUsedFactIds;
             finalDraft.usedFactTrace = buildUsedFactTrace(generationInput.productFacts, optimizedUsedFactIds);
+            finalDraft.qualityReport = optimizedQualityReport;
             finalDraft.listingUnqualified = false;
             finalDraft.factSafe = true;
             finalDraft.copyQuality = true;
@@ -1518,6 +1536,7 @@ export async function generateListingDraftFromHandoff(
             bulletPlans: plan.bulletPlans,
             typeLabel: typeLabelOfListingInput(generationInput),
           });
+          const safeQualityReport = qualityReportOfDraft({ titles: [safeTitle], bullets: safeBullets, description: safeDescription });
           const safeQualified = safeBullets.length >= 3 && safeContract.ok && safeCopyQuality.ok;
           draftKind = "safe_fact_draft";
           finalDraft = withoutKeywordOptimization({
@@ -1530,6 +1549,7 @@ export async function generateListingDraftFromHandoff(
           const safeUsedFactIds = deriveFinalUsedFactIds(generationInput, finalDraft);
           finalDraft.usedFactIds = safeUsedFactIds;
           finalDraft.usedFactTrace = buildUsedFactTrace(generationInput.productFacts, safeUsedFactIds);
+          finalDraft.qualityReport = safeQualityReport;
           qualityIssues = Array.from(new Set([
             issue,
             ...(!optimizedSchema.ok ? ["结构化回退未通过 schema 校验"] : []),
@@ -1625,6 +1645,7 @@ export async function generateListingDraftFromHandoff(
             riskNotes: ["AI 仅规划已确认事实与模板；正文由安全规则确定性生成，仍需人工复核。"],
             reviewChecklist: ["请人工核对事实字段、表达与搜索词后完善。"],
           };
+          const renderedQualityReport = qualityReportOfDraft(renderedDraft);
           const renderedSchema = validateAiListingPackDraft(renderedDraft);
           const renderedFiltered = renderedSchema.ok ? filterListingClaims(renderedSchema.data, { prohibitedClaims: generationInput.prohibitedClaims, customClaimLabel: "Handoff prohibited claim" }) : null;
           const renderedEvidence = renderedFiltered ? verifyListingClaims(renderedFiltered.cleaned, generationInput) : null;
@@ -1635,7 +1656,7 @@ export async function generateListingDraftFromHandoff(
           const renderedCopy = validateCopyQualityContract({ title: renderedTitle, bullets: renderedBullets, description: renderedDescription, cannotSay: [...DEFAULT_CANNOT_SAY, ...(generationInput.prohibitedClaims ?? [])], facts: runtimeFacts, bulletPlans: selectedPlan.bulletPlans, typeLabel: typeLabelOfListingInput(generationInput) });
           if (renderedSchema.ok && renderedFiltered && renderedEvidence && listingClaimsHaveEvidence(renderedEvidence) && renderedRuntime.ok && renderedCopy.ok && renderedBullets.length >= 3) {
             draftKind = generationMode === "planner_guided" ? "ai_optimized_listing" : "structured_listing_draft";
-            finalDraft = { ...renderedFiltered.cleaned, draftKind, usedFactIds, usedFactTrace: buildUsedFactTrace(generationInput.productFacts, usedFactIds), listingUnqualified: false, factSafe: true, copyQuality: true };
+            finalDraft = { ...renderedFiltered.cleaned, draftKind, qualityReport: renderedQualityReport, usedFactIds, usedFactTrace: buildUsedFactTrace(generationInput.productFacts, usedFactIds), listingUnqualified: false, factSafe: true, copyQuality: true };
             providerSucceeded = true;
             plannerDecisionUsedInFinalDraft = plannerResult.changed;
           } else {
