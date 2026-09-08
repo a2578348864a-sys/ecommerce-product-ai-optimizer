@@ -35,6 +35,16 @@ describe("V4 market tool registry routing", () => {
     expect(JSON.stringify(result.data)).not.toMatch(/1688/);
   });
 
+  it("does not fabricate a recorded keyword/VOC source for a different target", async () => {
+    const keyword = await executeMarketTool(call("keyword", { targetEntity: "yoga mat" }));
+    const voc = await executeMarketTool(call("voc", { targetEntity: "yoga mat" }));
+
+    expect(keyword.status).toBe("no_results");
+    expect(voc.status).toBe("no_results");
+    expect(keyword.rawArtifactRefs).toEqual([]);
+    expect(voc.rawArtifactRefs).toEqual([]);
+  });
+
   it("keeps supplier_1688 on the 1688 adapter", async () => {
     const result = await executeMarketTool(call("supplier_1688", {
       targetEntity: "保温杯",

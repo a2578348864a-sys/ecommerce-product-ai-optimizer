@@ -110,16 +110,20 @@ export async function executeMarketTool(envelope: ToolCallEnvelope): Promise<Too
       }
       case "keyword": {
         const profile = getCandidateProfileFixture("evidence_sufficient");
-        result = profile
+        // Recorded profiles are target-bound. Do not pass a mismatched fixture
+        // into the adapter (which would correctly raise WRONG_ENTITY); when
+        // no compatible recorded source exists, surface an explicit no-result
+        // and let the graph continue without fabricated evidence.
+        result = profile && profile.keyword.entity === envelope.targetEntity
           ? await runKeywordAdapter(envelope, { mode: "recorded", fixture: profile.keyword })
-          : noResult(envelope.toolName, "no candidate keyword fixture");
+          : noResult(envelope.toolName, profile ? "no keyword fixture for target" : "no candidate keyword fixture");
         break;
       }
       case "voc": {
         const profile = getCandidateProfileFixture("evidence_sufficient");
-        result = profile
+        result = profile && profile.voc.candidateId === envelope.targetEntity
           ? await runVocAdapter(envelope, { mode: "recorded", fixture: profile.voc })
-          : noResult(envelope.toolName, "no candidate VOC fixture");
+          : noResult(envelope.toolName, profile ? "no VOC fixture for target" : "no candidate VOC fixture");
         break;
       }
       case "supplier_1688": {
