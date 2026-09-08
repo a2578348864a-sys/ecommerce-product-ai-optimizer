@@ -2,6 +2,49 @@
 
 本项目按语义化版本管理，版本标记见 Git tags 与 GitHub Releases。
 
+## Unreleased
+
+### Research Stability
+
+- Pending Preview 在持久化成功前不再提前消费。
+- Keyword / Competitor Preview 增加 task 与 subject 隔离。
+- Research Collection Orchestrator 避免重复 inspect 导致 revision feedback loop。
+- Pending Amazon evidence 可以进入 Fact Candidate review。
+
+### Research Lifecycle
+
+- 新增统一 Research Lifecycle Reader。
+- Task List、Task Detail 和 Evidence Workbench 使用同一生命周期快照。
+- `completed`、`stale` 等状态采用 fail-closed 读取规则。
+
+### Browser Use
+
+- 移除开发者本机 Browser Use CLI 绝对路径。
+- 支持 `BROWSER_USE_CLI_PATH` 与 PATH 查找。
+- 使用 `shell: false` 与 stdin 传递参数。
+- 缺少 CLI 时明确返回 `collector_unavailable`。
+
+### V4 Experimental Workflow
+
+- 修复 keyword / VOC 错误路由到 1688 adapter。
+- `keyword` → `runKeywordAdapter`。
+- `voc` → `runVocAdapter`。
+- `supplier_1688` → `run1688Adapter`。
+- SellerSprite recorded fixture 合同保持不变。
+
+### Listing Presentation
+
+- Listing 核心交付物优先展示。
+- 策略 sidecar 下移或折叠展示。
+- 不改变 Listing generation、Fact Authority 或 Quality Gate 的核心边界。
+
+### Known Boundaries
+
+- 1688 仍是参数化 sourcing 流程，需要关键词、URL 或图片等输入。
+- Preview 是短时进程内状态，不是 durable storage。
+- V4 LangGraph 是 feature-flagged secondary workflow，不是当前正式商品研究主链。
+- Marketing Intelligence、Copy Strategy 和 Planner Strategy Preview 是 sidecar / reference-only，不直接进入 Listing renderer。
+
 ## [4.1.0] - 2026-09-07
 
 ### 新增

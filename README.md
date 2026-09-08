@@ -2,7 +2,7 @@
 
 # 轻选工作台
 
-**面向跨境电商（Amazon）的证据驱动型 AI 商品研究与 Listing 创作工作台**
+**面向跨境电商（Amazon）的证据驱动型商品研究与 Listing 创作工作台**
 
 <p align="center">
   <a href="https://nextjs.org"><img src="https://img.shields.io/badge/Next.js-16.3-000000?style=flat-square&logo=nextdotjs&logoColor=white" alt="Next.js 16" /></a>
@@ -14,249 +14,182 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" alt="MIT License" /></a>
 </p>
 
-<p align="center">
-  <a href="#-核心特性">核心特性</a> •
-  <a href="#-为什么选择轻选工作台">设计哲学</a> •
-  <a href="#-系统架构与工作流">系统架构</a> •
-  <a href="#-核心功能矩阵">功能矩阵</a> •
-  <a href="#-快速上手">快速上手</a> •
-  <a href="#-文档索引">完整文档</a>
-</p>
-
 </div>
 
 ---
 
-## 📖 项目定位
+## 项目定位
 
-**轻选工作台** 是专为跨境电商（以 Amazon 为核心）卖家打造的**本地可运行 AI 辅助工作台**。
+轻选工作台把跨境电商商品研究、证据核验和 Listing 创作放在同一个 Human-in-the-loop 工作台中。它帮助运营人员把分散的 Amazon、关键词/竞品、买家声音和供应链资料整理成可追溯的研究材料，再由人工确认哪些内容可以成为目标商品事实，最后进入受控的 Listing 与图片创作流程。
 
-常见的电商 AI 辅助工具通常采用“单一提示词 + 一键生成文案”的黑盒模式，在对合规与精确度要求极高的跨境电商场景中，极易产生**无源事实幻觉**（如编造 FDA 认证）、**竞品卖点抄袭**（误将竞品专有配件当成本品规格）、**机械假通过病句**以及**脱离供应链现实**等严重问题。
+系统的核心边界是：**Evidence ≠ Fact**。采集到的页面内容、关键词、评论、竞品表达和 1688 供应商声明都先作为参考资料保存；只有经过人工核验的事实，才可以进入后续创作交接。
 
-轻选工作台以 **“证据驱动 (Evidence-Driven)”** 与 **“人工事实门禁 (Human Gate)”** 为核心底层基石，将**市场机会发现、多源真实证据采集、人工事实裁决、受控 Listing 创作与视觉营销策划**紧密串联，构建起一条端到端可复核、防幻觉、严格契合电商合规标准的结构化作业主链。
-
----
-
-## 🌟 核心特性
-
-- 🔍 **证据优先 (Evidence First)**：无源不言。整合 SellerSprite（卖家精灵）选品报表、Amazon 标杆竞品、买家真实评论 (VOC) 与 1688 源头货源线索，彻底终结模型凭空捏造。
-- 👤 **人机协同 (Human-in-the-Loop)**：AI 仅负责高速抽取与整理候选证据；商品核心物理规格（材质、尺寸、容量、结构）由运营人员人工核准打勾，系统绝不越权断言。
-- 🛡️ **事实权威隔离 (Fact Authority)**：严格奉行 **`Evidence ≠ Fact`** 隔离哲学，未经人工确认的外部非标信号物理切断，绝不污染后续大模型上下文。
-- 🔗 **断言全链可溯 (Claim Traceability)**：文案中宣称的每项材质、功能与参数，在确认事实库中均逐字可追溯，坚决杜绝虚构认证与参数虚标。
-- 🚦 **确定性语法门禁 (Quality Gate)**：自研正则级 Copy Quality 质检引擎，解决传统“词数达标即放行”带来的假通过盲区，代码级拦截 5 类机器常见僵硬病句。
-
----
-
-## 💡 为什么选择轻选工作台？
-
-| 痛点维度 | 传统套壳 AI (Prompt-Only) | 轻选工作台 (Evidence-Driven) |
-| :--- | :--- | :--- |
-| **事实真实性** | 模型随意编造参数与认证，极易发生事实幻觉与虚假宣传 | **严格 Positive-Allow 门禁**：未在已核准事实库中备案的 Claim 代码级强力拦截 |
-| **竞品边界** | 爬取竞品后极易把竞品的专有专利设计直接挪为本品卖点 | **实体物理隔离**：标杆竞品数据仅作参照，绝对物理隔离于本品事实库之外 |
-| **文案质检** | 依赖大模型自我打分，充斥大量僵硬机器句式依然“判定通过” | **Copy Quality 正则引擎**：确定性拦截 5 类机器通病，保障地道本土语感 |
-| **决策权属** | 黑盒一键全包，运营无法溯源各项生成的具体来源 | **Human Gate 机制**：AI 归纳证据，运营打勾核准并加盖 CAS 乐观并发锁 |
-| **供应链现实** | 前端文案承诺极高规格，后端采购起订量 (MOQ) 或价格严重脱节 | **打通 1688 货源线索**：实时比对国内源头供应商梯队报价、起订量与材质线索 |
-
----
-
-## 🏗️ 系统架构与工作流
-
-### 核心哲学：证据不等于事实（Evidence ≠ Fact）
+## 当前稳定主链
 
 ```text
-  Evidence ≠ Fact               # 采集到的文本仅作为参考证据，不自动升格为商品事实
-  VOC ≠ Fact                    # 买家评论与吐槽是主观感知，不等于商品的物理属性
-  AI Summary ≠ Fact             # AI 的推演与归纳只是参谋意见，不能直接作为上架规格
-  Competitor Evidence ≠ Fact    # 竞品详情页的卖点是竞品特性，严禁直接挪用至本品
-  Sourcing Evidence ≠ Fact      # 1688 批发商的声明不能等同于 Amazon 最终合规规格
-  Keyword Evidence ≠ Fact       # 搜索关键词只提供流量靶向，不代表商品自带该项功能
+Candidate Pool
+    ↓
+Product Research
+    ↓
+Research Collection Orchestrator
+    ├─ Amazon 商品资料
+    ├─ Keyword + Competitor
+    ├─ VOC / 买家评论
+    └─ 1688 Sourcing 状态与货源线索
+    ↓
+Evidence / Pending Review 摘要
+    ↓
+Fact Candidate
+    ↓
+Human Confirm
+    ↓
+Confirmed Facts
+    ↓
+Research Completion / Research Lifecycle
+    ↓
+Creative Handoff
+    ├─ Listing Studio
+    └─ Image Studio
 ```
 
-### 端到端受控流水线
+Research Collection Orchestrator 统一管理 Amazon、关键词/竞品和 VOC 的采集状态、预览和失败反馈。1688 也会在研究页展示和聚合状态，但真正找货仍需要关键词、商品 URL 或图片等参数化 sourcing 流程；不能把四类来源理解为无条件的一键自动采集。
 
-```mermaid
-flowchart LR
-    subgraph S1["1. 多源证据采集"]
-        A1["Amazon 详情<br/>(CDP 注入 / ZIP 90001)"]
-        A2["真实买家 VOC<br/>(差评痛点 / 好评惊喜)"]
-        A3["1688 货源线索<br/>(阶梯报价 / MOQ)"]
-    end
+## 事实与人工确认
 
-    subgraph S2["2. 证据治理与人工门禁"]
-        B["证据清洗归一<br/>(去噪 / 指纹归一)"]
-        C{"人工事实门禁<br/>(CAS 乐观锁版本核准)"}
-    end
+每个来源都遵循同一条证据边界：
 
-    subgraph S3["3. 受控创作工坊"]
-        D["Listing Studio<br/>(阶段受控生成 + 质量门禁)"]
-        E["Image Studio<br/>(契约 Prompt + 分镜策略)"]
-    end
-
-    S1 --> B
-    B --> C
-    C -->|法定核准事实| D
-    C -->|法定核准事实| E
+```text
+Evidence
+   ↓
+Fact Candidate
+   ↓
+Human Confirm
+   ↓
+Confirmed Facts
+   ↓
+Creative Handoff / Listing
 ```
 
----
+- Amazon 页面资料可以产生规格候选，但候选仍需人工核对。
+- Keyword、Competitor 和 VOC 用于搜索方向、市场表达和用户问题参考，不能未经确认升级为目标商品事实。
+- 1688 供应商的材质、承重、包装和规格声明属于供应链参考，不能自动替代 Amazon 商品事实。
+- 竞品内容只能作为参考，不能直接复制为本品卖点。
 
-## 🛠️ 核心功能矩阵
+Listing Studio 的生成输入以确认后的事实和创作交接为准；Claim Evidence、事实门禁和文案质量检查会在输出前后继续校验，资料不足时使用受控的安全降级路径。
 
-### 1. 商品机会发现 (Opportunity Discovery)
-- 一键导入并解析 SellerSprite（卖家精灵）市场调研报表与搜索热词；
-- 自动化解析类目体量、月销均值、价格分布带、退货率及 BSR 排名走势；
-- 潜力商品沉淀至统一的候选商品池（`OpportunityCandidate`），有序推进深度调研。
+## 待确认资料与 Preview 边界
 
-### 2. 多源证据研究 (Multi-source Evidence Research)
-- **Amazon 详情标杆**：通过 Chrome DevTools Protocol 注入美国真实邮区（ZIP 90001）与 USD 货币环境校准，真实抓取页面元素；
-- **标杆竞品透视**：提取头部竞品的核心五点描述与差异化站位，智能剔除 Sponsored 广告干扰；
-- **真实买家评论 (VOC)**：结构化提炼高频差评痛点与好评惊喜点，指导反转卖点提炼；
-- **1688 供应链货源**：只读白名单调用受控 CLI，获取国内源头供应商阶梯报价与起订门槛。
+研究页会提供短时的待确认 Preview 和 **Pending Review 摘要**，帮助运营按来源查看资料并完成人工核验。这里的 review queue 是由当前研究资料派生出的待审列表，不是消息队列或跨进程持久化任务系统。
 
-### 3. 人工事实门禁 (Human Fact Gate)
-- 恪守“证据不等于事实”底线，AI 整理提取出的物理属性仅作为候选凭证；
-- 运营人员在工作台中逐项比对证据原文并打勾确认；
-- 确认事实加盖 CAS 乐观锁版本印章，成为后续内容生成的**唯一法定事实依据**。
+Preview 与 task/subject 绑定，确认成功后才会消费；失败时保留可重试路径。当前部分 Preview Store 仍是进程内短时状态，因此它不承诺 durable、跨进程或跨重启恢复能力。
 
-### 4. Listing 受控创作 (Listing Studio)
-- **阶段 A 事实语义渲染**：将核准事实精准映射为结构化语义，严格锁定数字与度量单位对应关系；
-- **阶段 B 运营自然润色**：融入核心关键词流量靶向，由模型转化为契合欧美消费者阅读心智的地道英文；
-- 一键导出完全符合 Amazon 字符与格式规范的标题（Title）、五点（Bullets）、长描述（Description）与搜索词（Search Terms）。
+## Research Lifecycle
 
-### 5. 文案质量门禁 (Quality Gate)
-- 内置 **Copy Quality 确定性正则引擎**，代码级拦截 5 类机器常见僵硬病句：
-  - 动词机制套壳（如 `opens through its ... mechanism`）
-  - 介词与短语搭配错误（如 `suitable for use at daily hydration`）
-  - 场景复读口吃（如 `suitable for use at ... desk use`）
-  - 主客体逻辑倒置（如 `fits cup holder-friendly base`）
-  - 单数可数名词无冠词裸奔（如 `features MagSlider lid`）
-- 配合 **Positive-Allow 事实检查器**，彻底杜绝无依据事实放行。
+Research Lifecycle Reader 为 Task List、Task Detail 和 Evidence Workbench 提供统一的核心研究状态快照，包括采集、待确认、人工决定、完成、stale 和创作就绪等状态，并以 fail-closed 方式处理损坏或过期合同。
 
-### 6. 图片营销策略 (Image Studio)
-- 批准已验证主图作为受控视觉参考；
-- 基于确认事实与买家使用场景，生成契约级生图提示词与多尺寸分镜方案；
-- 为实拍摄影师与 3D 渲染美工提供明确、无歧义的交付标准（白底主图、结构拆解图、场景代入图等）。
+核心研究页面已经统一使用该 reader；部分历史导航和兼容分类仍保留旧逻辑。它们属于兼容层，不代表全站所有页面已经完成同一字段迁移。
 
----
+## Creative Handoff 与创作工作台
 
-## 📌 项目状态与演进
+只有完成事实确认和研究完成条件的任务，才能进入 Creative Handoff。Creative Handoff 将本次创作实际使用的确认事实快照交给：
 
-| 状态维度 | 当前情况 | 说明 |
-| :--- | :--- | :--- |
-| **当前版本** | `v4.1.0` (Product Line: V4.1) | 完整仓库主线发布版本 |
-| **项目状态** | **核心流程通过本地端到端验收** | 本地完整主链通过走查验证，默认支持离线 Mock 完整闭环体验 |
-| **测试验证** | **自动化测试套件 + 浏览器全量走查** | 包含 Vitest 单元/集成测试与 Playwright 双端无头浏览器验收流程 |
+- **Listing Studio**：生成和复核 Title、Bullets、Description、Search Terms，并经过 Claim Evidence 和 Copy Quality 检查。
+- **Image Studio**：基于确认事实和人工批准的视觉参考，组织图片提示词和分镜计划。
 
----
+Marketing Intelligence、Copy Strategy 和 Planner Strategy Preview 当前是 **sidecar / reference-only** 旁路能力，用于提供买家痛点、市场角度和写作结构参考。它们不直接修改 ListingPlan、不直接进入 deterministic renderer，也不会自动改写最终 Listing 正文。
 
-## 🚀 快速上手
+## V4 / LangGraph 实验链
 
-### 1. 环境准备
-- **Node.js**: `≥ 20.9.0`
-- **npm**: `≥ 10.0.0`
+仓库同时保留一条由 `QX_V4_GRAPH_ENABLED` 控制的 V4 LangGraph 实验链，用于研究图编排、工具合同和回放兼容性探索。它是 feature-flagged secondary workflow；当前稳定商品研究主链仍以 `/tasks` Research Workflow 为准。
 
-### 2. 克隆与安装依赖
+## 核心能力
+
+| 能力 | 当前作用 | 边界 |
+| --- | --- | --- |
+| 多源研究 | 聚合 Amazon、关键词/竞品、VOC 和 1688 研究资料 | 采集结果先是 Evidence，不自动成为事实 |
+| Human Confirm | 运营逐项确认 Fact Candidate | 未确认内容不能作为目标商品硬事实 |
+| Research Lifecycle | 统一核心研究页面的状态读取 | 历史导航仍有兼容逻辑 |
+| Creative Handoff | 把完成研究的确认事实交给创作工作台 | 服务端门禁先于生成和保存 |
+| Listing Studio | 生成、质检、复核和导出 Listing | 以 Confirmed Facts 和 Claim Evidence 为依据 |
+| Image Studio | 规划图片提示词和视觉交付 | 需要人工批准的视觉参考或符合门禁的事实 |
+| Marketing Intelligence | 分析 VOC、关键词、竞品和供应链表达方向 | reference-only，不进入事实库或 renderer |
+| V4 LangGraph | 实验性的研究图和工具合同 | 默认关闭，不是当前正式主链 |
+
+## 快速上手
+
+### 环境准备
+
+- Node.js `≥ 20.9.0`
+- npm `≥ 10.0.0`
+
+### 安装
+
 ```bash
 git clone https://github.com/a2578348864a-sys/ecommerce-product-ai-optimizer.git
 cd ecommerce-product-ai-optimizer
 npm install
 ```
 
-### 3. 初始化本地数据库与配置
+### 初始化本地数据库与配置
+
 ```bash
-# 生成 Prisma Client 并同步本地 SQLite 数据表结构
 npx prisma generate
 npx prisma db push
-
-# 复制环境变量配置文件 (默认开启免密 Mock 模式，零成本、免 API Key 体验完整闭环)
 cp .env.example .env.local
 ```
 
-`.env.local` 默认基础开箱配置：
-```dotenv
-QX_RUNTIME_MODE=local_owner
-DATABASE_URL="file:./dev.db"
-LISTING_PROVIDER_MODE=mock
-IMAGE_PROVIDER_MODE=mock
-```
+本地默认可以使用 Mock 模式完成离线流程演示；Amazon、1688 实时采集和真实图片生成需要相应的登录、环境配置或显式授权。
 
-### 4. 启动本地服务
+### 启动
+
 ```bash
-# 本地服务启动 (推荐，内置环境依赖与 SQLite 门禁自检)
 npm run dev:local
-
-# 或编译后运行本地生产模式
+# 或
 npm run start:local
 ```
 
-在浏览器中访问终端输出的本地地址（如 `http://localhost:3000` 或 `http://127.0.0.1:3005`）即可进入工作台。
+在终端输出的本地地址访问工作台，例如 `http://localhost:3000` 或 `http://127.0.0.1:3005`。
 
-### 5. 执行测试与代码门禁
+### 工程检查
+
 ```bash
-# 运行 Vitest 自动化测试套件
 npm run test
-
-# 执行 TypeScript 严格类型检查
 npx tsc --noEmit
-
-# 执行 ESLint 规范扫描
 npm run lint
+npm run build
 ```
 
----
+## 技术栈
 
-## 💻 技术栈
+| 领域 | 技术 |
+| --- | --- |
+| 前端 | Next.js App Router、React、TypeScript、Tailwind CSS |
+| 服务端 | Next.js API Routes、Node.js、研究编排服务 |
+| 数据 | Prisma、SQLite、CAS 版本控制 |
+| 采集 | Chrome DevTools Protocol、受控 1688 sourcing CLI |
+| 验证 | Vitest、Playwright、ESLint、TypeScript |
 
-| 领域分类 | 采用技术 |
-| :--- | :--- |
-| **前端与交互** | Next.js 16 (App Router), React 19, TypeScript 5, Tailwind CSS, Lucide Icons, Radix UI |
-| **服务端与编排** | Next.js Server Actions & API Routes, Node.js 运行时, LangGraph 任务流编排 |
-| **数据与持久化** | Prisma 5.22, SQLite (带 `storageVersion` CAS 乐观并发控制) |
-| **采集与协议** | Chrome DevTools Protocol (CDP), 1688 受控 CLI 白名单桥接 |
-| **质量与工程** | Vitest, Playwright (无头端到端走查), ESLint, TypeScript Strict |
+## 文档索引
 
----
+| 文档 | 内容 |
+| --- | --- |
+| [文档中心](docs/README.md) | 技术文档与操作指南总览 |
+| [系统架构](docs/architecture/overview.md) | 分层设计、数据流和组件职责 |
+| [证据链](docs/architecture/evidence-chain.md) | Evidence、Fact Candidate、Confirmed Facts 的边界 |
+| [安全架构](docs/architecture/security.md) | 运行模式、CAS 和 fail-closed 契约 |
+| [产品概览](docs/product/product-overview.md) | 产品流程和业务场景 |
+| [本地开发](docs/development/local-development.md) | 环境搭建和贡献指南 |
+| [工程决策](docs/decisions/engineering-decisions.md) | 关键设计权衡和 ADR |
+| [生产运维](docs/deployment/production-runbook.md) | 生产部署参考手册 |
 
-## 📁 核心目录结构
+## 当前限制
 
-```text
-ecommerce-product-ai-optimizer/
-├── app/                        # Next.js 16 前端页面与 80+ API 服务路由
-│   ├── (studios)/              # Listing Studio 与 Image Studio 受控工坊
-│   ├── opportunities/          # 市场机会发现、选品雷达与报表透视
-│   ├── tasks/                  # 商品深度研究主控台 (四大证据与事实核准)
-│   └── api/                    # 任务流编排、受控生成、多源采集与质检路由
-├── components/                 # 模块化前端 UI 组件
-│   ├── evidence/               # 证据治理、多源采集卡片与人工核准交互
-│   ├── cross-border/           # 标杆竞品、买家 VOC 分析、1688 货源面板
-│   └── listing-handoff/        # Listing 交互编辑器与 Copy Quality 质检面板
-├── lib/                        # 核心领域业务逻辑
-│   ├── server/                 # 权限契约、CAS 并发锁、Fail-Closed 防护与采集编排
-│   ├── listingHandoff/         # 阶段 A 语义渲染、阶段 B 运营润色、Copy Quality 引擎
-│   └── imageHandoff/           # 视觉参考匹配、契约级 Prompt 组装与分镜元数据
-├── tools/                      # 外部采集实现 (Chrome CDP 采集器、卖家精灵解析器)
-├── prisma/                     # SQLite 数据模型与版本字段定义 (schema.prisma)
-├── docs/                       # 系统架构、业务手册、工程决策与资产库
-└── scripts/                    # 本地守护进程、环境自检与安全运行脚本
-```
+- 1688 是参数化 sourcing 流程，不保证在没有关键词、URL 或图片输入时自动找货。
+- Preview 是短时进程内状态，不是 durable storage。
+- 核心研究页面已使用 Research Lifecycle Reader，但历史导航和兼容分类仍未完全迁移。
+- V4 LangGraph 是 feature-flagged secondary workflow，默认不参与正式 `/tasks` 研究主链。
+- Marketing Intelligence、Copy Strategy 和 Planner Strategy Preview 仅供人工策略参考，不自动修改 Listing。
 
----
+## 许可证
 
-## 🧭 文档索引
-
-| 文档分类 | 文档链接 | 核心内容 |
-| :--- | :--- | :--- |
-| **文档总览** | [文档中心全景索引](docs/README.md) | 完整技术文档、操作指南与架构清单 |
-| **系统架构** | [系统架构总览](docs/architecture/overview.md) | 分层设计、核心数据流向与组件职责划分 |
-| **核心机制** | [证据链与事实隔离机制](docs/architecture/evidence-chain.md) | Evidence ≠ Fact 哲学、去噪归一与 Positive-Allow 溯源 |
-| **安全并发** | [安全架构与并发控制契约](docs/architecture/security.md) | 双运行模式隔离、CAS 乐观锁版本并发与 Fail-Closed 熔断 |
-| **产品场景** | [产品全景与业务场景](docs/product/product-overview.md) | 业务流程、5 大操作旅程与实际应用场景 |
-| **本地开发** | [本地开发与贡献指南](docs/development/local-development.md) | 完整环境搭建、环境变量详解与代码规范 |
-| **工程决策** | [关键工程决策记录 (ADR)](docs/decisions/engineering-decisions.md) | 核心设计权衡、正则质检引擎与存储选型背景 |
-| **生产运维** | [生产环境部署手册](docs/deployment/production-runbook.md) | 生产部署标准流程与 PM2 守护说明 |
-
----
-
-## 📄 开源许可证
-
-本项目基于 [MIT License](LICENSE) 开源发布。
+本项目采用 [MIT License](LICENSE)。
