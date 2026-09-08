@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+## [4.1.1] - 2026-09-08
+
 ### Research Stability
 
 - Pending Preview 在持久化成功前不再提前消费。
