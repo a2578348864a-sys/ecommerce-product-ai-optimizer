@@ -1,8 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
+import { writeFileSync } from "node:fs";
+import { describe, expect, it, vi, afterEach } from "vitest";
 import {
   buildSellerSpriteCollectionScript,
   parseCollectorObservation,
   collectorObservationToPreview,
+  defaultBrowserUseSpawn,
+  resolveBrowserUseCli,
   runSellerSpriteCollection,
   type SellerSpriteCollectionInput,
 } from "./sellerSpriteCollector";
@@ -201,6 +206,60 @@ describe("runSellerSpriteCollection（轮 9）", () => {
     expect(run.preview.failureReason).not.toBe("panel_not_detected");
     expect(run.preview.results).toEqual([]);
     expect(run.preview.missing).toContain("sellersprite_panel_rows");
+  });
+});
+
+describe("Browser Use CLI resolution and process boundary", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("显式 BROWSER_USE_CLI_PATH 优先，且保留包含空格的完整路径", () => {
+    const command = "C:\\Program Files\\Browser Use\\browser-use.exe";
+    expect(resolveBrowserUseCli({ BROWSER_USE_CLI_PATH: command })).toEqual({ command, source: "env" });
+  });
+
+  it("未配置时只返回 PATH 命令，不返回个人绝对路径", () => {
+    const resolution = resolveBrowserUseCli({});
+    expect(resolution).toEqual({ command: "browser-use", source: "path" });
+    expect(resolution.command).not.toMatch(/[\\/]Users[\\/]|[\\/]home[\\/]|a2578/i);
+  });
+
+  it("使用独立 executable + stdin，不把含空格路径拼进 shell 命令", async () => {
+    const command = "C:\\Program Files\\Browser Use\\browser-use.exe";
+    vi.stubEnv("BROWSER_USE_CLI_PATH", command);
+    const child = new EventEmitter() as EventEmitter & { stdin: PassThrough; kill: ReturnType<typeof vi.fn> };
+    child.stdin = new PassThrough();
+    let received = "";
+    child.stdin.on("data", (chunk: Buffer) => { received += chunk.toString("utf8"); });
+    child.kill = vi.fn();
+    const fakeSpawn = vi.fn((actualCommand: string, args: string[], options: { shell?: boolean; env?: NodeJS.ProcessEnv }) => {
+      expect(actualCommand).toBe(command);
+      expect(args).toEqual([]);
+      expect(options.shell).toBe(false);
+      expect(options.env?.BROWSER_USE_CLI_PATH).toBe(command);
+      const outputPath = options.env?.BU_COLLECT_OUTPUT;
+      if (!outputPath) throw new Error("missing output path");
+      writeFileSync(outputPath, "");
+      queueMicrotask(() => child.emit("close", 0));
+      return child;
+    });
+    const run = await defaultBrowserUseSpawn("print('ok')", 1_000, fakeSpawn as never);
+    expect(run.code).toBe(0);
+    expect(fakeSpawn).toHaveBeenCalledOnce();
+    expect(received).toBe("print('ok')");
+  });
+
+  it("CLI ENOENT 映射为明确的 collector_unavailable，而不是 collect_failed", async () => {
+    const run = await runSellerSpriteCollection(input, (script) => defaultBrowserUseSpawn(script, 1_000, ((_: string, __: string[], ___: unknown) => {
+      const child = new EventEmitter() as EventEmitter & { stdin: PassThrough; kill: ReturnType<typeof vi.fn> };
+      child.stdin = new PassThrough();
+      child.kill = vi.fn();
+      queueMicrotask(() => child.emit("error", Object.assign(new Error("spawn ENOENT"), { code: "ENOENT" })));
+      return child;
+    }) as never));
+    expect(run).toMatchObject({ ok: false, failureReason: "collector_unavailable" });
+    if (!run.ok) expect(run.detail).toContain("BROWSER_USE_CLI_PATH");
   });
 });
 });
