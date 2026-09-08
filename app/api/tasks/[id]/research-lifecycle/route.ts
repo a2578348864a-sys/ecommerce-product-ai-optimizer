@@ -69,7 +69,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
         result,
         decisionStatus: task.decisionStatus,
         type: task.type,
-        candidateBindingValid: binding.status === "verified" ? true : binding.status === "invalid" ? false : undefined,
+        candidateBindingValid: binding?.status === "verified" ? true : binding?.status === "invalid" ? false : undefined,
       });
       return json({ ok: true, data: snapshot });
     }
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       result,
       decisionStatus: task.decisionStatus,
       type: task.type,
-      candidateBindingValid: binding.status === "verified" ? true : binding.status === "invalid" ? false : undefined,
+      candidateBindingValid: binding?.status === "verified" ? true : binding?.status === "invalid" ? false : undefined,
     });
     return json({ ok: true, data: snapshot });
   } catch {

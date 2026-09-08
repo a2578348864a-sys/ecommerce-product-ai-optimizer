@@ -122,11 +122,14 @@ export async function readCandidateBindingVerification(
   context: AccessContext,
   taskId: string,
   result: unknown,
-): Promise<CandidateBindingVerification> {
+): Promise<CandidateBindingVerification | undefined> {
   const candidateId = isRecord(result) && isRecord(result.candidateToTask)
     ? nonEmptyString(result.candidateToTask.candidateId)
     : null;
-  if (!candidateId) return verifyCandidateBinding({ taskId, result, candidate: null });
+  // Older handoff fixtures/tasks do not carry the candidateToTask namespace at
+  // all. Keep that compatibility projection absent; once the namespace exists,
+  // every malformed or missing relation remains fail-closed below.
+  if (!candidateId) return undefined;
 
   if (context.mode === "demo") {
     const demoAccessId = (context as unknown as { demoAccessId?: string }).demoAccessId;
