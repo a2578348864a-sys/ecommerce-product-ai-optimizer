@@ -325,18 +325,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       ? preflightListingClaimSafety({ handoff, researchRevision: researchRevision ?? 1 })
       : null;
 
-    // 真实 blocking（Policy/unsupported/结构错误）不得进入生成：preflight blocked 或 capability.isBlocked
-    const preflightAllows = claimPreflight === null || claimPreflight.pass
-      || claimPreflight.reasonCode === "english_rendering_pending";
-
-    // 可生成草稿资格：身份 + 至少 2 条目标能力 + 非全局阻断（由同一 Capability 行为驱动）
+    // 预演结果仅用于向用户展示诊断。最终 POST 仍会运行完整 Claim/Runtime/Copy 门禁，
+    // 但确定性预演中的措辞误报不能把一个具备可生成能力的任务变成不可生成。
+    // 可生成草稿资格：身份 + 至少 2 条目标能力 + 非全局阻断（由同一 Capability 行为驱动）。
     const hasUsableDraft = capabilitySafe !== null
       && capabilitySafe.hasIdentity
       && capabilitySafe.targetBulletCount >= 2
       && !capabilitySafe.isBlocked;
     const providerEligible = capabilitySafe?.canCallProvider === true;
 
-    // capability 计算失败 → fail closed（不得回退到只看 preflightAllows）
+    // capability 计算失败 → fail closed。
     const canGenerate = handoff?.controlState === "active"
       && listingStatus !== "revoked"
       && listingStatus !== "invalid"
@@ -346,7 +344,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       // 仍由既有 Handoff/Capability 门禁接管。
       && (gate.candidateBinding === undefined || gate.candidateBinding.status === "verified")
       && factSummary.listingEligibleFacts > 0
-      && preflightAllows
       && hasUsableDraft;
 
     // Quality.1：readiness（claimSafe / copyReady / keywordReady / missingForQuality）

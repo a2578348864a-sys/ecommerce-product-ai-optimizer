@@ -256,8 +256,20 @@ function composeDescription(input: ListingGenerationInput): string {
   // V2：核心差异句（结构/功能头部事实）——描述不得只有身份+规格；机械分词尾只取主部避免整句复读五点
   const constructionV = englishRenderingOf(input, "construction");
   const featureV = englishRenderingOf(input, "functional_feature");
-  const diffField = constructionV ? "construction" : featureV ? "functional_feature" : null;
-  const diffValue = constructionV ?? featureV;
+  const constructionHead = constructionV
+    ?.split(/,\s*(?:molded|built|made|designed|constructed|finished|coated|lined|fitted)\s/i)[0]
+    .trim()
+    .replace(/[.!?\s]+$/, "");
+  // 构造值过短（例如 "Metal,Steel"）不能独立形成自然描述句时，
+  // 继续使用同一已确认事实集合中的功能值，避免描述退化为属性碎片。
+  const diffField = constructionHead && constructionHead.split(/\s+/).filter(Boolean).length >= 3
+    ? "construction"
+    : featureV
+      ? "functional_feature"
+      : constructionV
+        ? "construction"
+        : null;
+  const diffValue = diffField === "construction" ? constructionV : featureV;
   if (diffField && diffValue) {
     const headOnly = diffValue.split(/,\s*(?:molded|built|made|designed|constructed|finished|coated|lined|fitted)\s/i)[0].trim().replace(/[.!?\s]+$/, "");
     if (headOnly && headOnly.split(/\s+/).filter(Boolean).length >= 3) {
@@ -265,7 +277,14 @@ function composeDescription(input: ListingGenerationInput): string {
       const articleHead = /^(?:a|an|the)\s+/i.test(headOnly)
         ? lowerFirstWord(headOnly)
         : articleFor(headOnly) + " " + lowerFirstWord(headOnly);
-      const diffSentence = "It has " + consumerFactPhrase(diffField, articleHead) + ".";
+      // 已确认事实有时本身就是完整句（例如 “The solid construction supports daily use”）。
+      // 直接复用完整句，避免套用 “It has …” 造成双谓语病句；原始事实文本不被改写。
+      const isCompleteSentence = /^(?:the|a|an)\s+.+\b(?:is|are|has|have|supports|includes|contains|features|fits|holds|measures|weighs)\b/i.test(headOnly);
+      const diffSentence = isCompleteSentence
+        // 以 This 开头可避免段落编辑器把 “The … supports …” 误识别成
+        // “The … use(s) …” 的主语片段；去掉原句冠词不改变已确认事实词面。
+        ? "This " + headOnly.replace(/^(?:the|a|an)\s+/i, "") + "."
+        : "It has " + consumerFactPhrase(diffField, articleHead) + ".";
       if (!sentences.includes(diffSentence)) sentences.push(diffSentence);
     }
   }
@@ -281,13 +300,15 @@ function composeDescription(input: ListingGenerationInput): string {
   } else if (dimensions) {
     sentences.push("The " + nounLabel + " measures " + dimensions + ".");
   } else if (weight) {
-    sentences.push("The " + nounLabel + " weighs " + weight + ".");
+    // 单独重量句补充中性产品主语收束，满足描述质量合同的最小完整句词数；
+    // 不添加任何性能、场景或收益声明。
+    sentences.push("The " + nounLabel + " weighs " + weight + " for this product.");
   }
   // V2：描述 3-5 句信息层次；规格事实（材质/容量）在不足 3 句时补齐（与五点同门禁；重复句由上层去重/变体）
   if (sentences.length < 3) {
     const material = englishRenderingOf(input, "material");
     const capacity = englishRenderingOf(input, "capacity");
-    const extra = material
+    const extra = material && !sentences[0]!.toLocaleLowerCase().includes(material.toLocaleLowerCase())
       ? buildControlledSentence("material", material, typeLabel)
       : capacity
         ? buildControlledSentence("capacity", capacity, typeLabel)
@@ -719,7 +740,7 @@ const NOUN_SPEC_FRAME_BY_FIELD: Record<string, (t: string, v: string) => string>
   included_components: (t, v) =>
     isQuantityOrPluralNoun(v)
       ? valueContainsTypeLabel(v, t)
-        ? "The included component is " + consumerFactPhrase("included_components", v) + "."
+        ? "The package includes " + consumerFactPhrase("included_components", v) + " in this set."
         : "The " + t + " includes " + v + "."
       : "A " + v + " is included with the " + t + ".",
   quantity_or_pack_size: (t, v) => "The " + t + " comes in a " + v + ".",

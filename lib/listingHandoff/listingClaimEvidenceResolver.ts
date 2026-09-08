@@ -86,6 +86,24 @@ type EvidenceEntry = {
   sourceFactId: string;
 };
 
+// 仅对明确的“列表型功能/配件”事实做消费者侧原子化。原事实仍保留，
+// 原子项复用同一 fact id 与来源，绝不创造新事实或进行语义推断。
+const LIST_LIKE_FACT_FIELDS = new Set([
+  "functional_feature",
+  "included_components",
+  "included_component",
+  "accessories",
+  "components",
+]);
+
+function confirmedListAtoms(field: string, value: string): string[] {
+  if (!LIST_LIKE_FACT_FIELDS.has(field.toLocaleLowerCase())) return [];
+  return value
+    .split(/[,;，；、]+/)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0 && part !== value.trim());
+}
+
 // ─── 字段 → 事实类型分类（canonical field 匹配）────────────────
 
 const FIELD_TYPE_PATTERNS: Array<{ type: FactType; pattern: RegExp }> = [
@@ -97,7 +115,7 @@ const FIELD_TYPE_PATTERNS: Array<{ type: FactType; pattern: RegExp }> = [
   { type: "color", pattern: /^(?:color|colour|颜色|色彩|color_or_variant)/i },
   { type: "certification", pattern: /^(?:certification|certificate|certified|认证|资质|标准)/i },
   { type: "compatibility", pattern: /^(?:compatib|works with|fit|适配|兼容)/i },
-  { type: "performance", pattern: /^(?:performance|effect|result|power|speed|性能|效果|功率|速度)/i },
+  { type: "performance", pattern: /^(?:performance|effect|result|power|speed|functional_feature|功能特性|性能|效果|功率|速度)/i },
   { type: "origin", pattern: /^(?:origin|产地|制造地)/i },
   { type: "quantity", pattern: /^(?:quantity|count|数量|件数|quantity_or_pack_size)/i },
   // V2.1.3：title-derived 字段分类（有确认事实证据才允许对应声明）
@@ -366,11 +384,11 @@ export function buildListingClaimEvidenceIndex(input: ListingGenerationInput): E
   // 只使用允许用于 Listing 的 confirmedFacts（productFacts）；
   // stableSourceFacts 为 internal-only（当前恒为空）→ 全部排除。
   // R3.2：英文渲染值作为同一 fact 的额外允许形式（与源值等价，factRef 溯源）。
-  const entries = input.productFacts.map((fact) => {
+  const entries = input.productFacts.flatMap((fact) => {
     const factType = classifyField(fact.field, fact.label);
     const normalizedValue = normalizeUnitSpacing(normalizeText(fact.value));
     const safeId = `${factType}:${fact.field}`;
-    return {
+    const base: EvidenceEntry = {
       canonicalField: fact.field,
       normalizedValue,
       factType,
@@ -379,6 +397,12 @@ export function buildListingClaimEvidenceIndex(input: ListingGenerationInput): E
       sourceTier: "confirmed" as const,
       sourceFactId: safeId,
     };
+    const atoms = confirmedListAtoms(fact.field, String(fact.value ?? "")).map((atom) => ({
+      ...base,
+      normalizedValue: normalizeUnitSpacing(normalizeText(atom)),
+      allowedExactForms: [normalizeUnitSpacing(normalizeText(atom))],
+    }));
+    return [base, ...atoms];
   });
 
   if (input.englishRenderings?.renderings) {
@@ -680,21 +704,45 @@ export function verifyListingClaims(
               default: return null;
             }
           };
-          // 高风险词类别与命中事实值类别相同 → 保守组合允许（值原样 + 字段词）
+          // 高风险词类别与命中事实值类别相同 → 仅当该高风险词本身逐字来自
+          // 已确认的列表型事实原子时允许（例如 functional_feature 中的
+          // "Heavy Duty"）。先移除已确认原子再复查类别，避免
+          // "Heavy Duty + Super Heavy Duty" 借一个已确认词整体放行。
           const sameCategoryCovered = highRisk.some((rc) => {
             const t = reasonType(rc);
             if (!t) return false;
-            const entry = entries.find((e) => e.factType === t && e.normalizedValue);
-            if (!entry) return false;
-            // 值必须在段中且段除值+字段词外无其他事实性内容（由 5b/材质断言与 8 数字检查兜底）
             const normalized = normalizeUnitSpacing(normalizeText(segment));
-            return normalized.includes(entry.normalizedValue);
+            const categoryEntries = entries.filter((e) => e.factType === t && e.normalizedValue);
+            if (!categoryEntries.some((entry) => normalized.includes(entry.normalizedValue))) return false;
+            // 认证/兼容/尺寸/产地等类别沿用“已确认值 + 字段词”的既有窄例外；
+            // 性能/材质/效果/绝对化词只有在剩余文本本身仍是中性语法时才能放行。
+            const requiresNeutralResidual = rc === "unsupported_material_claim"
+              || rc === "unsupported_performance_claim"
+              || rc === "unsupported_effect_claim"
+              || rc === "unsupported_absolute_claim";
+            if (!requiresNeutralResidual) return true;
+            let residual = compactText(normalized);
+            for (const entry of categoryEntries
+              .filter((entry) => residual.includes(compactText(entry.normalizedValue)))
+              .sort((a, b) => b.normalizedValue.length - a.normalizedValue.length)) {
+              residual = residual.replace(compactText(entry.normalizedValue), "");
+            }
+            // 先移除所有已确认值，再对带空格的剩余连接词做窄语法判定。
+            // 这样 “This hook is Heavy Duty” 可通过，而“已确认防水 + 适合夏日户外”不会被放行。
+            let residualSpaced = normalized;
+            for (const entry of entries
+              .filter((entry) => entry.normalizedValue)
+              .sort((a, b) => b.normalizedValue.length - a.normalizedValue.length)) {
+              residualSpaced = residualSpaced.replace(
+                new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(entry.normalizedValue)}`, "giu"),
+                " ",
+              );
+            }
+            const pattern = HIGH_RISK_CATEGORY_PATTERNS.find((item) => item.category === rc)?.pattern;
+            return Boolean((pattern ? !pattern.test(residual) : true) && isNeutralResidualGrammar(residualSpaced));
           });
-          // 高风险词是"材质等级/性能/效果/绝对"类修饰 → 即使有值也拒绝（修饰无依据）
-          const pureModifier = highRisk.some((rc) =>
-            rc === "unsupported_material_claim" || rc === "unsupported_performance_claim"
-            || rc === "unsupported_effect_claim" || rc === "unsupported_absolute_claim");
-          if (sameCategoryCovered && !pureModifier) {
+          // 已确认原子可以作为高风险词的逐字依据；其余高风险词仍保持 fail-closed。
+          if (sameCategoryCovered) {
             supportedClaims.push(segment);
             continue;
           }
