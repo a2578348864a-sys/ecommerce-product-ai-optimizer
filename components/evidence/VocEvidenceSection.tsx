@@ -1124,13 +1124,25 @@ export function VocEvidenceSection({
                   <p key={page.asin} className="text-xs text-slate-600">
                     ASIN {page.asin}：
                     {page.status === "ok" ? `提取 ${page.extractedCount} 条`
-                      : page.status === "blocked_redirect" ? "需要登录/验证，未提取（系统不绕过登录墙）"
-                        : page.status === "no_reviews_extracted" ? "未发现公开评论片段"
-                          : `采集异常（${page.note ?? "未知"}）`}
+                      : page.status === "blocked_redirect" ? "页面导航被安全白名单阻断，未判定为登录墙"
+                        : page.status === "login_required" ? "需要登录，未提取（系统不绕过登录墙）"
+                        : page.status === "captcha_required" ? "需要完成验证码，未提取（系统不绕过验证码）"
+                          : page.status === "no_reviews_extracted" ? "未发现公开评论片段"
+                            : page.status === "page_error" || page.status === "page_unknown" ? "页面不可识别，未提取"
+                              : `采集异常（${page.note ?? "未知"}）`}
                   </p>
                 ))}
                 {collectPreview.items.length === 0 ? (
-                  <p className="mt-2 text-sm text-amber-700">{noReviewsEmptyMessage()}（也可以改用「粘贴导入」粘贴该商品公开评论。）</p>
+                  <p className="mt-2 text-sm text-amber-700">
+                    {collectPreview.pageResults.some((page) => page.status === "blocked_redirect")
+                      ? "页面导航被安全白名单阻断，未判定为登录墙；请检查站点或网络后重试。"
+                      : collectPreview.pageResults.some((page) => page.status === "login_required")
+                        ? "需要登录后重试，系统不会绕过登录墙。"
+                      : collectPreview.pageResults.some((page) => page.status === "captcha_required")
+                        ? "需要完成验证码后重试，系统不会绕过验证码。"
+                        : noReviewsEmptyMessage()}
+                    （也可以改用「粘贴导入」粘贴该商品公开评论。）
+                  </p>
                 ) : (
                   <>
                     <p className="mt-2 text-xs font-semibold text-slate-700">

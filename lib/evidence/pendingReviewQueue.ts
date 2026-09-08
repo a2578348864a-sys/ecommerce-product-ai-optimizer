@@ -53,7 +53,7 @@ function resolveNeedsUserActionLabel(message?: string): string {
   if (message.includes("选择采集方式")) {
     return "前往处理";
   }
-  if (/未登录|请登录|需要登录/i.test(message)) {
+  if (/未登录|请登录|需要登录|要求登录|页面要求登录/i.test(message)) {
     return "前往登录";
   }
   return "前往处理";
@@ -86,14 +86,14 @@ export function derivePendingReviewQueue(
 
   // 2. 关键词与竞品
   if (sources.keywordCompetitor?.status === "awaiting_confirmation") {
-    const count = sources.keywordCompetitor.itemCount || 5;
+    const count = typeof sources.keywordCompetitor.itemCount === "number" ? sources.keywordCompetitor.itemCount : 5;
     let countText = `${count} 项采集结果等待确认`;
     const msg = sources.keywordCompetitor.message;
     if (msg && (/关键词\s*\d+\s*条/.test(msg) || /竞品\s*\d+\s*个/.test(msg))) {
       const cleaned = msg.replace(/，?等待人工确认/, "").replace(/预览已生成/, "").trim();
       countText = cleaned ? `${cleaned}待确认` : countText;
     }
-    queue.push({
+    if (count > 0) queue.push({
       sourceKey: "keywords_competitors",
       backendKey: "keywordCompetitor",
       title: "关键词与竞品",
@@ -107,8 +107,10 @@ export function derivePendingReviewQueue(
 
   // 3. 买家评论 / VOC
   if (sources.voc?.status === "awaiting_confirmation") {
-    const count = sources.voc.itemCount || 1;
-    queue.push({
+    const count = typeof sources.voc.itemCount === "number" ? sources.voc.itemCount : 1;
+    // 空预览不得进入待确认队列；这也防止历史 payload 缺少 itemCount
+    // 时把“无评论”错误显示为 1 条评论。
+    if (count > 0) queue.push({
       sourceKey: "voc",
       backendKey: "voc",
       title: "买家评论 / VOC",
@@ -122,8 +124,8 @@ export function derivePendingReviewQueue(
 
   // 4. 1688 货源
   if (sources.sourcing1688?.status === "awaiting_confirmation") {
-    const count = sources.sourcing1688.itemCount || 1;
-    queue.push({
+    const count = typeof sources.sourcing1688.itemCount === "number" ? sources.sourcing1688.itemCount : 1;
+    if (count > 0) queue.push({
       sourceKey: "sourcing_1688",
       backendKey: "sourcing1688",
       title: "1688 货源",

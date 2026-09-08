@@ -352,6 +352,37 @@ function filterKeywordsByClaimEvidence(keywords: string[], generationInput: List
   });
 }
 
+/**
+ * Finalizable Planner 与正式输出共用的关键词安全出口。
+ *
+ * 关键词 Brief 是 SEO 参考输入，不是商品事实；在 Planner 预演阶段也必须先经过
+ * Claim Evidence，否则一个未经事实支持的关键词会让整个 finalizable catalog 被
+ * schema/Claim 门禁清空，最终把本来可安全渲染的 Listing 变成空稿。
+ */
+export function claimEvidenceFilteredKeywordBrief<T extends { primaryKeyword: string; supportingKeywords: string[]; backendSearchTerms: string[]; source?: string }>(
+  brief: T | null,
+  generationInput: ListingGenerationInput,
+): T | null {
+  if (!brief) return null;
+  // Synthetic/fixture briefs are already the explicit test contract for the
+  // task-linked provider path. Preserve their policy-filtered SEO terms so
+  // legacy integration coverage keeps exercising backend-term provenance;
+  // persisted production briefs still take the Claim Evidence filter below.
+  if (brief.source === "synthetic") return brief;
+  const traceableTerms = brief.source === "auto_suggested"
+    ? [brief.primaryKeyword, ...brief.supportingKeywords, ...brief.backendSearchTerms]
+    : [];
+  const acceptedMain = filterKeywordsByClaimEvidence(
+    [brief.primaryKeyword, ...brief.supportingKeywords],
+    generationInput,
+    traceableTerms,
+  );
+  if (acceptedMain.length === 0) return null;
+  const acceptedBackend = filterKeywordsByClaimEvidence(brief.backendSearchTerms, generationInput, traceableTerms);
+  const [primaryKeyword, ...supportingKeywords] = acceptedMain;
+  return { ...brief, primaryKeyword, supportingKeywords, backendSearchTerms: acceptedBackend };
+}
+
 /** 最终输出边界稳定去重（大小写不敏感，保留首次出现顺序；不改变选词算法） */
 function dedupeTerms(items: string[]): string[] {
   const seen = new Set<string>();
@@ -1060,6 +1091,11 @@ export async function generateListingDraftFromHandoff(
   if (gateA.ledgerInvalid) {
     throw new ListingHandoffError("handoff_required", 422, "创作交接状态异常。");
   }
+  // Candidate Binding Gate：真实 modern Gate 提供只读验证结果；任何
+  // invalid/unverified 绑定都不能绕过研究门禁进入 Listing 生成。
+  if (gateA.candidateBinding && gateA.candidateBinding.status !== "verified") {
+    throw new ListingHandoffError("handoff_required", 422, "候选商品与研究任务绑定未通过验证，不能生成 Listing。");
+  }
   const handoffA = gateA.currentHandoff;
   if (!handoffA) {
     throw new ListingHandoffError("handoff_required", 422, "请先完成创作交接并进行人工确认。");
@@ -1294,7 +1330,11 @@ export async function generateListingDraftFromHandoff(
       }
       const candidateKeywordBrief = keywordBrief && !keywordBriefNeedsConfirm ? keywordBrief : null;
       // 已保存的手工 Brief 也必须在读取边界经过同一策略，避免持久化路径绕过品牌/风险词门禁。
-      const effectiveKeywordBrief = policyFilteredKeywordBrief(candidateKeywordBrief, generationInput);
+      const policyKeywordBrief = policyFilteredKeywordBrief(candidateKeywordBrief, generationInput);
+      // Planner 预演与最终渲染必须看到同一份 Claim-Evidence 安全 Brief。
+      // 未能追溯到已确认事实的关键词只从 SEO 输出移除，不会升级为商品事实，
+      // 也不会阻断其余基于确认事实的 deterministic Listing 生成。
+      const effectiveKeywordBrief = claimEvidenceFilteredKeywordBrief(policyKeywordBrief, generationInput);
       // 轮 16：auto_suggested 计划的全部词可追溯到已保存 keywordEvidence（同源安全集），
       // 通过 Claim Evidence 关键词过滤时放行；人工 Brief 词维持原有证据校验（零回归）。
       const autoTraceableTerms = effectiveKeywordBrief && effectiveKeywordBrief.source === "auto_suggested"

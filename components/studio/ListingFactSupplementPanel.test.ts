@@ -132,6 +132,27 @@ describe("ListingFactSupplementPanel", () => {
     expect(html).toContain("已确认商品事实");
     expect(html).toContain("建议补充商品事实");
   });
+
+  it("研究侧已确认事实与创作快照不一致时提供安全桥接入口", () => {
+    const html = renderToStaticMarkup(createElement(ListingFactSupplementPanel, {
+      taskId: "sandbox-task-bridge",
+      preview: previewWith([]),
+      create: async () => ({}),
+      refresh: async () => ({}),
+      existingFacts: [
+        { field: "brand", label: "品牌", value: "John Boos", usageScopes: ["listing"], sourceKind: "user_confirmation" },
+      ],
+      workbenchConfirmedFacts: [
+        { field: "brand", label: "品牌", value: "John Boos", sourceKind: "seller_sprite_product_facts" },
+        { field: "material", label: "材质", value: "Wood", sourceKind: "amazon_product_info" },
+      ],
+    }));
+
+    expect(html).toContain('data-testid="research-fact-bridge"');
+    expect(html).toContain('data-testid="sync-research-confirmed-facts"');
+    expect(html).toContain("研究页已确认 1 项当前商品事实");
+    expect(html).toContain("不新增或修改事实");
+  });
 });
 
 

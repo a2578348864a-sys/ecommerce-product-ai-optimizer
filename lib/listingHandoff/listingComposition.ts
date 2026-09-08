@@ -660,6 +660,17 @@ function featureNeedsArticle(phrase: string): boolean {
  * 其余用 `has/features a {v}`（单数可数名词补自然冠词，专名/复数/不可数不加）。
  */
 function featureObjectFrame(t: string, v: string): string {
+  const malformedFeatureStatement = String(v).trim().match(/^it\s+features\s+(.+)$/i);
+  if (malformedFeatureStatement?.[1]) {
+    return "This " + t + " is " + lowerFirstWord(malformedFeatureStatement[1].trim()) + ".";
+  }
+  const trimmed = String(v).trim();
+  // A single adjective fact such as `Reversible` is a predicate, not a
+  // component noun. Treating it as `features Reversible` creates a short,
+  // fragment-like sentence that invalidates the whole safe fallback.
+  if (/^[A-Za-z][A-Za-z-]*$/.test(trimmed) && !featureNeedsArticle(trimmed) && !isQuantityOrPluralNoun(trimmed)) {
+    return "This " + t + " is " + lowerFirstWord(trimmed) + ".";
+  }
   const cased = consumerFactPhrase("functional_feature", v);
   const firstWord = cased.trim().split(/\s+/)[0] ?? "";
   // SoftSip/USB-C 等品牌或技术 token 保留原样；普通 Title Case 名词改为句中自然小写。
@@ -778,8 +789,25 @@ function buildControlledSentence(field: string, rawValue: string, typeLabel: str
   const lower = value.toLowerCase();
   const nounLabel = lowerCommonNounLabel(typeLabel);
 
+  // 某些历史 English rendering 会把已确认的形容词事实写成
+  // "It features reversible."。这不是自然英语，也会被 Runtime Quality 以短句拒绝。
+  // 只修正句法外壳，保留原事实词面，不新增功能或收益声明。
+  const malformedFeatureStatement = value.match(/^it\s+features\s+(.+)$/i);
+  if (field === "functional_feature" && malformedFeatureStatement?.[1]) {
+    return "This " + nounLabel + " is " + lowerFirstWord(malformedFeatureStatement[1].trim()) + ".";
+  }
+
   // 0) 值已是完整句 → 原样复述（只做句点归一），不再套骨架
   if (isSelfContainedSentence(value)) return endWithPeriod(value);
+
+  // 已确认的保养事实有时由 English Rendering 产生无主语的完整要求句，
+  // 例如 “Hand wash only is required for the Cutting Board”。这类句子已经
+  // 包含事实谓语；再次套入 “For care, the … is …” 会制造重复谓语，
+  // 让 Claim Evidence 预检误判为未知声明。保留原句只做大小写/句点归一。
+  if ((field === "care" || field === "cleaning")
+    && /\b(?:is|are)\s+(?:required|recommended|needed)\b/i.test(value)) {
+    return endWithPeriod(value.replace(/^([a-z])/, (_, letter: string) => letter.toUpperCase()));
+  }
 
   // 带情态动词的完整事实短语（如 "Can hold ..."）需要补商品主语，不能再套 capacity of。
   if (/^can\s+(?:hold|store|accommodate|contain)\b/i.test(value)) {
@@ -969,7 +997,16 @@ function composeOptimizedBullets(input: ListingGenerationInput, plan: ListingPla
     roles.push(rolesByBullet[i]);
   }
   const edited = applyStageBToBullets(sliced, factMap, roles);
-  return { bullets: edited.bullets, factRefsByBullet: factRefsByBullet.slice(0, 5) };
+  // Stage B is wording-only. If an edit shortens a fact sentence below the
+  // runtime contract, retain the controlled sentence instead of letting a
+  // three-word rewrite such as "It is reversible." invalidate the fallback.
+  const restored = edited.bullets.map((bullet, index) => {
+    let candidate = String(bullet);
+    if (/^[a-z]/.test(candidate.trim())) candidate = candidate.replace(/^\s*([a-z])/, (_, letter: string) => letter.toUpperCase());
+    const words = candidate.trim().split(/\s+/).filter(Boolean).length;
+    return words >= RUNTIME_QUALITY_LIMITS.bulletWordsMin ? candidate : sliced[index];
+  });
+  return { bullets: restored, factRefsByBullet: factRefsByBullet.slice(0, 5) };
 }
 
 /** V2 审计附录：句子实际引用的事实字段（通用词面匹配，非信任旧 trace）。 */

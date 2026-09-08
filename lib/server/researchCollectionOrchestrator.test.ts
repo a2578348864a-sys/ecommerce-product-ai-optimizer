@@ -421,6 +421,28 @@ describe("researchCollectionOrchestrator", () => {
       expect(mocks.collectBrowserEvidencePreview).toHaveBeenCalledTimes(1); // delta = 0
     });
 
+    it("Amazon 登录墙/验证码等 typed blocker → needs_user，不伪造 awaiting_confirmation", async () => {
+      const { BrowserEvidenceCollectError } = await import("@/lib/server/browserEvidenceCollect");
+      mocks.collectBrowserEvidencePreview.mockRejectedValueOnce(
+        new BrowserEvidenceCollectError("page_blocked_login_wall", 422, "页面要求登录。我们不自动登录：请确认该商品页可公开访问后重试。"),
+      );
+      const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+      expect(result.sources.amazon.status).toBe("needs_user");
+      expect(result.sources.amazon.error?.code).toBe("page_blocked_login_wall");
+      expect(result.sources.amazon.previewId).toBeUndefined();
+    });
+
+    it("Amazon 白名单外导航 → failed/navigation_not_allowed，不伪装成登录墙", async () => {
+      const { BrowserEvidenceCollectError } = await import("@/lib/server/browserEvidenceCollect");
+      mocks.collectBrowserEvidencePreview.mockRejectedValueOnce(
+        new BrowserEvidenceCollectError("navigation_not_allowed", 502, "页面导航被重定向到白名单外地址，已停止采集。该状态不等同于登录墙或验证码，请检查站点或网络后重试。"),
+      );
+      const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+      expect(result.sources.amazon.status).toBe("failed");
+      expect(result.sources.amazon.error?.code).toBe("navigation_not_allowed");
+      expect(result.sources.amazon.message).toContain("不等同于登录墙");
+    });
+
     it("inspect 探测阶段若存在 Amazon Pending Preview，直接返回 awaiting_confirmation 且不调用采集器", async () => {
       storeBrowserEvidencePreview({
         evidenceId: "bev_preview_inspect_test",
@@ -1082,6 +1104,50 @@ describe("VOC auto collection contract (v11)", { timeout: 30000 }, () => {
         asins: [{ asin: "B0SAMPLE01", role: "current_candidate" }],
       }),
     );
+  });
+
+  it("V4b VOC 白名单外导航 → failed/navigation_not_allowed，不进入待确认队列", async () => {
+    mocks.createReviewCollectPreview.mockResolvedValue({
+      previewId: "rcp_empty_blocked",
+      items: [],
+      pageResults: [{ asin: "B0SAMPLE01", status: "blocked_redirect", note: "页面要求登录，未绕过。", extractedCount: 0 }],
+      capturedAt: new Date().toISOString(),
+      expiresAt: Date.now() + 60000,
+    });
+    const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    expect(result.sources.voc.status).toBe("failed");
+    expect(result.sources.voc.itemCount).toBe(0);
+    expect(result.sources.voc.error?.code).toBe("navigation_not_allowed");
+  });
+
+  it("V4c 空 VOC Preview（无公开评论）→ needs_user，不伪造 1 条评论", async () => {
+    mocks.createReviewCollectPreview.mockResolvedValue({
+      previewId: "rcp_empty_public",
+      items: [],
+      pageResults: [{ asin: "B0SAMPLE01", status: "no_reviews_extracted", note: "详情页无公开 Top Reviews 片段。", extractedCount: 0 }],
+      capturedAt: new Date().toISOString(),
+      expiresAt: Date.now() + 60000,
+    });
+    const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    expect(result.sources.voc.status).toBe("needs_user");
+    expect(result.sources.voc.itemCount).toBe(0);
+    expect(result.sources.voc.error?.code).toBe("no_public_reviews");
+  });
+
+  it.each([
+    ["login_required", "页面要求登录，系统未自动登录。"],
+    ["captcha_required", "页面要求完成 CAPTCHA 验证，系统未绕过。"],
+  ] as const)("VOC 真实页面阻断 %s → needs_user 且保留精确分类", async (status, note) => {
+    mocks.createReviewCollectPreview.mockResolvedValue({
+      previewId: `rcp_${status}`,
+      items: [],
+      pageResults: [{ asin: "B0SAMPLE01", status, note, extractedCount: 0 }],
+      capturedAt: new Date().toISOString(),
+      expiresAt: Date.now() + 60000,
+    });
+    const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    expect(result.sources.voc.status).toBe("needs_user");
+    expect(result.sources.voc.error?.code).toBe(status);
   });
 
   it("V5 无权威 ASIN → needs_user 且 collector 不被调用", async () => {
