@@ -1478,8 +1478,18 @@ export async function generateListingDraftFromHandoff(
         const applyStructuredFallback = (publicReason: string, reasonCode: typeof fallbackReasonCode, issue: string) => {
           const optimized = composeOptimizedListingDraft(generationInput, plan, effectiveKeywordBrief);
           const optimizedBulletDedupe = dedupeListingBulletsWithStats(optimized.bullets);
-          const fallbackPlan = optimizedBulletDedupe.removedCount > 0 && optimizedBulletDedupe.bullets.length >= 3
-            ? { ...plan, bulletPlans: plan.bulletPlans.slice(0, optimizedBulletDedupe.bullets.length) }
+          const openingCounts = new Map<string, number>();
+          for (const bullet of optimizedBulletDedupe.bullets) {
+            const opening = bullet.toLocaleLowerCase().match(/^(?:the|this|it)\s+[a-z][a-z'-]*/)?.[0] ?? "";
+            if (opening) openingCounts.set(opening, (openingCounts.get(opening) ?? 0) + 1);
+          }
+          const hasMechanicalOpening = [...openingCounts.values()].some((count) => count >= 3);
+          // 仅对同一主语连续重复的旧模板收敛到 3 条；正常 4/5 条计划保持既有合同。
+          const fallbackBulletCount = hasMechanicalOpening
+            ? Math.min(optimizedBulletDedupe.bullets.length, 3)
+            : Math.min(optimizedBulletDedupe.bullets.length, 5);
+          const fallbackPlan = fallbackBulletCount >= 3 && fallbackBulletCount !== plan.bulletPlans.length
+            ? { ...plan, bulletPlans: plan.bulletPlans.slice(0, fallbackBulletCount) }
             : plan;
           const optimizedKeywords = filterKeywordsByClaimEvidence(optimized.keywords, generationInput, autoTraceableTerms);
           const primaryKeyword = effectiveKeywordBrief ? plan.primaryKeyword : null;
@@ -1494,7 +1504,9 @@ export async function generateListingDraftFromHandoff(
           const optimizedDraft = {
             ...safeDraft,
             titles: optimizedTitles,
-            bullets: optimizedBulletDedupe.bullets,
+            // 兜底稿保留最多五条；仅在同一主语机械重复时由 fallbackBulletCount
+            // 收敛为三条，避免连续重复触发 Copy Quality。
+            bullets: optimizedBulletDedupe.bullets.slice(0, fallbackBulletCount),
             description: optimized.description,
             // V2：内部审计附录（逐句 factRefs；draftSafeSummary 不导出）
             ...(optimized.factRefsAudit ? { factRefsAudit: optimized.factRefsAudit } : {}),
@@ -1554,7 +1566,27 @@ export async function generateListingDraftFromHandoff(
           const safeContent = composeOptimizedListingDraft(generationInput, plan, null);
           const safeTitle = safeContent.titles[0] ?? "";
           const safeDescription = safeContent.description;
-          const safeBullets = dedupeListingBulletsWithStats(composeControlledBullets(generationInput, plan).bullets).bullets;
+          // 优先复用已通过结构/事实组合的优化器句子；只有组合器无法产出三条时，
+          // 才回退到受控事实句。这样不会让四条重复 "The hook" 的旧兜底节奏
+          // 触发 Copy Quality 的 repeated_subject 机械文案规则。
+          const controlledBullets = composeControlledBullets(generationInput, plan).bullets;
+          const optimizedSafeBullets = dedupeListingBulletsWithStats(optimized.bullets).bullets;
+          const safeBulletCount = hasMechanicalOpening
+            ? Math.min(optimizedSafeBullets.length, 3)
+            : Math.min(optimizedSafeBullets.length, 5);
+          const composedSafeBullets = optimizedSafeBullets.length >= 3
+            ? optimizedSafeBullets.slice(0, safeBulletCount)
+            : dedupeListingBulletsWithStats(controlledBullets).bullets;
+          // 同一字段事实可以安全复用，但连续三条均以 "The <type>" 开头会被
+          // Copy Quality 判为机械节奏。仅变更主语代词/指示词，不改动事实词面。
+          const safeBullets = composedSafeBullets.map((bullet, index) => {
+            if (index === 0) return bullet;
+            if (index % 2 === 1) return bullet.replace(/^The\s+/i, "This ");
+            return bullet.replace(
+              /^The\s+.+?\s+(is|are|has|have|weighs|measures|features|includes|contains|comes|uses|stores|holds|fits)\b/i,
+              "It $1",
+            );
+          });
           const removedFragments: Array<{ text: string; reason: string }> = optimizedContract.ok || !optimizedFiltered
             ? []
             : asRejected(optimizedContract.issues, optimizedFiltered.cleaned.bullets);
@@ -1573,7 +1605,7 @@ export async function generateListingDraftFromHandoff(
             description: safeDescription,
             cannotSay: [...DEFAULT_CANNOT_SAY, ...(generationInput.prohibitedClaims ?? [])],
             facts: runtimeFacts,
-            bulletPlans: plan.bulletPlans,
+            bulletPlans: fallbackPlan.bulletPlans,
             typeLabel: typeLabelOfListingInput(generationInput),
           });
           const safeQualityReport = qualityReportOfDraft({ titles: [safeTitle], bullets: safeBullets, description: safeDescription });
@@ -1604,8 +1636,9 @@ export async function generateListingDraftFromHandoff(
           finalDraft.copyQuality = safeCopyQuality.ok;
         };
 
-      // 生产主链：Provider 只返回 Planner 选择，最终正文永远由本地确定性渲染器生成。
-      // 旧正文注入仅为既有回归测试保留；默认生产 client 不会进入下方 legacy 分支。
+      // 生产主链：可生成时直接复用现有 task-linked AI 正文合同；正文仍须经过
+      // 既有 Schema / Claim / Runtime / Copy / salvage 门禁。Planner Provider
+      // 保留在代码中供历史测试与后续策略使用，但本路径不再让它与正文 Provider 串联。
       const { hasInjectedTaskLinkedAiListingClientForTests } = await import("@/lib/server/taskLinkedAiListing");
       const plannerInput = {
         facts: generationInput.productFacts.map((f) => ({ factId: f.field, field: f.field, label: f.label, value: f.value })),
@@ -1623,7 +1656,10 @@ export async function generateListingDraftFromHandoff(
       rendererRejectedBulletCount = qualifiedCatalog.rejected.length;
       rendererUnrenderableRoleCount = plan.bulletPlans.filter((bp) => !bp.role || !qualifiedCatalog.qualifiedRoles.includes(bp.role)).length;
       const plannerEligible = copyReady && rendererQualifiedOptionCount >= 3 && rendererQualifiedRoleCount >= 3 && finalizableCatalog.plans.length > 0;
-      if (plannerEligible && !hasInjectedTaskLinkedAiListingClientForTests()) {
+      // copyReady 的生产路径只调用一次 task-linked generator；这使 Planner 不会
+      // 先调用一次再由正文生成器调用第二次。注入 client 的既有测试继续走同一正文路径。
+      const useTaskLinkedAiListing = copyReady;
+      if (plannerEligible && !hasInjectedTaskLinkedAiListingClientForTests() && !useTaskLinkedAiListing) {
         providerAttempted = true;
         plannerAttempted = true;
         const plannerResult = await generateListingPlanDecision(plannerInput);
@@ -1720,7 +1756,7 @@ export async function generateListingDraftFromHandoff(
           applyStructuredFallback("AI 卖点规划不可用，已使用安全规则生成。", "provider_failed", plannerResult.error.message);
           generationMode = "deterministic_only";
         }
-      } else if (copyReady && !plannerEligible && !hasInjectedTaskLinkedAiListingClientForTests() && effectiveKeywordBrief) {
+      } else if (copyReady && !plannerEligible && !hasInjectedTaskLinkedAiListingClientForTests() && !useTaskLinkedAiListing && effectiveKeywordBrief) {
         // 兼容历史 Quality.2 合同：已有关键词 Brief 但当前没有可完成的 Planner 方案时，
         // 仍记录 AI 路径已尝试并走结构化回退；这里不调用 Provider，避免把不具备安全渲染条件的输入送出。
         providerAttempted = true;
@@ -1735,7 +1771,7 @@ export async function generateListingDraftFromHandoff(
         applyStructuredFallback("AI 卖点规划前置条件不足，已使用安全规则生成。", "provider_failed", "No finalizable deterministic plan was available");
         generationMode = "deterministic_only";
         plannerDecisionUsedInFinalDraft = false;
-      } else if (copyReady && hasInjectedTaskLinkedAiListingClientForTests()) {
+      } else if (copyReady && (hasInjectedTaskLinkedAiListingClientForTests() || useTaskLinkedAiListing)) {
         // Quality.2（v2.2.14）：copyReady=true 即允许真实 AI 正文优化；
         // Keyword Brief 只决定是否做搜索词优化（keywordReady），不阻断正文生成。
         providerAttempted = true;
@@ -1809,7 +1845,15 @@ export async function generateListingDraftFromHandoff(
           const IDENTITY_TIER_FIELDS = new Set(["brand", "product_type", "series_or_model"]);
           const tierInput = generationInput.productFacts
             .filter((f) => !IDENTITY_TIER_FIELDS.has(f.field))
-            .map((f) => ({ field: f.field, label: f.label, value: f.value }));
+            .flatMap((f) => {
+              const value = String(f.value ?? "").trim();
+              // 与 Claim Evidence 同一消费者侧边界：列表型确认值的原子仍继承
+              // 原事实语义，只用于判断 AI 句子是否确有确认锚点。
+              const atoms = ["functional_feature", "included_components", "included_component", "accessories", "components"].includes(f.field.toLocaleLowerCase())
+                ? value.split(/[,;，；、]+/).map((part) => part.trim()).filter((part) => part && part !== value)
+                : [];
+              return [{ field: f.field, label: f.label, value }, ...atoms.map((atom) => ({ field: f.field, label: f.label, value: atom }))];
+            });
           const aiAllText = [aiResult.data.title, ...aiResult.data.bullets, aiResult.data.description];
           const aiTiered = classifyClaimTier(aiAllText, tierInput.map((f) => f.value));
           const blockedTexts = aiTiered.filter((r) => r.tier === "blocked").map((r) => r.text);
