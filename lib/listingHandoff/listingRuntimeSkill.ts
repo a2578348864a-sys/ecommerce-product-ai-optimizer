@@ -284,10 +284,15 @@ export type SafeFactSentencesResult =
  */
 const TEMPLATES: Array<{ field: string; build: (type: string, value: string) => string }> = [
   { field: "cleaning", build: (type, value) => "For easy cleaning with this " + type + ", " + value + "." },
-  { field: "functional_feature", build: (type, value) => "The " + type + " with " + value + " for everyday use." },
+  // A short adjective fact still needs a real predicate. The old
+  // "with ... for everyday use" frame was a fragment and could make the
+  // entire deterministic fallback empty when the planner/provider failed.
+  { field: "functional_feature", build: (type, value) => "This " + type + " is " + String(value).replace(/^([A-Z])/, (_, letter: string) => letter.toLowerCase()) + "." },
   { field: "construction", build: (type, value) => "Available with " + value + " for this " + type + "." },
-  { field: "care", build: (type, value) => "For easy use with this " + type + ", " + value + "." },
-  { field: "included_components", build: (type, value) => "The " + type + " available with " + value + " for practical use." },
+  { field: "care", build: (type, value) => /^hand\s+wash\s+only$/i.test(String(value).trim())
+    ? "For care, hand wash only."
+    : "For easy use with this " + type + ", " + value + "." },
+  { field: "included_components", build: (type, value) => "The " + type + " includes " + value + "." },
   { field: "operation", build: (type, value) => value + " for standard use with this product every day." },
   { field: "usage", build: (type, value) => value + " for practical use with this product." },
 ];

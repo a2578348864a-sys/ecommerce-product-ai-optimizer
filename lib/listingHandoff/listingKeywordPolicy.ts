@@ -29,7 +29,7 @@ const ATTRIBUTE_WORDS = new Set([
   "slices", "slice", "capacity", "qt", "cup", "electric", "rechargeable", "cordless", "wireless", "certified", "approved", "fda", "bpa", "ect", "ce", "rohs", "ul",
 ]);
 const SCENARIO_WORDS = new Set(["school", "travel", "office", "home", "outdoor", "camping", "gym", "work", "car", "kitchen", "lunch", "picnic"]);
-const RISK_WORDS = new Set(["best", "guaranteed", "guarantee", "effective", "medical", "therapeutic", "cure", "heal", "safest", "premium-quality", "no.1", "number one", "top-rated", "100%"]);
+const RISK_WORDS = new Set(["best", "guaranteed", "guarantee", "effective", "medical", "therapeutic", "cure", "heal", "safest", "premium-quality", "no.1", "number one", "top-rated", "100%", "non-toxic"]);
 const GENERIC_WORDS = new Set(["bottle", "toaster", "scale", "whisk", "cup", "mug", "jar", "box", "container", "pot", "pan", "kettle", "luminaire", "bag", "lunchbox", "water", "kids", "child", "children", "school", "travel", "insulated", "thermal", "vacuum", "stainless", "steel", "food", "jar", "refill", "sport", "home", "office", "camping", "gym", "drink", "beverage", "coffee", "tea", "soup", "food"]);
 const BRAND_HINT_WORDS = new Set(["brand", "series"]);
 
