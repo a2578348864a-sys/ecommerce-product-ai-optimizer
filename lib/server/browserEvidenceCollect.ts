@@ -5,7 +5,7 @@
  * 页面分类 + 实体绑定 + 6 字段提取 → 关闭会话 → 返回 Preview（不可信客户端不可伪造）。
  *
  * 安全铁律：
- * - 只导航 https://www.amazon.com 白名单；单页导航，不自动搜索、不批量。
+ * - 只导航明确的 Amazon 零售站点白名单；单页导航，不自动搜索、不批量。
  * - CAPTCHA / 登录墙 / 错误页 → fail-closed 明确错误，不绕过。
  * - 不读取 Cookie/Token/密码；不保存完整 HTML；零 AI 调用。
  */
@@ -21,13 +21,14 @@ import {
   type AmazonDetailPageExtraction,
   type AmazonProductInfoExtraction,
 } from "@/tools/collectors/amazon/detail-page-extract";
+import { AMAZON_RETAIL_ORIGINS } from "@/tools/collectors/amazon/page-diagnostics";
 import { BrowserEvidenceError, type BrowserEvidenceSnapshot } from "@/lib/server/browserEvidence";
 import type { AccessContext } from "@/lib/server/accessPassword";
 import { buildAmazonSellerContentExtractionExpression } from "@/tools/collectors/amazon/seller-content-expression-source";
 import { normalizeSellerBlocks } from "@/lib/server/amazonFactEnrichment/mapping";
 import type { AmazonSellerContentBlockV1 } from "@/lib/server/amazonFactEnrichment/contract";
 
-export const BROWSER_EVIDENCE_ALLOWED_ORIGINS = ["https://www.amazon.com"] as const;
+export const BROWSER_EVIDENCE_ALLOWED_ORIGINS = AMAZON_RETAIL_ORIGINS;
 export const BROWSER_EVIDENCE_COLLECTOR_VERSION = "amazon-detail-page-extractor.v1";
 
 export type BrowserEvidenceNavigation = {
@@ -243,7 +244,7 @@ export async function collectBrowserEvidencePreview(input: {
       throw new BrowserEvidenceCollectError(
         "navigation_not_allowed",
         502,
-        "页面导航被重定向到白名单外地址，已停止采集（可能为验证码/登录墙/错误页）。请在本机浏览器手动检查该商品页。",
+        "页面导航被重定向到白名单外地址，已停止采集。该状态不等同于登录墙或验证码，请检查站点或网络后重试。",
       );
     }
     const extraction = await session.evaluateDomByValue<AmazonDetailPageExtraction>(

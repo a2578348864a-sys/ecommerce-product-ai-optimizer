@@ -6,7 +6,7 @@
  * 客户端不可伪造字段值）→ 人工确认后由 route 层走 importReviews（browser 绑定）。
  *
  * 安全铁律（与 browserEvidenceCollect 一致）：
- * - 只导航 https://www.amazon.com 白名单；单页导航，不自动搜索、不批量。
+ * - 只导航明确的 Amazon 零售站点白名单；单页导航，不自动搜索、不批量。
  * - CAPTCHA / 登录墙 / 重定向出白名单 → fail-closed 明确记录，不绕过、不提取。
  * - 不读取 Cookie/Token/密码；不保存完整 HTML；零 AI 调用。
  * - 上限：单次 ≤3 个 ASIN、每页 ≤20 条（详情页 Top Reviews 片段公开可见的边界）。
@@ -19,6 +19,8 @@ import {
   type BrowserExecutableCandidate,
 } from "@/tools/collectors/amazon/browser-control";
 import { buildReviewSnippetExtractionExpression, type ReviewSnippet } from "@/tools/collectors/amazon/review-snippet-extract";
+import { buildAmazonDetailPageExtractionExpression } from "@/tools/collectors/amazon/detail-page-extract";
+import { AMAZON_RETAIL_ORIGINS } from "@/tools/collectors/amazon/page-diagnostics";
 import {
   isValidAsin,
   buildReviewDuplicateKey,
@@ -29,7 +31,7 @@ import {
 import type { AccessContext } from "@/lib/server/accessPassword";
 
 export const REVIEW_COLLECTOR_VERSION = "amazon-review-snippet-collector.v1";
-export const REVIEW_COLLECTOR_ALLOWED_ORIGINS = ["https://www.amazon.com"] as const;
+export const REVIEW_COLLECTOR_ALLOWED_ORIGINS = AMAZON_RETAIL_ORIGINS;
 /** 单次采集：最多 3 个 ASIN（maxNavigations 预算内） */
 export const REVIEW_COLLECT_MAX_ASINS_PER_RUN = 3;
 /** 单页最多提取条数（详情页 Top Reviews 片段） */
@@ -65,7 +67,7 @@ export type ReviewSnippetPreviewItem = {
 
 export type ReviewCollectPageResult = {
   asin: string;
-  status: "ok" | "blocked_redirect" | "no_reviews_extracted" | "error";
+  status: "ok" | "blocked_redirect" | "login_required" | "captcha_required" | "page_error" | "page_unknown" | "no_reviews_extracted" | "error";
   note: string | null;
   extractedCount: number;
 };
@@ -353,9 +355,36 @@ export async function collectReviewSnippets(input: {
       try {
         const nav = await session.navigate(`https://www.amazon.com/dp/${asin}?language=en_US`);
         if (!nav.allowedFinalOrigin) {
-          pageResults.push({ asin, status: "blocked_redirect", note: "页面重定向到白名单外（验证码/登录墙），未绕过。", extractedCount: 0 });
+          pageResults.push({ asin, status: "blocked_redirect", note: "页面重定向到白名单外，导航被安全白名单阻断；未判定为登录墙。", extractedCount: 0 });
           continue;
         }
+        // 详情页内容级阻断：最终 URL 仍在白名单内时，登录墙/CAPTCHA
+        // 不一定表现为跨域跳转，必须先分类再尝试提取评论，避免生成
+        // 空的“待确认预览”。该表达式只读 DOM，不读取凭据、不绕过验证。
+        const pageExtraction = await session.evaluateDomByValue<{
+          pageStatus?: "ok" | "captcha" | "login_wall" | "error_page" | "unknown_page";
+        }>(
+          buildAmazonDetailPageExtractionExpression({
+            expectedAsin: asin,
+            capturedAt: new Date().toISOString(),
+            collectorVersion: "amazon-review-page-diagnostic.v1",
+          }),
+        );
+        if (pageExtraction?.pageStatus === "captcha") {
+          pageResults.push({ asin, status: "captcha_required", note: "页面要求完成 CAPTCHA 验证，系统未绕过。", extractedCount: 0 });
+          continue;
+        }
+        if (pageExtraction?.pageStatus === "login_wall") {
+          pageResults.push({ asin, status: "login_required", note: "页面要求登录，系统未自动登录。", extractedCount: 0 });
+          continue;
+        }
+        if (pageExtraction?.pageStatus === "error_page") {
+          pageResults.push({ asin, status: "page_error", note: "Amazon 返回错误页，未提取评论。", extractedCount: 0 });
+          continue;
+        }
+        // unknown_page 不单独阻断：部分 Amazon 变体/区域页面缺少标准
+        // #productTitle，但仍可能包含可见 Top Reviews。继续走评论提取，
+        // 只有确切的登录墙、验证码或错误页才 fail-closed。
         const extracted = await session.evaluateDomByValue<unknown[]>(
           buildReviewSnippetExtractionExpression({ maxItems: REVIEW_COLLECT_MAX_ITEMS_PER_PAGE }),
         );

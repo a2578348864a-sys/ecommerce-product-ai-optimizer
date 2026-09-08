@@ -15,6 +15,23 @@ export type AmazonPageClassification =
   | "unexpected_redirect"
   | "unknown_page";
 
+/**
+ * Amazon 零售站点白名单（统一供详情页、评论页和页面诊断使用）。
+ * 只允许明确的 Amazon 零售主域名，不接受通配符或任意 amazon.* 域名。
+ */
+export const AMAZON_RETAIL_HOSTS = [
+  "amazon.com",
+  "amazon.co.uk",
+  "amazon.de",
+  "amazon.co.jp",
+  "amazon.ca",
+] as const;
+
+export const AMAZON_RETAIL_ORIGINS = AMAZON_RETAIL_HOSTS.flatMap((host) => [
+  `https://${host}`,
+  `https://www.${host}`,
+]) as readonly string[];
+
 export type AmazonPageMarkerSource = "primary" | "alternate" | null;
 
 export type AmazonPrivacyPromptState = "absent" | "visible_blocking_prompt" | "page_text_only" | "unknown";
@@ -310,7 +327,8 @@ function safeUrlEvidence(value: string): SafeUrlEvidence {
 function isAllowedAmazonFinalUrl(value: string): boolean {
   try {
     const url = new URL(value);
-    return url.protocol === "https:" && (url.hostname === "amazon.com" || url.hostname === "www.amazon.com");
+    const hostname = url.hostname.toLowerCase().replace(/^www\./, "");
+    return url.protocol === "https:" && AMAZON_RETAIL_HOSTS.includes(hostname as (typeof AMAZON_RETAIL_HOSTS)[number]);
   } catch {
     return false;
   }

@@ -224,6 +224,11 @@ export function ListingFactSupplementPanel({
     },
     [existingFacts, workbenchConfirmedFacts],
   );
+  const existingHandoffFields = useMemo(() => new Set(existingFacts.map((fact) => fact.field)), [existingFacts]);
+  const pendingResearchBridgeFacts = useMemo(
+    () => workbenchConfirmedFacts.filter((fact) => !existingHandoffFields.has(fact.field)),
+    [existingHandoffFields, workbenchConfirmedFacts],
+  );
   const existingFields = useMemo(() => new Set(mergedFacts.map((fact) => fact.field)), [mergedFacts]);
   const candidates = useMemo(
     () => (preview?.confirmableFactCandidates ?? []).filter((candidate) =>
@@ -291,6 +296,37 @@ export function ListingFactSupplementPanel({
     }
   }
 
+  /**
+   * Research Human Confirmed Facts 已经在研究页完成了人工确认；
+   * 这里仅创建一个新的 Creative Handoff 版本，让服务端复用同一权威桥接，
+   * 不提交新事实、不修改研究事实，也不把参考资料升级成商品事实。
+   */
+  async function syncResearchConfirmedFacts() {
+    if (!preview || !preview.storageVersion || preview.expectedResearchRevision === undefined
+      || pendingResearchBridgeFacts.length === 0 || submitting) return;
+    setSubmitting(true);
+    setNotice(null);
+    try {
+      await runCreativeHandoffCreate({
+        create,
+        refresh,
+        requestPayload: {
+          requestId: createBrowserUuid(),
+          selectedFactCandidateIds: [],
+          expectedStorageVersion: preview.storageVersion,
+          expectedResearchRevision: preview.expectedResearchRevision,
+          expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision ?? 0,
+        },
+        onSuccess: () => {
+          onCommitted?.();
+        },
+        emit: (notice) => setNotice(notice),
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   const missingFieldOptions = useMemo(
     () => MANUAL_FIELD_OPTIONS.filter(({ field }) => !existingFields.has(field)),
     [existingFields],
@@ -340,6 +376,24 @@ export function ListingFactSupplementPanel({
             ))}
           </div>
         </details>
+      ) : null}
+
+      {pendingResearchBridgeFacts.length > 0 && preview?.storageVersion ? (
+        <div className="mt-2.5 rounded-lg border border-indigo-200 bg-indigo-50/60 p-2.5" data-testid="research-fact-bridge">
+          <p className="text-xs font-bold text-indigo-900">研究侧已确认事实待同步</p>
+          <p className="mt-1 text-[11px] leading-5 text-indigo-800">
+            研究页已确认 {pendingResearchBridgeFacts.length} 项当前商品事实；同步只更新创作交接快照，不新增或修改事实，也不改变研究侧权威值。
+          </p>
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => void syncResearchConfirmedFacts()}
+            className="mt-2 inline-flex h-8 items-center rounded-md border border-indigo-300 bg-white px-3 text-xs font-bold text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
+            data-testid="sync-research-confirmed-facts"
+          >
+            {submitting ? "同步中…" : "同步到创作资料"}
+          </button>
+        </div>
       ) : null}
 
       <AmazonFactEnrichmentInline taskId={taskId} preview={preview} create={create} refresh={refresh} onCommitted={onCommitted} existingFields={existingFields} />

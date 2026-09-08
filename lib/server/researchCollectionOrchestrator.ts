@@ -35,6 +35,7 @@ import {
   storeBrowserEvidencePreview,
   findPendingBrowserEvidencePreview,
   browserEvidenceSubjectKey,
+  BrowserEvidenceCollectError,
 } from "@/lib/server/browserEvidenceCollect";
 import {
   resolveBrowserAcquisitionCapability,
@@ -346,6 +347,19 @@ async function handleAmazonSource(
       message: "Amazon 详情采集完成，等待人工确认",
     };
   } catch (error) {
+    if (error instanceof BrowserEvidenceCollectError) {
+      const needsUser = [
+        "browser_unavailable",
+        "page_blocked_captcha",
+        "page_blocked_login_wall",
+      ].includes(error.code);
+      return {
+        status: needsUser ? "needs_user" : "failed",
+        hasEvidence: false,
+        message: error.message,
+        error: { code: error.code, message: error.message },
+      };
+    }
     const sanitized = sanitizeErrorMessage(error);
     return {
       status: "failed",
@@ -632,11 +646,48 @@ async function handleVocSource(
     const subjectKey = reviewCollectSubjectKey(context);
     const pending = findPendingReviewCollectPreview({ subjectKey, taskId, asin });
     if (pending !== null) {
+      const pendingItems = pending.items.length;
+      const blockingPage = pending.pageResults.find((page) =>
+        page.status === "blocked_redirect" || page.status === "login_required" || page.status === "captcha_required",
+      );
+      if (pendingItems === 0 && blockingPage) {
+        if (blockingPage.status === "blocked_redirect") {
+          const message = blockingPage.note ?? "页面导航被安全白名单阻断，未判定为登录墙；请检查站点或网络后重试";
+          return {
+            status: "failed",
+            hasEvidence: false,
+            previewId: pending.previewId,
+            itemCount: 0,
+            message,
+            error: { code: "navigation_not_allowed", message },
+          };
+        }
+        const code = blockingPage.status === "captcha_required" ? "captcha_required" : "login_required";
+        const message = blockingPage.note ?? "Amazon 页面要求登录或验证，系统不会绕过，请完成后重试";
+        return {
+          status: "needs_user",
+          hasEvidence: false,
+          previewId: pending.previewId,
+          itemCount: 0,
+          message,
+          error: { code, message },
+        };
+      }
+      if (pendingItems === 0) {
+        return {
+          status: "needs_user",
+          hasEvidence: false,
+          previewId: pending.previewId,
+          itemCount: 0,
+          message: "当前页面未发现公开评论片段，可重试或粘贴导入该商品评论",
+          error: { code: "no_public_reviews", message: "当前页面未发现公开评论片段" },
+        };
+      }
       return {
         status: "awaiting_confirmation",
         hasEvidence: false,
         previewId: pending.previewId,
-        itemCount: pending.items.length,
+        itemCount: pendingItems,
         message: "买家评论已有待确认采集预览",
       };
     }
@@ -688,6 +739,42 @@ async function handleVocSource(
       taskId,
       asins: [{ asin, role: "current_candidate" }],
     });
+    const blockingPage = preview.pageResults.find((page) =>
+      page.status === "blocked_redirect" || page.status === "login_required" || page.status === "captcha_required",
+    );
+    if (preview.items.length === 0 && blockingPage) {
+      if (blockingPage.status === "blocked_redirect") {
+        const message = blockingPage.note ?? "页面导航被安全白名单阻断，未判定为登录墙；请检查站点或网络后重试";
+        return {
+          status: "failed",
+          hasEvidence: false,
+          previewId: preview.previewId,
+          itemCount: 0,
+          message,
+          error: { code: "navigation_not_allowed", message },
+        };
+      }
+      const code = blockingPage.status === "captcha_required" ? "captcha_required" : "login_required";
+      const message = blockingPage.note ?? "Amazon 页面要求登录或验证，系统不会绕过，请完成后重试";
+      return {
+        status: "needs_user",
+        hasEvidence: false,
+        previewId: preview.previewId,
+        itemCount: 0,
+        message,
+        error: { code, message },
+      };
+    }
+    if (preview.items.length === 0) {
+      return {
+        status: "needs_user",
+        hasEvidence: false,
+        previewId: preview.previewId,
+        itemCount: 0,
+        message: "当前页面未发现公开评论片段，可重试或粘贴导入该商品评论",
+        error: { code: "no_public_reviews", message: "当前页面未发现公开评论片段" },
+      };
+    }
     return {
       status: "awaiting_confirmation",
       hasEvidence: false,
@@ -698,12 +785,12 @@ async function handleVocSource(
   } catch (error) {
     if (error instanceof ReviewCollectorError) {
       // typed collector failures → 按现有分类归入安全状态
-      const needsUser = error.code === "browser_not_available";
+      const needsUser = ["browser_not_available", "login_required", "captcha_required"].includes(error.code);
       return {
         status: needsUser ? "needs_user" : "failed",
         hasEvidence: false,
-        message: needsUser ? "本机未检测到可用的系统浏览器，无法自动采集评论" : "买家评论采集失败，可稍后重试或手动导入",
-        error: { code: error.code, message: needsUser ? "本机未检测到可用的系统浏览器，无法自动采集评论" : "买家评论采集失败" },
+        message: needsUser ? (error.code === "browser_not_available" ? "本机未检测到可用的系统浏览器，无法自动采集评论" : "Amazon 页面要求登录或验证，系统不会绕过，请完成后重试") : "买家评论采集失败，可稍后重试或手动导入",
+        error: { code: error.code, message: needsUser ? (error.code === "browser_not_available" ? "本机未检测到可用的系统浏览器，无法自动采集评论" : "Amazon 页面要求登录或验证，系统不会绕过，请完成后重试") : "买家评论采集失败" },
       };
     }
     const sanitized = sanitizeErrorMessage(error);

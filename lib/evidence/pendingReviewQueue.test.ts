@@ -101,7 +101,7 @@ describe("pendingReviewQueue", () => {
       }
     });
 
-    it("缺省 itemCount 时正确回退至规范默认数字（keywordCompetitor=5, voc=1, sourcing1688=1）", () => {
+    it("缺省 itemCount 保留兼容默认值，但明确的 0 不进入待确认队列", () => {
       const sources: Partial<ResearchOrchestratorSources> = {
         keywordCompetitor: {
           status: "awaiting_confirmation",
@@ -118,11 +118,9 @@ describe("pendingReviewQueue", () => {
       };
 
       const result = derivePendingReviewQueue(sources as ResearchOrchestratorSources);
-      expect(result).toHaveLength(3);
+      expect(result).toHaveLength(1);
 
-      expect(result[0].countText).toBe("5 项采集结果等待确认");
-      expect(result[1].countText).toBe("1 条评论等待确认");
-      expect(result[2].countText).toBe("1 项候选货源等待确认");
+      expect(result[0].countText).toBe("1 条评论等待确认");
     });
 
     it("ready, failed, running, needs_user 绝对不进入待确认队列", () => {
@@ -269,6 +267,17 @@ describe("pendingReviewQueue", () => {
       const result = deriveNeedsUserQueue(sources as ResearchOrchestratorSources);
       expect(result).toHaveLength(1);
       expect(result[0].reasonText).toBe("需要登录或选择采集方式");
+      expect(result[0].actionLabel).toBe("前往处理");
+    });
+
+    it("白名单外导航阻断不会被误标为前往登录", () => {
+      const result = deriveNeedsUserQueue({
+        voc: {
+          status: "needs_user",
+          message: "页面导航被安全白名单阻断，未判定为登录墙；请检查站点或网络后重试",
+        },
+      } as ResearchOrchestratorSources);
+      expect(result).toHaveLength(1);
       expect(result[0].actionLabel).toBe("前往处理");
     });
 

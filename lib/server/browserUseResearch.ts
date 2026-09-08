@@ -1,6 +1,7 @@
 import "server-only";
 import { pickBestKeyword } from "@/lib/research/researchInputQuality";
 import type { AccessContext } from "@/lib/server/accessPassword";
+import { AMAZON_RETAIL_HOSTS } from "@/tools/collectors/amazon/page-diagnostics";
 
 /**
  * 轮 9：Browser Use 自动采集研究输入（竞品 / 关键词）——正式链路合同。
@@ -376,13 +377,7 @@ export function selectReliableSearchKeyword(
   return best ? best.keyword : null;
 }
 /** 系统支持的 Amazon 零售站点（与 marketplaceToAmazonTld 一致；不扩展新 marketplace）。 */
-const AMAZON_RETAIL_HOSTS = new Set([
-  "amazon.com",
-  "amazon.co.uk",
-  "amazon.de",
-  "amazon.co.jp",
-  "amazon.ca",
-]);
+const AMAZON_RETAIL_HOST_SET = new Set(AMAZON_RETAIL_HOSTS);
 
 export function isAllowedCollectorSourceUrl(url: string): boolean {
   if (typeof url !== "string" || !url.trim() || /\s/.test(url)) return false;
@@ -396,7 +391,7 @@ export function isAllowedCollectorSourceUrl(url: string): boolean {
   if (parsed.username || parsed.password) return false;
   const host = parsed.hostname.toLowerCase();
   const bare = host.startsWith("www.") ? host.slice(4) : host;
-  return AMAZON_RETAIL_HOSTS.has(bare);
+  return AMAZON_RETAIL_HOST_SET.has(bare as (typeof AMAZON_RETAIL_HOSTS)[number]);
 }
 /** marketplace 来源标识 → Amazon 站点 tld（US/Amazon US → com；其余按 us 处理 fail-closed 交给调用方）。 */
 export function marketplaceToAmazonTld(marketplace: string): string {

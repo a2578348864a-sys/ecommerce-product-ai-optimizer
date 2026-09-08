@@ -172,6 +172,15 @@ describe("Amazon page fail-closed diagnostics", () => {
     expect(JSON.stringify(diagnostic)).not.toContain("closet+organizer");
   });
 
+  it("treats an allowed Amazon locale redirect as a retail page, not an unexpected redirect", () => {
+    const diagnostic = buildAmazonPageDiagnostic(fixtureInput({
+      finalUrl: "https://www.amazon.co.jp/dp/B00063QBL8",
+      redirectUrls: ["https://www.amazon.co.jp/dp/B00063QBL8"],
+    }));
+    expect(diagnostic.classification).not.toBe("unexpected_redirect");
+    expect(diagnostic.finalUrl?.origin).toBe("https://www.amazon.co.jp");
+  });
+
   it("redacts secrets and personal identifiers from bounded diagnostic text", () => {
     const unsafe = [
       "Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456",
