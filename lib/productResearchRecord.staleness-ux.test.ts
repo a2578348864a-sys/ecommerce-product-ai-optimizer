@@ -309,9 +309,9 @@ describe("Staleness UX Closure — 展示层", () => {
   it("STALE_DISABLES_CREATIVE_CTA + STALE_CTA_HAS_REASON：UI 源级断言", () => {
     const detailSource = readFileSync(resolve(process.cwd(), "components/TaskRecordDetail.tsx"), "utf8");
     const gateSource = readFileSync(resolve(process.cwd(), "components/studio/TaskStudioPreparation.tsx"), "utf8");
-    // stale 时 CTA 禁用 + 原因
-    expect(detailSource).toContain("researchStale");
-    expect(detailSource).toContain("!studioLegacyUnsupported && !researchStale");
+    // stale 时 CTA 禁用（由 lifecycleSnapshot.stale / effectiveResearchStale 统一收口）+ 提示原因
+    expect(detailSource).toContain("effectiveResearchStale");
+    expect(detailSource).toContain("!studioLegacyUnsupported && !effectiveResearchStale");
     expect(detailSource).toContain("研究资料已变化，请先重新确认研究。");
     expect(detailSource).toContain("确认研究结论仍然有效");
     expect(detailSource).toContain("new-evidence-since-completion");
