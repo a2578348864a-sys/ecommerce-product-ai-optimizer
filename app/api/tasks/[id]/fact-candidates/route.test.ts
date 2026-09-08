@@ -9,6 +9,8 @@ import { createHash } from "node:crypto";
 import { NextRequest } from "next/server";
 import { createTrustedSandboxTask, getSandboxTask, updateSandboxTaskResultJson } from "@/lib/server/demoSandbox";
 import { GET, POST } from "./route";
+import { buildDemoBrowserCollectPreview } from "@/lib/server/demoAcquisitionSamples";
+import { resetBrowserEvidencePreviewStoreForTests, storeBrowserEvidencePreview } from "@/lib/server/browserEvidenceCollect";
 
 vi.hoisted(() => {
   const { join } = require("node:path");
@@ -83,9 +85,11 @@ beforeEach(async () => {
   authState.context = { mode: "demo", demoAccessId: DEMO };
   const task = await createTrustedSandboxTask(DEMO, {
     title: "THERMOS Demo",
+    productUrl: "https://www.amazon.com/dp/B0SAMPLE01",
     resultJson: JSON.stringify(thermosResultJson()),
   });
   taskId = task.id;
+  resetBrowserEvidencePreviewStoreForTests();
 });
 
 afterEach(() => {
@@ -104,6 +108,59 @@ describe("GET /fact-candidates", () => {
     expect(fields).toContain("category");
     expect(fields).not.toContain("voc_theme");
     expect(body.data.confirmed).toEqual([]);
+  });
+
+  it("研究编排生成的 Amazon Pending Preview 会进入待确认候选，并保留 Amazon 来源引用", async () => {
+    const capturedAt = new Date().toISOString();
+    storeBrowserEvidencePreview({
+      evidenceId: "bev_preview_fact_bridge_001",
+      preview: buildDemoBrowserCollectPreview("B0SAMPLE01"),
+      capturedAt,
+      expiresAt: Date.now() + 15 * 60 * 1000,
+      subjectKey: `visitor:${DEMO}`,
+      taskId,
+      asin: "B0SAMPLE01",
+    });
+    const response = await getJson();
+    const body = await response.json();
+    expect(body.ok).toBe(true);
+    const title = body.data.candidates.find((c: { field: string }) => c.field === "brand");
+    expect(title).toBeTruthy();
+    expect(title.sourceKind).toBe("seller_sprite_product_facts");
+    const amazonCandidate = body.data.candidates.find((c: { alternateSources?: Array<{ sourceKind: string; sourceRef: string }> }) =>
+      c.alternateSources?.some((source) => source.sourceKind === "amazon_browser_evidence"),
+    );
+    expect(amazonCandidate).toBeTruthy();
+    expect(amazonCandidate.alternateSources[0].sourceRef).toContain("browserEvidence.snapshots[0].fields");
+  });
+
+  it("确认 Pending Amazon 预览候选后移入已确认，并保留 Amazon provenance", async () => {
+    // 使用只含任务绑定 URL 的最小 resultJson，确保 price 候选唯一来自 Amazon Preview。
+    await updateSandboxTaskResultJson(DEMO, taskId, JSON.stringify({}));
+    storeBrowserEvidencePreview({
+      evidenceId: "bev_preview_fact_bridge_confirm_001",
+      preview: buildDemoBrowserCollectPreview("B0SAMPLE01"),
+      capturedAt: new Date().toISOString(),
+      expiresAt: Date.now() + 15 * 60 * 1000,
+      subjectKey: `visitor:${DEMO}`,
+      taskId,
+      asin: "B0SAMPLE01",
+    });
+
+    const get1 = await (await getJson()).json();
+    const price = get1.data.candidates.find((c: { field: string }) => c.field === "price");
+    expect(price?.sourceKind).toBe("amazon_browser_evidence");
+    const post = await postJson({
+      selections: [{ candidateId: price.candidateId, confirmed: true, value: price.value }],
+      expectedStorageVersion: get1.data.storageVersion,
+    });
+    expect(post.status).toBe(200);
+
+    const get2 = await (await getJson()).json();
+    expect(get2.data.candidates.some((c: { candidateId: string }) => c.candidateId === price.candidateId)).toBe(false);
+    const confirmed = get2.data.confirmed.find((c: { candidateId: string }) => c.candidateId === price.candidateId);
+    expect(confirmed?.sourceKind).toBe("amazon_browser_evidence");
+    expect(confirmed?.sourceRef).toContain("browserEvidence.snapshots[0].fields.price");
   });
 });
 

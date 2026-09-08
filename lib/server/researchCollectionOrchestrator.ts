@@ -61,6 +61,7 @@ import {
   marketplaceToAmazonTld,
   selectReliableSearchKeyword,
   storeBrowserUsePreview,
+  browserUseSubjectKey,
   type BrowserUseKeywordPreviewItem,
 } from "@/lib/server/browserUseResearch";
 import { runSellerSpriteCollection } from "@/tools/collectors/browser-use/sellerSpriteCollector";
@@ -396,8 +397,9 @@ async function handleKeywordCompetitorSource(
     }
 
     // 3. 检查是否有待确认的 Pending 预览（无副作用只读检测）
-    const pendingKw = findPendingBrowserUsePreview(seed.asin, "keyword");
-    const pendingComp = findPendingBrowserUsePreview(seed.asin, "competitor");
+    const previewBinding = { subjectKey: browserUseSubjectKey(context), taskId };
+    const pendingKw = findPendingBrowserUsePreview(seed.asin, "keyword", previewBinding);
+    const pendingComp = findPendingBrowserUsePreview(seed.asin, "competitor", previewBinding);
     const kwNeedsConfirm = !hasKw && pendingKw !== null;
     const compNeedsConfirm = !hasComp && pendingComp !== null;
 
@@ -568,8 +570,8 @@ async function handleKeywordCompetitorSource(
       compRun.observation,
       kwRun.preview.collector.version,
     );
-    const competitorPreviewId = storeBrowserUsePreview(competitorPreview);
-    const keywordPreviewId = storeBrowserUsePreview(kwRun.preview);
+    const competitorPreviewId = storeBrowserUsePreview(competitorPreview, previewBinding);
+    const keywordPreviewId = storeBrowserUsePreview(kwRun.preview, previewBinding);
     const kwCount = Array.isArray(kwRun.preview.results) ? kwRun.preview.results.length : 0;
     const compCount = Array.isArray(competitorPreview.results) ? competitorPreview.results.length : 0;
 

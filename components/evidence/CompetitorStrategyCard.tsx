@@ -51,6 +51,7 @@ export function CompetitorStrategyCard({
   onSavePending,
   onCancelPending,
   pendingPanel,
+  showCollectTrigger = true,
 }: {
   productName?: string | null;
   entries: CompetitorEntryView[];
@@ -63,6 +64,8 @@ export function CompetitorStrategyCard({
   onSavePending?: () => void;
   onCancelPending?: () => void;
   pendingPanel?: React.ReactNode;
+  /** 统一由研究资料编排入口触发时隐藏局部采集按钮。 */
+  showCollectTrigger?: boolean;
 }) {
   const classified = useMemo(() => entries.map((e) => ({
     ...e,
@@ -94,9 +97,11 @@ export function CompetitorStrategyCard({
             直接竞品 {direct} · 相邻商品 {adjacent} · 待排除 {irrelevant}
           </p>
         </div>
-        <button type="button" data-testid="cp-collect" onClick={onCollect} disabled={busy} className="inline-flex h-8 shrink-0 items-center rounded-lg bg-teal-600 px-3 text-xs font-semibold text-white hover:bg-teal-700 disabled:opacity-50">
-          {busy ? "正在采集…" : "采集关键词+竞品"}
-        </button>
+        {showCollectTrigger ? (
+          <button type="button" data-testid="cp-collect" onClick={onCollect} disabled={busy} className="inline-flex h-8 shrink-0 items-center rounded-lg bg-teal-600 px-3 text-xs font-semibold text-white hover:bg-teal-700 disabled:opacity-50">
+            {busy ? "正在采集…" : "采集关键词+竞品"}
+          </button>
+        ) : null}
       </div>
 
       <ul className="mt-3 space-y-2 text-sm" data-testid="cp-list">
@@ -115,7 +120,7 @@ export function CompetitorStrategyCard({
               已发现待确认候选竞品，请先核对并确认保存。
             </li>
           ) : (
-            <li className="text-xs text-slate-400">尚未采集竞品。点击「采集关键词+竞品」开始。</li>
+            <li className="text-xs text-slate-400">尚未采集竞品。请使用上方「补齐研究资料」统一采集。</li>
           )
         ) : null}
       </ul>

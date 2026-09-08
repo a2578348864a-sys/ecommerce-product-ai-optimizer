@@ -17,6 +17,7 @@ import {
   mergeConfirmedIntoOverview,
   natureForField,
   compactOverviewItems,
+  researchLifecyclePhaseLabel,
   type ResearchMaterialRow,
 } from "./EvidenceWorkbench";
 import { buildKeywordBriefDraft } from "./keywordBriefDraft";
@@ -164,6 +165,24 @@ describe("EvidenceWorkbench extractors", () => {
     expect(natureForField("rating")).toBe("snapshot");
     expect(natureForField("estimatedMonthlySales")).toBe("estimate");
     expect(natureForField("brand")).toBe("unknown");
+  });
+});
+
+describe("EvidenceWorkbench 研究生命周期只读桥接", () => {
+  it("只把上层快照 phase 翻译为展示标签，不在 workbench 内重算生命周期", () => {
+    expect(researchLifecyclePhaseLabel("awaiting_confirmation")).toBe("等待确认事实");
+    expect(researchLifecyclePhaseLabel("completed")).toBe("研究已完成");
+    expect(wbSource).toContain("lifecycleSnapshot?: ResearchLifecycleSnapshot | null");
+    expect(wbSource).toContain("lifecycleSnapshot?.nextAction || decision?.nextAction");
+    expect(wbSource).toContain("lifecycleSnapshot?.stale");
+    expect(wbSource).toContain("lifecycleSnapshot.blockers");
+  });
+
+  it("生命周期桥接不迁移资料行、事实候选或来源细节", () => {
+    const snapshotSection = wbSource.slice(wbSource.indexOf("lifecycleSnapshot"), wbSource.indexOf("lifecycleSnapshot") + 3000);
+    expect(snapshotSection).not.toContain("materialRows");
+    expect(snapshotSection).not.toContain("FactCandidateReview");
+    expect(snapshotSection).not.toContain("orchestrator");
   });
 });
 

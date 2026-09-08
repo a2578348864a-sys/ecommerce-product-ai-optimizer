@@ -29,6 +29,7 @@ import {
   restoreBrowserUsePreviewClaim,
   takeBrowserUsePreview,
   getPendingCompetitorPreviewDto,
+  browserUseSubjectKey,
   type BrowserUsePreviewClaim,
   type PendingCompetitorPreviewDto,
 } from "@/lib/server/browserUseResearch";
@@ -144,7 +145,9 @@ export async function GET(
     if (!seedAsin) {
       seedAsin = await readBrowserEvidenceTaskAsin(resolved.context, id);
     }
-    const pendingPreview = seedAsin ? getPendingCompetitorPreviewDto(seedAsin) : null;
+    const pendingPreview = seedAsin
+      ? getPendingCompetitorPreviewDto(seedAsin, { subjectKey: browserUseSubjectKey(resolved.context), taskId: id })
+      : null;
     return jsonResponse({
       ok: true,
       data: {
@@ -218,9 +221,10 @@ export async function POST(
           compRun.observation,
           kwRun.preview.collector.version,
         );
-        const previewId = storeBrowserUsePreview(preview);
+        const previewBinding = { subjectKey: browserUseSubjectKey(resolved.context), taskId: id };
+        const previewId = storeBrowserUsePreview(preview, previewBinding);
         // 轮 10 合并：同一次采集的关键词预览一并暂存，关键词证据区可直接消费（省一次浏览器采集）。
-        const keywordPreviewId = storeBrowserUsePreview(kwRun.preview);
+        const keywordPreviewId = storeBrowserUsePreview(kwRun.preview, previewBinding);
         return jsonResponse({ ok: true, data: { kind: "competitor", preview, previewId, keywordPreviewId, keywordCount: kwRun.preview.results.length } });
       }
       // save_browser_use
@@ -232,7 +236,8 @@ export async function POST(
       }
       let claim: BrowserUsePreviewClaim | null = null;
       try {
-        claim = claimBrowserUsePreview(previewId);
+        const previewBinding = { subjectKey: browserUseSubjectKey(resolved.context), taskId: id };
+        claim = claimBrowserUsePreview(previewId, previewBinding);
         if (!claim) return jsonResponse({ ok: false, error: { code: "preview_not_found", message: "预览不存在或已过期，请重新采集。" } }, 400);
         const preview = claim.preview;
         if (preview.kind !== "competitor") return jsonResponse({ ok: false, error: { code: "preview_kind_mismatch", message: "预览类型与保存目标不一致。" } }, 400);
@@ -309,7 +314,7 @@ export async function POST(
 
         // 仅在确证零条写入且全部因 CAS 版本冲突导致失败时，restore claim 允许刷新重试
         if (claim && savedAsins.length === 0 && skipped.length > 0 && skipped.every((s) => s.code === "task_result_conflict")) {
-          restoreBrowserUsePreviewClaim(previewId, claim);
+          restoreBrowserUsePreviewClaim(previewId, claim, { subjectKey: browserUseSubjectKey(resolved.context), taskId: id });
         }
 
         const evidence = await getCompetitorEvidence(resolved.context, id);
@@ -317,7 +322,7 @@ export async function POST(
         return jsonResponse({ ok: true, data: { evidence, storageVersion: toStorageVersion(finalSnapshot), saved: savedAsins, skipped } });
       } catch (error) {
         if (claim && previewId && error instanceof CompetitorEvidenceError && (error.code === "task_result_conflict" || error.status === 409)) {
-          restoreBrowserUsePreviewClaim(previewId, claim);
+          restoreBrowserUsePreviewClaim(previewId, claim, { subjectKey: browserUseSubjectKey(resolved.context), taskId: id });
         }
         throw error;
       }

@@ -16,6 +16,8 @@ import {
   type BrowserUseResearchPreviewV1,
 } from "@/lib/server/browserUseResearch";
 
+const BROWSER_USE_TEST_BINDING = { subjectKey: "owner:v1", taskId: "task-1" };
+
 /* ── Lightweight FakeDOM for Node Vitest Environment ── */
 
 type Listener = (event: FakeEvent) => void;
@@ -522,27 +524,27 @@ describe("Evidence Card Flow 闭环回归测试（10大关键断言）", () => {
   /* ── 4 & 5 & 6. CAS conflict claim restoration and single-claim semantics ── */
   it("断言 4, 5, 6: 原子 claim、防二次消费、CAS冲突恢复后重试成功", async () => {
     const previewData = samplePreview();
-    const previewId = storeBrowserUsePreview(previewData);
+    const previewId = storeBrowserUsePreview(previewData, BROWSER_USE_TEST_BINDING);
 
     // 断言 6: 并发 claim 只有 1 个成功
-    const [c1, c2] = [claimBrowserUsePreview(previewId), claimBrowserUsePreview(previewId)];
+    const [c1, c2] = [claimBrowserUsePreview(previewId, BROWSER_USE_TEST_BINDING), claimBrowserUsePreview(previewId, BROWSER_USE_TEST_BINDING)];
     expect(c1).not.toBeNull();
     expect(c2).toBeNull();
 
     // 断言 5: 已消费 preview 不得再次 claim
-    expect(takeBrowserUsePreview(previewId)).toBeNull();
+    expect(takeBrowserUsePreview(previewId, BROWSER_USE_TEST_BINDING)).toBeNull();
 
     // 断言 4: CAS 冲突未落库时恢复 claim
-    const restored = restoreBrowserUsePreviewClaim(previewId, c1!);
+    const restored = restoreBrowserUsePreviewClaim(previewId, c1!, BROWSER_USE_TEST_BINDING);
     expect(restored).toBe(true);
 
     // 恢复后可重新 claim 并重试成功
-    const retryClaim = claimBrowserUsePreview(previewId);
+    const retryClaim = claimBrowserUsePreview(previewId, BROWSER_USE_TEST_BINDING);
     expect(retryClaim).not.toBeNull();
     expect(retryClaim?.preview.results).toEqual(previewData.results);
 
     // 再次 claim 变空
-    expect(claimBrowserUsePreview(previewId)).toBeNull();
+    expect(claimBrowserUsePreview(previewId, BROWSER_USE_TEST_BINDING)).toBeNull();
   });
 
   /* ── 7. EvidenceWorkbench only 1 「采集关键词+竞品」 button ── */

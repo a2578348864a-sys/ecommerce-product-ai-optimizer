@@ -443,6 +443,7 @@ export function ResearchCollectionOrchestratorCard({
   const isOrchestratingRef = useRef(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hasNewPreviewAlert, setHasNewPreviewAlert] = useState(Boolean(initialData?.hasNewPreview));
+  const lastFeedbackFingerprintRef = useRef<string | null>(null);
   const [customSummaryText, setCustomSummaryText] = useState<string | undefined>(
     initialData?.summary,
   );
@@ -636,8 +637,35 @@ export function ResearchCollectionOrchestratorCard({
         setCustomSummaryText(summaryStr);
       }
 
+      const sourceContainer =
+        d.sources && typeof d.sources === "object" && !Array.isArray(d.sources)
+          ? d.sources as Record<string, unknown>
+          : Array.isArray(d.items)
+            ? Object.fromEntries(
+                d.items
+                  .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null && "key" in item)
+                  .map((item) => [String(item.key), item]),
+              )
+            : {};
+      const fingerprint = ORDERED_KEYS.map((key) => {
+        const raw = sourceContainer[key] ??
+          (key === "keywords_competitors" ? sourceContainer.keywordCompetitor ?? sourceContainer.keywords :
+            key === "sourcing_1688" ? sourceContainer.sourcing1688 ?? sourceContainer.sourcing : undefined);
+        if (!raw || typeof raw !== "object") return `${key}:missing`;
+        const value = raw as Record<string, unknown>;
+        return `${key}:${String(value.state ?? value.status ?? "")}:${String(value.previewId ?? "")}:${String(value.capturedAt ?? value.updatedAt ?? "")}:${String(value.ready ?? "")}`;
+      }).join("|");
+      const previousFingerprint = lastFeedbackFingerprintRef.current;
+      lastFeedbackFingerprintRef.current = fingerprint;
+      // 同一个 Pending Preview 的重复 inspect 只是观察，不应再次制造父级 dataRevision。
+      // 首次发现 Preview 仍保留原有通知；后续任何来源状态实质变化（包括 pending→ready）才通知。
       if (hasPreview) {
         setHasNewPreviewAlert(true);
+      }
+      if (
+        (hasPreview && previousFingerprint === null) ||
+        (previousFingerprint !== null && previousFingerprint !== fingerprint)
+      ) {
         onDataChanged?.();
       }
     },

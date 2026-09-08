@@ -136,10 +136,16 @@ export function FactCandidateReview({
   taskId,
   storageVersion,
   onChanged,
+  refreshToken = 0,
+  showRecoveryTrigger = true,
 }: {
   taskId: string;
   storageVersion: { resultJsonHash: string; updatedAt: string } | null;
   onChanged: () => void;
+  /** 研究资料编排完成后递增，重新读取服务端候选与确认事实。 */
+  refreshToken?: number;
+  /** 统一入口启用时隐藏历史的局部补齐按钮。 */
+  showRecoveryTrigger?: boolean;
 }) {
   const [candidates, setCandidates] = useState<FactCandidateView[] | null>(null);
   const [confirmed, setConfirmed] = useState<ConfirmedFactView[] | null>(null);
@@ -149,14 +155,12 @@ export function FactCandidateReview({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [factStorageVersion, setFactStorageVersion] = useState(storageVersion);
   // V3 UX Closure Manual Fact：手动补充商品事实（SYSTEM CANNOT EXTRACT → 用户手动补充）
   const [manualOpen, setManualOpen] = useState(false);
   const [manualField, setManualField] = useState(MANUAL_FACT_FIELDS[0]?.field ?? "");
   const [manualValue, setManualValue] = useState("");
   const [manualNote, setManualNote] = useState("");
-  // V3 Final PHASE 1：✨ 智能补齐商品资料（采集 Amazon 商品规格 → 生成候选 → 人工确认）
-  const [recovering, setRecovering] = useState(false);
-
   const openAmazonSourceEvidence = useCallback(() => {
     const target = document.getElementById("amazon-source-evidence");
     if (!(target instanceof HTMLDetailsElement)) return;
@@ -175,7 +179,7 @@ export function FactCandidateReview({
         cache: "no-store",
       });
       const json = await res.json() as
-        | { ok: true; data: { candidates: FactCandidateView[]; confirmed: ConfirmedFactView[] } }
+        | { ok: true; data: { candidates: FactCandidateView[]; confirmed: ConfirmedFactView[]; storageVersion: { resultJsonHash: string; updatedAt: string } } }
         | { ok: false; error?: { message?: string } };
       if (!res.ok || !json.ok) {
         setError((json as { error?: { message?: string } }).error?.message ?? "无法读取待确认商品事实。");
@@ -183,6 +187,7 @@ export function FactCandidateReview({
       }
       setCandidates(json.data.candidates);
       setConfirmed(json.data.confirmed);
+      setFactStorageVersion(json.data.storageVersion);
       // V3 Final HWF：Selection Preservation——候选已不存在的勾选项清理（其余保留用户意图）
       const alive = new Set<string>();
       for (const c of json.data.candidates) alive.add(c.candidateId);
@@ -197,7 +202,7 @@ export function FactCandidateReview({
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, refreshToken]);
 
   useEffect(() => {
     function checkHash() {
@@ -261,7 +266,7 @@ export function FactCandidateReview({
   }
 
   async function confirmSelected() {
-    if (selected.size === 0 || !storageVersion) return;
+    if (selected.size === 0 || !factStorageVersion) return;
     setSaving(true);
     setError("");
     setNotice("");
@@ -280,7 +285,7 @@ export function FactCandidateReview({
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/fact-candidates`, {
         method: "POST",
         headers: buildFetchHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ selections, expectedStorageVersion: storageVersion }),
+        body: JSON.stringify({ selections, expectedStorageVersion: factStorageVersion }),
         signal: AbortSignal.timeout(60_000),
       });
       const json = await res.json() as ConfirmResponse;
@@ -312,7 +317,7 @@ export function FactCandidateReview({
   }
 
   async function addManualFact() {
-    if (!storageVersion) return;
+    if (!factStorageVersion) return;
     const field = manualField.trim();
     const value = manualValue.trim();
     if (!field || !value) {
@@ -332,7 +337,7 @@ export function FactCandidateReview({
             confirmed: true,
             value,
           }],
-          expectedStorageVersion: storageVersion,
+          expectedStorageVersion: factStorageVersion,
         }),
         signal: AbortSignal.timeout(60_000),
       });
@@ -364,72 +369,6 @@ export function FactCandidateReview({
       setError("添加失败，请重试。");
     } finally {
       setSaving(false);
-    }
-  }
-
-  /** V3 Final PHASE 1：✨ 智能补齐商品资料——采集 Amazon 商品规格 → 生成候选 → 用户 Review/Confirm */
-  async function runRecovery() {
-    if (recovering || !storageVersion) return;
-    setRecovering(true);
-    setError("");
-    setNotice("");
-    try {
-      // 1) 采集（同一受控会话：6 字段 + Product Information 规格）
-      const collectRes = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/browser-evidence`, {
-        method: "POST",
-        headers: buildFetchHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ action: "collect" }),
-        signal: AbortSignal.timeout(120_000),
-      });
-      const collectJson = await collectRes.json() as
-        | { ok: true; data: { evidenceId: string; demo?: boolean } }
-        | { ok: false; error?: { code?: string; message?: string } };
-      if (!collectRes.ok || !collectJson.ok) {
-        const error = (collectJson as { error?: { code?: string; message?: string } }).error ?? {};
-        if (error.code === "task_asin_unbound") {
-          setError("该商品缺少 Amazon 商品来源（ASIN），无法自动补齐。可先补充来源，或使用下方「手动补充商品事实」。");
-          return;
-        }
-        if (error.code === "local_environment_required") {
-          setError("商品规格自动补齐仅在本机研究环境可用（公网为演示回放）。可先使用下方「手动补充商品事实」。");
-          return;
-        }
-        setError(error.message ?? "智能补齐失败，请稍后重试。");
-        return;
-      }
-      // 2) 保存快照（含 Product Information）→ 候选随之出现（服务端确定性提取）
-      const saveRes = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/browser-evidence`, {
-        method: "POST",
-        headers: buildFetchHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({
-          action: "save",
-          evidenceId: collectJson.data.evidenceId,
-          expectedStorageVersion: storageVersion,
-        }),
-        signal: AbortSignal.timeout(60_000),
-      });
-      const saveJson = await saveRes.json() as { ok: boolean; error?: { code?: string; message?: string } };
-      if (!saveRes.ok || !saveJson.ok) {
-        const error = saveJson.error ?? {};
-        if (error.code === "storage_version_required" || error.code === "task_result_conflict") {
-          setError("内容刚刚发生变化，请刷新后重试。");
-          onChanged();
-          return;
-        }
-        setError(error.message ?? "补齐结果保存失败，请稍后重试。");
-        return;
-      }
-      await load();
-      onChanged();
-      if (collectJson.data.demo) {
-        setNotice("已读取演示采集快照（非实时访问 Amazon）；请在下方核对后确认。");
-      } else {
-        setNotice("已补齐商品规格资料，请在下方核对后确认。");
-      }
-    } catch {
-      setError("智能补齐失败，请检查网络后重试。");
-    } finally {
-      setRecovering(false);
     }
   }
 
@@ -498,16 +437,18 @@ export function FactCandidateReview({
             系统从已有研究证据提取以下候选；勾选并确认后即成为本任务已确认事实。
           </p>
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              disabled={recovering || saving}
-              onClick={() => void runRecovery()}
-              className="inline-flex items-center gap-1 rounded-lg border border-sky-300 bg-sky-50 px-2.5 py-1 text-xs sm:text-sm font-semibold text-sky-700 hover:bg-sky-100 disabled:opacity-50 transition-colors"
-              data-testid="smart-recovery-trigger"
-            >
-              {recovering ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
-              {recovering ? "正在补齐…" : "✨ 智能补齐商品资料"}
-            </button>
+            {showRecoveryTrigger ? (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => setNotice("请使用上方「补齐研究资料」统一采集 Amazon 商品资料。")}
+                className="inline-flex items-center gap-1 rounded-lg border border-sky-300 bg-sky-50 px-2.5 py-1 text-xs sm:text-sm font-semibold text-sky-700 hover:bg-sky-100 disabled:opacity-50 transition-colors"
+                data-testid="smart-recovery-trigger"
+              >
+                <Sparkles className="size-3.5" />
+                ✨ 智能补齐商品资料
+              </button>
+            ) : null}
             <button
               type="button"
               disabled={saving || selected.size === 0}
@@ -521,7 +462,7 @@ export function FactCandidateReview({
         </div>
       <p className="mt-1 text-xs text-slate-500">
         系统从已有研究证据提取以下候选；勾选并「确认」后即成为本任务已确认事实（可修改值，来源保持不变）。
-        「✨ 智能补齐商品资料」会读取该商品在 Amazon 的规格资料（材质/尺寸/重量/清洁等），生成候选后仍由你确认。
+        Amazon 商品资料由上方「补齐研究资料」统一采集；候选只在服务端读取确定性来源后生成，仍需人工确认。
         AI 摘要、评论与供应商声称不会自动成为候选。
       </p>
       {error && <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">{error}</p>}

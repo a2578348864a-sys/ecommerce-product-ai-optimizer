@@ -703,9 +703,27 @@ describe("UI 状态（第20章 66-75）", () => {
   });
 
   it("草稿正文为 Listing 文本本体（标题/五点描述/商品描述/关键词），图片创作建议独立展示", () => {
-    for (const label of ["商品标题", "五点描述", "商品描述", "搜索关键词"]) {
-      expect(uiSource).toContain(label);
-    }
+    // 保护核心 Listing 4 大交付成果：Title / Bullet Points / Product Description / Keywords
+    expect(uiSource).toContain("Title");
+    expect(uiSource).toContain("Bullet Points");
+    expect(uiSource).toContain("Product Description");
+    expect(uiSource).toContain("Keywords");
+    // 保护当前卡片标题标识与结构
+    expect(uiSource).toContain("Listing标题 Title");
+    expect(uiSource).toContain("五点描述 Bullet Points");
+    expect(uiSource).toContain("商品描述 Product Description");
+    expect(uiSource).toContain("搜索关键词 Keywords");
+    // 确保 4 大核心成果顺序严格符合 Slimdown 契约（Title → Bullets → Description → Keywords → Quality Policy）
+    const titleIdx = uiSource.indexOf("Listing标题 Title");
+    const bulletsIdx = uiSource.indexOf("五点描述 Bullet Points");
+    const descIdx = uiSource.indexOf("商品描述 Product Description");
+    const kwIdx = uiSource.indexOf("搜索关键词 Keywords");
+    const qualityIdx = uiSource.indexOf("data-testid=\"listing-quality-report\"");
+    expect(titleIdx).toBeGreaterThan(0);
+    expect(bulletsIdx).toBeGreaterThan(titleIdx);
+    expect(descIdx).toBeGreaterThan(bulletsIdx);
+    expect(kwIdx).toBeGreaterThan(descIdx);
+    expect(qualityIdx).toBeGreaterThan(kwIdx);
     // 图片卖点方向不再是 Listing 本体第 5 项；独立「图片创作建议」区域
     expect(uiSource).toContain("图片创作建议");
     expect(uiSource).not.toContain("图片卖点方向");

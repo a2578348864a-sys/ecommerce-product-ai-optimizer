@@ -1032,13 +1032,15 @@ export function ListingHandoffSection({
       facts: draft.usedFactTrace ?? [],
     });
     /** v2.2.14：复制按钮（独立"已复制 ✓"/"复制失败"反馈，约 1.8 秒恢复） */
-    const copyButton = (key: string, label: string, text: string, isPrimary = false) => {
+    const copyButton = (key: string, label: string, text: string, isPrimary = false, size: "sm" | "md" = "md") => {
       const showCopied = copiedButton === key;
       const showFailed = copyFailedButton === key;
       const btnLabel = showCopied ? "已复制 ✓" : showFailed ? "复制失败" : label;
       const cls = isPrimary
-        ? "inline-flex h-8 items-center justify-center rounded-lg bg-teal-600 px-2.5 text-xs font-bold text-white hover:bg-teal-700"
-        : `inline-flex h-8 items-center justify-center rounded-lg border px-2.5 text-xs font-semibold ${showFailed ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`;
+        ? "inline-flex h-8 items-center justify-center rounded-lg bg-teal-600 px-3 text-xs font-bold text-white shadow-xs hover:bg-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+        : size === "sm"
+          ? `inline-flex h-7 items-center justify-center rounded-lg border px-2 text-xs font-semibold ${showFailed ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`
+          : `inline-flex h-8 items-center justify-center rounded-lg border px-2.5 text-xs font-semibold ${showFailed ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`;
       return (
         <button
           type="button"
@@ -1052,118 +1054,182 @@ export function ListingHandoffSection({
     };
     return (
       <div className="mt-3 space-y-4 break-words text-sm text-slate-700">
-        {/* 复制工具条 */}
-        <div className="flex flex-wrap gap-2">
-          {copyButton("title", "复制标题", draft.titles.join("\n"))}
-          {copyButton("bullets", "复制五点描述", draft.bullets.map((b, i) => `${i + 1}. ${b}`).join("\n"))}
-          {copyButton("description", "复制商品描述", draft.description ?? "")}
-          {copyButton("keywords", "复制关键词", draft.keywords.join(", "))}
-          {copyButton("full", "复制完整 Listing", buildFullListingText(), true)}
+        {/* 顶部快捷交付工具条 */}
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-2.5">
+          <span className="text-xs font-bold text-slate-700">Listing 交付结果</span>
+          <div className="flex flex-wrap gap-2">
+            {copyButton("full", "复制完整 Listing", buildFullListingText(), true)}
+            {copyButton("title", "复制标题", draft.titles.join("\n"))}
+            {copyButton("bullets", "复制五点描述", draft.bullets.map((b, i) => `${i + 1}. ${b}`).join("\n"))}
+            {copyButton("description", "复制商品描述", draft.description ?? "")}
+            {copyButton("keywords", "复制关键词", draft.keywords.join(", "))}
+          </div>
         </div>
 
         {/* 1. 标题 Title */}
-        <div className="rounded-xl border border-slate-200 bg-white p-3">
-          <p className="text-xs font-bold text-teal-700 uppercase tracking-wide">商品标题 Title</p>
+        <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-bold uppercase tracking-wide text-teal-700">Listing标题 Title</p>
+              {draft.titles.length > 0 && draft.titles[0] ? (
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500">
+                  {draft.titles[0].length} 字符
+                </span>
+              ) : null}
+            </div>
+            {copyButton("title", "复制标题", draft.titles.join("\n"), false, "sm")}
+          </div>
           {draft.titles.length > 0 ? (
-            <div className="mt-1.5 space-y-1">
+            <div className="mt-2.5 space-y-1">
               {draft.titles.map((t, i) => (
-                <p key={`t-${i}`} className="leading-6">{t}</p>
+                <p key={`t-${i}`} className="text-sm font-medium leading-6 text-slate-900">{t}</p>
               ))}
             </div>
           ) : (
-            <p className="mt-1.5 text-slate-400">暂未生成标题。</p>
+            <p className="mt-2 text-slate-400">暂未生成标题。</p>
           )}
         </div>
 
-        {qualityReport ? (
-          <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-3" data-testid="listing-quality-report">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs font-bold uppercase tracking-wide text-violet-700">Listing Quality Policy · 只读质量报告</p>
-              <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-700">综合 {qualityReport.overallScore}/100</span>
+        {/* 2. 五点描述 Bullet Points (直接紧随标题下方，视觉连续) */}
+        <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-bold uppercase tracking-wide text-teal-700">五点描述 Bullet Points</p>
+              {draft.bullets.length > 0 ? (
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500">
+                  {draft.bullets.length} 条要点
+                </span>
+              ) : null}
             </div>
-            <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-600 sm:grid-cols-4">
-              <span>标题 {qualityReport.titleScore}</span>
-              <span>卖点 {qualityReport.bulletScore}</span>
-              <span>描述 {qualityReport.descriptionScore}</span>
-              <span>合规 {qualityReport.complianceScore}</span>
-            </div>
-            {qualityReport.issues.length > 0 ? (
-              <details className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2" open>
-                <summary className="cursor-pointer text-xs font-semibold text-amber-800">发现 {qualityReport.issues.length} 项质量问题</summary>
-                <ul className="mt-1.5 list-disc space-y-1 pl-4 text-xs leading-5 text-amber-900">
-                  {qualityReport.issues.slice(0, 8).map((item, index) => <li key={`quality-issue-${index}`}>{item.message}</li>)}
-                </ul>
-              </details>
-            ) : (
-              <p className="mt-2 text-xs text-emerald-700">未发现质量问题。</p>
-            )}
-            {qualityReport.suggestions.length > 0 ? (
-              <details className="mt-2 rounded-lg border border-violet-200 bg-white px-2.5 py-2">
-                <summary className="cursor-pointer text-xs font-semibold text-violet-800">查看 {qualityReport.suggestions.length} 项优化建议</summary>
-                <ul className="mt-1.5 list-disc space-y-1 pl-4 text-xs leading-5 text-violet-900">
-                  {qualityReport.suggestions.slice(0, 8).map((item, index) => <li key={`quality-suggestion-${index}`}>{item.message}</li>)}
-                </ul>
-              </details>
-            ) : null}
-            {qualityReport.missingSections.length > 0 ? (
-              <p className="mt-2 text-xs text-slate-600">描述待补充部分：{qualityReport.missingSections.join("、")}</p>
-            ) : null}
-            <p className="mt-2 text-[11px] text-slate-500">报告只读分析当前草稿，不会覆盖标题、卖点、事实或证据；仍需人工复核。</p>
+            {copyButton("bullets", "复制五点描述", draft.bullets.map((b, i) => `${i + 1}. ${b}`).join("\n"), false, "sm")}
           </div>
-        ) : null}
-
-        {/* 2. 五点描述 Bullet Points */}
-        <div className="rounded-xl border border-slate-200 bg-white p-3">
-          <p className="text-xs font-bold text-teal-700 uppercase tracking-wide">五点描述 Bullet Points</p>
           {draft.bullets.length > 0 ? (
-            <ol className="mt-1.5 space-y-1">
+            <ol className="mt-2.5 space-y-2">
               {draft.bullets.map((b, i) => (
-                <li key={`b-${i}`} className="flex gap-1.5 leading-6">
-                  <span className="shrink-0 font-semibold text-teal-600">{i + 1}.</span>
-                  <span>{b}</span>
+                <li key={`b-${i}`} className="flex items-start gap-2 text-sm leading-6 text-slate-800">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-teal-50 text-xs font-bold text-teal-700">{i + 1}</span>
+                  <span className="flex-1">{b}</span>
                 </li>
               ))}
             </ol>
           ) : (
-            <p className="mt-1.5 text-slate-400">暂未生成五点描述。</p>
+            <p className="mt-2 text-slate-400">暂未生成五点描述。</p>
           )}
         </div>
 
         {/* 3. 商品描述 Product Description */}
-        <div className="rounded-xl border border-slate-200 bg-white p-3">
-          <p className="text-xs font-bold text-teal-700 uppercase tracking-wide">商品描述 Product Description</p>
+        <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-bold uppercase tracking-wide text-teal-700">商品描述 Product Description</p>
+              {draft.description ? (
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500">
+                  {draft.description.length} 字符
+                </span>
+              ) : null}
+            </div>
+            {copyButton("description", "复制商品描述", draft.description ?? "", false, "sm")}
+          </div>
           {draft.description ? (
-            <p className="mt-1.5 leading-6">{draft.description}</p>
+            <p className="mt-2.5 whitespace-pre-line text-sm leading-6 text-slate-800">{draft.description}</p>
           ) : (
-            <p className="mt-1.5 text-slate-400">暂未生成商品描述。</p>
+            <p className="mt-2 text-slate-400">暂未生成商品描述。</p>
           )}
         </div>
 
         {/* 4. 搜索关键词 Keywords */}
-        <div className="rounded-xl border border-slate-200 bg-white p-3">
-          <p className="text-xs font-bold text-teal-700 uppercase tracking-wide">搜索关键词 Keywords</p>
+        <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-bold uppercase tracking-wide text-teal-700">搜索关键词 Keywords</p>
+              {draft.keywords.length > 0 ? (
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500">
+                  {draft.keywords.length} 个词
+                </span>
+              ) : null}
+            </div>
+            {copyButton("keywords", "复制关键词", draft.keywords.join(", "), false, "sm")}
+          </div>
           {draft.keywords.length > 0 ? (
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
               {draft.keywords.map((k, i) => (
-                <span key={`k-${i}`} className="rounded-full border border-teal-100 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">{k}</span>
+                <span key={`k-${i}`} className="rounded-md border border-teal-100 bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-700">{k}</span>
               ))}
             </div>
           ) : (
-            <p className="mt-1.5 text-xs leading-5 text-slate-400">
+            <p className="mt-2 text-xs leading-5 text-slate-400">
               暂未生成关键词（SEO 字段未单独生成）。实际采用情况见下方「发布前核对」。
             </p>
           )}
           {draft.historicalKeywordFilteredNotice ? (
-            <p data-testid="prepublish-keywords-filter-notice" className="mt-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs leading-5 text-amber-800">
+            <p data-testid="prepublish-keywords-filter-notice" className="mt-2.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs leading-5 text-amber-800">
               {draft.historicalKeywordFilteredNotice}
             </p>
           ) : null}
         </div>
 
-        {/* 5. 发布前核对：唯一一张卡承载关键词四类分类 + 待确认表达全文与隔离状态 */}
+        {/* 5. 发布质量检查：移至正文交付卡片之后，默认展示用户友好结果，技术明细折叠收纳 */}
+        {qualityReport ? (
+          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5" data-testid="listing-quality-report">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-700">发布质量检查 Quality Policy</p>
+              </div>
+              <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold border ${
+                qualityReport.issues.length === 0
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                  : qualityReport.overallScore >= 70
+                    ? "bg-teal-50 text-teal-700 border-teal-200"
+                    : "bg-amber-50 text-amber-800 border-amber-200"
+              }`}>
+                {qualityReport.issues.length === 0 ? "✓ 满足发布标准" : "需人工复核"} · 综合 {qualityReport.overallScore}/100
+              </span>
+            </div>
+            <p className="mt-2 text-xs text-slate-600">
+              {qualityReport.issues.length === 0
+                ? "自动化质量与合规检查全部通过，未发现质量缺陷，可放心复核发布。"
+                : `已完成自动化合规检查，发现 ${qualityReport.issues.length} 项质量细节提示，展开可查看细项评分与优化建议。`}
+            </p>
+            <details className="mt-2.5 rounded-lg border border-slate-200 bg-white p-3 text-xs">
+              <summary className="cursor-pointer font-semibold text-slate-700 hover:text-teal-700">
+                查看分项评分与质检明细
+              </summary>
+              <div className="mt-2.5 grid grid-cols-2 gap-2 text-xs text-slate-600 sm:grid-cols-4">
+                <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1">标题 {qualityReport.titleScore}</span>
+                <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1">卖点 {qualityReport.bulletScore}</span>
+                <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1">描述 {qualityReport.descriptionScore}</span>
+                <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1">合规 {qualityReport.complianceScore}</span>
+              </div>
+              {qualityReport.issues.length > 0 ? (
+                <div className="mt-2.5 rounded-lg border border-amber-200 bg-amber-50 p-2.5">
+                  <p className="font-semibold text-amber-800">发现 {qualityReport.issues.length} 项质量问题：</p>
+                  <ul className="mt-1.5 list-disc space-y-1 pl-4 text-xs leading-5 text-amber-900">
+                    {qualityReport.issues.slice(0, 8).map((item, index) => <li key={`quality-issue-${index}`}>{item.message}</li>)}
+                  </ul>
+                </div>
+              ) : (
+                <p className="mt-2.5 text-xs text-emerald-700">未发现质量问题。</p>
+              )}
+              {qualityReport.suggestions.length > 0 ? (
+                <div className="mt-2.5 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                  <p className="font-semibold text-slate-800">查看 {qualityReport.suggestions.length} 项优化建议：</p>
+                  <ul className="mt-1.5 list-disc space-y-1 pl-4 text-xs leading-5 text-slate-700">
+                    {qualityReport.suggestions.slice(0, 8).map((item, index) => <li key={`quality-suggestion-${index}`}>{item.message}</li>)}
+                  </ul>
+                </div>
+              ) : null}
+              {qualityReport.missingSections.length > 0 ? (
+                <p className="mt-2 text-xs text-slate-600">描述待补充部分：{qualityReport.missingSections.join("、")}</p>
+              ) : null}
+              <p className="mt-2 text-[11px] text-slate-500">报告只读分析当前草稿，不会覆盖标题、卖点、事实或证据；仍需人工复核。</p>
+            </details>
+          </div>
+        ) : null}
+
+        {/* 6. 发布前核对：唯一一张卡承载关键词四类分类 + 待确认表达全文与隔离状态 */}
         <ListingPrepublishReview draft={draft} planSummary={keywordPlanSummary} />
         {/* 图片创作建议：独立区域，不属于 Listing 文本本体（Listing 后台字段不包含此内容） */}
-        <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3" data-testid="image-creation-suggestions">
+        <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3.5" data-testid="image-creation-suggestions">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">图片创作建议</p>
             {imageMaterialNeeds.length > 0 ? (
@@ -1177,7 +1243,7 @@ export function ListingHandoffSection({
             ) : null}
           </div>
           {imageMaterialNeeds.length > 0 ? (
-            <ol className="mt-1.5 space-y-1">
+            <ol className="mt-2 space-y-1">
               {imageMaterialNeeds.map((n, i) => (
                 <li key={`n-${i}`} className="flex gap-1.5 leading-6 text-slate-600">
                   <span className="shrink-0 font-semibold text-slate-400">{i + 1}.</span>
@@ -1206,15 +1272,6 @@ export function ListingHandoffSection({
     );
   };
 
-/**
- * 发布前核对（唯一一张卡）：确认了什么 / 正文用了什么 / 仅搜索什么 / 没用什么
- * + 待人工确认表达全文与隔离状态。
- *
- * 硬约束：
- * - 待确认表达只在**这里**展示全文，绝不进入标题/五点/描述/关键词/复制内容；
- * - 没有原因数据时只陈述「未在当前正式字段出现」，不编造拒绝原因；
- * - 首行给结论，明细走渐进展开（<details>），首屏不平铺。
- */
   return (
     <section className="mt-5 min-w-0 rounded-2xl border border-slate-200 bg-white p-4" aria-label="Listing 草稿">
       <header className="flex flex-wrap items-center justify-between gap-2">

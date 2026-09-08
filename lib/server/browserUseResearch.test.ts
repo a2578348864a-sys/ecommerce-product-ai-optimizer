@@ -10,8 +10,11 @@ import {
   takeBrowserUsePreview,
   claimBrowserUsePreview,
   restoreBrowserUsePreviewClaim,
+  findPendingBrowserUsePreview,
   type BrowserUseResearchPreviewV1,
 } from "./browserUseResearch";
+
+const TEST_BINDING = { subjectKey: "owner:v1", taskId: "task-test" };
 
 const BATCH_CAC = {
   version: "candidate-analysis-context-v1",
@@ -79,12 +82,12 @@ describe("browserUseResearch 合同与门禁（轮 9）", () => {
   });
 
   it("Preview 服务端缓存：存在→取出一次；不存在→取 null（不信任客户端字段）", () => {
-    const id = storeBrowserUsePreview(validPreview());
+    const id = storeBrowserUsePreview(validPreview(), TEST_BINDING);
     expect(id).toMatch(/^bup_preview_/);
-    const taken = takeBrowserUsePreview(id);
+    const taken = takeBrowserUsePreview(id, TEST_BINDING);
     expect(taken).toEqual(validPreview());
-    expect(takeBrowserUsePreview(id)).toBeNull();
-    expect(takeBrowserUsePreview("bup_preview_missing")).toBeNull();
+    expect(takeBrowserUsePreview(id, TEST_BINDING)).toBeNull();
+    expect(takeBrowserUsePreview("bup_preview_missing", TEST_BINDING)).toBeNull();
   });
 
   it("采集来源 URL 校验：Amazon 官方域名放行；外站/空格/协议相对拒绝", () => {
@@ -150,69 +153,92 @@ describe("selectReliableSearchKeyword with productName（与 Brief 推荐同一�
 
 describe("claimBrowserUsePreview 与 restoreBrowserUsePreviewClaim 生命周期与原子性", () => {
   it("claimBrowserUsePreview 原子取出：首个 claim 成功并获取 expiresAt，后续 claim 返回 null", () => {
-    const id = storeBrowserUsePreview(validPreview());
-    const claim1 = claimBrowserUsePreview(id);
+    const id = storeBrowserUsePreview(validPreview(), TEST_BINDING);
+    const claim1 = claimBrowserUsePreview(id, TEST_BINDING);
     expect(claim1).not.toBeNull();
     expect(claim1?.preview).toEqual(validPreview());
     expect(claim1?.expiresAt).toBeGreaterThan(Date.now());
 
     // 第二次 claim 返回 null（防并发双写）
-    const claim2 = claimBrowserUsePreview(id);
+    const claim2 = claimBrowserUsePreview(id, TEST_BINDING);
     expect(claim2).toBeNull();
   });
 
   it("并发 claim 只有 1 个成功获取 claim", async () => {
-    const id = storeBrowserUsePreview(validPreview());
+    const id = storeBrowserUsePreview(validPreview(), TEST_BINDING);
     const results = await Promise.all([
-      Promise.resolve().then(() => claimBrowserUsePreview(id)),
-      Promise.resolve().then(() => claimBrowserUsePreview(id)),
-      Promise.resolve().then(() => claimBrowserUsePreview(id)),
+      Promise.resolve().then(() => claimBrowserUsePreview(id, TEST_BINDING)),
+      Promise.resolve().then(() => claimBrowserUsePreview(id, TEST_BINDING)),
+      Promise.resolve().then(() => claimBrowserUsePreview(id, TEST_BINDING)),
     ]);
     const successes = results.filter(Boolean);
     expect(successes).toHaveLength(1);
   });
 
   it("CAS 冲突未落库时恢复 claim：恢复后可重新 claim 并保留原 expiresAt，不延长 TTL", () => {
-    const id = storeBrowserUsePreview(validPreview());
-    const claim = claimBrowserUsePreview(id);
+    const id = storeBrowserUsePreview(validPreview(), TEST_BINDING);
+    const claim = claimBrowserUsePreview(id, TEST_BINDING);
     expect(claim).not.toBeNull();
 
     // 模拟 CAS 冲突，调用 restore
-    const restored = restoreBrowserUsePreviewClaim(id, claim!);
+    const restored = restoreBrowserUsePreviewClaim(id, claim!, TEST_BINDING);
     expect(restored).toBe(true);
 
     // 恢复后可以被再次 claim
-    const secondClaim = claimBrowserUsePreview(id);
+    const secondClaim = claimBrowserUsePreview(id, TEST_BINDING);
     expect(secondClaim).not.toBeNull();
     expect(secondClaim?.expiresAt).toBe(claim!.expiresAt);
     expect(secondClaim?.preview).toEqual(validPreview());
   });
 
   it("过期 claim 不得恢复（不延长 TTL）", () => {
-    const id = storeBrowserUsePreview(validPreview());
-    const claim = claimBrowserUsePreview(id);
+    const id = storeBrowserUsePreview(validPreview(), TEST_BINDING);
+    const claim = claimBrowserUsePreview(id, TEST_BINDING);
     expect(claim).not.toBeNull();
 
     // 伪造已过期 expiresAt
     const expiredClaim = {
       preview: claim!.preview,
       expiresAt: Date.now() - 1000,
+      subjectKey: TEST_BINDING.subjectKey,
+      taskId: TEST_BINDING.taskId,
     };
-    const restored = restoreBrowserUsePreviewClaim(id, expiredClaim);
+    const restored = restoreBrowserUsePreviewClaim(id, expiredClaim, TEST_BINDING);
     expect(restored).toBe(false);
-    expect(claimBrowserUsePreview(id)).toBeNull();
+    expect(claimBrowserUsePreview(id, TEST_BINDING)).toBeNull();
   });
 
   it("已存在缓存项时不得覆盖恢复", () => {
-    const id1 = storeBrowserUsePreview(validPreview());
-    const claim1 = claimBrowserUsePreview(id1);
+    const id1 = storeBrowserUsePreview(validPreview(), TEST_BINDING);
+    const claim1 = claimBrowserUsePreview(id1, TEST_BINDING);
     expect(claim1).not.toBeNull();
 
     // 重新存入一个新的
-    const id2 = storeBrowserUsePreview(validPreview());
+    const id2 = storeBrowserUsePreview(validPreview(), TEST_BINDING);
     // 试图用 claim1 覆盖已有缓存 id2
-    const restored = restoreBrowserUsePreviewClaim(id2, claim1!);
+    const restored = restoreBrowserUsePreviewClaim(id2, claim1!, TEST_BINDING);
     expect(restored).toBe(false);
+  });
+});
+
+describe("Browser Use Preview taskId + subjectKey 隔离", () => {
+  it("不同 taskId 或 subjectKey 不能发现或 claim 另一任务 Preview", () => {
+    const isolatedPreview = { ...validPreview(), seedAsin: "B0ISOLATE12" };
+    const id = storeBrowserUsePreview(isolatedPreview, TEST_BINDING);
+    expect(findPendingBrowserUsePreview("B0ISOLATE12", "competitor", TEST_BINDING)?.previewId).toBe(id);
+    expect(findPendingBrowserUsePreview("B0ISOLATE12", "competitor", { ...TEST_BINDING, taskId: "task-other" })).toBeNull();
+    expect(findPendingBrowserUsePreview("B0ISOLATE12", "competitor", { subjectKey: "visitor:other", taskId: TEST_BINDING.taskId })).toBeNull();
+    expect(claimBrowserUsePreview(id, { ...TEST_BINDING, taskId: "task-other" })).toBeNull();
+    expect(claimBrowserUsePreview(id, { subjectKey: "visitor:other", taskId: TEST_BINDING.taskId })).toBeNull();
+    expect(claimBrowserUsePreview(id, TEST_BINDING)).not.toBeNull();
+  });
+
+  it("restore 必须使用与 claim 完全一致的绑定", () => {
+    const id = storeBrowserUsePreview(validPreview(), TEST_BINDING);
+    const claim = claimBrowserUsePreview(id, TEST_BINDING);
+    expect(claim).not.toBeNull();
+    expect(restoreBrowserUsePreviewClaim(id, claim!, { ...TEST_BINDING, taskId: "task-other" })).toBe(false);
+    expect(restoreBrowserUsePreviewClaim(id, claim!, TEST_BINDING)).toBe(true);
   });
 });
 

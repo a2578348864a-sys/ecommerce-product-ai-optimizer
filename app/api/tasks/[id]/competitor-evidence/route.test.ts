@@ -53,6 +53,8 @@ import {
 } from "@/lib/server/browserUseResearch";
 import { CompetitorEvidenceError } from "@/lib/server/competitorEvidence";
 
+const OWNER_PREVIEW_BINDING = { subjectKey: "owner:v1", taskId: "task-a" };
+
 function batchResultJson(asin = "B0SAMPLE12") {
   return JSON.stringify({
     type: "workflow",
@@ -151,7 +153,7 @@ describe("轮 9 竞品自动采集路由（browser_use）", () => {
   });
 
   it("伪造外站来源 URL（服务端缓存注入外站）→ 400 forged_external_source_url", async () => {
-    const evilId = storeBrowserUsePreview(preview({ sourceUrl: "https://evil.example/dp/B0SAMPLE12" }));
+    const evilId = storeBrowserUsePreview(preview({ sourceUrl: "https://evil.example/dp/B0SAMPLE12" }), OWNER_PREVIEW_BINDING);
     const save = await POST(ownerRequest({ action: "save_browser_use", previewId: evilId, expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-14T02:00:00.000Z" } }), { params: Promise.resolve({ id: "task-a" }) });
     expect(save.status).toBe(400);
     expect((await save.json()).error.code).toBe("forged_external_source_url");
@@ -183,7 +185,7 @@ describe("轮 9 竞品自动采集路由（browser_use）", () => {
       { asin: "B0COMP0003", title: "Competitor B", sourceUrl: "https://www.amazon.com/dp/B0COMP0003", capturedAt: "2026-08-14T02:00:01.000Z" },
       { asin: "B0COMP0004", title: "Competitor C", sourceUrl: "https://www.amazon.com/dp/B0COMP0004", capturedAt: "2026-08-14T02:00:01.000Z" },
     ] as BrowserUseResearchPreviewV1["results"];
-    const previewId = storeBrowserUsePreview(multi);
+    const previewId = storeBrowserUsePreview(multi, OWNER_PREVIEW_BINDING);
     mocks.addAsin.mockImplementation(async (input: { asin: string }) => {
       if (input.asin === "B0COMP0003") {
         throw new CompetitorEvidenceError("task_result_conflict", 409, "任务已在其他页面更新，请刷新后重试。");
@@ -242,7 +244,7 @@ describe("轮 9 竞品自动采集路由（browser_use）", () => {
     expect(body.data.kind).toBe("competitor");
     expect(typeof body.data.keywordPreviewId).toBe("string");
     expect(typeof body.data.keywordCount).toBe("number");
-    const kwPreview = takeBrowserUsePreview(body.data.keywordPreviewId);
+    const kwPreview = takeBrowserUsePreview(body.data.keywordPreviewId, OWNER_PREVIEW_BINDING);
     expect(kwPreview?.kind).toBe("keyword");
     expect(kwPreview?.results?.length ?? 0).toBeGreaterThan(0);
     expect(kwPreview?.seedAsin).toBe("B0SAMPLE12");
@@ -257,7 +259,7 @@ describe("轮 9 竞品自动采集路由（browser_use）", () => {
 
   it("轮 9c 空结果红线：preview.results=[] 且 failureReason=null → 拒绝保存（4xx），写入器 0 次，不产生 saved", async () => {
     const emptyPreview = preview({ results: [], failureReason: null });
-    const previewId = storeBrowserUsePreview(emptyPreview);
+    const previewId = storeBrowserUsePreview(emptyPreview, OWNER_PREVIEW_BINDING);
     const save = await POST(ownerRequest({ action: "save_browser_use", previewId, expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-14T02:00:00.000Z" } }), { params: Promise.resolve({ id: "task-a" }) });
     expect(save.status).toBeGreaterThanOrEqual(400);
     expect(save.status).toBeLessThan(500);
@@ -272,7 +274,7 @@ describe("轮 9 竞品自动采集路由（browser_use）", () => {
       { asin: "B0MUTX001", title: "Mutex A", sourceUrl: "https://www.amazon.com/dp/B0MUTX001", capturedAt: "2026-08-14T02:00:01.000Z" },
       { asin: "B0MUTX002", title: "Mutex B", sourceUrl: "https://www.amazon.com/dp/B0MUTX002", capturedAt: "2026-08-14T02:00:01.000Z" },
     ] as BrowserUseResearchPreviewV1["results"];
-    const previewId = storeBrowserUsePreview(multi);
+    const previewId = storeBrowserUsePreview(multi, OWNER_PREVIEW_BINDING);
     // B0MUTX001 写成功；随后刷新版本抛错（模拟并发写导致的快照读取失败）。
     // 契约：该条已写入，不得再进 skipped；循环应继续处理后续条。
     let snapshotCalls = 0;
@@ -331,7 +333,7 @@ describe("GET /api/tasks/[id]/competitor-evidence 纯只读 Pending Preview Cont
         },
       ],
     });
-    const previewId = storeBrowserUsePreview(p);
+    const previewId = storeBrowserUsePreview(p, OWNER_PREVIEW_BINDING);
 
     const res1 = await GET(ownerGetRequest(), { params: Promise.resolve({ id: "task-a" }) });
     expect(res1.status).toBe(200);
@@ -375,7 +377,7 @@ describe("GET /api/tasks/[id]/competitor-evidence 纯只读 Pending Preview Cont
 
   it("缓存过期时返回 pendingPreview: null", async () => {
     const p = preview({ seedAsin: "B0SAMPLE12" });
-    storeBrowserUsePreview(p);
+    storeBrowserUsePreview(p, OWNER_PREVIEW_BINDING);
 
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 15 * 60 * 1000);
     try {
@@ -390,7 +392,7 @@ describe("GET /api/tasks/[id]/competitor-evidence 纯只读 Pending Preview Cont
   });
 
   it("任务缺少权威 ASIN 时返回 pendingPreview: null", async () => {
-    storeBrowserUsePreview(preview({ seedAsin: "B0SAMPLE12" }));
+    storeBrowserUsePreview(preview({ seedAsin: "B0SAMPLE12" }), OWNER_PREVIEW_BINDING);
     const unverifiedRecord = {
       id: "task-a",
       resultJson: JSON.stringify({ candidateAnalysisContext: { integrity: "unverified" } }),

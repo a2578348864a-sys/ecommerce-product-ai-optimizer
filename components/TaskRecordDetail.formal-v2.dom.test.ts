@@ -398,7 +398,67 @@ function installRecordHandler(record: ReturnType<typeof recordFixture>) {
   };
 }
 
+function installRecordHandlerWithLifecycle(
+  record: ReturnType<typeof recordFixture>,
+  lifecycle: Record<string, unknown>,
+) {
+  fetchHandler = (url: string) => {
+    if (url.includes("/api/runtime-mode")) {
+      return makeResponse(true, 200, { ok: true, mode: "local_owner", noAuthOwner: true, v4GraphEnabled: true });
+    }
+    if (url.includes("/api/tasks/task-x/research-lifecycle")) {
+      return makeResponse(true, 200, { ok: true, data: lifecycle });
+    }
+    if (url.includes("/api/tasks/task-x")) {
+      return makeResponse(true, 200, { ok: true, data: record });
+    }
+    return makeResponse(false, 404, { ok: false });
+  };
+}
+
 describe("TaskRecordDetail 正式组件挂载（真实 DOM）", () => {
+  it("使用服务端 lifecycle snapshot 驱动正式主状态与下一步动作", async () => {
+    installRecordHandlerWithLifecycle(recordFixture(), {
+      phase: "ready_to_complete",
+      collectionStatus: "ready",
+      confirmationStatus: "confirmed",
+      decisionStatus: "creative_ready",
+      completionStatus: "not_completed",
+      creativeReadiness: "blocked",
+      stale: false,
+      blockers: ["research_not_completed"],
+      nextAction: "完成研究并保存研究记录。",
+      contractMode: "modern",
+    });
+    await mountDetail();
+
+    const button = findByTestId("formal-v2-primary-action")!;
+    expect(button.textContent).toContain("完成研究");
+    expect(button.getAttribute("aria-controls")).toBe("product-research-decision");
+    const result = findByTestId("formal-v2-product-result")!;
+    expect(result.textContent).toContain("待完成研究");
+  });
+
+  it("已完成但创作绑定未核验时，顶部动作跟随快照阻断原因", async () => {
+    installRecordHandlerWithLifecycle(recordFixture(), {
+      phase: "completed",
+      collectionStatus: "ready",
+      confirmationStatus: "confirmed",
+      decisionStatus: "creative_ready",
+      completionStatus: "completed",
+      creativeReadiness: "blocked",
+      stale: false,
+      blockers: ["candidate_binding_unverified"],
+      nextAction: "核对研究绑定和人工决定后再进入创作。",
+      contractMode: "modern",
+    });
+    await mountDetail();
+
+    const button = findByTestId("formal-v2-primary-action")!;
+    expect(button.textContent).toContain("核对研究状态");
+    expect(button.getAttribute("aria-controls")).toBe("formal-v2-materials");
+  });
+
   it("workflow 活动记录：显示 Formal v2，不出现 legacy；主按钮实点展开/定位/焦点/aria 正确", async () => {
     installRecordHandler(recordFixture());
     await mountDetail();

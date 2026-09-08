@@ -74,6 +74,7 @@ import {
   type ResearchHistoryStatus,
 } from "@/lib/taskResearchHistoryPresentation";
 import { StudioNavigationLink } from "@/components/studio/StudioNavigationLink";
+import type { ResearchLifecycleSnapshot } from "@/lib/server/researchLifecycleReader";
 
 type TaskCenterItem = {
   id: string;
@@ -96,6 +97,28 @@ type TaskCenterItem = {
 type DetailResponse =
   | { ok: true; data: TaskCenterItem }
   | { ok: false; error: { code: string; message: string } };
+
+type ResearchLifecycleResponse =
+  | { ok: true; data: ResearchLifecycleSnapshot }
+  | { ok: false; error: { code: string; message: string } };
+
+function parseResearchLifecycleSnapshot(value: unknown): ResearchLifecycleSnapshot | null {
+  if (!isRecordValue(value)
+    || typeof value.phase !== "string"
+    || typeof value.collectionStatus !== "string"
+    || typeof value.confirmationStatus !== "string"
+    || typeof value.decisionStatus !== "string"
+    || typeof value.completionStatus !== "string"
+    || typeof value.creativeReadiness !== "string"
+    || typeof value.stale !== "boolean"
+    || !Array.isArray(value.blockers)
+    || !value.blockers.every((item) => typeof item === "string")
+    || typeof value.nextAction !== "string"
+    || typeof value.contractMode !== "string") {
+    return null;
+  }
+  return value as unknown as ResearchLifecycleSnapshot;
+}
 
 type DeleteResponse =
   | { ok: true; data: { id: string } }
@@ -225,6 +248,44 @@ function safePublicHttpUrl(value: string | null | undefined) {
   }
 }
 
+/** Research Lifecycle v1：快照只投影到已有 UI 目标，不重新计算事实、证据或门禁。 */
+function lifecycleStatusLabel(snapshot: ResearchLifecycleSnapshot): string {
+  if (snapshot.stale) return "研究资料需重新确认";
+  if (snapshot.phase === "completed") return "研究已完成";
+  if (snapshot.phase === "abandoned") return "已放弃";
+  if (snapshot.phase === "awaiting_confirmation") return "待确认事实";
+  if (snapshot.phase === "collecting") return "资料采集中";
+  if (snapshot.phase === "ready_to_complete") return "待完成研究";
+  if (snapshot.phase === "blocked") return "研究受阻";
+  if (snapshot.phase === "awaiting_decision") return "待人工决定";
+  return "待补充研究资料";
+}
+
+function deriveLifecyclePrimaryAction(snapshot: ResearchLifecycleSnapshot, taskType: string): FormalV2PrimaryAction {
+  if (snapshot.stale && taskType === "workflow") {
+    return { label: "重新确认研究资料", targetId: "product-research-decision", focusSelector: '[data-testid="research-stale-notice"] button' };
+  }
+  if (snapshot.phase === "completed" && snapshot.creativeReadiness === "ready") {
+    return { label: "查看 Listing 与图片", targetId: "listing-and-images", focusSelector: "h2" };
+  }
+  if (snapshot.phase === "completed") {
+    return { label: "核对研究状态", targetId: "formal-v2-materials", focusSelector: "summary" };
+  }
+  if (snapshot.phase === "ready_to_complete") {
+    return { label: "完成研究", targetId: "product-research-decision", focusSelector: '[data-testid="research-completion-control"] h2' };
+  }
+  if (snapshot.phase === "awaiting_confirmation") {
+    return { label: "确认待确认事实", targetId: "formal-v2-materials", focusSelector: "summary" };
+  }
+  if (snapshot.phase === "collecting") {
+    return { label: "等待资料采集完成", targetId: "formal-v2-materials", focusSelector: "summary" };
+  }
+  if (snapshot.phase === "blocked") {
+    return { label: "核对研究状态", targetId: "formal-v2-materials", focusSelector: "summary" };
+  }
+  return { label: "补充研究资料", targetId: "formal-v2-materials", focusSelector: "summary" };
+}
+
 /**
  * V3 Current Research Normalization：Research Completion 控件（Active → 研究记录）。
  * - researchCompletion 已存在 → "研究已完成并保存到研究记录。" + [查看研究记录]（幂等展示）；
@@ -237,6 +298,7 @@ function ResearchCompletionControl({
   taskId,
   result,
   researchStale,
+  lifecycleSnapshot,
   evidenceChangesSinceCompletion = [],
   onCompleted,
 }: {
@@ -244,6 +306,8 @@ function ResearchCompletionControl({
   result: Record<string, unknown>;
   /** 服务端计算的 stale 状态（client 无法计算 evidence hash） */
   researchStale?: boolean;
+  /** 服务端统一研究生命周期快照；只读，不参与任何写入。 */
+  lifecycleSnapshot?: ResearchLifecycleSnapshot | null;
   /** V3 Research Staleness UX Closure：完成研究后新增/变更的证据明细（服务端投影） */
   evidenceChangesSinceCompletion?: Array<{
     evidenceType: string;
@@ -261,15 +325,20 @@ function ResearchCompletionControl({
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const completion = isRecordValue(result.researchCompletion) ? result.researchCompletion as Record<string, unknown> : null;
-  const completionStatus = completion && typeof completion.status === "string" ? completion.status : null;
+  const completionStatus = lifecycleSnapshot
+    ? lifecycleSnapshot.completionStatus
+    : (completion && typeof completion.status === "string" ? completion.status : null);
   // 浏览器投影只暴露 productResearchSummary（researchRecord 仅服务端内部）；
   // 决策状态以投影 summary 为准，researchRecord 仅作兜底（完整 result 传入时）。
   const summary = isRecordValue(result.productResearchSummary) ? result.productResearchSummary as Record<string, unknown> : null;
   const record = isRecordValue(result.researchRecord) ? result.researchRecord as Record<string, unknown> : null;
   const latest = record && isRecordValue(record.latestDecision) ? record.latestDecision as Record<string, unknown> : null;
-  const latestStatus = typeof summary?.status === "string"
-    ? summary.status
-    : (latest && typeof latest.status === "string" ? latest.status : null);
+  const latestStatus = lifecycleSnapshot
+    ? (lifecycleSnapshot.decisionStatus === "none" ? null : lifecycleSnapshot.decisionStatus)
+    : (typeof summary?.status === "string"
+      ? summary.status
+      : (latest && typeof latest.status === "string" ? latest.status : null));
+  const effectiveResearchStale = lifecycleSnapshot?.stale ?? researchStale === true;
 
   const canComplete = latestStatus === "creative_ready" || latestStatus === "abandoned";
   const blockReason = !latestStatus
@@ -280,7 +349,7 @@ function ResearchCompletionControl({
 
   if (completionStatus === "completed" || completionStatus === "abandoned" || done) {
     // V3 UX Closure Staleness：完成研究后证据内容发生变化 → 明确提示 + 重新确认
-    const staleState = { stale: researchStale === true };
+    const staleState = { stale: effectiveResearchStale };
     if (completionStatus === "completed" && staleState.stale) {
       return (
         <section className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4" data-testid="research-stale-notice">
@@ -339,7 +408,7 @@ function ResearchCompletionControl({
                 确认研究结论仍然有效？
               </p>
               <p className="mt-1 text-xs leading-5 text-slate-600">
-                {researchStale === true
+                {effectiveResearchStale
                   ? "确认后创建新的 Research Completion 版本（Version N+1），当前资料与结论对齐；不会删除任何证据 / 事实 / 人工决定，历史完成版本保留。"
                   : "完成后，该商品会从『商品研究』移动到『研究记录』。现有研究资料不会删除，仍可查看并使用创作工具。"}
               </p>
@@ -1884,6 +1953,7 @@ export function applyLiveMaterialRows(
 function FormalV2RecordContent({
   record,
   researchStale,
+  lifecycleSnapshot,
   studioLegacyUnsupported,
   deleting,
   deleteError,
@@ -1893,6 +1963,7 @@ function FormalV2RecordContent({
 }: {
   record: TaskCenterItem;
   researchStale: boolean;
+  lifecycleSnapshot: ResearchLifecycleSnapshot | null;
   studioLegacyUnsupported: boolean;
   deleting: boolean;
   deleteError: string;
@@ -1903,7 +1974,10 @@ function FormalV2RecordContent({
   const view = deriveFormalV2ResearchView(record);
   const result = formalRecord(record.result) ?? {};
   const publicProductUrl = safePublicHttpUrl(record.productUrl) || safePublicHttpUrl(getProductIdentity(result).productUrl);
-  const primary = deriveFormalV2PrimaryAction({ statusKey: view.status.key, researchStale, taskType: record.type });
+  const primary = lifecycleSnapshot
+    ? deriveLifecyclePrimaryAction(lifecycleSnapshot, record.type)
+    : deriveFormalV2PrimaryAction({ statusKey: view.status.key, researchStale, taskType: record.type });
+  const effectiveResearchStale = lifecycleSnapshot?.stale ?? researchStale;
   const imageCopy = formalV2ImageCopy(view.hasImageDraft);
   const [primaryOpen, setPrimaryOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<EvidenceTabKey>("market");
@@ -1982,8 +2056,8 @@ function FormalV2RecordContent({
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${researchStale ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
-                  {researchStale ? "研究资料需重新确认" : view.status.label}
+                <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${effectiveResearchStale ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
+                  {lifecycleSnapshot ? lifecycleStatusLabel(lifecycleSnapshot) : (researchStale ? "研究资料需重新确认" : view.status.label)}
                 </span>
                 <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-600">
                   {view.category} · {view.market}
@@ -2044,6 +2118,7 @@ function FormalV2RecordContent({
           <EvidenceWorkbench
             taskId={record.id}
             result={result}
+            lifecycleSnapshot={lifecycleSnapshot}
             sourceImageUrl={resolvePublicSourceImageUrl(result)}
             onDataChanged={onUpdated}
             onMaterialRowsChange={onMaterialRowsChange}
@@ -2068,6 +2143,7 @@ function FormalV2RecordContent({
             taskId={record.id}
             result={result}
             researchStale={researchStale}
+            lifecycleSnapshot={lifecycleSnapshot}
             evidenceChangesSinceCompletion={(record as { evidenceChangesSinceCompletion?: Array<{ evidenceType: string; source: string; capturedAt: string; summary: string }> }).evidenceChangesSinceCompletion}
             onCompleted={onUpdated}
           />
@@ -2103,9 +2179,9 @@ function FormalV2RecordContent({
               {view.hasListingDraft ? "AI Listing 草稿已生成（未人工核实，暂不可发布）。" : "Listing 草稿尚未取得。"}
             </p>
             <p className="mt-2 text-xs leading-5 text-slate-500">人工核实入口：点击下方「前往 Listing Studio 人工核对」，在「确认创作资料」区勾选「人工确认」并保存后，才可发布。</p>
-            {!studioLegacyUnsupported && !researchStale ? (
+            {!studioLegacyUnsupported && !effectiveResearchStale ? (
               <Link href={`/listing-studio?taskId=${encodeURIComponent(record.id)}`} className="linear-button mt-4 inline-flex h-9 items-center justify-center px-3 text-sm font-semibold">前往 Listing Studio 人工核对</Link>
-            ) : <p className="mt-3 text-xs font-semibold text-amber-700">{researchStale ? "研究资料已变化，请先重新确认研究。" : "当前记录的创作资料尚未取得。"}</p>}
+            ) : <p className="mt-3 text-xs font-semibold text-amber-700">{effectiveResearchStale ? "研究资料已变化，请先重新确认研究。" : "当前记录的创作资料尚未取得。"}</p>}
           </div>
           <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4">
             <div className="flex items-center justify-between">
@@ -2121,12 +2197,12 @@ function FormalV2RecordContent({
                 {imageCopy.verificationReasons.map((reason) => <li key={reason}>· {reason}</li>)}
               </ul>
             ) : null}
-            {!studioLegacyUnsupported && !researchStale ? (
+            {!studioLegacyUnsupported && !effectiveResearchStale ? (
               <Link href={`/image-studio?taskId=${encodeURIComponent(record.id)}`} className="linear-button mt-4 inline-flex h-9 items-center justify-center px-3 text-sm font-semibold">
                 {view.hasImageDraft ? "补充清晰参考图后重新检查" : "提供清晰参考图"}
               </Link>
             ) : (
-              <p className="mt-3 text-xs font-semibold text-amber-700">{researchStale ? "研究资料已变化，请先重新确认研究。" : "当前记录暂无可用的补图入口（历史记录未生成创作上下文）。"}</p>
+              <p className="mt-3 text-xs font-semibold text-amber-700">{effectiveResearchStale ? "研究资料已变化，请先重新确认研究。" : "当前记录暂无可用的补图入口（历史记录未生成创作上下文）。"}</p>
             )}
           </div>
         </div>
@@ -2144,13 +2220,18 @@ export function TaskRecordDetail({ id }: { id: string }) {
   const unlocked = ((isAccessPasswordReady && accessPassword.trim().length > 0) || isGuestMode()) || noAuthOwner;
   const router = useRouter();
   const [record, setRecord] = useState<TaskCenterItem | null>(null);
+  const [lifecycleSnapshot, setLifecycleSnapshot] = useState<ResearchLifecycleSnapshot | null>(null);
 
   // F1：研究骨架判定 + AI 研究执行入口（无 researchRecord 时显示引导卡）
   // R5：统一生命周期分类（breadcrumb/h1/返回链接/Studio gate 复用）
   const researchLifecycle = useMemo(() => record
     ? classifyResearchLifecycle({ decisionStatus: record.decisionStatus, result: isRecordValue(record.result) ? record.result : null, type: record.type })
     : { lifecycle: "active" as const, detail: "active_open" as const }, [record]);
-  const isActiveResearchView = researchLifecycle.lifecycle === "active";
+  const isActiveResearchView = lifecycleSnapshot
+    ? lifecycleSnapshot.contractMode === "modern"
+      && lifecycleSnapshot.phase !== "completed"
+      && lifecycleSnapshot.phase !== "abandoned"
+    : researchLifecycle.lifecycle === "active";
   const recordHasResearchRecord = useMemo(() => {
     if (!record || !isRecordValue(record.result)) return false;
     return Object.prototype.hasOwnProperty.call(record.result, "researchRecord")
@@ -2158,9 +2239,12 @@ export function TaskRecordDetail({ id }: { id: string }) {
       || hasVersionedProductResearchRecord(record.result);
   }, [record]);
   // V3 Legacy Removal：早期候选任务（无新版创作上下文）→ 不显示创作工具区
-  const studioLegacyUnsupported = record !== null && !hasVersionedProductResearchRecord(record.result);
+  const studioLegacyUnsupported = record !== null && (lifecycleSnapshot
+    ? lifecycleSnapshot.contractMode !== "modern"
+    : !hasVersionedProductResearchRecord(record.result));
   // V3 Research Staleness UX Closure：研究资料在完成研究后发生变化 → 创作 CTA 禁用（需重新确认研究）
-  const researchStale = (record as { researchStale?: boolean } | null)?.researchStale === true;
+  const researchStale = lifecycleSnapshot?.stale
+    ?? ((record as { researchStale?: boolean } | null)?.researchStale === true);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
@@ -2180,15 +2264,22 @@ export function TaskRecordDetail({ id }: { id: string }) {
     reqIdRef.current += 1;
     const currentId = reqIdRef.current;
     try {
-      const response = await fetch(`/api/tasks/${encodeURIComponent(id)}`, {
-        cache: "no-store",
-        headers: { ...buildAccessHeaders() },
-      });
+      const headers = { ...buildAccessHeaders() };
+      const [response, lifecycleResponse] = await Promise.all([
+        fetch(`/api/tasks/${encodeURIComponent(id)}`, { cache: "no-store", headers }),
+        fetch(`/api/tasks/${encodeURIComponent(id)}/research-lifecycle`, { cache: "no-store", headers }).catch(() => null),
+      ]);
       if (currentId !== reqIdRef.current) return;
       const data = await response.json() as DetailResponse;
+      const lifecycleData = lifecycleResponse
+        ? await lifecycleResponse.json().catch(() => null) as ResearchLifecycleResponse | null
+        : null;
       if (currentId !== reqIdRef.current) return;
       if (!response.ok || !data.ok || !data.data) return;
       setRecord(data.data);
+      const lifecycleSnapshot = lifecycleData?.ok ? parseResearchLifecycleSnapshot(lifecycleData.data) : null;
+      // 详情已刷新但生命周期接口失败时清空旧快照，避免旧阶段覆盖新详情。
+      setLifecycleSnapshot(lifecycleSnapshot);
       setLoading(false);
     } catch {
       // 刷新失败保持现有内容（进度摘要保留旧值，不打断用户）
@@ -2223,15 +2314,20 @@ export function TaskRecordDetail({ id }: { id: string }) {
       setLoading(true);
       setError("");
       setRecord(null);
+      setLifecycleSnapshot(null);
       try {
-        const response = await fetch(`/api/tasks/${encodeURIComponent(id)}`, {
-          cache: "no-store",
-          headers: { ...buildAccessHeaders() },
-        });
+        const headers = { ...buildAccessHeaders() };
+        const [response, lifecycleResponse] = await Promise.all([
+          fetch(`/api/tasks/${encodeURIComponent(id)}`, { cache: "no-store", headers }),
+          fetch(`/api/tasks/${encodeURIComponent(id)}/research-lifecycle`, { cache: "no-store", headers }).catch(() => null),
+        ]);
         // Discard if a newer request has already started
         if (cancelled || currentId !== reqIdRef.current) return;
 
         const data = await response.json() as DetailResponse;
+        const lifecycleData = lifecycleResponse
+          ? await lifecycleResponse.json().catch(() => null) as ResearchLifecycleResponse | null
+          : null;
         if (cancelled || currentId !== reqIdRef.current) return;
 
         if (!response.ok || !data.ok) {
@@ -2240,6 +2336,8 @@ export function TaskRecordDetail({ id }: { id: string }) {
           return;
         }
         setRecord(data.data);
+        const lifecycleSnapshot = lifecycleData?.ok ? parseResearchLifecycleSnapshot(lifecycleData.data) : null;
+        setLifecycleSnapshot(lifecycleSnapshot);
       } catch {
         if (cancelled || currentId !== reqIdRef.current) return;
         setRecord(null);
@@ -2439,6 +2537,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
                 <FormalV2RecordContent
                   record={record}
                   researchStale={researchStale}
+                  lifecycleSnapshot={lifecycleSnapshot}
                   studioLegacyUnsupported={studioLegacyUnsupported}
                   deleting={deleting}
                   deleteError={deleteError}

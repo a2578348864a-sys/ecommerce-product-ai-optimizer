@@ -96,12 +96,14 @@ export function MarketingIntelligencePanel({ summary }: { summary?: MarketingInt
     + (counts?.sourcingEntries ?? 0);
 
   return (
-    <section className="mt-4 min-w-0 rounded-xl border border-indigo-200 bg-indigo-50/50 p-3" data-testid="marketing-intelligence-panel" aria-label="Marketing Intelligence 营销洞察">
+    <section className="mt-3 min-w-0 rounded-xl border border-indigo-200 bg-indigo-50/50 p-3" data-testid="marketing-intelligence-panel" aria-label="AI研究依据">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-bold text-indigo-950">Marketing Intelligence · 营销洞察</h3>
-            <span className="rounded-full border border-indigo-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-indigo-700">REFERENCE_ONLY</span>
+            <h3 className="text-sm font-bold text-indigo-950">AI研究依据</h3>
+            <span title="REFERENCE_ONLY" className="rounded-full border border-indigo-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
+              仅供策略参考<span className="sr-only">REFERENCE_ONLY</span>
+            </span>
           </div>
           <p className="mt-1 text-xs leading-5 text-indigo-900/70">
             仅供 Listing 策略参考，不属于商品事实；不会覆盖或修改当前 Listing。
@@ -117,27 +119,32 @@ export function MarketingIntelligencePanel({ summary }: { summary?: MarketingInt
           {referenceCount > 0 ? "研究参考已载入，但当前没有可展示的结构化洞察。" : "当前暂无可用研究参考，先保留安全空态。"}
         </p>
       ) : (
-        <div className="mt-3 grid gap-2 md:grid-cols-2">
-          <div className="rounded-lg border border-indigo-100 bg-white/70 p-2.5" data-testid="marketing-intelligence-pain-points">
-            <p className="text-xs font-bold text-slate-800">用户痛点与需求</p>
-            <InsightList items={report.painPoints} emptyText="暂无 VOC 痛点聚类。" />
-            {report.customerNeeds.length > 0 ? <InsightList items={report.customerNeeds} emptyText="暂无需求聚类。" /> : null}
+        <details className="mt-2.5 rounded-lg border border-indigo-100 bg-white/60 p-2.5 text-xs">
+          <summary className="cursor-pointer font-semibold text-indigo-900 hover:text-indigo-950">
+            展开AI研究依据详情（痛点、市场表达、竞品趋势与建议结构）
+          </summary>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            <div className="rounded-lg border border-indigo-100 bg-white/80 p-2.5" data-testid="marketing-intelligence-pain-points">
+              <p className="text-xs font-bold text-slate-800">用户痛点与需求</p>
+              <InsightList items={report.painPoints} emptyText="暂无 VOC 痛点聚类。" />
+              {report.customerNeeds.length > 0 ? <InsightList items={report.customerNeeds} emptyText="暂无需求聚类。" /> : null}
+            </div>
+            <div className="rounded-lg border border-indigo-100 bg-white/80 p-2.5" data-testid="marketing-intelligence-market-angles">
+              <p className="text-xs font-bold text-slate-800">市场表达方向</p>
+              <InsightList items={report.marketAngles} emptyText="暂无关键词表达方向。" />
+              {report.keywordThemes.length > 0 ? <InsightList items={report.keywordThemes} emptyText="暂无关键词主题。" /> : null}
+            </div>
+            <div className="rounded-lg border border-indigo-100 bg-white/80 p-2.5" data-testid="marketing-intelligence-competitor-patterns">
+              <p className="text-xs font-bold text-slate-800">竞品表达趋势</p>
+              <InsightList items={report.competitorPatterns} emptyText="暂无竞品趋势参考。" />
+            </div>
+            <div className="rounded-lg border border-indigo-100 bg-white/80 p-2.5" data-testid="marketing-intelligence-recommendations">
+              <p className="text-xs font-bold text-slate-800">Listing 建议结构</p>
+              <InsightList items={report.recommendations} emptyText="暂无结构建议。" />
+              <p className="mt-2 text-[11px] leading-5 text-slate-500">建议结合已确认商品事实组织表达。</p>
+            </div>
           </div>
-          <div className="rounded-lg border border-indigo-100 bg-white/70 p-2.5" data-testid="marketing-intelligence-market-angles">
-            <p className="text-xs font-bold text-slate-800">市场表达方向</p>
-            <InsightList items={report.marketAngles} emptyText="暂无关键词表达方向。" />
-            {report.keywordThemes.length > 0 ? <InsightList items={report.keywordThemes} emptyText="暂无关键词主题。" /> : null}
-          </div>
-          <div className="rounded-lg border border-indigo-100 bg-white/70 p-2.5" data-testid="marketing-intelligence-competitor-patterns">
-            <p className="text-xs font-bold text-slate-800">竞品表达趋势</p>
-            <InsightList items={report.competitorPatterns} emptyText="暂无竞品趋势参考。" />
-          </div>
-          <div className="rounded-lg border border-indigo-100 bg-white/70 p-2.5" data-testid="marketing-intelligence-recommendations">
-            <p className="text-xs font-bold text-slate-800">Listing 建议结构</p>
-            <InsightList items={report.recommendations} emptyText="暂无结构建议。" />
-            <p className="mt-2 text-[11px] leading-5 text-slate-500">可按“先回应痛点 → 再说明已确认特点 → 最后落到使用场景”的顺序组织表达。建议仍需人工结合商品事实复核。</p>
-          </div>
-        </div>
+        </details>
       )}
     </section>
   );
