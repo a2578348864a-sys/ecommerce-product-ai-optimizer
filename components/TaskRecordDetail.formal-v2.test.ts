@@ -8,6 +8,13 @@ import {
 } from "@/components/TaskRecordDetail";
 
 describe("formal v2 task result", () => {
+  it("研究工作台首次进入默认展开，同时保留 details 折叠控制", async () => {
+    const source = await readFile("components/TaskRecordDetail.tsx", "utf8");
+    expect(source).toContain("const [primaryOpen, setPrimaryOpen] = useState(true);");
+    expect(source).toContain("open={primaryOpen || undefined}");
+    expect(source).toContain("onToggle={(event) => setPrimaryOpen(event.currentTarget.open)}");
+  });
+
   it("maps the safe formal task projection into the four confirmed business modules", () => {
     const view = deriveFormalV2ResearchView({
       id: "task-formal-1",

@@ -44,6 +44,7 @@ import {
   storeReviewCollectPreview,
   peekReviewCollectPreview,
   consumeReviewCollectPreview,
+  findPendingReviewCollectPreview,
   reviewCollectSubjectKey,
   buildSnippetPreviewDedupeKey,
   getPendingReviewCollectPreviewDto,
@@ -104,6 +105,7 @@ type ApiResponse =
         };
         storageVersion: StorageVersion;
         demo?: boolean;
+        reused?: boolean;
       };
     }
   | { ok: true; data: { confirmed: boolean; storageVersion: StorageVersion } }
@@ -489,6 +491,42 @@ async function collectAction(
     throw error;
   }
   try {
+    // 统一编排与局部重试共享同一 Preview 生命周期：已有同任务/同主体/
+    // 同 ASIN 的有效 Preview 时只复用，不再次启动浏览器采集，避免重复结果。
+    const existingPending = asins.length === 1
+      ? findPendingReviewCollectPreview({
+          subjectKey: reviewCollectSubjectKey(context),
+          taskId,
+          asin: asins[0].asin,
+        })
+      : null;
+    if (existingPending) {
+      const existing = await getReviewEvidence(context, taskId);
+      const existingKeys = new Set((existing?.dataset.reviews ?? []).map((review) => review.duplicateKey));
+      const items = existingPending.items.map((item) => {
+        const duplicateKey = buildReviewDuplicateKey({
+          reviewId: null,
+          asin: item.asin,
+          contentHash: buildReviewContentHash(item.title),
+          rating: item.rating,
+          reviewDate: item.date,
+        });
+        return { ...item, duplicate: existingKeys.has(duplicateKey) };
+      });
+      return jsonResponse({
+        ok: true,
+        data: {
+          preview: {
+            previewId: existingPending.previewId,
+            items,
+            pageResults: existingPending.pageResults,
+            capturedAt: existingPending.capturedAt,
+          },
+          storageVersion: await readReviewEvidenceSnapshot(context, taskId).then((snapshot) => toStorageVersion(snapshot)),
+          reused: true,
+        },
+      });
+    }
     const preview = await createReviewCollectPreview({ context, taskId, asins });
     // 重复标记：与现有 dataset 的 duplicateKey 比对（reviewId 缺失时 asin+hash+rating+date）
     const existing = await getReviewEvidence(context, taskId);

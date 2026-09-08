@@ -71,6 +71,7 @@ import {
   amazonCompetitorObservationToPreview,
 } from "@/tools/collectors/browser-use/amazonCompetitorCollector";
 import { getRuntimeMode } from "@/lib/server/runtimeMode";
+import { findAmazonPreviewResolution, hasLegacyAmazonFactClosure } from "@/lib/factCandidates";
 
 // 来源 3：VOC Review Evidence
 import {
@@ -282,7 +283,34 @@ async function handleAmazonSource(
       };
     }
 
-    // 4. inspect 模式仅检查状态，不执行采集
+    // 4. Fact Candidate 确认闭环：Preview 已按 taskId/ASIN/主体/previewId/
+    // candidate source identity 完成处理并被消费后，事实确认本身就是该来源的
+    // 可追溯完成凭据；不能因为内存 Preview 已消费就再次启动采集。
+    const taskAfterResolution = await getTaskSnapshot(context, taskId);
+    const resolved = findAmazonPreviewResolution({
+      resultJson: parseJsonSafe(taskAfterResolution.resultJson) ?? {},
+      taskId,
+      asin,
+      subjectKey,
+    });
+    if (resolved) {
+      return {
+        status: "ready",
+        hasEvidence: false,
+        itemCount: resolved.candidateRefs.length,
+        message: "Amazon 商品资料已完成事实确认闭环",
+      };
+    }
+    const parsedTaskResult = parseJsonSafe(taskAfterResolution.resultJson) ?? {};
+    if (hasLegacyAmazonFactClosure(parsedTaskResult)) {
+      return {
+        status: "ready",
+        hasEvidence: false,
+        message: "Amazon 商品资料已由已确认事实闭环（历史来源兼容）",
+      };
+    }
+
+    // 5. inspect 模式仅检查状态，不执行采集
     if (action === "inspect") {
       return {
         status: "needs_user",
@@ -291,7 +319,7 @@ async function handleAmazonSource(
       };
     }
 
-    // 5. orchestrate 模式：尝试采集 Preview（严格不自动确认入库）
+    // 6. orchestrate 模式：尝试采集 Preview（严格不自动确认入库）
     if (context.mode === "demo") {
       // Demo 模式回放预置 preview
       const preview = buildDemoBrowserCollectPreview(asin);

@@ -375,6 +375,26 @@ describe("POST collect / collect-confirm（Package C 半自动采集）", () => 
     expect((await get.json()).data.evidence.dataset.reviews).toHaveLength(1);
   });
 
+  it("同任务同主体同 ASIN 已有 Pending Preview 时，局部采集只复用、不重复启动浏览器", async () => {
+    const first = await postJson({
+      action: "collect",
+      asins: [{ asin: ASIN, sourceProductRole: "current_candidate" }],
+    }, taskId);
+    expect(first.status).toBe(200);
+    const firstBody = await first.json();
+    const navigateCalls = vi.mocked(collectState.session.navigate).mock.calls.length;
+
+    const second = await postJson({
+      action: "collect",
+      asins: [{ asin: ASIN, sourceProductRole: "current_candidate" }],
+    }, taskId);
+    expect(second.status).toBe(200);
+    const secondBody = await second.json();
+    expect(secondBody.data.reused).toBe(true);
+    expect(secondBody.data.preview.previewId).toBe(firstBody.data.preview.previewId);
+    expect(vi.mocked(collectState.session.navigate).mock.calls.length).toBe(navigateCalls);
+  });
+
   it("collect-confirm writes browser-bound reviews with dedupe", async () => {
     const collect = await postJson({
       action: "collect",

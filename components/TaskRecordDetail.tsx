@@ -1979,7 +1979,9 @@ function FormalV2RecordContent({
     : deriveFormalV2PrimaryAction({ statusKey: view.status.key, researchStale, taskType: record.type });
   const effectiveResearchStale = lifecycleSnapshot?.stale ?? researchStale;
   const imageCopy = formalV2ImageCopy(view.hasImageDraft);
-  const [primaryOpen, setPrimaryOpen] = useState(false);
+  // 研究工作台是商品研究页的主工作区：首次进入直接展开；用户仍可通过
+  // 原有 details 开关折叠，且 hash 导航继续显式展开。
+  const [primaryOpen, setPrimaryOpen] = useState(true);
   const [activeTab, setActiveTab] = useState<EvidenceTabKey>("market");
 
   useEffect(() => {

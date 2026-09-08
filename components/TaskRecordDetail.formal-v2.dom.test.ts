@@ -469,7 +469,7 @@ describe("TaskRecordDetail 正式组件挂载（真实 DOM）", () => {
 
     const button = findByTestId("formal-v2-primary-action")!;
     expect(button.getAttribute("aria-controls")).toBe("formal-v2-materials");
-    expect(button.getAttribute("aria-expanded")).toBe("false");
+    expect(button.getAttribute("aria-expanded")).toBe("true");
 
     await act(async () => { button.dispatchEvent(new FakeEvent("click", button)); });
     await flush();

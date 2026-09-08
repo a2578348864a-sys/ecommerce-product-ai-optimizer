@@ -1265,6 +1265,16 @@ export function EvidenceWorkbench({
             onChanged={() => { loadBrowserEvidence(); handleDataChanged(); }}
           />
         </div>
+
+        {/* 商品事实确认属于 Amazon/市场证据闭环，固定放在 Tab 01 内，避免与
+            四维度工作台形成第二个漂浮入口；组件本身的权威与来源语义不变。 */}
+        <FactCandidateReview
+          taskId={taskId}
+          storageVersion={storageVersion}
+          refreshToken={dataRevision}
+          showRecoveryTrigger={false}
+          onChanged={() => handleDataChanged()}
+        />
       </div>
 
       {/* Tab 2: 买家需求与评论 */}
@@ -1312,15 +1322,6 @@ export function EvidenceWorkbench({
         <MissingSection gaps={gaps} />
         <CommercialInputsCard taskId={taskId} onChanged={() => handleDataChanged()} />
       </div>
-
-      {/* ── 04: 紧凑的商品事实确认（折叠入口） ── */}
-      <FactCandidateReview
-        taskId={taskId}
-        storageVersion={storageVersion}
-        refreshToken={dataRevision}
-        showRecoveryTrigger={false}
-        onChanged={() => handleDataChanged()}
-      />
 
       {/* ── 待补资料 ── */}
       <p className="text-xs text-slate-400">
