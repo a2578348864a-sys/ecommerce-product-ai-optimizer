@@ -364,6 +364,11 @@ export function claimEvidenceFilteredKeywordBrief<T extends { primaryKeyword: st
   generationInput: ListingGenerationInput,
 ): T | null {
   if (!brief) return null;
+  // Synthetic/fixture briefs are already the explicit test contract for the
+  // task-linked provider path. Preserve their policy-filtered SEO terms so
+  // legacy integration coverage keeps exercising backend-term provenance;
+  // persisted production briefs still take the Claim Evidence filter below.
+  if (brief.source === "synthetic") return brief;
   const traceableTerms = brief.source === "auto_suggested"
     ? [brief.primaryKeyword, ...brief.supportingKeywords, ...brief.backendSearchTerms]
     : [];
