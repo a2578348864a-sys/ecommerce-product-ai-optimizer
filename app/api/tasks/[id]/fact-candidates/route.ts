@@ -25,6 +25,12 @@ import {
   type ConfirmedFactCandidate,
   type FactCandidate,
 } from "@/lib/factCandidates";
+import { readBrowserEvidenceTaskAsin } from "@/lib/server/browserEvidence";
+import {
+  browserEvidenceSubjectKey,
+  buildConfirmedSnapshot,
+  findPendingBrowserEvidencePreview,
+} from "@/lib/server/browserEvidenceCollect";
 import type { AccessContext } from "@/lib/server/accessPassword";
 
 export const runtime = "nodejs";
@@ -105,6 +111,72 @@ function parseResultJson(value: string): Record<string, unknown> {
 
 function actorRef(context: AccessContext): string {
   return context.mode === "demo" ? `visitor:${context.demoAccessId}` : "owner:v1";
+}
+
+/**
+ * 研究资料编排生成的 Amazon Preview 仍然是待确认资料，不会自动写入 browserEvidence。
+ * 事实确认 API 需要把这个受主体/任务/ASIN 绑定的 Preview 映射为候选视图，
+ * 这样用户可以先确认商品事实；确认写入时仍只写 factCandidates，来源引用保持不变。
+ */
+async function buildFactCandidateViewWithPendingAmazonPreview(
+  context: AccessContext,
+  taskId: string,
+  result: Record<string, unknown>,
+): Promise<{ candidates: FactCandidate[]; confirmed: ConfirmedFactCandidate[] }> {
+  const base = buildFactCandidateView(result);
+  const asin = await readBrowserEvidenceTaskAsin(context, taskId);
+  if (!asin) return base;
+  const pending = findPendingBrowserEvidencePreview({
+    subjectKey: browserEvidenceSubjectKey(context),
+    taskId,
+    asin,
+  });
+  if (!pending) return base;
+
+  try {
+    const snapshot = buildConfirmedSnapshot({
+      preview: pending.preview,
+      taskAsin: asin,
+      capturedAt: pending.capturedAt,
+      context,
+    });
+    const syntheticBrowserEvidence = {
+      schema: "browser-evidence.v1",
+      version: 1,
+      candidateId: null,
+      targetAsin: asin,
+      snapshots: [snapshot],
+      updatedAt: pending.capturedAt,
+    };
+    const previewView = buildFactCandidateView({ browserEvidence: syntheticBrowserEvidence });
+    const confirmedIds = new Set(base.confirmed.map((item) => item.candidateId));
+    const confirmedFields = new Set(base.confirmed.map((item) => item.field));
+    const mergedCandidates: FactCandidate[] = base.candidates.map((candidate) => ({
+      ...candidate,
+      ...(candidate.alternateSources ? { alternateSources: [...candidate.alternateSources] } : {}),
+    })).filter((candidate) => !confirmedIds.has(candidate.candidateId) && !confirmedFields.has(candidate.field));
+    for (const candidate of previewView.candidates) {
+      // Pending Preview 不是第二个事实来源：确认某个 canonical field 后，
+      // 同字段的 Preview 候选必须从待确认列表消失，避免刷新后重复出现。
+      if (confirmedIds.has(candidate.candidateId) || confirmedFields.has(candidate.field)) continue;
+      const sameField = mergedCandidates.find((item) => item.field === candidate.field);
+      if (sameField) {
+        sameField.alternateSources = [
+          ...(sameField.alternateSources ?? []),
+          { sourceKind: candidate.sourceKind, sourceRef: candidate.sourceRef, value: candidate.value },
+        ];
+      } else {
+        mergedCandidates.push(candidate);
+      }
+    }
+    return {
+      confirmed: base.confirmed,
+      candidates: mergedCandidates,
+    };
+  } catch {
+    // Preview 结构或实体绑定失效时安全降级为现有持久化候选，不泄漏内部错误。
+    return base;
+  }
 }
 
 // ── V3 Final HWF Fact Batch Confirmation（CAS / Conflict / Selection Preservation） ──
@@ -264,7 +336,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id?
   const snapshot = await loadSnapshot(auth.context, taskId);
   if (!snapshot) return jsonResponse({ ok: false, error: { code: "not_found", message: "任务不存在或无权限。" } }, 404);
   const result = parseResultJson(snapshot.resultJson);
-  const view = buildFactCandidateView(result);
+  const view = await buildFactCandidateViewWithPendingAmazonPreview(auth.context, taskId, result);
   return jsonResponse({
     ok: true,
     data: { candidates: view.candidates, confirmed: view.confirmed, storageVersion: toStorageVersion(snapshot) },
@@ -301,7 +373,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
   // ── 1) 预检（最新版本）：幂等短路 + 全冲突提前 fail-closed（不写） ──
   const preCheck = checkBatchSelections(
-    buildFactCandidateView(parseResultJson(preSnapshot.resultJson)),
+    await buildFactCandidateViewWithPendingAmazonPreview(auth.context, taskId, parseResultJson(preSnapshot.resultJson)),
     selectionsRaw,
     actor,
   );
@@ -340,8 +412,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     taskId,
     writer: "fact-candidates",
     expectedStorageVersion: expected,
-    mutate: (current) => {
-      const check = checkBatchSelections(buildFactCandidateView(current), selectionsRaw, actor);
+    mutate: async (current) => {
+      const check = checkBatchSelections(
+        await buildFactCandidateViewWithPendingAmazonPreview(auth.context, taskId, current as Record<string, unknown>),
+        selectionsRaw,
+        actor,
+      );
       if (!check.ok) {
         throw new TaskResultJsonMutationError(check.code, 400, check.message);
       }
@@ -410,7 +486,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       const latestSnapshot = await loadSnapshot(auth.context, taskId);
       if (!latestSnapshot) return jsonResponse({ ok: false, error: { code: "not_found", message: "任务不存在或无权限。" } }, 404);
       const rebaseCheck = checkBatchSelections(
-        buildFactCandidateView(parseResultJson(latestSnapshot.resultJson)),
+        await buildFactCandidateViewWithPendingAmazonPreview(auth.context, taskId, parseResultJson(latestSnapshot.resultJson)),
         selectionsRaw,
         actor,
       );
