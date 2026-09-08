@@ -62,6 +62,7 @@ import { getFactCandidates } from "@/lib/factCandidates";
 import { mapResearchConfirmedToHandoff, RESEARCH_TO_LISTING_FIELD_MAP } from "@/lib/canonicalFactMapping";
 import { buildReferenceConflicts } from "@/lib/productCreativeHandoffFactAuthority";
 import { loadCandidateSourceMeta } from "@/lib/server/candidateSourceMeta";
+import { readCandidateBindingVerification, type CandidateBindingVerification } from "@/lib/server/candidateBindingVerification";
 import type {
   ProductCreativeHandoffCandidate,
   ProductCreativeHandoffV1,
@@ -269,6 +270,8 @@ export type CreativeHandoffGateResult = {
   };
   /** V3 Evidence → Creative Context Bridge：研究 Evidence 参考层（VOC/AI/Keyword/Competitor/Sourcing；均非事实） */
   creativeContext?: import("@/lib/creativeContextBuilder").CreativeContextV1;
+  /** Candidate → Task → ASIN 的只读验证结果；不持久化、不接受前端覆盖。 */
+  candidateBinding?: CandidateBindingVerification;
 };
 
 // ─── Helpers ──────────────────────────────────────────────
@@ -427,6 +430,16 @@ export async function checkCreativeHandoffGate(
 
   const resultJson = parseResultJson(resultJsonStr || "");
   if (!resultJson) return { allowed: false, reason: "legacy_not_supported", taskAccessible: accessible };
+
+  // Candidate 绑定只读派生：Listing/Creative Handoff 生成路径不能在生命周期验证缺失时
+  // 偷偷放行；当前真实关系正确时该验证为 verified，不改变任何既有数据。
+  // Candidate -> task verification is authoritative for owner data. Demo
+  // sandbox fixtures intentionally do not persist OpportunityCandidate rows;
+  // leaving this projection absent preserves their isolated, in-memory path
+  // without weakening the owner-side generation gate.
+  const candidateBinding = context.mode === "owner"
+    ? await readCandidateBindingVerification(context, taskId, resultJson)
+    : undefined;
 
   if (!hasProductResearchRecordNamespace(resultJson)) {
     // R4/R6：同一 actor 的旧版任务 → 业务状态 legacy_not_supported（不伪装"不存在"）
@@ -705,6 +718,7 @@ export async function checkCreativeHandoffGate(
       // V3 Final PHASE 1：研究侧已确认事实（factCandidates 权威）桥接挂入降级候选，
       // 消除「研究已确认 N 条但创作侧显示无已确认事实」的 gate 失真与计数误导
       workbenchConfirmedFacts: (getFactCandidates(resultJson)?.confirmed ?? []).map((f) => ({ field: toConsumerField(f.field), label: f.label, value: f.value, sourceKind: f.sourceKind })),
+      candidateBinding,
     };
   }
 
@@ -772,7 +786,7 @@ export async function checkCreativeHandoffGate(
     approvedReferenceImageDataUrl = researchContext.productImage.dataUrl;
   }
 
-  return { allowed: true, reason: "eligible", taskAccessible: accessible, candidate, currentHandoff, storageVersion, requestLedger, ledgerInvalid, listingHandoffBindingRaw, listingDraftRaw, imageHandoffBindingRaw: resultJson.imageHandoffBinding, imageDraftRaw: resultJson.aiImageDraftSnapshot, imageStudioSelectionRaw: resultJson.imageStudioSelection, visualReferenceCandidates: visualCandidates, approvedReferenceImageDataUrl, externalUrlCandidate, keywordBriefRaw: resultJson.listingKeywordBrief, listingCreationBriefRaw: resultJson.listingCreationBrief, creativeContext: buildCreativeContextFromResearch({ resultJson, researchRevision: record.revision, candidateId: record.candidateId }), workbenchConfirmedFacts: (getFactCandidates(resultJson)?.confirmed ?? []).map((f) => ({ field: toConsumerField(f.field), label: f.label, value: f.value, sourceKind: f.sourceKind })) };
+  return { allowed: true, reason: "eligible", taskAccessible: accessible, candidate, currentHandoff, storageVersion, requestLedger, ledgerInvalid, listingHandoffBindingRaw, listingDraftRaw, imageHandoffBindingRaw: resultJson.imageHandoffBinding, imageDraftRaw: resultJson.aiImageDraftSnapshot, imageStudioSelectionRaw: resultJson.imageStudioSelection, visualReferenceCandidates: visualCandidates, approvedReferenceImageDataUrl, externalUrlCandidate, keywordBriefRaw: resultJson.listingKeywordBrief, listingCreationBriefRaw: resultJson.listingCreationBrief, creativeContext: buildCreativeContextFromResearch({ resultJson, researchRevision: record.revision, candidateId: record.candidateId }), workbenchConfirmedFacts: (getFactCandidates(resultJson)?.confirmed ?? []).map((f) => ({ field: toConsumerField(f.field), label: f.label, value: f.value, sourceKind: f.sourceKind })), candidateBinding };
 }
 
 // ─── Preview ──────────────────────────────────────────────

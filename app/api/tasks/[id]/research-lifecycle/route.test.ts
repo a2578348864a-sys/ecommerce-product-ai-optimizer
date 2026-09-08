@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   isSandboxTaskId: vi.fn(),
   getSandboxTask: vi.fn(),
   findFirst: vi.fn(),
+  candidateFindUnique: vi.fn(),
   getResearchLifecycleState: vi.fn(),
 }));
 
@@ -20,6 +21,7 @@ vi.mock("@/lib/server/demoSandbox", () => ({
 vi.mock("@/lib/server/db", () => ({
   prisma: {
     viralAnalysisRecord: { findFirst: mocks.findFirst },
+    opportunityCandidate: { findUnique: mocks.candidateFindUnique },
   },
 }));
 
@@ -60,7 +62,16 @@ beforeEach(() => {
   mocks.findFirst.mockResolvedValue({
     type: "workflow",
     decisionStatus: "pending",
-    resultJson: JSON.stringify({ candidateToTask: { candidateId: "candidate-1" } }),
+    resultJson: JSON.stringify({
+      candidateToTask: { candidateId: "candidate-1" },
+      candidateAnalysisContext: { facts: { asin: "B00063QBL8" } },
+      researchRecord: { candidateId: "candidate-1" },
+    }),
+  });
+  mocks.candidateFindUnique.mockResolvedValue({
+    id: "candidate-1",
+    convertedTaskId: "task-1",
+    sourceMetaJson: JSON.stringify({ asin: "B00063QBL8" }),
   });
   mocks.getResearchLifecycleState.mockReturnValue(snapshot);
 });
@@ -92,10 +103,19 @@ describe("GET /api/tasks/[id]/research-lifecycle", () => {
       where: { id: "task-1" },
       select: { type: true, decisionStatus: true, resultJson: true },
     });
+    expect(mocks.candidateFindUnique).toHaveBeenCalledWith({
+      where: { id: "candidate-1" },
+      select: { id: true, convertedTaskId: true, sourceMetaJson: true },
+    });
     expect(mocks.getResearchLifecycleState).toHaveBeenCalledWith({
-      result: { candidateToTask: { candidateId: "candidate-1" } },
+      result: {
+        candidateToTask: { candidateId: "candidate-1" },
+        candidateAnalysisContext: { facts: { asin: "B00063QBL8" } },
+        researchRecord: { candidateId: "candidate-1" },
+      },
       decisionStatus: "pending",
       type: "workflow",
+      candidateBindingValid: true,
     });
     expect(body).toEqual({ ok: true, data: snapshot });
     expect(body.data).not.toHaveProperty("result");

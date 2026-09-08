@@ -341,6 +341,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       && listingStatus !== "revoked"
       && listingStatus !== "invalid"
       && handoffEffectiveStatus?.status === "active"
+      // Creative Handoff Gate 在 modern 任务上提供 Candidate Binding 的只读验证；
+      // 未验证时 Listing 不得绕过 Research Lifecycle。旧兼容 mock 未提供该投影，
+      // 仍由既有 Handoff/Capability 门禁接管。
+      && (gate.candidateBinding === undefined || gate.candidateBinding.status === "verified")
       && factSummary.listingEligibleFacts > 0
       && preflightAllows
       && hasUsableDraft;

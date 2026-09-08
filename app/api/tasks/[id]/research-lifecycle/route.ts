@@ -6,6 +6,7 @@ import {
   getResearchLifecycleState,
   type ResearchLifecycleSnapshot,
 } from "@/lib/server/researchLifecycleReader";
+import { readCandidateBindingVerification } from "@/lib/server/candidateBindingVerification";
 
 export const runtime = "nodejs";
 
@@ -61,10 +62,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
       const task = getSandboxTask(auth.context.demoAccessId, taskId);
       if (!task) return notFound();
 
+      const result = safeParseJson(task.resultJson);
+      const binding = await readCandidateBindingVerification(auth.context, taskId, result);
+
       const snapshot = getResearchLifecycleState({
-        result: safeParseJson(task.resultJson),
+        result,
         decisionStatus: task.decisionStatus,
         type: task.type,
+        candidateBindingValid: binding.status === "verified" ? true : binding.status === "invalid" ? false : undefined,
       });
       return json({ ok: true, data: snapshot });
     }
@@ -78,10 +83,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
     });
     if (!task) return notFound();
 
+    const result = safeParseJson(task.resultJson);
+    const binding = await readCandidateBindingVerification(auth.context, taskId, result);
+
     const snapshot = getResearchLifecycleState({
-      result: safeParseJson(task.resultJson),
+      result,
       decisionStatus: task.decisionStatus,
       type: task.type,
+      candidateBindingValid: binding.status === "verified" ? true : binding.status === "invalid" ? false : undefined,
     });
     return json({ ok: true, data: snapshot });
   } catch {
