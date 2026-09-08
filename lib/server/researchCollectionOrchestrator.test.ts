@@ -320,6 +320,73 @@ describe("researchCollectionOrchestrator", () => {
       expect(mocks.runAmazonCompetitorCollection).not.toHaveBeenCalled();
       expect(mocks.collectBrowserEvidencePreview).not.toHaveBeenCalled();
     });
+
+    it("事实确认闭环记录存在时，Amazon Preview 已消费且不重复采集", async () => {
+      mocks.findFirst.mockResolvedValue({
+        id: "task-001",
+        updatedAt: new Date("2026-09-01T00:00:00.000Z"),
+        resultJson: JSON.stringify({
+          ...JSON.parse(buildTaskResultJson("B0SAMPLE01")) as Record<string, unknown>,
+          factCandidates: {
+            schema: "fact-candidates.v1",
+            version: 1,
+            confirmed: [],
+            amazonPreviewResolutions: [{
+              previewId: "bev_resolved_001",
+              taskId: "task-001",
+              asin: "B0SAMPLE01",
+              subjectKey: "owner:v1",
+              candidateRefs: [{
+                candidateId: "amazon_browser_evidence:price",
+                field: "price",
+                sourceKind: "amazon_browser_evidence",
+                sourceRef: "browserEvidence.snapshots[0].fields.price",
+              }],
+              resolvedAt: new Date().toISOString(),
+            }],
+            updatedAt: new Date().toISOString(),
+          },
+        }),
+      });
+      const result = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "orchestrate",
+      });
+      expect(result.sources.amazon.status).toBe("ready");
+      expect(result.sources.amazon.message).toContain("事实确认闭环");
+      expect(mocks.collectBrowserEvidencePreview).not.toHaveBeenCalled();
+    });
+
+    it("历史确认已保留 Amazon provenance 且无未确认 Amazon 候选时，兼容判定为 ready", async () => {
+      mocks.findFirst.mockResolvedValue({
+        id: "task-001",
+        updatedAt: new Date("2026-09-01T00:00:00.000Z"),
+        resultJson: JSON.stringify({
+          ...JSON.parse(buildTaskResultJson("B0SAMPLE01")) as Record<string, unknown>,
+          factCandidates: {
+            schema: "fact-candidates.v1",
+            version: 1,
+            confirmed: [{
+              candidateId: "amazon_product_info:material",
+              field: "material",
+              label: "材质",
+              value: "Steel",
+              sourceKind: "amazon_product_info",
+              sourceRef: "browserEvidence.snapshots[0].productInfo.material",
+              humanConfirmationRequired: true,
+              confirmedAt: new Date().toISOString(),
+              confirmedBy: "owner:v1",
+            }],
+            updatedAt: new Date().toISOString(),
+          },
+        }),
+      });
+      const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "inspect" });
+      expect(result.sources.amazon.status).toBe("ready");
+      expect(result.sources.amazon.message).toContain("历史来源兼容");
+      expect(mocks.collectBrowserEvidencePreview).not.toHaveBeenCalled();
+    });
   });
 
   describe("idempotency with pending previews", () => {

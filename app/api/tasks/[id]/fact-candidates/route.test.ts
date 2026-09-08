@@ -10,7 +10,7 @@ import { NextRequest } from "next/server";
 import { createTrustedSandboxTask, getSandboxTask, updateSandboxTaskResultJson } from "@/lib/server/demoSandbox";
 import { GET, POST } from "./route";
 import { buildDemoBrowserCollectPreview } from "@/lib/server/demoAcquisitionSamples";
-import { resetBrowserEvidencePreviewStoreForTests, storeBrowserEvidencePreview } from "@/lib/server/browserEvidenceCollect";
+import { findPendingBrowserEvidencePreview, resetBrowserEvidencePreviewStoreForTests, storeBrowserEvidencePreview } from "@/lib/server/browserEvidenceCollect";
 
 vi.hoisted(() => {
   const { join } = require("node:path");
@@ -161,6 +161,56 @@ describe("GET /fact-candidates", () => {
     const confirmed = get2.data.confirmed.find((c: { candidateId: string }) => c.candidateId === price.candidateId);
     expect(confirmed?.sourceKind).toBe("amazon_browser_evidence");
     expect(confirmed?.sourceRef).toContain("browserEvidence.snapshots[0].fields.price");
+  });
+
+  it("全部 Amazon Preview 候选完成确认后，按 Preview 身份消费且持久化闭环记录", async () => {
+    await updateSandboxTaskResultJson(DEMO, taskId, JSON.stringify({}));
+    const previewId = "bev_preview_fact_bridge_resolution_001";
+    storeBrowserEvidencePreview({
+      evidenceId: previewId,
+      preview: buildDemoBrowserCollectPreview("B0SAMPLE01"),
+      capturedAt: new Date().toISOString(),
+      expiresAt: Date.now() + 15 * 60 * 1000,
+      subjectKey: `visitor:${DEMO}`,
+      taskId,
+      asin: "B0SAMPLE01",
+    });
+
+    const get1 = await (await getJson()).json();
+    const amazonCandidates = get1.data.candidates.filter((candidate: { sourceKind: string }) =>
+      candidate.sourceKind === "amazon_browser_evidence" || candidate.sourceKind === "amazon_product_info",
+    );
+    expect(amazonCandidates.length).toBeGreaterThan(0);
+    const post = await postJson({
+      selections: amazonCandidates.map((candidate: { candidateId: string; value: string | number }) => ({
+        candidateId: candidate.candidateId,
+        confirmed: true,
+        value: candidate.value,
+      })),
+      expectedStorageVersion: get1.data.storageVersion,
+    });
+    expect(post.status).toBe(200);
+    expect(findPendingBrowserEvidencePreview({
+      subjectKey: `visitor:${DEMO}`,
+      taskId,
+      asin: "B0SAMPLE01",
+    })).toBeNull();
+
+    const stored = getSandboxTask(DEMO, taskId);
+    const result = JSON.parse(stored!.resultJson) as {
+      factCandidates?: { amazonPreviewResolutions?: Array<{ previewId: string; taskId: string; asin: string; subjectKey: string; candidateRefs: unknown[] }> };
+    };
+    const resolution = result.factCandidates?.amazonPreviewResolutions?.[0];
+    expect(resolution?.previewId).toBe(previewId);
+    expect(resolution?.taskId).toBe(taskId);
+    expect(resolution?.asin).toBe("B0SAMPLE01");
+    expect(resolution?.subjectKey).toBe(`visitor:${DEMO}`);
+    expect(resolution?.candidateRefs.length).toBe(amazonCandidates.length);
+
+    const get2 = await (await getJson()).json();
+    expect(get2.data.confirmed).toEqual(expect.arrayContaining(
+      amazonCandidates.map((candidate: { candidateId: string }) => expect.objectContaining({ candidateId: candidate.candidateId })),
+    ));
   });
 });
 

@@ -169,6 +169,16 @@ describe("EvidenceWorkbench extractors", () => {
 });
 
 describe("EvidenceWorkbench 研究生命周期只读桥接", () => {
+  it("事实确认面板只挂载一次且位于 Tab 01 市场与竞品区域", () => {
+    const marketPanelIndex = wbSource.indexOf('data-testid="workbench-panel-market"');
+    const buyersPanelIndex = wbSource.indexOf('data-testid="workbench-panel-buyers"');
+    const factReviewIndex = wbSource.indexOf("<FactCandidateReview");
+    expect(marketPanelIndex).toBeGreaterThan(-1);
+    expect(factReviewIndex).toBeGreaterThan(marketPanelIndex);
+    expect(factReviewIndex).toBeLessThan(buyersPanelIndex);
+    expect(wbSource.match(/<FactCandidateReview/g)).toHaveLength(1);
+  });
+
   it("只把上层快照 phase 翻译为展示标签，不在 workbench 内重算生命周期", () => {
     expect(researchLifecyclePhaseLabel("awaiting_confirmation")).toBe("等待确认事实");
     expect(researchLifecyclePhaseLabel("completed")).toBe("研究已完成");
