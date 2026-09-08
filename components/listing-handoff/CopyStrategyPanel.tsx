@@ -83,15 +83,17 @@ export function CopyStrategyPanel({ strategy = null }: CopyStrategyPanelProps) {
 
   return (
     <section
-      className="mt-4 min-w-0 overflow-hidden rounded-xl border border-violet-200 bg-violet-50/50 p-3"
+      className="mt-3 min-w-0 overflow-hidden rounded-xl border border-violet-200 bg-violet-50/50 p-3"
       data-testid="copy-strategy-panel"
-      aria-label="Listing Copy Strategy 文案策略"
+      aria-label="AI文案规划"
     >
       <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <h3 className="text-sm font-bold text-violet-950">Listing Copy Strategy · 文案策略</h3>
-            <span className="rounded-full border border-violet-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-violet-700">REFERENCE_ONLY</span>
+            <h3 className="text-sm font-bold text-violet-950">AI文案规划</h3>
+            <span title="REFERENCE_ONLY" className="rounded-full border border-violet-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-violet-700">
+              仅供策略参考<span className="sr-only">REFERENCE_ONLY</span>
+            </span>
           </div>
           <p className="mt-1 text-xs leading-5 text-violet-900/70">
             策略参考，不直接修改 Listing；内容来自现有研究安全摘要和质量反馈。
@@ -105,21 +107,26 @@ export function CopyStrategyPanel({ strategy = null }: CopyStrategyPanelProps) {
           当前暂无可用策略参考；Listing 生成与现有质量检查保持不变。
         </p>
       ) : (
-        <div className="mt-3 grid min-w-0 gap-2 md:grid-cols-2">
-          <StrategyList title="目标用户" values={targetBuyer ? [targetBuyer] : []} testId="copy-strategy-target-buyer" />
-          <StrategyList title="核心卖点角度" values={[mainAngle, emotionalHook].filter(Boolean)} testId="copy-strategy-main-angle" />
-          <StrategyList title="买家痛点" values={buyerPainPoints} testId="copy-strategy-pain-points" />
-          <StrategyList title="文案语气" values={copyTone ? [copyTone] : []} testId="copy-strategy-tone" />
-          <StrategyList title="Bullet 写作结构" values={bulletStrategies} testId="copy-strategy-bullets" />
-          <StrategyList title="标题策略" values={titleStrategy} testId="copy-strategy-title" />
-          <StrategyList title="描述策略" values={descriptionStrategy} testId="copy-strategy-description" />
-          <StrategyList
-            title="避免表达"
-            values={avoidExpressions}
-            testId="copy-strategy-avoid"
-            emptyText="暂无额外避免表达；仍需遵守现有事实与合规检查。"
-          />
-        </div>
+        <details className="mt-2.5 rounded-lg border border-violet-100 bg-white/60 p-2.5 text-xs">
+          <summary className="cursor-pointer font-semibold text-violet-900 hover:text-violet-950">
+            展开AI文案规划详情（目标用户、卖点角度、写作结构与避免表达）
+          </summary>
+          <div className="mt-3 grid min-w-0 gap-2 md:grid-cols-2">
+            <StrategyList title="目标用户" values={targetBuyer ? [targetBuyer] : []} testId="copy-strategy-target-buyer" />
+            <StrategyList title="核心卖点角度" values={[mainAngle, emotionalHook].filter(Boolean)} testId="copy-strategy-main-angle" />
+            <StrategyList title="买家痛点" values={buyerPainPoints} testId="copy-strategy-pain-points" />
+            <StrategyList title="文案语气" values={copyTone ? [copyTone] : []} testId="copy-strategy-tone" />
+            <StrategyList title="Bullet 写作结构" values={bulletStrategies} testId="copy-strategy-bullets" />
+            <StrategyList title="标题策略" values={titleStrategy} testId="copy-strategy-title" />
+            <StrategyList title="描述策略" values={descriptionStrategy} testId="copy-strategy-description" />
+            <StrategyList
+              title="避免表达"
+              values={avoidExpressions}
+              testId="copy-strategy-avoid"
+              emptyText="暂无额外避免表达；仍需遵守现有事实与合规检查。"
+            />
+          </div>
+        </details>
       )}
     </section>
   );
