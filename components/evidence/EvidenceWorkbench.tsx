@@ -50,6 +50,7 @@ import {
   parseAcquisitionCapability,
   type AcquisitionCapabilityView,
 } from "@/lib/client/acquisitionCapability";
+import type { ResearchLifecycleSnapshot } from "@/lib/server/researchLifecycleReader";
 
 /* ── 纯提取工具（导出供测试） ─────────────────────────── */
 
@@ -551,6 +552,24 @@ function MissingSection({ gaps }: { gaps: string[] }) {
 
 export type EvidenceTabKey = "market" | "buyers" | "sourcing" | "cost-risk";
 
+/**
+ * 生命周期快照的展示标签。快照由上层只读计算，本组件只负责把 phase 翻译成用户语言，
+ * 不在这里重新判断研究生命周期，也不把资料数量当作正式状态。
+ */
+export function researchLifecyclePhaseLabel(phase: ResearchLifecycleSnapshot["phase"]): string {
+  const labels: Record<ResearchLifecycleSnapshot["phase"], string> = {
+    created: "尚未开始",
+    collecting: "正在采集研究资料",
+    awaiting_confirmation: "等待确认事实",
+    awaiting_decision: "等待人工决定",
+    ready_to_complete: "可以完成研究",
+    completed: "研究已完成",
+    abandoned: "研究已放弃",
+    blocked: "研究被阻断",
+  };
+  return labels[phase];
+}
+
 export function EvidenceWorkbench({
   taskId,
   result,
@@ -559,6 +578,7 @@ export function EvidenceWorkbench({
   onMaterialRowsChange,
   activeTab: activeTabProp,
   onTabChange,
+  lifecycleSnapshot,
 }: {
   taskId: string;
   result: Record<string, unknown> | null;
@@ -570,6 +590,8 @@ export function EvidenceWorkbench({
   onMaterialRowsChange?: (payload: { rows: ResearchMaterialRow[]; counts: LiveEvidenceCounts; hasAiSummary: boolean }) => void;
   activeTab?: EvidenceTabKey;
   onTabChange?: (tab: EvidenceTabKey) => void;
+  /** 上层提供的只读研究生命周期快照；缺省时保留历史摘要兼容行为。 */
+  lifecycleSnapshot?: ResearchLifecycleSnapshot | null;
 }) {
   const [internalTab, setInternalTab] = useState<EvidenceTabKey>("market");
   const currentTab = activeTabProp ?? internalTab;
@@ -838,8 +860,14 @@ export function EvidenceWorkbench({
 
   useEffect(() => {
     if (dataRevision > 0) {
-      void loadCompetitors();
-      void loadKeywordEvidence();
+      // 统一编排完成后同步刷新四类来源与事实确认入口，避免只更新顶部状态而遗漏下游预览。
+      void Promise.allSettled([
+        loadCompetitors(),
+        loadKeywordEvidence(),
+        loadKeywordBriefState(),
+        loadBrowserEvidence(),
+        loadVoc(),
+      ]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataRevision]);
@@ -965,6 +993,20 @@ export function EvidenceWorkbench({
             </dd>
           </div>
           <div>
+            <dt className="text-xs text-slate-500">研究主状态</dt>
+            <dd className="mt-0.5 font-semibold text-slate-900" data-testid="research-lifecycle-phase">
+              {lifecycleSnapshot ? researchLifecyclePhaseLabel(lifecycleSnapshot.phase) : "资料状态待整理"}
+            </dd>
+            {lifecycleSnapshot?.stale ? (
+              <p className="mt-1 text-xs text-amber-700" data-testid="research-lifecycle-stale">研究资料已变化，请重新确认。</p>
+            ) : null}
+            {lifecycleSnapshot && lifecycleSnapshot.blockers.length > 0 ? (
+              <ul className="mt-1 space-y-0.5 text-xs text-amber-700" data-testid="research-lifecycle-blockers">
+                {lifecycleSnapshot.blockers.map((blocker) => <li key={blocker}>· {blocker}</li>)}
+              </ul>
+            ) : null}
+          </div>
+          <div>
             <dt className="text-xs text-slate-500">目前不知道什么</dt>
             <dd className="mt-0.5 text-slate-800">采购价 / MOQ / 物流成本 / 合规均尚未取得（未用 AI 填补）。</dd>
           </div>
@@ -975,7 +1017,7 @@ export function EvidenceWorkbench({
           <div>
             <dt className="text-xs text-slate-500">下一步最值得补什么证据</dt>
             <dd className="mt-0.5 text-slate-800">
-              {decision?.nextAction || (gaps.length > 0 ? gaps[0] : "按需要补充竞品、关键词或货源证据。")}
+              {lifecycleSnapshot?.nextAction || decision?.nextAction || (gaps.length > 0 ? gaps[0] : "按需要补充竞品、关键词或货源证据。")}
             </dd>
           </div>
         </dl>
@@ -1134,6 +1176,7 @@ export function EvidenceWorkbench({
             detailBulletsCount: Array.isArray(c.detailBullets?.bullets) ? c.detailBullets.bullets.length : 0,
           }))}
           pendingPreview={competitorPending}
+          showCollectTrigger={false}
           pendingPanel={
             competitorPending ? (
               <CompetitorPendingSubmitCard
@@ -1162,7 +1205,6 @@ export function EvidenceWorkbench({
               />
             ) : null
           }
-          onCollect={() => { competitorCollectRef.current?.(); }}
           onAdd={async (input) => {
             await mutateCompetitor("POST", { asin: input.asin, note: input.note });
             return competitorError || null;
@@ -1219,6 +1261,7 @@ export function EvidenceWorkbench({
             taskAsin={browserTaskAsin}
             storageVersion={browserEvidenceStorageVersion}
             capability={browserCapability}
+            showCollectTrigger={false}
             onChanged={() => { loadBrowserEvidence(); handleDataChanged(); }}
           />
         </div>
@@ -1242,6 +1285,7 @@ export function EvidenceWorkbench({
             storageVersion={vocStorageVersion}
             capability={vocCapability}
             pendingPreview={vocPendingPreview}
+            showCollectTrigger={false}
             onChanged={() => { loadVoc(); handleDataChanged(); }}
           />
         </div>
@@ -1273,6 +1317,8 @@ export function EvidenceWorkbench({
       <FactCandidateReview
         taskId={taskId}
         storageVersion={storageVersion}
+        refreshToken={dataRevision}
+        showRecoveryTrigger={false}
         onChanged={() => handleDataChanged()}
       />
 

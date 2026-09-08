@@ -82,14 +82,20 @@ class PreviewStore {
     this.entries.set(input.evidenceId, input);
   }
 
-  take(evidenceId: string, claim: { subjectKey: string; taskId: string }): BrowserEvidenceStoredPreview | null {
+  peek(evidenceId: string, claim: { subjectKey: string; taskId: string }): BrowserEvidenceStoredPreview | null {
     this.prune();
     const entry = this.entries.get(evidenceId);
     if (!entry) return null;
     // 跨主体 / 跨任务一律视为不可用（fail-closed，不泄漏 Preview 存在性之外的信息）
     if (entry.subjectKey !== claim.subjectKey || entry.taskId !== claim.taskId) return null;
-    this.entries.delete(evidenceId);
     return entry;
+  }
+
+  consume(evidenceId: string, claim: { subjectKey: string; taskId: string }): boolean {
+    const entry = this.peek(evidenceId, claim);
+    if (!entry) return false;
+    this.entries.delete(evidenceId);
+    return true;
   }
 
   findPending(query: { subjectKey: string; taskId: string; asin: string }): BrowserEvidenceStoredPreview | null {
@@ -132,7 +138,26 @@ export function takeBrowserEvidencePreview(
   evidenceId: string,
   claim: { subjectKey: string; taskId: string },
 ): BrowserEvidenceStoredPreview | null {
-  return previewStore.take(evidenceId, claim);
+  const entry = previewStore.peek(evidenceId, claim);
+  if (!entry) return null;
+  previewStore.consume(evidenceId, claim);
+  return entry;
+}
+
+/** 只读读取 Preview；校验或持久化失败时不得消耗，供保存流程在成功后 consume。 */
+export function peekBrowserEvidencePreview(
+  evidenceId: string,
+  claim: { subjectKey: string; taskId: string },
+): BrowserEvidenceStoredPreview | null {
+  return previewStore.peek(evidenceId, claim);
+}
+
+/** 仅在正式证据写入成功后作废 Preview；跨主体/跨任务调用不会删除。 */
+export function consumeBrowserEvidencePreview(
+  evidenceId: string,
+  claim: { subjectKey: string; taskId: string },
+): boolean {
+  return previewStore.consume(evidenceId, claim);
 }
 
 export function findPendingBrowserEvidencePreview(query: {

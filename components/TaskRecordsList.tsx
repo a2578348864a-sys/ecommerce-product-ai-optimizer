@@ -38,6 +38,7 @@ import {
 } from "@/lib/taskResearchHistoryPresentation";
 import { hasFormalHumanDecision } from "@/lib/taskWorkflowSummary";
 import { collectPagedTasks, deriveProductProjectGroup, type ProductProjectGroup, type ProductProjectGroupView } from "@/lib/researchLifecycle";
+import type { ResearchLifecycleSnapshot } from "@/lib/server/researchLifecycleReader";
 
 /** 轮 6：/research 与工作台共用的纯视图工具（需要我处理 / 研究中 / 全部）。 */
 export type ResearchViewItem = {
@@ -95,6 +96,11 @@ type TaskCenterItem = {
   oneLineSummary: string;
   result: unknown;
   productImage: ResearchProductImageDisplay | null;
+  /**
+   * Bridge V1：服务端统一研究生命周期投影（与详情页同一 Reader）。
+   * 存在时列表研究主生命周期展示必须以它为准；缺失时回退旧展示（兼容旧测试夹具）。
+   */
+  researchLifecycle?: ResearchLifecycleSnapshot | null;
 };
 
 type TaskPageInfo = {
@@ -267,6 +273,41 @@ function getVersionedDecisionSummary(result: unknown) {
       ? summary.nextActionSummary
       : null,
   };
+}
+
+/**
+ * Bridge V1：研究主生命周期标签。
+ * 映射与详情页 lifecycleStatusLabel 同语义（同一 Snapshot → 同一中文含义）：
+ * stale 在列表同时保留 phase 主标签与重新确认提示；legacy 追加旧版标记且永不伪装完成。
+ */
+export function getResearchLifecycleLabel(snapshot: ResearchLifecycleSnapshot): string {
+  if (snapshot.phase === "completed") {
+    const base = "研究已完成";
+    const staleSuffix = snapshot.stale ? " · 需重新确认" : "";
+    const legacySuffix = snapshot.contractMode === "legacy" ? "（旧版）" : "";
+    return `${base}${staleSuffix}${legacySuffix}`;
+  }
+  if (snapshot.phase === "abandoned") {
+    return snapshot.contractMode === "legacy" ? "已放弃（旧版）" : "已放弃";
+  }
+  if (snapshot.phase === "awaiting_confirmation") return "等待确认";
+  if (snapshot.phase === "collecting") return "资料采集中";
+  if (snapshot.phase === "ready_to_complete") return "待完成研究";
+  if (snapshot.phase === "awaiting_decision") {
+    return snapshot.contractMode === "legacy" ? "待人工决定（旧版）" : "待人工决定";
+  }
+  if (snapshot.phase === "created") {
+    return snapshot.contractMode === "legacy" ? "尚未开始研究（旧版）" : "尚未开始研究";
+  }
+  return snapshot.contractMode === "invalid" ? "状态异常" : "研究受阻";
+}
+
+export function getResearchLifecycleTitle(snapshot: ResearchLifecycleSnapshot): string {
+  const parts = [`phase=${snapshot.phase}`, `contract=${snapshot.contractMode}`];
+  if (snapshot.stale) parts.push("stale");
+  if (snapshot.blockers.length > 0) parts.push(`blockers=${snapshot.blockers.join(",")}`);
+  if (snapshot.nextAction) parts.push(snapshot.nextAction);
+  return parts.join("；");
 }
 
 export function TaskDecisionControl({
@@ -1192,11 +1233,19 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
                     const highlighted = item.id === highlightedTaskId;
                     const summary = getWorkflowSummary(item);
                     const presentation = getPresentation(item, summary.productName);
-                    const researchStatus = deriveResearchHistoryStatus({
-                      result: item.result,
-                      decisionStatus: item.decisionStatus,
-                      oneLineSummary: item.oneLineSummary,
-                    });
+                    // Bridge V1：研究主生命周期只读 task.researchLifecycle（服务端同一 Reader 投影，
+                    // 与详情页 /research-lifecycle 同源）；缺失时回退旧展示（仅兼容旧测试夹具）。
+                    const researchLifecycle = item.researchLifecycle ?? null;
+                    const researchStatus = researchLifecycle
+                      ? {
+                        key: (researchLifecycle.phase === "completed" ? "completed" : "incomplete") as "completed" | "incomplete",
+                        label: getResearchLifecycleLabel(researchLifecycle),
+                      }
+                      : deriveResearchHistoryStatus({
+                        result: item.result,
+                        decisionStatus: item.decisionStatus,
+                        oneLineSummary: item.oneLineSummary,
+                      });
                     const artifacts = deriveHistoricalArtifactSummary(item.result);
                     const versionedDecision = getVersionedDecisionSummary(item.result);
                     // V3 Human Decision Authority Consistency Fix：
@@ -1231,7 +1280,11 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
                                   <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
                                     {sourceLabel(item.source)}
                                   </span>
-                                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                                  <span
+                                    data-testid="research-lifecycle-status"
+                                    title={researchLifecycle ? getResearchLifecycleTitle(researchLifecycle) : undefined}
+                                    className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-600"
+                                  >
                                     {researchStatus.label}
                                   </span>
                                   {groupView ? (

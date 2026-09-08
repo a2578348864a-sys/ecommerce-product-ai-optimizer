@@ -566,6 +566,7 @@ export function VocEvidenceSection({
   capability,
   pendingPreview,
   onChanged,
+  showCollectTrigger = true,
 }: {
   taskId: string;
   /** Package C：任务绑定的商品 ASIN（角色=当前商品时预填） */
@@ -578,6 +579,8 @@ export function VocEvidenceSection({
   /** 服务端已就绪的待确认评论预览（Hydration 契约） */
   pendingPreview?: VocCollectPreviewView | null;
   onChanged: () => void;
+  /** 统一由研究资料编排入口触发评论采集时，隐藏局部采集入口。 */
+  showCollectTrigger?: boolean;
 }) {
   const [importOpen, setImportOpen] = useState(false);
   const [showHistoricEnglish, setShowHistoricEnglish] = useState(false);
@@ -948,14 +951,16 @@ export function VocEvidenceSection({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={busy || analyzing || collecting || !canCollectReviews}
-              onClick={() => { setCollectOpen((open) => !open); setError(""); }}
-              className="inline-flex items-center gap-1 rounded-lg border border-sky-300 bg-white px-3 py-1.5 text-sm font-semibold text-sky-700 hover:bg-sky-50 disabled:opacity-50"
-            >
-              <BarChart3 className="size-4" />采集评论
-            </button>
+            {showCollectTrigger ? (
+              <button
+                type="button"
+                disabled={busy || analyzing || collecting || !canCollectReviews}
+                onClick={() => { setCollectOpen((open) => !open); setError(""); }}
+                className="inline-flex items-center gap-1 rounded-lg border border-sky-300 bg-white px-3 py-1.5 text-sm font-semibold text-sky-700 hover:bg-sky-50 disabled:opacity-50"
+              >
+                <BarChart3 className="size-4" />采集评论
+              </button>
+            ) : null}
             <button
               type="button"
               disabled={busy || analyzing || collecting}

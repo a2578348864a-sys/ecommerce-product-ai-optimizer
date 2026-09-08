@@ -25,6 +25,7 @@ import {
   restoreBrowserUsePreviewClaim,
   takeBrowserUsePreview,
   getPendingKeywordPreviewDto,
+  browserUseSubjectKey,
   type BrowserUsePreviewClaim,
   type PendingKeywordPreviewDto,
 } from "@/lib/server/browserUseResearch";
@@ -158,7 +159,9 @@ export async function GET(
     if (!seedAsin) {
       seedAsin = await readBrowserEvidenceTaskAsin(resolved.context, id);
     }
-    const pendingPreview = seedAsin ? getPendingKeywordPreviewDto(seedAsin) : null;
+    const pendingPreview = seedAsin
+      ? getPendingKeywordPreviewDto(seedAsin, { subjectKey: browserUseSubjectKey(resolved.context), taskId: id })
+      : null;
     return jsonResponse({
       ok: true,
       data: {
@@ -213,7 +216,8 @@ export async function POST(
     if (!previewId) return errorResponse(400, "preview_id_required", "缺少预览 ID。");
     const expectedStorageVersion = parseStorageVersionInput(bodyRecord.expectedStorageVersion);
     if (expectedStorageVersion === null) return errorResponse(400, "storage_version_required", "内容刚在其他位置更新，请刷新后重试。");
-    claim = claimBrowserUsePreview(previewId);
+    const previewBinding = { subjectKey: browserUseSubjectKey(resolved.context), taskId: id };
+    claim = claimBrowserUsePreview(previewId, previewBinding);
     if (!claim) return errorResponse(400, "preview_not_found", "预览不存在或已过期，请重新采集。");
     const preview = claim.preview;
     if (preview.kind !== "keyword") return errorResponse(400, "preview_kind_mismatch", "预览类型与保存目标不一致。");
@@ -244,7 +248,7 @@ export async function POST(
   } catch (error) {
     // 仅在确证未落库（CAS / storageVersion 冲突）时 restore claim，保留原 TTL
     if (claim && previewId && error instanceof KeywordEvidenceError && (error.code === "task_result_conflict" || error.status === 409)) {
-      restoreBrowserUsePreviewClaim(previewId, claim);
+      restoreBrowserUsePreviewClaim(previewId, claim, { subjectKey: browserUseSubjectKey(resolved.context), taskId: id });
     }
     if (error && typeof error === "object" && (error as { code?: unknown }).code === "browser_use_local_owner_only") {
       return errorResponse(403, "browser_use_local_owner_only", "Browser Use 自动采集仅限本机 Owner 使用。");

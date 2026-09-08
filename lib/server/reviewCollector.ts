@@ -107,6 +107,21 @@ class ReviewCollectPreviewStore {
     return entry;
   }
 
+  peek(previewId: string, claim: { subjectKey: string; taskId: string }): ReviewCollectPreview | null {
+    this.prune();
+    const entry = this.entries.get(previewId);
+    if (!entry) return null;
+    if (entry.subjectKey !== claim.subjectKey || entry.taskId !== claim.taskId) return null;
+    return entry;
+  }
+
+  consume(previewId: string, claim: { subjectKey: string; taskId: string }): boolean {
+    const entry = this.peek(previewId, claim);
+    if (!entry) return false;
+    this.entries.delete(previewId);
+    return true;
+  }
+
   /** 第十一版：无副作用查询（prune 先行；subjectKey/taskId 严格匹配；仅返回最新未过期 Preview） */
   clearForTests(): void {
     this.entries.clear();
@@ -156,6 +171,22 @@ export function takeReviewCollectPreview(
   claim: { subjectKey: string; taskId: string },
 ): ReviewCollectPreview | null {
   return previewStore.take(previewId, claim);
+}
+
+/** 无副作用读取；只有正式导入成功后才允许调用 consumeReviewCollectPreview。 */
+export function peekReviewCollectPreview(
+  previewId: string,
+  claim: { subjectKey: string; taskId: string },
+): ReviewCollectPreview | null {
+  return previewStore.peek(previewId, claim);
+}
+
+/** 在正式评论证据持久化成功后消费 Preview。身份不匹配时 fail-closed。 */
+export function consumeReviewCollectPreview(
+  previewId: string,
+  claim: { subjectKey: string; taskId: string },
+): boolean {
+  return previewStore.consume(previewId, claim);
 }
 
 /** 第十一版：无副作用 Pending Preview 查询（不消费、不删除有效 Preview；跨主体/跨任务 fail-closed；过期不复用） */

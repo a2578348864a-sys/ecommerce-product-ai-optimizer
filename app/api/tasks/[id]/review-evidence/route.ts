@@ -42,7 +42,8 @@ import {
   assertReviewCollectRequest,
   createReviewCollectPreview,
   storeReviewCollectPreview,
-  takeReviewCollectPreview,
+  peekReviewCollectPreview,
+  consumeReviewCollectPreview,
   reviewCollectSubjectKey,
   buildSnippetPreviewDedupeKey,
   getPendingReviewCollectPreviewDto,
@@ -546,8 +547,8 @@ async function collectConfirmAction(
   if (selectedIndices.length === 0) {
     return jsonResponse({ ok: false, error: { code: "invalid_selection", message: "请选择要确认的评论。" } }, 400);
   }
-  // Preview 取回（跨主体/跨任务 fail-closed；取回即失效，防止重复确认）
-  const preview = takeReviewCollectPreview(previewId, {
+  // Preview 只读取（跨主体/跨任务 fail-closed）；正式导入成功后才消费，失败可重试。
+  const preview = peekReviewCollectPreview(previewId, {
     subjectKey: reviewCollectSubjectKey(context),
     taskId,
   });
@@ -580,6 +581,16 @@ async function collectConfirmAction(
       collectorVersion: REVIEW_COLLECTOR_VERSION,
     }));
     await importReviews({ context, taskId, expectedStorageVersion, reviews });
+    const consumed = consumeReviewCollectPreview(previewId, {
+      subjectKey: reviewCollectSubjectKey(context),
+      taskId,
+    });
+    if (!consumed) {
+      return jsonResponse({
+        ok: false,
+        error: { code: "preview_expired", message: "采集预览已失效，请重新采集。" },
+      }, 409);
+    }
     const snapshotAfter = await readReviewEvidenceSnapshot(context, taskId);
     return jsonResponse({
       ok: true,

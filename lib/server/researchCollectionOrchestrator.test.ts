@@ -141,6 +141,7 @@ import type { AccessContext } from "./accessPassword";
 // ── 测试辅助数据 ─────────────────────────────────────────────────────────
 
 const ownerContext: AccessContext = { mode: "owner", token: "test-owner-token" };
+const OWNER_PREVIEW_BINDING = { subjectKey: "owner:v1", taskId: "task-001" };
 
 function buildSampleBrowserCollectPreview(asin = "B0SAMPLE01") {
   return {
@@ -337,7 +338,7 @@ describe("researchCollectionOrchestrator", () => {
         missing: [],
         failureReason: null,
         collector: { tool: "browser-use", version: "1.0.0" },
-      });
+      }, OWNER_PREVIEW_BINDING);
 
       // 2. 注入待确认的 1688 货源 preview
       const sourcingPreview = createSourcingPreview({

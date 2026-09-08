@@ -27,6 +27,8 @@ import {
   type BrowserUseResearchPreviewV1,
 } from "@/lib/server/browserUseResearch";
 
+const OWNER_PREVIEW_BINDING = { subjectKey: "owner:v1", taskId: "task-k" };
+
 function ownerRequest(body: unknown, contentType = "application/json") {
   return {
     url: "http://localhost:3000/api/tasks/task-k/keyword-evidence",
@@ -93,7 +95,7 @@ describe("轮 12.5 合并：关键词证据仅走 save_browser_use（采集/上�
     expect((await noIdentity.json()).error.code).toBe("browser_use_identity_unavailable");
 
     mocks.findFirst.mockResolvedValue({ id: "task-k", resultJson: JSON.stringify({ candidateAnalysisContext: { version: "candidate-analysis-context-v1", integrity: "verified_product_batch", facts: { productName: "T", marketplace: "US", asin: "B0SAMPLE12", reportType: "search_results" }, assessment: {} } }), updatedAt: new Date() });
-    const evilId = storeBrowserUsePreview(keywordPreview({ sourceUrl: "https://evil.example/x" }));
+    const evilId = storeBrowserUsePreview(keywordPreview({ sourceUrl: "https://evil.example/x" }), OWNER_PREVIEW_BINDING);
     const forged = await POST(ownerRequest({ action: "save_browser_use", previewId: evilId, expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "x" } }), { params: Promise.resolve({ id: "task-k" }) });
     expect(forged.status).toBe(400);
     expect((await forged.json()).error.code).toBe("forged_external_source_url");
@@ -129,7 +131,7 @@ describe("GET /api/tasks/[id]/keyword-evidence 纯只读 Pending Preview Contrac
         },
       ],
     });
-    const previewId = storeBrowserUsePreview(preview);
+    const previewId = storeBrowserUsePreview(preview, OWNER_PREVIEW_BINDING);
 
     const res1 = await GET(ownerGetRequest(), { params: Promise.resolve({ id: "task-k" }) });
     expect(res1.status).toBe(200);
@@ -167,7 +169,7 @@ describe("GET /api/tasks/[id]/keyword-evidence 纯只读 Pending Preview Contrac
 
   it("缓存过期时返回 pendingPreview: null", async () => {
     const preview = keywordPreview({ seedAsin: "B0SAMPLE12" });
-    const previewId = storeBrowserUsePreview(preview);
+    const previewId = storeBrowserUsePreview(preview, OWNER_PREVIEW_BINDING);
 
     // 模拟时间流逝导致过期
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 15 * 60 * 1000);
@@ -183,7 +185,7 @@ describe("GET /api/tasks/[id]/keyword-evidence 纯只读 Pending Preview Contrac
   });
 
   it("任务缺少权威 ASIN 时返回 pendingPreview: null", async () => {
-    storeBrowserUsePreview(keywordPreview({ seedAsin: "B0SAMPLE12" }));
+    storeBrowserUsePreview(keywordPreview({ seedAsin: "B0SAMPLE12" }), OWNER_PREVIEW_BINDING);
     mocks.findFirst.mockResolvedValue({
       id: "task-k",
       resultJson: JSON.stringify({ candidateAnalysisContext: { integrity: "unverified" } }),

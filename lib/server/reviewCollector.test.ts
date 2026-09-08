@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   storeReviewCollectPreview,
   takeReviewCollectPreview,
+  peekReviewCollectPreview,
+  consumeReviewCollectPreview,
   resetReviewCollectPreviewStoreForTests,
   getPendingReviewCollectPreviewDto,
   findPendingReviewCollectPreview,
@@ -220,5 +222,36 @@ describe("getPendingReviewCollectPreviewDto 纯只读契约", () => {
       asin: ASIN,
     });
     expect(dto).toBeNull();
+  });
+});
+
+describe("Review Preview 确认生命周期", () => {
+  beforeEach(() => {
+    resetReviewCollectPreviewStoreForTests();
+  });
+
+  it("peek 不消费；正式保存成功后 consume", () => {
+    const preview = createSamplePreview();
+    storeReviewCollectPreview(preview);
+    expect(peekReviewCollectPreview(preview.previewId, { subjectKey: SUBJECT_OWNER, taskId: TASK_ID })).toEqual(preview);
+    expect(peekReviewCollectPreview(preview.previewId, { subjectKey: SUBJECT_OWNER, taskId: "other-task" })).toBeNull();
+    expect(consumeReviewCollectPreview(preview.previewId, { subjectKey: SUBJECT_OWNER, taskId: TASK_ID })).toBe(true);
+    expect(peekReviewCollectPreview(preview.previewId, { subjectKey: SUBJECT_OWNER, taskId: TASK_ID })).toBeNull();
+  });
+
+  it("校验、CAS 或导入失败时不调用 consume，Preview 仍可重试", () => {
+    const preview = createSamplePreview();
+    storeReviewCollectPreview(preview);
+    // 模拟 route 在 selectedIndices / CAS / import 任一失败路径：只 peek，不消费。
+    expect(peekReviewCollectPreview(preview.previewId, { subjectKey: SUBJECT_OWNER, taskId: TASK_ID })).not.toBeNull();
+    expect(peekReviewCollectPreview(preview.previewId, { subjectKey: SUBJECT_OWNER, taskId: TASK_ID })).not.toBeNull();
+  });
+
+  it("task 或 subject 不匹配时无法消费", () => {
+    const preview = createSamplePreview();
+    storeReviewCollectPreview(preview);
+    expect(consumeReviewCollectPreview(preview.previewId, { subjectKey: SUBJECT_VISITOR_A, taskId: TASK_ID })).toBe(false);
+    expect(consumeReviewCollectPreview(preview.previewId, { subjectKey: SUBJECT_OWNER, taskId: "other-task" })).toBe(false);
+    expect(peekReviewCollectPreview(preview.previewId, { subjectKey: SUBJECT_OWNER, taskId: TASK_ID })).not.toBeNull();
   });
 });

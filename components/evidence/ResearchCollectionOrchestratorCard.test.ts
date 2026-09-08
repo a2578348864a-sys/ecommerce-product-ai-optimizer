@@ -1,4 +1,4 @@
-import { createElement } from "react";
+import { createElement, useState } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -758,6 +758,86 @@ describe("ResearchCollectionOrchestratorCard (Phase 3 UI / Interaction)", () => 
       });
 
       expect(onNavigate).toHaveBeenCalledWith("market", "formal-v2-market-evidence");
+    });
+
+    it("dataRevision 回流后 inspect 不再次向父级反馈同一 Preview，避免反馈循环", async () => {
+      let inspectCount = 0;
+      let onDataChangedCount = 0;
+      const fetchSpy = vi.fn().mockImplementation((_url, opts) => {
+        const body = JSON.parse(opts?.body as string);
+        if (body.action === "inspect") {
+          inspectCount += 1;
+          const hasPendingPreview = inspectCount > 1;
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              ok: true,
+              data: {
+                ...(hasPendingPreview ? { hasNewPreview: true } : {}),
+                sources: {
+                  amazon: { state: "ready" },
+                  keywords_competitors: hasPendingPreview
+                    ? { state: "pending_review", previewId: "stable-preview-1" }
+                    : { state: "pending" },
+                  voc: { state: "ready" },
+                  sourcing_1688: { state: "ready" },
+                },
+              },
+            }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            ok: true,
+            data: {
+              hasNewPreview: true,
+              sources: {
+                amazon: { state: "ready" },
+                keywords_competitors: {
+                  state: "pending_review",
+                  previewId: "stable-preview-1",
+                },
+                voc: { state: "ready" },
+                sourcing_1688: { state: "ready" },
+              },
+            },
+          }),
+        });
+      });
+      globalThis.fetch = fetchSpy;
+
+      function RevisionHarness() {
+        const [revision, setRevision] = useState(0);
+        return createElement(ResearchCollectionOrchestratorCard, {
+          taskId: "task-stable-preview",
+          dataRevision: revision,
+          onDataChanged: () => {
+            onDataChangedCount += 1;
+            if (onDataChangedCount === 1) setRevision((current) => current + 1);
+          },
+        });
+      }
+
+      root = createRoot(container as unknown as Element);
+      await act(async () => {
+        root?.render(createElement(RevisionHarness));
+      });
+      await flush();
+      await flush();
+
+      const btn = container.querySelector('[data-testid="btn-orchestrate"]');
+      await act(async () => {
+        btn?.click();
+      });
+      await flush();
+      await flush();
+      await flush();
+      await flush();
+      await flush();
+
+      expect(inspectCount).toBe(2);
+      expect(onDataChangedCount).toBe(1);
     });
 
     it("各项操作按钮点击行为（处理/补充/登录全部收敛为「前往处理」）正确派发导航回调", async () => {

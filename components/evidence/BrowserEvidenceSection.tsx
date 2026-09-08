@@ -325,6 +325,7 @@ export function BrowserEvidenceSection({
   storageVersion,
   capability,
   onChanged,
+  showCollectTrigger = true,
 }: {
   taskId: string;
   evidence: BrowserEvidenceView | null;
@@ -333,6 +334,8 @@ export function BrowserEvidenceSection({
   /** 浏览器采集能力（服务端 capability DTO；local_env_required → 按钮禁用 + 产品提示） */
   capability?: AcquisitionCapabilityView | null;
   onChanged: () => void;
+  /** 统一由研究资料编排入口触发采集时，隐藏此局部触发器。 */
+  showCollectTrigger?: boolean;
 }) {
   const [collecting, setCollecting] = useState(false);
   const [preview, setPreview] = useState<BrowserCollectPreviewView | null>(null);
@@ -450,31 +453,35 @@ export function BrowserEvidenceSection({
       <details id="amazon-source-evidence" data-testid="amazon-source-evidence" className="group">
         <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 rounded-lg px-1 py-1 text-sm font-bold text-slate-900 marker:hidden">
           <span>Amazon 原始页面证据</span>
-          <span className="text-xs font-normal text-slate-500">来源资料 · 默认收起，供核对与采集</span>
+          <span className="text-xs font-normal text-slate-500">来源资料 · 默认收起，供核对</span>
         </summary>
         <div className="mt-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-slate-500">原始页面快照仅用于核对来源，不会自动变成已确认商品事实。</p>
-        <button
-          type="button"
-          disabled={collecting || saving || !canCollect}
-          onClick={() => void collect()}
-          className="inline-flex items-center gap-1 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
-        >
-          {collecting ? <Loader2 className="size-4 animate-spin" /> : <Camera className="size-4" />}
-          {collecting ? "采集中…" : (capability?.state === "local_env_required" && demoMode ? "演示采集" : "采集页面证据")}
-        </button>
-      </div>
+      {showCollectTrigger ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-slate-500">原始页面快照仅用于核对来源，不会自动变成已确认商品事实。</p>
+          <button
+            type="button"
+            disabled={collecting || saving || !canCollect}
+            onClick={() => void collect()}
+            className="inline-flex items-center gap-1 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+          >
+            {collecting ? <Loader2 className="size-4 animate-spin" /> : <Camera className="size-4" />}
+            {collecting ? "采集中…" : (capability?.state === "local_env_required" && demoMode ? "演示采集" : "采集页面证据")}
+          </button>
+        </div>
+      ) : (
+        <p className="text-xs text-slate-500">原始页面快照仅用于核对来源，不会自动变成已确认商品事实。请使用上方「补齐研究资料」统一采集。</p>
+      )}
       <p className="mt-1 text-xs text-slate-500">
-        自动打开本机受控浏览器，导航到任务绑定商品页（{taskAsin ?? "未绑定 ASIN"}）单页提取 6 个字段；
-        结果先预览、人工确认后才保存。不自动搜索、不批量、不绕验证码。
+        「补齐研究资料」会按任务绑定商品页（{taskAsin ?? "未绑定 ASIN"}）统一整理 6 个字段；
+        结果先进入待确认资料，不自动搜索、不批量、不绕验证码。
       </p>
 
       {/* Acquisition Capability（§8/§10）：公网环境不提供实时采集 → 明确提示，不显示"采集失败" */}
       <CapabilityNotice
         capability={capability}
         localEnvMessage={demoMode
-          ? "演示模式：当前环境不执行实时浏览器采集，可点击「演示采集」回放示例采集结果（演示数据，非实时采集）。"
+          ? "演示模式：当前环境不执行实时浏览器采集；「补齐研究资料」会回放示例结果并标注为演示数据。"
           : "实时页面采集需要在本地研究环境使用。已保存的页面证据仍可正常查看。"}
         unavailableMessage={capability?.reasonCategory === "not_installed"
           ? "本机未检测到可用的 Chrome/Edge 浏览器，无法进行页面采集。"

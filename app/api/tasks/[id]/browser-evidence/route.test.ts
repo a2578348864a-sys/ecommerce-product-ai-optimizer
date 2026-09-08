@@ -9,6 +9,7 @@ import { POST as routePost, GET as routeGet } from "@/app/api/tasks/[id]/browser
 import {
   BrowserEvidenceCollectError,
   collectBrowserEvidencePreview,
+  findPendingBrowserEvidencePreview,
   type BrowserEvidenceCollectPreview,
 } from "@/lib/server/browserEvidenceCollect";
 import type { AmazonDetailPageExtraction } from "@/tools/collectors/amazon/detail-page-extract";
@@ -355,6 +356,12 @@ describe("POST save (human confirm + hard gates)", () => {
     });
     const getBody = await (await routeGet(getRequest, { params: Promise.resolve({ id: taskId }) })).json();
     expect(getBody.data.evidence).toBeNull();
+    // 校验失败不得消费 Preview，用户可以在修正问题后基于同一预览重试
+    expect(findPendingBrowserEvidencePreview({
+      subjectKey: `visitor:${DEMO}`,
+      taskId,
+      asin: ASIN,
+    })).not.toBeNull();
   });
 
   it("hard-rejects unbound extractions (entity not proven)", async () => {
@@ -385,6 +392,12 @@ describe("POST save (human confirm + hard gates)", () => {
     expect(response.status).toBe(409);
     const body = await response.json();
     expect(body.error.code).toBe("task_result_conflict");
+    // CAS 失败不得消费 Preview，避免用户因并发更新被迫重新采集
+    expect(findPendingBrowserEvidencePreview({
+      subjectKey: `visitor:${DEMO}`,
+      taskId,
+      asin: ASIN,
+    })).not.toBeNull();
   });
 
   it("is idempotent: same preview saved twice is a duplicate", async () => {
