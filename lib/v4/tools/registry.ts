@@ -73,7 +73,7 @@ function noResult(toolName: string, reason: string): ToolResultEnvelope {
   };
 }
 
-/** keyword/voc/sellersprite 的 recorded fixture 从三候选画像解析（确定性）。 */
+/** sellersprite 的 recorded fixture 从候选画像解析（确定性）。 */
 function profileFixtureFor(toolName: string): ToolResultEnvelope | null {
   try {
     const profile = getCandidateProfileFixture("evidence_sufficient");
@@ -84,34 +84,6 @@ function profileFixtureFor(toolName: string): ToolResultEnvelope | null {
         status: "ok",
         observedEntity: entity,
         data: { profile: profile.profile, priorityBand: profile.priorityBand, confidence: profile.confidence, conflicts: profile.conflicts, evidenceItems: profile.evidenceItems },
-        rawArtifactRefs: [{ kind: "recorded", ref: "candidateProfiles:evidence_sufficient", capturedAt: new Date().toISOString() }],
-        capturedAt: new Date().toISOString(),
-        cost: { usedCost: 0, currency: "USD", usedBrowserSteps: 0 },
-        warnings: [],
-        errors: [],
-        nextAction: "continue",
-      };
-    }
-    if (toolName === "keyword") {
-      const kwItems = profile.evidenceItems.filter((e) => e.sourceType === "keyword_provider");
-      return {
-        status: kwItems.length ? "ok" : "no_results",
-        observedEntity: entity,
-        data: { profile: profile.profile, keywords: kwItems.map((e) => ({ term: String(e.entity), metricType: "estimate", value: e.typedValue.value, unit: String(e.typedValue.unit ?? "searches/month"), period: "month", source: e.sourceType, evidenceId: e.evidenceId })) },
-        rawArtifactRefs: [{ kind: "recorded", ref: "candidateProfiles:evidence_sufficient", capturedAt: new Date().toISOString() }],
-        capturedAt: new Date().toISOString(),
-        cost: { usedCost: 0, currency: "USD", usedBrowserSteps: 0 },
-        warnings: [],
-        errors: [],
-        nextAction: "continue",
-      };
-    }
-    if (toolName === "voc") {
-      const vocItems = profile.evidenceItems.filter((e) => e.sourceType === "review" || (e.sourceType as string) === "voc");
-      return {
-        status: vocItems.length ? "ok" : "no_results",
-        observedEntity: entity,
-        data: { profile: profile.profile, themes: vocItems.map((e) => ({ label: String(e.entity), count: 1, share: 0.5, evidenceRefs: [e.evidenceId] })), sampleSize: vocItems.length },
         rawArtifactRefs: [{ kind: "recorded", ref: "candidateProfiles:evidence_sufficient", capturedAt: new Date().toISOString() }],
         capturedAt: new Date().toISOString(),
         cost: { usedCost: 0, currency: "USD", usedBrowserSteps: 0 },
@@ -136,8 +108,20 @@ export async function executeMarketTool(envelope: ToolCallEnvelope): Promise<Too
         result = await runAmazonAdapter(envelope);
         break;
       }
-      case "keyword":
-      case "voc":
+      case "keyword": {
+        const profile = getCandidateProfileFixture("evidence_sufficient");
+        result = profile
+          ? await runKeywordAdapter(envelope, { mode: "recorded", fixture: profile.keyword })
+          : noResult(envelope.toolName, "no candidate keyword fixture");
+        break;
+      }
+      case "voc": {
+        const profile = getCandidateProfileFixture("evidence_sufficient");
+        result = profile
+          ? await runVocAdapter(envelope, { mode: "recorded", fixture: profile.voc })
+          : noResult(envelope.toolName, "no candidate VOC fixture");
+        break;
+      }
       case "supplier_1688": {
         result = await run1688Adapter(envelope);
         break;
