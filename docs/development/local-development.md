@@ -52,8 +52,11 @@ cp .env.example .env.local
 | `DEEPSEEK_API_KEY` | 留空或填写密钥 | 条件必填 | 仅在 `AI_PROVIDER=deepseek` 且 `PROVIDER_MODE=real` 时需要 |
 | `OPENAI_API_KEY` | 留空或填写密钥 | 条件必填 | 仅在 `AI_PROVIDER=openai` 且 `PROVIDER_MODE=real` 时需要 |
 | `ACCESS_PASSWORD` | 随机字符串 | 可选 | 仅在非 `local_owner` 模式或需启用密码访问门禁时生效 |
+| `BROWSER_USE_CLI_PATH` | 留空或可执行文件路径 | 可选 | Browser Use 已加入系统 PATH 时可留空；否则填写 `browser-use` 可执行文件路径；未配置且 PATH 中不可用时，采集会明确返回不可用，不会伪造结果 |
 
 > 💡 **提示**：系统默认以 `mock` 模式启动，无需任何外部大模型 API Key 即可完整体验选品研究、事实核准、Listing 生成与质检全流程。
+
+Browser Use 是本机 SellerSprite 关键词/竞品采集的可选外部 CLI。系统优先使用 `BROWSER_USE_CLI_PATH`，未配置时从系统 PATH 查找 `browser-use`（Windows 会按 `.exe` 解析）。找不到 CLI 时保持 fail-closed，并提示配置环境变量或安装 PATH 命令。
 
 ---
 

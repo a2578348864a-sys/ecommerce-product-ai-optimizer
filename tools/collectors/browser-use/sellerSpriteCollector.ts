@@ -11,6 +11,7 @@
  */
 
 import { BROWSER_USE_RESEARCH_SCHEMA, type BrowserUseResearchPreview, type BrowserUseResearchKind, type BrowserUseCollectorInfo } from "@/lib/server/browserUseResearch";
+import { spawn, type SpawnOptions } from "node:child_process";
 
 export const BROWSER_USE_OBSERVATION_SCHEMA = "browser-use-observation.v1" as const;
 
@@ -193,51 +194,100 @@ export function collectorObservationToPreview(
     collector,
   } as BrowserUseResearchPreview;
 }
-export const BROWSER_USE_CLI_PATH = process.env.BROWSER_USE_CLI_PATH
-  || "C:\\Users\\a2578\\.local\\bin\\browser-use.exe";
+export type BrowserUseCliResolution = {
+  command: string;
+  source: "env" | "path";
+};
+
+/**
+ * Resolve Browser Use without binding the collector to one developer's machine.
+ * A bare command is intentionally used for PATH lookup; Windows resolves the
+ * `.exe` extension automatically, while POSIX uses the same `browser-use` name.
+ */
+export function resolveBrowserUseCli(env: { BROWSER_USE_CLI_PATH?: string } = { BROWSER_USE_CLI_PATH: process.env.BROWSER_USE_CLI_PATH }): BrowserUseCliResolution {
+  const configured = env.BROWSER_USE_CLI_PATH?.trim();
+  if (configured) return { command: configured, source: "env" };
+  return { command: "browser-use", source: "path" };
+}
 
 export type SpawnResult = { stdout: string; stderr: string; code: number | null };
 export type SpawnLike = (script: string, timeoutMs?: number) => Promise<SpawnResult>;
+type BrowserUseProcessSpawn = (command: string, args: string[], options: SpawnOptions) => ReturnType<typeof spawn>;
+const BROWSER_USE_UNAVAILABLE_MESSAGE =
+  "browser-use CLI was not found. Configure BROWSER_USE_CLI_PATH or install browser-use in PATH.";
 
 export type SellerSpriteCollectionRun =
   | { ok: true; preview: BrowserUseResearchPreview; observation: CollectorObservation }
   | { ok: false; failureReason: "collector_unavailable" | "collect_failed"; detail: string };
 
 /**
- * 无管道运行（受限/回环环境可用）：脚本与输出全走 OS 临时文件；
- * 子进程只使用 stdio ignore + shell 重定向（避免 named-pipes EPERM）。
+ * Run the CLI through stdin. Browser Use documents heredoc/stdin execution;
+ * keeping the executable and arguments separate avoids shell parsing and path
+ * quoting problems for configured paths containing spaces.
  */
-export async function defaultBrowserUseSpawn(script: string, timeoutMs = 90_000): Promise<SpawnResult> {
-  const { spawn } = await import("node:child_process");
-  const { mkdtempSync, writeFileSync, readFileSync } = await import("node:fs");
+export async function defaultBrowserUseSpawn(
+  script: string,
+  timeoutMs = 90_000,
+  spawnProcess: BrowserUseProcessSpawn = spawn,
+): Promise<SpawnResult> {
+  const { mkdtempSync, readFileSync, rmSync } = await import("node:fs");
   const { tmpdir } = await import("node:os");
   const { join } = await import("node:path");
   const dir = mkdtempSync(join(tmpdir(), "bu-collect-"));
-  const scriptPath = join(dir, "collect.py");
   const outPath = join(dir, "collect-out.json");
-  writeFileSync(scriptPath, script, "utf8");
   return new Promise((resolve, reject) => {
     let child: ReturnType<typeof spawn>;
+    let settled = false;
+    const cleanup = () => {
+      try { rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ }
+    };
+    const finishReject = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
     try {
-      child = spawn(`${BROWSER_USE_CLI_PATH} < "${scriptPath}"`, { shell: true, stdio: ["ignore", "ignore", "ignore"], env: { ...process.env, BU_COLLECT_OUTPUT: outPath } });
+      const { command } = resolveBrowserUseCli();
+      child = spawnProcess(command, [], {
+        shell: false,
+        stdio: ["pipe", "ignore", "ignore"],
+        env: { ...process.env, BU_COLLECT_OUTPUT: outPath },
+      });
     } catch (error) {
-      reject(error instanceof Error ? error : new Error(String(error)));
+      finishReject(new Error(BROWSER_USE_UNAVAILABLE_MESSAGE));
       return;
     }
     const timer = setTimeout(() => {
       try { child.kill(); } catch { /* already dead */ }
-      reject(new Error("browser_use_timeout"));
+      finishReject(new Error("browser_use_timeout"));
     }, timeoutMs);
-    child.on("error", (error) => { clearTimeout(timer); reject(error); });
-    child.on("close", () => {
+    child.on("error", () => {
       clearTimeout(timer);
+      // Spawn errors mean the executable could not be started. Keep the detail
+      // actionable but never echo an absolute path or the host environment.
+      finishReject(new Error(BROWSER_USE_UNAVAILABLE_MESSAGE));
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (settled) return;
       try {
         const output = readFileSync(outPath, "utf8");
-        resolve({ stdout: output, stderr: "", code: 0 });
+        settled = true;
+        cleanup();
+        resolve({ stdout: output, stderr: "", code: code ?? 0 });
       } catch {
-        resolve({ stdout: "", stderr: "collector produced no output file", code: 1 });
+        settled = true;
+        cleanup();
+        resolve({ stdout: "", stderr: "collector produced no output file", code: code ?? 1 });
       }
     });
+    if (!child.stdin) {
+      clearTimeout(timer);
+      finishReject(new Error(BROWSER_USE_UNAVAILABLE_MESSAGE));
+      return;
+    }
+    child.stdin.end(script, "utf8");
   });
 }
 
