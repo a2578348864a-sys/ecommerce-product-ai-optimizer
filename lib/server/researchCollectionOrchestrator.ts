@@ -81,6 +81,7 @@ import {
   createReviewCollectPreview,
   storeReviewCollectPreview,
   findPendingReviewCollectPreview,
+  isReusableReviewCollectPreview,
   reviewCollectSubjectKey,
   ReviewCollectorError,
   type ReviewSnippetPreviewItem,
@@ -678,10 +679,13 @@ async function handleVocSource(
       };
     }
 
-    // 3. Pending Review Preview 幂等（无副作用查询；subjectKey/taskId 严格匹配；过期不复用）
+    // 3. Pending Review Preview 幂等（无副作用查询；subjectKey/taskId 严格匹配；过期不复用）。
+    //    只有「用户可操作」的 Pending 才复用（有待确认条目 / 页面被阻断 / 明确无评论）；
+    //    extraction_empty 等瞬时失败不复用，落到下方正常采集分支重试，否则空 Preview
+    //    会在 TTL 内把所有「补齐研究资料」点击都挡在同一个失败上。
     const subjectKey = reviewCollectSubjectKey(context);
     const pending = findPendingReviewCollectPreview({ subjectKey, taskId, asin });
-    if (pending !== null) {
+    if (pending !== null && isReusableReviewCollectPreview(pending)) {
       const pendingItems = pending.items.length;
       const blockingPage = pending.pageResults.find((page) =>
         page.status === "blocked_redirect" || page.status === "login_required" || page.status === "captcha_required",
@@ -710,13 +714,15 @@ async function handleVocSource(
         };
       }
       if (pendingItems === 0) {
+        // 复用判定过滤后，到这里且条目为空的只剩「页面明确无评论」这一种可操作空态。
+        const message = "Amazon 页面明确显示暂无公开评论";
         return {
           status: "needs_user",
           hasEvidence: false,
           previewId: pending.previewId,
           itemCount: 0,
-          message: "当前页面未发现公开评论片段，可重试或粘贴导入该商品评论",
-          error: { code: "no_public_reviews", message: "当前页面未发现公开评论片段" },
+          message,
+          error: { code: "confirmed_no_reviews", message },
         };
       }
       return {
@@ -801,14 +807,30 @@ async function handleVocSource(
         error: { code, message },
       };
     }
+    const errorPage = preview.pageResults.find((page) => page.status === "error");
+    if (preview.items.length === 0 && errorPage) {
+      const message = errorPage.note ?? "买家评论页面访问异常或超时，请稍后重试";
+      return {
+        status: "failed",
+        hasEvidence: false,
+        previewId: preview.previewId,
+        itemCount: 0,
+        message,
+        error: { code: "review_collect_error", message },
+      };
+    }
     if (preview.items.length === 0) {
+      const confirmedNoReviews = preview.pageResults.some((page) => page.status === "confirmed_no_reviews");
+      const message = confirmedNoReviews
+        ? "Amazon 页面明确显示暂无公开评论"
+        : "评论模块未完成提取，暂时无法确认是否无评论，请重试";
       return {
         status: "needs_user",
         hasEvidence: false,
         previewId: preview.previewId,
         itemCount: 0,
-        message: "当前页面未发现公开评论片段，可重试或粘贴导入该商品评论",
-        error: { code: "no_public_reviews", message: "当前页面未发现公开评论片段" },
+        message,
+        error: { code: confirmedNoReviews ? "confirmed_no_reviews" : "extraction_empty", message },
       };
     }
     return {

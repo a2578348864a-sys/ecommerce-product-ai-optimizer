@@ -18,8 +18,13 @@ import {
   resolveSystemBrowser,
   type BrowserExecutableCandidate,
 } from "@/tools/collectors/amazon/browser-control";
-import { buildReviewSnippetExtractionExpression, type ReviewSnippet } from "@/tools/collectors/amazon/review-snippet-extract";
-import { buildAmazonDetailPageExtractionExpression } from "@/tools/collectors/amazon/detail-page-extract";
+import {
+  buildReviewDomReadinessExpression,
+  buildReviewSnippetExtractionExpression,
+  type ReviewDomReadiness,
+  type ReviewSnippet,
+} from "@/tools/collectors/amazon/review-snippet-extract";
+import { buildAmazonDetailPageExtractionExpression, type AmazonDetailPageStatus } from "@/tools/collectors/amazon/detail-page-extract";
 import { AMAZON_RETAIL_ORIGINS } from "@/tools/collectors/amazon/page-diagnostics";
 import {
   isValidAsin,
@@ -67,9 +72,17 @@ export type ReviewSnippetPreviewItem = {
 
 export type ReviewCollectPageResult = {
   asin: string;
-  status: "ok" | "blocked_redirect" | "login_required" | "captcha_required" | "page_error" | "page_unknown" | "no_reviews_extracted" | "error";
+  status: "ok" | "blocked_redirect" | "login_required" | "captcha_required" | "page_error" | "page_unknown" | "confirmed_no_reviews" | "extraction_empty" | "no_reviews_extracted" | "error";
   note: string | null;
   extractedCount: number;
+  /** 新采集结果会写入；旧内存/演示 Preview 允许缺失以保持读取兼容。 */
+  reviewNodeCount?: number;
+  finalUrl?: string;
+  pageTitle?: string;
+  waitElapsedMs?: number;
+  retryAttempt?: number;
+  scrollTriggered?: boolean;
+  pageStatus?: AmazonDetailPageStatus | "blocked_redirect" | null;
 };
 
 export type ReviewCollectPreview = {
@@ -200,6 +213,22 @@ export function findPendingReviewCollectPreview(query: {
   return previewStore.findPending(query);
 }
 
+/**
+ * 复用判定：只有「用户可操作」的 Pending Preview 才复用（幂等不重复采集）——
+ * 已有待确认条目、页面被阻断（登录/验证码/白名单外）、或页面明确无评论。
+ * extraction_empty 等瞬时失败不算可操作状态：缓存它会阻塞重试 15 分钟，
+ * 与「请重试」的用户承诺矛盾；这类 Preview 不复用，下次 orchestrate/collect 重新采集。
+ */
+export function isReusableReviewCollectPreview(pending: ReviewCollectPreview): boolean {
+  if (pending.items.length > 0) return true;
+  return pending.pageResults.some((page) =>
+    page.status === "blocked_redirect"
+    || page.status === "login_required"
+    || page.status === "captcha_required"
+    || page.status === "confirmed_no_reviews",
+  );
+}
+
 export type PendingReviewCollectPreviewDto = {
   previewId: string;
   items: Array<{
@@ -210,7 +239,7 @@ export type PendingReviewCollectPreviewDto = {
     title: string;
     duplicate: boolean;
   }>;
-  pageResults: Array<{ asin: string; status: string; note: string | null; extractedCount: number }>;
+  pageResults: Array<Pick<ReviewCollectPageResult, "asin" | "status" | "note" | "extractedCount" | "reviewNodeCount" | "finalUrl" | "pageTitle" | "waitElapsedMs" | "retryAttempt" | "scrollTriggered" | "pageStatus">>;
   capturedAt: string;
   expiresAt: string;
 };
@@ -260,6 +289,13 @@ export function getPendingReviewCollectPreviewDto(query: {
     status: page.status,
     note: page.note,
     extractedCount: page.extractedCount,
+    reviewNodeCount: page.reviewNodeCount ?? 0,
+    finalUrl: page.finalUrl ?? "",
+    pageTitle: page.pageTitle ?? "",
+    waitElapsedMs: page.waitElapsedMs ?? 0,
+    retryAttempt: page.retryAttempt ?? 0,
+    scrollTriggered: page.scrollTriggered ?? false,
+    pageStatus: page.pageStatus ?? null,
   }));
 
   return {
@@ -352,12 +388,24 @@ export async function collectReviewSnippets(input: {
   });
   try {
     for (const { asin, role } of input.asins) {
+      let nav: { finalUrl: string; allowedFinalOrigin: boolean } | null = null;
+      let pageTitle = "";
+      const emptyDiagnostics = (pageStatus: ReviewCollectPageResult["pageStatus"] = null) => ({
+        reviewNodeCount: 0,
+        finalUrl: nav?.finalUrl ?? "",
+        pageTitle,
+        waitElapsedMs: 0,
+        retryAttempt: 0,
+        scrollTriggered: false,
+        pageStatus,
+      });
       try {
-        const nav = await session.navigate(`https://www.amazon.com/dp/${asin}?language=en_US`);
+        nav = await session.navigate(`https://www.amazon.com/dp/${asin}?language=en_US`);
         if (!nav.allowedFinalOrigin) {
-          pageResults.push({ asin, status: "blocked_redirect", note: "页面重定向到白名单外，导航被安全白名单阻断；未判定为登录墙。", extractedCount: 0 });
+          pageResults.push({ asin, status: "blocked_redirect", note: "页面重定向到白名单外，导航被安全白名单阻断；未判定为登录墙。", extractedCount: 0, ...emptyDiagnostics("blocked_redirect") });
           continue;
         }
+        pageTitle = await session.evaluateDomByValue<string>("document.title || ''").catch(() => "");
         // 详情页内容级阻断：最终 URL 仍在白名单内时，登录墙/CAPTCHA
         // 不一定表现为跨域跳转，必须先分类再尝试提取评论，避免生成
         // 空的“待确认预览”。该表达式只读 DOM，不读取凭据、不绕过验证。
@@ -371,26 +419,43 @@ export async function collectReviewSnippets(input: {
           }),
         );
         if (pageExtraction?.pageStatus === "captcha") {
-          pageResults.push({ asin, status: "captcha_required", note: "页面要求完成 CAPTCHA 验证，系统未绕过。", extractedCount: 0 });
+          pageResults.push({ asin, status: "captcha_required", note: "页面要求完成 CAPTCHA 验证，系统未绕过。", extractedCount: 0, ...emptyDiagnostics("captcha") });
           continue;
         }
         if (pageExtraction?.pageStatus === "login_wall") {
-          pageResults.push({ asin, status: "login_required", note: "页面要求登录，系统未自动登录。", extractedCount: 0 });
+          pageResults.push({ asin, status: "login_required", note: "页面要求登录，系统未自动登录。", extractedCount: 0, ...emptyDiagnostics("login_wall") });
           continue;
         }
         if (pageExtraction?.pageStatus === "error_page") {
-          pageResults.push({ asin, status: "page_error", note: "Amazon 返回错误页，未提取评论。", extractedCount: 0 });
+          pageResults.push({ asin, status: "page_error", note: "Amazon 返回错误页，未提取评论。", extractedCount: 0, ...emptyDiagnostics("error_page") });
           continue;
         }
         // unknown_page 不单独阻断：部分 Amazon 变体/区域页面缺少标准
         // #productTitle，但仍可能包含可见 Top Reviews。继续走评论提取，
         // 只有确切的登录墙、验证码或错误页才 fail-closed。
+        const readiness = await session.evaluateDomByValue<ReviewDomReadiness>(
+          buildReviewDomReadinessExpression(),
+        );
         const extracted = await session.evaluateDomByValue<unknown[]>(
           buildReviewSnippetExtractionExpression({ maxItems: REVIEW_COLLECT_MAX_ITEMS_PER_PAGE }),
         );
         const reviews = Array.isArray(extracted) ? extracted.map(parseSnippet).filter((snippet): snippet is ReviewSnippet => snippet !== null) : [];
         if (reviews.length === 0) {
-          pageResults.push({ asin, status: "no_reviews_extracted", note: "详情页无公开 Top Reviews 片段。", extractedCount: 0 });
+          pageResults.push({
+            asin,
+            status: readiness.explicitNoReviews ? "confirmed_no_reviews" : "extraction_empty",
+            note: readiness.explicitNoReviews
+              ? "页面明确显示暂无公开评论。"
+              : "页面已加载但评论片段未完成可解析提取，未能确认无评论；请重试。",
+            extractedCount: 0,
+            reviewNodeCount: readiness.reviewNodeCount,
+            finalUrl: nav.finalUrl,
+            pageTitle: readiness.pageTitle,
+            waitElapsedMs: readiness.elapsedMs,
+            retryAttempt: readiness.retryAttempt,
+            scrollTriggered: readiness.scrollTriggered,
+            pageStatus: pageExtraction?.pageStatus ?? null,
+          });
           continue;
         }
         for (const review of reviews) {
@@ -404,13 +469,26 @@ export async function collectReviewSnippets(input: {
             bindingNote: "详情页公开 Top Reviews 片段（评论全文页需登录，未绕过；正文不可见为已知限制）",
           });
         }
-        pageResults.push({ asin, status: "ok", note: null, extractedCount: reviews.length });
+        pageResults.push({
+          asin,
+          status: "ok",
+          note: null,
+          extractedCount: reviews.length,
+          reviewNodeCount: readiness.reviewNodeCount,
+          finalUrl: nav.finalUrl,
+          pageTitle: readiness.pageTitle,
+          waitElapsedMs: readiness.elapsedMs,
+          retryAttempt: readiness.retryAttempt,
+          scrollTriggered: readiness.scrollTriggered,
+          pageStatus: pageExtraction?.pageStatus ?? null,
+        });
       } catch (error) {
         pageResults.push({
           asin,
           status: "error",
           note: error instanceof Error ? error.message.slice(0, 120) : "未知错误",
           extractedCount: 0,
+          ...emptyDiagnostics(null),
         });
       }
     }

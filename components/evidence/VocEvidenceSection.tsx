@@ -271,7 +271,19 @@ export type VocCollectPreviewView = {
     title: string;
     duplicate: boolean;
   }>;
-  pageResults: Array<{ asin: string; status: string; note: string | null; extractedCount: number }>;
+  pageResults: Array<{
+    asin: string;
+    status: string;
+    note: string | null;
+    extractedCount: number;
+    reviewNodeCount?: number;
+    finalUrl?: string;
+    pageTitle?: string;
+    waitElapsedMs?: number;
+    retryAttempt?: number;
+    scrollTriggered?: boolean;
+    pageStatus?: string | null;
+  }>;
   capturedAt: string;
   expiresAt?: string;
 };
@@ -301,6 +313,13 @@ export function parseVocCollectPreviewView(value: unknown): VocCollectPreviewVie
       status: asString(raw.status, "unknown"),
       note: raw.note === null || raw.note === undefined ? null : asString(raw.note) || null,
       extractedCount: asNumber(raw.extractedCount) ?? 0,
+      reviewNodeCount: asNumber(raw.reviewNodeCount) ?? 0,
+      finalUrl: asString(raw.finalUrl),
+      pageTitle: asString(raw.pageTitle),
+      waitElapsedMs: asNumber(raw.waitElapsedMs) ?? 0,
+      retryAttempt: asNumber(raw.retryAttempt) ?? 0,
+      scrollTriggered: raw.scrollTriggered === true,
+      pageStatus: raw.pageStatus === null || raw.pageStatus === undefined ? null : asString(raw.pageStatus) || null,
     };
   }).filter((page): page is VocCollectPreviewView["pageResults"][number] => page !== null);
 
@@ -555,7 +574,7 @@ export function resolveVocAsinInput(
 
 /** 轮 12：当前商品未采到评论时的诚实空态（不再诱导换商品）。 */
 export function noReviewsEmptyMessage(): string {
-  return "当前商品暂未采到公开评论，可重试或粘贴该商品评论。";
+  return "评论尚未完成提取，可重试或粘贴该商品评论。";
 }
 export function VocEvidenceSection({
   taskId,
@@ -825,7 +844,7 @@ export function VocEvidenceSection({
         signal: AbortSignal.timeout(150_000),
       });
       const json = await res.json() as
-        | { ok: true; data: { preview: { previewId: string; items: Array<{ asin: string; role: "current_candidate" | "competitor"; rating: number | null; date: string | null; title: string; duplicate: boolean }>; pageResults: Array<{ asin: string; status: string; note: string | null; extractedCount: number }>; capturedAt: string }; demo?: boolean } }
+        | { ok: true; data: { preview: { previewId: string; items: Array<{ asin: string; role: "current_candidate" | "competitor"; rating: number | null; date: string | null; title: string; duplicate: boolean }>; pageResults: VocCollectPreviewView["pageResults"]; capturedAt: string }; demo?: boolean } }
         | { ok: false; error?: { code?: string; message?: string } };
       if (!res.ok || !json.ok) {
         const code = (json as { error?: { code?: string } }).error?.code ?? "";
@@ -1127,7 +1146,8 @@ export function VocEvidenceSection({
                       : page.status === "blocked_redirect" ? "页面导航被安全白名单阻断，未判定为登录墙"
                         : page.status === "login_required" ? "需要登录，未提取（系统不绕过登录墙）"
                         : page.status === "captcha_required" ? "需要完成验证码，未提取（系统不绕过验证码）"
-                          : page.status === "no_reviews_extracted" ? "未发现公开评论片段"
+                          : page.status === "confirmed_no_reviews" ? "页面明确显示无公开评论"
+                            : page.status === "extraction_empty" || page.status === "no_reviews_extracted" ? "评论片段未完成提取，无法确认无评论"
                             : page.status === "page_error" || page.status === "page_unknown" ? "页面不可识别，未提取"
                               : `采集异常（${page.note ?? "未知"}）`}
                   </p>
@@ -1140,7 +1160,9 @@ export function VocEvidenceSection({
                         ? "需要登录后重试，系统不会绕过登录墙。"
                       : collectPreview.pageResults.some((page) => page.status === "captcha_required")
                         ? "需要完成验证码后重试，系统不会绕过验证码。"
-                        : noReviewsEmptyMessage()}
+                        : collectPreview.pageResults.some((page) => page.status === "confirmed_no_reviews")
+                          ? "页面明确显示暂无公开评论。"
+                          : "评论模块未完成提取，暂时无法确认是否无评论，请重试。"}
                     （也可以改用「粘贴导入」粘贴该商品公开评论。）
                   </p>
                 ) : (

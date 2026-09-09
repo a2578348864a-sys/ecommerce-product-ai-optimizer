@@ -45,6 +45,7 @@ import {
   peekReviewCollectPreview,
   consumeReviewCollectPreview,
   findPendingReviewCollectPreview,
+  isReusableReviewCollectPreview,
   reviewCollectSubjectKey,
   buildSnippetPreviewDedupeKey,
   getPendingReviewCollectPreviewDto,
@@ -491,8 +492,10 @@ async function collectAction(
     throw error;
   }
   try {
-    // 统一编排与局部重试共享同一 Preview 生命周期：已有同任务/同主体/
-    // 同 ASIN 的有效 Preview 时只复用，不再次启动浏览器采集，避免重复结果。
+    // 统一编排与局部重试共享同一 Preview 生命周期：已有同任务/同主体/同 ASIN 的
+    // 「可操作」Preview（有待确认条目 / 页面被阻断 / 明确无评论）时只复用，不再次
+    // 启动浏览器采集。extraction_empty 等瞬时失败不算可操作：复用会把重试挡死在
+    // 同一个空 Preview 上（TTL 15 分钟），必须落到下方重新采集。
     const existingPending = asins.length === 1
       ? findPendingReviewCollectPreview({
           subjectKey: reviewCollectSubjectKey(context),
@@ -500,7 +503,7 @@ async function collectAction(
           asin: asins[0].asin,
         })
       : null;
-    if (existingPending) {
+    if (existingPending && isReusableReviewCollectPreview(existingPending)) {
       const existing = await getReviewEvidence(context, taskId);
       const existingKeys = new Set((existing?.dataset.reviews ?? []).map((review) => review.duplicateKey));
       const items = existingPending.items.map((item) => {
