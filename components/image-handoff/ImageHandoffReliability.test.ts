@@ -28,4 +28,29 @@ describe("Task Image creation experience", () => {
     expect(source).not.toContain('name="revision"');
     expect(source).not.toContain('name="prompt"');
   });
+
+  it("遵循 IMAGE_STUDIO_UI_CLOSURE_V1 契约", () => {
+    // 1. 紧凑设置卡与摘要
+    expect(source).toContain("图片创作设置");
+    expect(source).toContain('data-testid="image-creation-compact-summary"');
+    expect(source).toContain("当前模式：");
+    expect(source).toContain("当前主题：");
+    expect(source).toContain("人工审核：");
+
+    // 2. 创作描述与生成约束默认折叠
+    expect(source).toContain('data-testid="image-creative-details"');
+    expect(source).not.toMatch(/<details[^>]*data-testid="image-creative-details"[^>]*open/);
+
+    // 3. 历史草稿默认折叠
+    expect(source).toContain('data-testid="task-image-history-drafts"');
+    expect(source).not.toMatch(/<details[^>]*data-testid="task-image-history-drafts"[^>]*open/);
+
+    // 4. 单一生成按钮
+    const generateMatches = source.match(/data-testid="image-handoff-generate"/g);
+    expect(generateMatches?.length).toBe(1);
+
+    // 5. 展开后创作描述与约束说明仍存在
+    expect(source).toContain("查看 / 调整创作描述与生成约束");
+    expect(source).toContain('id="task-image-creative-description"');
+  });
 });
