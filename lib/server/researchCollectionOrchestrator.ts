@@ -427,16 +427,28 @@ async function handleAmazonSource(
     };
   } catch (error) {
     if (error instanceof BrowserEvidenceCollectError) {
-      const needsUser = [
-        "browser_unavailable",
-        "page_blocked_captcha",
-        "page_blocked_login_wall",
-      ].includes(error.code);
+      const isTypedBlockerOrUnavailable =
+        error.code === "browser_unavailable" ||
+        error.code === "page_blocked_login_wall" ||
+        error.code === "page_blocked_captcha";
+      const diagReason =
+        error.code === "page_unknown"
+          ? "页面无法识别"
+          : error.code === "page_blocked_login_wall" || error.code === "page_blocked_captcha"
+            ? "Amazon验证阻断"
+            : error.code === "asin_mismatch" || error.code === "asin_not_found"
+              ? "ASIN异常"
+              : error.message;
+      // 统一给前端一个稳定的用户语义：Amazon 的登录墙、验证码和中间验证页
+      // 都属于 Amazon 验证阻断，避免错误文本中的 "ASIN" 触发 ASIN 异常展示。
+      const message = error.code === "page_blocked_login_wall" || error.code === "page_blocked_captcha"
+        ? "Amazon验证阻断"
+        : error.message || diagReason;
       return {
-        status: needsUser ? "needs_user" : "failed",
+        status: isTypedBlockerOrUnavailable ? "needs_user" : "failed",
         hasEvidence: false,
-        message: error.message,
-        error: { code: error.code, message: error.message },
+        message,
+        error: { code: error.code, message },
       };
     }
     const sanitized = sanitizeErrorMessage(error);

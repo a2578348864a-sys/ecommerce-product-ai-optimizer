@@ -137,6 +137,7 @@ import {
   resetBrowserEvidencePreviewStoreForTests,
 } from "./browserEvidenceCollect";
 import type { AccessContext } from "./accessPassword";
+import { getPendingAmazonPreviewCandidates } from "./amazonPreviewClosure";
 
 // ── 测试辅助数据 ─────────────────────────────────────────────────────────
 
@@ -387,6 +388,99 @@ describe("researchCollectionOrchestrator", () => {
       expect(result.sources.amazon.message).toContain("历史来源兼容");
       expect(mocks.collectBrowserEvidencePreview).not.toHaveBeenCalled();
     });
+
+    it("历史事实已覆盖仍残留的 Pending Preview 时，仍等待用户确认新增 Amazon 来源", async () => {
+      const previewId = "bev_preview_legacy_covered_001";
+      const preview = buildSampleBrowserCollectPreview("B0SAMPLE01");
+      const capturedAt = new Date().toISOString();
+      storeBrowserEvidencePreview({
+        evidenceId: previewId,
+        preview,
+        capturedAt,
+        expiresAt: Date.now() + 15 * 60 * 1000,
+        subjectKey: "owner:v1",
+        taskId: "task-001",
+        asin: "B0SAMPLE01",
+      });
+      mocks.findFirst.mockResolvedValue({
+        id: "task-001",
+        updatedAt: new Date("2026-09-01T00:00:00.000Z"),
+        resultJson: JSON.stringify({
+          ...JSON.parse(buildTaskResultJson("B0SAMPLE01")) as Record<string, unknown>,
+          factCandidates: {
+            schema: "fact-candidates.v1",
+            version: 1,
+            confirmed: getPendingAmazonPreviewCandidates({
+              pending: {
+                evidenceId: previewId,
+                preview,
+                capturedAt,
+                expiresAt: Date.now() + 15 * 60 * 1000,
+                subjectKey: "owner:v1",
+                taskId: "task-001",
+                asin: "B0SAMPLE01",
+              },
+              taskAsin: "B0SAMPLE01",
+              context: ownerContext,
+            })!.map((candidate) => ({
+              ...candidate,
+              confirmedAt: capturedAt,
+              confirmedBy: "owner:v1",
+            })),
+            updatedAt: new Date().toISOString(),
+          },
+        }),
+      });
+
+      const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "inspect" });
+      expect(result.sources.amazon.status).toBe("awaiting_confirmation");
+      expect(result.sources.amazon.previewId).toBe(previewId);
+      expect(mocks.collectBrowserEvidencePreview).not.toHaveBeenCalled();
+
+      const refreshed = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "inspect" });
+      expect(refreshed.sources.amazon.status).toBe("awaiting_confirmation");
+    });
+
+    it("Pending Preview 含未被确认的新值时保持 awaiting_confirmation", async () => {
+      const preview = buildSampleBrowserCollectPreview("B0SAMPLE01");
+      preview.extraction.fields.price.value = 29.99;
+      storeBrowserEvidencePreview({
+        evidenceId: "bev_preview_legacy_conflict_001",
+        preview,
+        capturedAt: new Date().toISOString(),
+        expiresAt: Date.now() + 15 * 60 * 1000,
+        subjectKey: "owner:v1",
+        taskId: "task-001",
+        asin: "B0SAMPLE01",
+      });
+      mocks.findFirst.mockResolvedValue({
+        id: "task-001",
+        updatedAt: new Date("2026-09-01T00:00:00.000Z"),
+        resultJson: JSON.stringify({
+          ...JSON.parse(buildTaskResultJson("B0SAMPLE01")) as Record<string, unknown>,
+          factCandidates: {
+            schema: "fact-candidates.v1",
+            version: 1,
+            confirmed: [{
+              candidateId: "amazon_browser_evidence:price",
+              field: "price",
+              label: "参考价格 (USD)",
+              value: 19.99,
+              sourceKind: "amazon_browser_evidence",
+              sourceRef: "browserEvidence.snapshots[0].fields.price",
+              humanConfirmationRequired: true,
+              confirmedAt: new Date().toISOString(),
+              confirmedBy: "owner:v1",
+            }],
+            updatedAt: new Date().toISOString(),
+          },
+        }),
+      });
+
+      const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "inspect" });
+      expect(result.sources.amazon.status).toBe("awaiting_confirmation");
+      expect(result.sources.amazon.previewId).toBe("bev_preview_legacy_conflict_001");
+    });
   });
 
   describe("idempotency with pending previews", () => {
@@ -496,6 +590,7 @@ describe("researchCollectionOrchestrator", () => {
       const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
       expect(result.sources.amazon.status).toBe("needs_user");
       expect(result.sources.amazon.error?.code).toBe("page_blocked_login_wall");
+      expect(result.sources.amazon.message).toBe("Amazon验证阻断");
       expect(result.sources.amazon.previewId).toBeUndefined();
     });
 
@@ -508,6 +603,17 @@ describe("researchCollectionOrchestrator", () => {
       expect(result.sources.amazon.status).toBe("failed");
       expect(result.sources.amazon.error?.code).toBe("navigation_not_allowed");
       expect(result.sources.amazon.message).toContain("不等同于登录墙");
+    });
+
+    it("Amazon 抓取报 page_unknown 时返回 failed 与对应错误信息", async () => {
+      const { BrowserEvidenceCollectError } = await import("@/lib/server/browserEvidenceCollect");
+      mocks.collectBrowserEvidencePreview.mockRejectedValueOnce(
+        new BrowserEvidenceCollectError("page_unknown", 500, "Amazon 商品详情页未识别到有效商品容器或标题"),
+      );
+      const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+      expect(result.sources.amazon.status).toBe("failed");
+      expect(result.sources.amazon.error?.code).toBe("page_unknown");
+      expect(result.sources.amazon.message).toBe("Amazon 商品详情页未识别到有效商品容器或标题");
     });
 
     it("inspect 探测阶段若存在 Amazon Pending Preview，直接返回 awaiting_confirmation 且不调用采集器", async () => {
@@ -1516,6 +1622,30 @@ describe("VOC auto collection contract (v11)", { timeout: 30000 }, () => {
       expect(titleResult.sources.sourcing1688.status).toBe("ready_to_search");
       expect(titleResult.sources.sourcing1688.message).toContain("已准备商品素材");
       expect(titleResult.sources.sourcing1688.message).toContain("可进入1688图片找货");
+    });
+
+    it("orchestrate 产生 failed 后，紧接着 inspect 不会冲刷抹白为 needs_user", async () => {
+      const { BrowserEvidenceCollectError } = await import("@/lib/server/browserEvidenceCollect");
+      mocks.collectBrowserEvidencePreview.mockRejectedValueOnce(
+        new BrowserEvidenceCollectError("page_unknown", 500, "页面未识别"),
+      );
+
+      // 执行 orchestrate
+      const orchResult = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "orchestrate",
+      });
+      expect(orchResult.sources.amazon.status).toBe("failed");
+
+      // 紧接着调用 inspect（模拟前端 dataRevision 触发的自动探针）
+      const inspectResult = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "inspect",
+      });
+      expect(inspectResult.sources.amazon.status).toBe("failed");
+      expect(inspectResult.sources.amazon.message).toBe("页面未识别");
     });
 
     it("1688 在 orchestrate 时立即返回 running，并在后台异步执行不阻塞整链", async () => {
