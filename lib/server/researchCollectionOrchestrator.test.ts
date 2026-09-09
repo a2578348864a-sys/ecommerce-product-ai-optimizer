@@ -1430,4 +1430,122 @@ describe("VOC auto collection contract (v11)", { timeout: 30000 }, () => {
     expect(codeOnly).not.toContain("collect-confirm");
     expect(codeOnly).not.toContain("takeReviewCollectPreview");
   });
+  describe("sourcing 1688 and orchestrate-to-inspect status preservation", () => {
+    it("任务存在公网商品主图时返回 ready_to_search，无图片时返回 needs_user", async () => {
+      // 1. 无图片：返回 needs_user（override default 排除 productName/title 避免误判）
+      mocks.findFirst.mockResolvedValueOnce({
+        id: "task-no-image",
+        updatedAt: new Date(),
+        resultJson: JSON.stringify({
+          type: "workflow",
+        }),
+      });
+      const noImageResult = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-no-image",
+        action: "inspect",
+      });
+      expect(noImageResult.sources.sourcing1688.status).toBe("needs_user");
+      expect(noImageResult.sources.sourcing1688.message).toContain("待补充商品主图");
+
+      // 2. 有公网主图：返回 ready_to_search
+      mocks.findFirst.mockResolvedValueOnce({
+        id: "task-with-image",
+        updatedAt: new Date(),
+        resultJson: JSON.stringify({
+          type: "workflow",
+          productName: "Image Bento Box",
+          sourceMeta: {
+            productBatchSnapshot: {
+              imageUrl: "https://m.media-amazon.com/images/I/71X8e8wz7mL._AC_SL1500_.jpg",
+            },
+          },
+        }),
+      });
+      const withImageResult = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-with-image",
+        action: "inspect",
+      });
+      expect(withImageResult.sources.sourcing1688.status).toBe("ready_to_search");
+      expect(withImageResult.sources.sourcing1688.message).toContain("已准备商品素材");
+      expect(withImageResult.sources.sourcing1688.message).toContain("可进入1688图片找货");
+    });
+
+    it("任务仅有 Base64 商品图片快照时返回 ready_to_search", async () => {
+      // 1x1 PNG 像素的合法 base64 字符串
+      const pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+      mocks.findFirst.mockResolvedValueOnce({
+        id: "task-with-base64",
+        updatedAt: new Date(),
+        resultJson: JSON.stringify({
+          type: "workflow",
+          sourceMeta: {
+            candidateSnapshot: {
+              productImageSnapshot: {
+                dataUrl: `data:image/png;base64,${pngBase64}`,
+              },
+            },
+          },
+        }),
+      });
+      const base64Result = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-with-base64",
+        action: "inspect",
+      });
+      expect(base64Result.sources.sourcing1688.status).toBe("ready_to_search");
+      expect(base64Result.sources.sourcing1688.message).toContain("已准备商品素材");
+      expect(base64Result.sources.sourcing1688.message).toContain("可进入1688图片找货");
+    });
+
+    it("任务仅有商品标题时返回 ready_to_search", async () => {
+      mocks.findFirst.mockResolvedValueOnce({
+        id: "task-with-title",
+        updatedAt: new Date(),
+        resultJson: JSON.stringify({
+          type: "workflow",
+          productName: "Title Only Bento Box",
+        }),
+      });
+      const titleResult = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-with-title",
+        action: "inspect",
+      });
+      expect(titleResult.sources.sourcing1688.status).toBe("ready_to_search");
+      expect(titleResult.sources.sourcing1688.message).toContain("已准备商品素材");
+      expect(titleResult.sources.sourcing1688.message).toContain("可进入1688图片找货");
+    });
+
+    it("1688 在 orchestrate 时立即返回 running，并在后台异步执行不阻塞整链", async () => {
+      mocks.findFirst.mockResolvedValueOnce({
+        id: "task-sourcing-async",
+        updatedAt: new Date(),
+        resultJson: JSON.stringify({
+          type: "workflow",
+          productIdentity: {
+            image: "https://example.com/p.jpg",
+          },
+        }),
+      });
+
+      const orchResult = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-sourcing-async",
+        action: "orchestrate",
+      });
+
+      expect(orchResult.sources.sourcing1688.status).toBe("running");
+      expect(orchResult.sources.sourcing1688.message).toContain("执行中");
+
+      // 紧接着 inspect，异步任务仍在进行或未生成预览时同样保持 running
+      const inspectResult = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-sourcing-async",
+        action: "inspect",
+      });
+      expect(inspectResult.sources.sourcing1688.status).toBe("running");
+    });
+  });
 });

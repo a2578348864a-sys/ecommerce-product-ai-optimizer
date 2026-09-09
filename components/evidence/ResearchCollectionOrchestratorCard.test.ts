@@ -1649,5 +1649,33 @@ describe("ResearchCollectionOrchestratorCard (Phase 3 UI / Interaction)", () => 
       expect(workbenchSource).toContain("dataRevision={dataRevision}");
       expect(workbenchSource).toContain("handleDataChanged");
     });
+    it("1688 具备主图时仅展示图搜状态，不再提供独立搜索入口", async () => {
+      root = createRoot(container as unknown as Element);
+      await act(async () => {
+        root?.render(
+          createElement(ResearchCollectionOrchestratorCard, {
+            taskId: "task-sourcing-ready",
+            skipAutoInspect: true,
+            initialData: {
+              items: {
+                sourcing_1688: {
+                  state: "ready_to_search",
+                  detail: "已准备商品素材，可进入 1688 图片找货",
+                },
+              },
+            },
+          }),
+        );
+      });
+      await flush();
+
+      const badge = container.querySelector('[data-testid="badge-sourcing_1688"]');
+      expect(badge?.textContent).toContain("⚡ 图搜已就绪");
+
+      const searchBtn = container.querySelector('[data-testid="action-search-sourcing_1688"]');
+      expect(searchBtn).toBeNull();
+      expect(container.textContent).not.toContain("去1688图片搜索");
+    });
+
   });
 });

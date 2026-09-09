@@ -38,8 +38,14 @@ const UPLOAD_RETRIES = 3;
 const RESULT_PAGE_WAIT_MS = 45_000;
 const MAX_IMAGE_REDIRECT_HOPS = 5;
 
-function fail(code: string, status: number, message: string): never {
-  throw new SourcingAcquisitionError(code, status, message);
+type ImageAcquisitionDiagnostic = "submit_trigger_failed" | "result_page_proof_failed" | "extension_not_ready";
+
+function fail(code: string, status: number, message: string, diagnosticCode?: ImageAcquisitionDiagnostic): never {
+  const error = new SourcingAcquisitionError(code, status, message) as SourcingAcquisitionError & {
+    diagnosticCode?: ImageAcquisitionDiagnostic;
+  };
+  if (diagnosticCode) error.diagnosticCode = diagnosticCode;
+  throw error;
 }
 
 /**
@@ -138,7 +144,7 @@ function assertNotAborted(signal?: AbortSignal): void {
 /** 扩展/桥错误归一化（§25/§26/§27 状态语义） */
 function mapBridgeFailure(code: string, status: { extensionSeen: boolean; lastExtensionSeenAt: number }): never {
   if (!status.extensionSeen) {
-    fail("extension_not_installed", 503, "未检测到轻选 1688 助手，请先在普通 Chrome 中安装助手并打开 1688 页面。");
+    fail("extension_not_installed", 503, "未检测到轻选 1688 助手，请先在普通 Chrome 中安装助手并打开 1688 页面。", "extension_not_ready");
   }
   // P1-B：内部码不进用户文案（只进日志）
    
@@ -400,7 +406,7 @@ export async function acquireByImage(input: {
       // P1-B：内部码不进用户文案
        
       console.error("[1688-image] submit failed", { code: String(submit.code ?? "unknown") });
-      fail("search_trigger_not_confirmed", 422, "「搜索图片」未成功触发，请确认图搜页面后重试。");
+      fail("search_trigger_not_confirmed", 422, "「搜索图片」未成功触发，请确认图搜页面后重试。", "submit_trigger_failed");
     }
 
     // 7) 结果页证明（§19：imageId + result route + 非推荐流；≤45s）
@@ -417,7 +423,7 @@ export async function acquireByImage(input: {
       }
     }
     if (!resultReady) {
-      fail("search_trigger_not_confirmed", 422, "未进入真实图搜结果页（疑似推荐流或提交未生效），已停止。");
+      fail("search_trigger_not_confirmed", 422, "未进入真实图搜结果页（疑似推荐流或提交未生效），已停止。", "result_page_proof_failed");
     }
 
     // 8) collect（§20：data-renderkey offerId；同卡片绑定；bounded；dedupe）
@@ -490,9 +496,17 @@ export async function acquireByImage(input: {
 }
 
 /** 错误归一化（业务错误分类 §53；扩展状态语义 §25-§27） */
-export function normalizeImageAcquisitionError(error: unknown): { code: string; status: number; message: string } {
+export function normalizeImageAcquisitionError(error: unknown): { code: string; status: number; message: string; diagnosticCode?: ImageAcquisitionDiagnostic } {
   if (error instanceof SourcingAcquisitionError) {
-    return { code: error.code, status: error.status, message: error.message };
+    const diagnosticCode =
+      (error as SourcingAcquisitionError & { diagnosticCode?: ImageAcquisitionDiagnostic }).diagnosticCode ??
+      (error.code === "extension_bridge_not_available" ? "extension_not_ready" : undefined);
+    return {
+      code: error.code,
+      status: error.status,
+      message: error.message,
+      ...(diagnosticCode ? { diagnosticCode } : {}),
+    };
   }
   // P1-A：未知异常不把原始 message 拼进用户文案（只进日志）
    

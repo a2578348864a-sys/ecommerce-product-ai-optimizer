@@ -1308,6 +1308,8 @@ export function EvidenceWorkbench({
           <SourcingEvidencePanel
             taskId={taskId}
             amazonContext={{ title: null, image: sourceImageUrl ?? null, asin: null }}
+            refreshToken={dataRevision}
+            showManualImageSearch={false}
             onEvidenceChange={(confirmed) => {
               setSourcingConfirmed(confirmed);
               handleDataChanged();

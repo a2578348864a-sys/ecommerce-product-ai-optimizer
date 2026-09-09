@@ -44,7 +44,9 @@ export type OrchestratorSourceState =
   | "failed" // ❌ 失败 (关键词与竞品)
   | "needs_action" // ⚠ 需要处理 (VOC)
   | "needs_login" // ⚠ 需要登录 (1688)
-  | "needs_user"; // ⚠ 需要人工处理
+  | "needs_user" // ⚠ 需要人工处理
+  | "ready_to_search" // ⚡ 图搜已就绪 (1688)
+  | "running"; // ⚡ 执行中
 
 export type OrchestratorSourceItem = {
   key: OrchestratorSourceKey;
@@ -124,7 +126,7 @@ const SOURCE_META: Record<
     anchorId: "formal-v2-sourcing-evidence",
     tabKey: "sourcing",
     defaultState: "pending_review",
-    allowedStates: new Set(["ready", "pending_review", "needs_login", "needs_user"]),
+    allowedStates: new Set(["ready", "pending_review", "needs_login", "needs_user", "ready_to_search", "failed", "running"]),
   },
 };
 
@@ -289,13 +291,19 @@ export function normalizeState(
     if (s === "ready" || s === "existing" || s === "已有" || s === "completed" || s === "confirmed") {
       return "ready";
     }
+    if (s === "ready_to_search" || s === "可找货") {
+      return "ready_to_search";
+    }
     if (s === "needs_supplement" || s === "missing" || s === "需要补充") {
       return "needs_supplement";
     }
     if (s === "pending_review" || s === "to_confirm" || s === "待确认" || s === "preview" || s === "awaiting_confirmation") {
       return "pending_review";
     }
-    if (s === "pending" || s === "待补齐" || s === "idle" || s === "running") {
+    if (s === "running" || s === "执行中" || s === "采集正在执行中") {
+      return "running";
+    }
+    if (s === "pending" || s === "待补齐" || s === "idle") {
       return "pending";
     }
     if (s === "failed" || s === "error" || s === "失败") {
@@ -322,13 +330,18 @@ export function normalizeState(
 }
 
 export function formatBadgeLabel(state: OrchestratorSourceState): {
-  icon: "check" | "alert" | "circle" | "x";
+  icon: "check" | "alert" | "circle" | "x" | "loader";
   text: string;
   variant: "emerald" | "amber" | "slate" | "rose";
 } {
+  if (state === "running") {
+    return { icon: "loader", text: "⚡ 执行中", variant: "amber" };
+  }
   switch (state) {
     case "ready":
       return { icon: "check", text: "✓ 已有", variant: "emerald" };
+    case "ready_to_search":
+      return { icon: "circle", text: "⚡ 图搜已就绪", variant: "amber" };
     case "needs_supplement":
       return { icon: "alert", text: "⚠ 需要补充", variant: "amber" };
     case "pending_review":
@@ -358,7 +371,9 @@ export function computeSummary(
       i.state === "needs_supplement" ||
       i.state === "failed" ||
       i.state === "pending" ||
-      i.state === "needs_user",
+      i.state === "ready_to_search" ||
+      i.state === "needs_user" ||
+      i.state === "running",
   ).length;
 
   const allReady = reusedCount === items.length;
@@ -401,8 +416,14 @@ function getSourceDescription(
   if (isRetrying) {
     return "正在重新采集关键词与竞品…";
   }
+  if (item.state === "running") {
+    return item.detail || "正在执行资料采集…";
+  }
   if (item.state === "ready") {
     return item.detail || (item.key === "amazon" ? "Amazon 详情资料已就绪" : "资料已就绪");
+  }
+  if (item.state === "ready_to_search") {
+    return item.detail || "已准备商品素材，可进入 1688 图片找货";
   }
   if (item.state === "pending_review") {
     return pendingItem?.countText || item.detail || "存在待确认条目";
@@ -730,6 +751,19 @@ export function ResearchCollectionOrchestratorCard({
     }
   }, [dataRevision, executeInspect]);
 
+  // 检查是否有任何来源处于 running 状态，若有则自动轮询 inspect 直至全部完成
+  const hasRunningSource = useMemo(() => {
+    return Object.values(rawItemStates).some((item) => item?.state === "running");
+  }, [rawItemStates]);
+
+  useEffect(() => {
+    if (!hasRunningSource) return;
+    const timer = setInterval(() => {
+      void executeInspect();
+    }, 2500);
+    return () => clearInterval(timer);
+  }, [hasRunningSource, executeInspect]);
+
   // 点击「补齐研究资料」
   const handleOrchestrate = useCallback(async () => {
     if (isOrchestrating || isOrchestratingRef.current) return;
@@ -938,6 +972,9 @@ export function ResearchCollectionOrchestratorCard({
                     </>
                   ) : (
                     <>
+                      {badge.icon === "loader" && (
+                        <Loader2 className="h-3 w-3 shrink-0 animate-spin text-amber-600" />
+                      )}
                       {badge.icon === "check" && <Check className="h-3 w-3 shrink-0" />}
                       {badge.icon === "alert" && (
                         <AlertTriangle className="h-3 w-3 shrink-0 text-amber-600" />
@@ -975,6 +1012,26 @@ export function ResearchCollectionOrchestratorCard({
                   >
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     <span>处理中…</span>
+                  </button>
+                ) : item.state === "running" ? (
+                  <button
+                    type="button"
+                    disabled
+                    data-testid={`action-running-${item.key}`}
+                    className="inline-flex items-center justify-center gap-1 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 px-3 py-1.5 text-xs font-semibold shadow-sm cursor-not-allowed"
+                  >
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <span>执行中…</span>
+                  </button>
+                ) : item.state === "ready_to_search" && item.key !== "sourcing_1688" ? (
+                  <button
+                    type="button"
+                    data-testid={`action-search-${item.key}`}
+                    onClick={() => handleNavigate(item.tabKey, item.anchorId)}
+                    className="inline-flex items-center justify-center gap-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 text-xs font-semibold shadow-sm transition-colors"
+                  >
+                    <span>去1688图片搜索</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
                   </button>
                 ) : item.state === "pending_review" ? (
                   <button

@@ -120,6 +120,11 @@ describe("POST action=search（关键词搜索 → Preview）", () => {
     const getResponse = await GET(new NextRequest("http://localhost/api/tasks/x/sourcing"), context());
     const getBody = await json(getResponse);
     expect((getBody.data as { evidence: unknown }).evidence).toBeNull();
+    expect((getBody.data as { pendingPreview: { previewId: string; candidates: unknown[]; method: string } }).pendingPreview).toMatchObject({
+      previewId: data.preview.previewId,
+      method: "keyword",
+    });
+    expect((getBody.data as { pendingPreview: { candidates: unknown[] } }).pendingPreview.candidates).toHaveLength(2);
   });
 
   it("缺关键词 → INVALID_QUERY", async () => {
