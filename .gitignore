@@ -99,3 +99,20 @@ data/replay-demo-choices/
 
 # 回滚备份目录（保留本地，不提交）
 archives/
+
+# Local debug artifacts
+scratch/
+temp/
+debug/
+*.tmp.ts
+*.tmp.js
+
+# Test artifacts
+coverage/
+test-results/
+playwright-report/
+.playwright-cli/
+
+# Local sqlite files
+prisma/*.db
+prisma/dev.db
