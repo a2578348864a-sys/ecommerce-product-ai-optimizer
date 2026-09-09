@@ -256,6 +256,12 @@ describe("researchCollectionOrchestrator", () => {
 
   describe("inspect action", () => {
     it("只做只读状态探测，绝不调用任何外部采集", async () => {
+      // override default 排除 productName/title/图片，避免 sourcing1688 误判为 ready_to_search
+      mocks.findFirst.mockResolvedValueOnce({
+        id: "task-001",
+        updatedAt: new Date("2026-09-01T00:00:00.000Z"),
+        resultJson: JSON.stringify({ type: "workflow" }),
+      });
       const result = await orchestrateResearchCollection({
         context: ownerContext,
         taskId: "task-001",
@@ -1195,6 +1201,7 @@ describe("VOC auto collection contract (v11)", { timeout: 30000 }, () => {
     _clearOrchestratorRunningStateForTests();
     _clearBrowserUsePreviewCacheForTests();
     resetSourcingPreviewStoreForTests();
+    resetBrowserEvidencePreviewStoreForTests();
     mocks.getRuntimeMode.mockReturnValue("local_owner");
     mocks.findFirst.mockResolvedValue({
       id: "task-001",
