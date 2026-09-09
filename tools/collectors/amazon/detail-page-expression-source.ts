@@ -99,7 +99,7 @@ export const DETAIL_PAGE_EXTRACTOR_SOURCE = [
   "function detectDetailPageStatus(root) {",
   "  const bodyText = sanitizeDetailText(root.body && root.body.innerText, 4000) || '';",
   "  if (/captcha|robot check|enter the characters you see|type the characters you see|验证码|机器人/i.test(bodyText)) return 'captcha';",
-  "  if (/sign in to continue|login to continue|please sign in|登录后继续/i.test(bodyText)) return 'login_wall';",
+  "  if (!root.querySelector('#productTitle') && /sign in to continue|login to continue|please sign in|登录后继续|click the button below to continue shopping|continue shopping/i.test(bodyText)) return 'login_wall';",
   "  if (/sorry[, ]+something went wrong|service unavailable|internal server error|页面出错/i.test(bodyText)) return 'error_page';",
   "  return root.querySelector('#productTitle') ? 'ok' : 'unknown_page';",
   "}",

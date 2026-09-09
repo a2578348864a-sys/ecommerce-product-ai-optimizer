@@ -146,6 +146,19 @@ describe("detail-page expression source（P1-A）", () => {
     expect(fromExpression.pageStatus).toBe("login_wall");
   });
 
+  it.each([
+    "Click the button below to continue shopping",
+    "Continue shopping",
+  ])("matches Amazon %s interstitial as a login-wall blocker", (bodyText) => {
+    const dom = fakeDom({ "#body": { innerText: bodyText } });
+    const opts = options();
+    const fromExpression = runExpression(dom, opts) as ReturnType<typeof extractAmazonDetailPage>;
+    const fromNode = extractAmazonDetailPage(dom as never, "https://www.amazon.com/dp/B0TEST0001", opts);
+    expect(fromExpression).toEqual(fromNode);
+    expect(fromExpression.pageStatus).toBe("login_wall");
+    expect(fromExpression.entityBound).toBe(false);
+  });
+
   it("matches on captcha page status", () => {
     const dom = fakeDom({
       "#body": { innerText: "Enter the characters you see below" },

@@ -190,6 +190,17 @@ describe("Amazon detail page extractor (V3.1 Spike)", () => {
     }
   });
 
+  it.each([
+    "Click the button below to continue shopping",
+    "Continue shopping",
+  ])("classifies Amazon %s interstitial as a verification blocker", (bodyText) => {
+    const root = buildRoot({ bodyText });
+    const result = extractAmazonDetailPage(root, URL, options());
+    expect(result.pageStatus).toBe("login_wall");
+    expect(result.entityBound).toBe(false);
+    expect(result.fields.title.reason).toBe("page_status_login_wall");
+  });
+
   it("fails closed on unknown pages (no product container)", () => {
     const root = buildRoot({});
     const result = extractAmazonDetailPage(root, URL, options());
