@@ -1256,6 +1256,55 @@ describe("VOC auto collection contract (v11)", { timeout: 30000 }, () => {
     expect(mocks.createReviewCollectPreview).not.toHaveBeenCalled();
   });
 
+  it("V2b extraction_empty 的 Pending 是瞬时失败，不复用：再次 orchestrate 重新采集", async () => {
+    mocks.findPendingReviewCollectPreview.mockReturnValue({
+      previewId: "rcp_transient_empty",
+      items: [],
+      pageResults: [{ asin: "B0SAMPLE01", status: "extraction_empty", note: "页面已加载但评论片段未完成可解析提取，未能确认无评论；请重试。", extractedCount: 0 }],
+      capturedAt: new Date().toISOString(),
+      expiresAt: Date.now() + 15 * 60 * 1000,
+      subjectKey: "owner:v1",
+      taskId: "task-001",
+    });
+    mocks.createReviewCollectPreview.mockResolvedValue(sampleReviewPreview());
+    const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    expect(result.sources.voc.status).toBe("awaiting_confirmation");
+    expect(result.sources.voc.previewId).toBe("rcp_test_001");
+    expect(mocks.createReviewCollectPreview).toHaveBeenCalledTimes(1);
+  });
+
+  it("V2c confirmed_no_reviews 的 Pending 是可操作空态，仍复用且不重复采集", async () => {
+    mocks.findPendingReviewCollectPreview.mockReturnValue({
+      previewId: "rcp_confirmed_empty_pending",
+      items: [],
+      pageResults: [{ asin: "B0SAMPLE01", status: "confirmed_no_reviews", note: "页面明确显示暂无公开评论。", extractedCount: 0 }],
+      capturedAt: new Date().toISOString(),
+      expiresAt: Date.now() + 15 * 60 * 1000,
+      subjectKey: "owner:v1",
+      taskId: "task-001",
+    });
+    const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    expect(result.sources.voc.status).toBe("needs_user");
+    expect(result.sources.voc.error?.code).toBe("confirmed_no_reviews");
+    expect(mocks.createReviewCollectPreview).not.toHaveBeenCalled();
+  });
+
+  it("V2d 登录墙/验证码的 Pending 是可操作阻断态，仍复用且不重复采集", async () => {
+    mocks.findPendingReviewCollectPreview.mockReturnValue({
+      previewId: "rcp_blocked_pending",
+      items: [],
+      pageResults: [{ asin: "B0SAMPLE01", status: "login_required", note: "页面要求登录，系统未自动登录。", extractedCount: 0 }],
+      capturedAt: new Date().toISOString(),
+      expiresAt: Date.now() + 15 * 60 * 1000,
+      subjectKey: "owner:v1",
+      taskId: "task-001",
+    });
+    const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    expect(result.sources.voc.status).toBe("needs_user");
+    expect(result.sources.voc.error?.code).toBe("login_required");
+    expect(mocks.createReviewCollectPreview).not.toHaveBeenCalled();
+  });
+
   it("V3 inspect 模式：无 Evidence / 无 Pending → needs_user 且 collector 不被调用", async () => {
     const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "inspect" });
     expect(result.sources.voc.status).toBe("needs_user");
@@ -1304,7 +1353,22 @@ describe("VOC auto collection contract (v11)", { timeout: 30000 }, () => {
     const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
     expect(result.sources.voc.status).toBe("needs_user");
     expect(result.sources.voc.itemCount).toBe(0);
-    expect(result.sources.voc.error?.code).toBe("no_public_reviews");
+    expect(result.sources.voc.error?.code).toBe("extraction_empty");
+    expect(result.sources.voc.message).toContain("无法确认是否无评论");
+  });
+
+  it("明确无评论信号才返回 confirmed_no_reviews", async () => {
+    mocks.createReviewCollectPreview.mockResolvedValue({
+      previewId: "rcp_confirmed_empty",
+      items: [],
+      pageResults: [{ asin: "B0SAMPLE01", status: "confirmed_no_reviews", note: "页面明确显示暂无公开评论。", extractedCount: 0 }],
+      capturedAt: new Date().toISOString(),
+      expiresAt: Date.now() + 60000,
+    });
+    const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    expect(result.sources.voc.status).toBe("needs_user");
+    expect(result.sources.voc.error?.code).toBe("confirmed_no_reviews");
+    expect(result.sources.voc.message).toContain("明确显示暂无公开评论");
   });
 
   it.each([
