@@ -451,15 +451,18 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
 
   return (
     <section className="mt-4 rounded-2xl border border-cyan-200 bg-white p-4" data-testid="image-handoff-section">
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+      <div className="flex flex-col gap-2 border-b border-slate-100 pb-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
-          <p className="text-xs font-bold uppercase tracking-wide text-cyan-600">AI 图片素材草稿</p>
-          <h3 className="mt-1 text-base font-bold text-slate-950">AI 生成图片草稿</h3>
-          <p className="mt-1 text-sm leading-6 text-slate-600">
-            仍需人工审核，不得直接发布。
-          </p>
+          <h3 className="text-base font-bold text-slate-950">图片创作设置</h3>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-600" data-testid="image-creation-compact-summary">
+            <span>当前模式：<strong className="text-slate-800">{isComposition ? "构图概念" : "真实商品外观"}</strong></span>
+            <span>·</span>
+            <span>当前主题：<strong className="text-slate-800">{primaryPurposeLabel(creativeIntent.primaryImagePurpose)}</strong></span>
+            <span>·</span>
+            <span>人工审核：<strong className="text-slate-800">必须</strong></span>
+          </div>
         </div>
-        <span className={`w-fit rounded-full border px-3 py-1 text-sm font-semibold ${
+        <span className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold ${
           state.imageStatus === "active" || state.imageStatus === "concept_only"
             ? "border-teal-200 bg-teal-50 text-teal-700"
             : state.imageStatus === "stale" || state.imageStatus === "revoked" || state.imageStatus === "legacy_unbound"
@@ -470,133 +473,46 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
         </span>
       </div>
 
-      <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50/40 p-3 text-sm leading-6 text-amber-800">
-        这是 AI 辅助图片草稿，不是最终上架图片。请人工复核构图、商品外观、认证标识和平台规则。
-        系统不会自动上架，也不会承诺收益或销量表现。
-      </div>
-
-      <div className="mt-3 rounded-xl border border-sky-100 bg-sky-50/60 p-3 text-sm leading-6 text-sky-800" data-testid="image-composition-notice">
-        <p className="font-bold">{isComposition ? "概念创作模式" : "参考图创作模式"}</p>
-        <p className="mt-1">
-          {isComposition
-            ? "当前没有已确认商品参考图。生成结果用于构图、场景和视觉方向参考，不代表真实商品外观。"
-            : "将参考已批准商品图片进行视觉创作，结果仍需人工检查商品外观和文字。"}
-        </p>
-        {isComposition && state.approvedVisualReferenceSummary.length === 0 ? (
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                className="rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm font-semibold text-sky-800"
-                onClick={() => router.push(`/tasks/${encodeURIComponent(taskId)}#creative-materials`)}
-              >
-                补充参考图
-              </button>
-              <button
-                type="button"
-                className="rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm font-semibold text-sky-800"
-                onClick={() => {
-                  if (window.confirm("切换到独立创作后，不再使用当前研究记录作为权威资料，并需要重新确认手动输入。是否继续？")) {
-                    router.push("/image-studio");
-                  }
-                }}
-              >
-                转为独立创作
-              </button>
-            </div>
-        ) : null}
-
-        {/* Visual Reference Gate（§32-35）：无已确认参考图时，白底主图/细节特写/包装套装不可生成 */}
-        {referenceGateBlocked ? (
-          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-800" data-testid="visual-reference-gate-blocked">
-            <p className="font-bold">
-              {creativeIntent.primaryImagePurpose === "white_studio"
-                ? "白底商品图需要先确认商品参考图。"
-                : creativeIntent.primaryImagePurpose === "detail_closeup"
-                  ? "产品细节特写需要已确认的商品参考图。"
-                  : "包装/套装展示需要已确认的商品参考图或包装事实。"}
-            </p>
-            <p className="mt-1">
-              确认后，生图会以这张图片作为当前商品的外观参考，尽量保持商品主体，仅改变背景、场景和构图（不代表像素级完全一致）。
-              请先在「创作资料 → 商品参考图」中批准参考图；未确认前不执行真实生图。
-            </p>
-            <button
-              type="button"
-              className="mt-2 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-amber-800"
-              onClick={() => {
-                document.getElementById("task-visual-reference-fieldset")?.scrollIntoView({ behavior: "smooth", block: "center" });
-              }}
-            >
-              确认商品参考图
-            </button>
-          </div>
-        ) : null}
-
-        {/* V3 Creative Intent Propagation：Purpose 要求证据 Gate（无证据不静默降级） */}
-        {!purposeGate.ok ? (
-          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-800" data-testid="purpose-gate-blocked">
-            <p className="font-bold">当前图片用途暂时无法生成。</p>
-            <p className="mt-1">{purposeGate.message}</p>
-          </div>
-        ) : null}
-      </div>
-
-      {/* 无 Handoff / legacy */}
-      {state.imageStatus === "legacy_unbound" ? (
-        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-800">
-          历史图片草稿未绑定已确认的创作资料。草稿只读保留，请基于当前资料重新生成。
+      {referenceGateBlocked ? (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800" data-testid="visual-reference-gate-blocked">
+          <span>⚠ 生成真实商品外观前，请先确认商品参考图。</span>
+          <button
+            type="button"
+            className="text-xs font-semibold text-teal-700 hover:underline"
+            onClick={() => {
+              document.getElementById("task-visual-reference-fieldset")?.scrollIntoView({ behavior: "smooth", block: "center" });
+            }}
+          >
+            确认商品参考图 ↑
+          </button>
         </div>
-      ) : null}
-
-      {state.imageStatus === "revoked" ? (
-        <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm leading-6 text-rose-800" data-testid="image-revoked-notice">
+      ) : !purposeGate.ok ? (
+        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800" data-testid="purpose-gate-blocked">
+          <p className="font-semibold">当前图片用途暂时无法生成。</p>
+          <p className="mt-0.5">{purposeGate.message}</p>
+        </div>
+      ) : state.imageStatus === "stale" ? (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800" data-testid="image-stale-notice">
+          <span className="font-semibold">⚠ 当前草稿基于旧版资料</span>
+          <span className="text-amber-700">请基于最新资料重新生成</span>
+        </div>
+      ) : state.imageStatus === "revoked" ? (
+        <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-800" data-testid="image-revoked-notice">
           对应创作资料已撤回。生成按钮已禁用，历史草稿保留。
         </div>
-      ) : null}
-
-      {state.imageStatus === "stale" ? (
-        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-800" data-testid="image-stale-notice">
-          该图片草稿基于旧版创作资料。草稿只读保留，请基于最新资料重新生成。
+      ) : state.imageStatus === "legacy_unbound" ? (
+        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
+          历史图片草稿未绑定已确认的创作资料。草稿只读保留，请基于当前资料重新生成。
+        </div>
+      ) : state.canGenerate ? (
+        <div className="mt-3 rounded-xl border border-teal-100 bg-teal-50/50 p-2 text-xs text-teal-800">
+          ✓ 创作资料已准备，可选择主题后生成。
         </div>
       ) : null}
 
       {state.canGenerate ? (
-        <div className="mt-4 space-y-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-slate-700">
-              创作资料已确认
-            </p>
-            <p className="mt-0.5 text-sm text-slate-500">
-              模式：{modeLabel(state.mode)}
-              {isComposition ? "（不生成真实商品外观）" : "（基于批准视觉参考）"}
-            </p>
-            {/* V3 Creative Intent Propagation：生成前显式意图摘要（用户选择不回读成默认值） */}
-            <p className="mt-1 text-xs font-semibold text-slate-600" data-testid="creative-intent-summary">
-              主用途：{primaryPurposeLabel(creativeIntent.primaryImagePurpose)}
-              {creativeIntent.lifestyleScene !== "none" ? ` · 生活场景：${lifestyleSceneLabel(creativeIntent.lifestyleScene)}` : ""}
-            </p>
-          </div>
-          <div>
-            <label htmlFor="task-image-creative-description" className="text-sm font-bold text-slate-800">
-              创作描述
-            </label>
-            <p className="mt-1 text-sm leading-6 text-slate-500">
-              系统已根据本次研究资料整理了一版图片创作描述，你可以修改后再生成。
-            </p>
-            <textarea
-              id="task-image-creative-description"
-              name="userCreativeDescription"
-              value={userCreativeDescription}
-              maxLength={1200}
-              rows={5}
-              onChange={(event) => {
-                setUserCreativeDescription(event.target.value);
-                setDescriptionDirty(true);
-              }}
-              disabled={submitting}
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm leading-6 text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 disabled:opacity-60"
-            />
-          </div>
-          <div>
+        <div className="mt-4 space-y-4">
+          <div className="[&_fieldset>p]:hidden [&>div>p]:hidden">
             <ImageScenePresetPicker
               name="task-image-creative-intent"
               value={creativeIntent}
@@ -613,31 +529,108 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
               }}
             />
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={() => void handleGenerate()}
-            disabled={generateDisabled}
-            className="inline-flex h-10 items-center justify-center rounded-xl bg-cyan-600 px-4 text-sm font-bold text-white transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-60"
-            data-testid="image-handoff-generate"
-          >
-            {submitting ? "正在生成图片..." : "生成图片"}
-          </button>
-          <label className="text-sm font-semibold text-slate-700">
-            候选数量
-            <select
-              className="ml-2 rounded-lg border border-slate-200 bg-white px-2 py-2"
-              value={candidateCount}
-              onChange={(event) => setCandidateCount(event.target.value === "1" ? 1 : 2)}
-              disabled={submitting}
+
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            <label className="flex items-center text-sm font-semibold text-slate-700">
+              候选数量
+              <select
+                className="ml-2 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm"
+                value={candidateCount}
+                onChange={(event) => setCandidateCount(event.target.value === "1" ? 1 : 2)}
+                disabled={submitting}
+              >
+                <option value={1}>1 张</option>
+                <option value={2}>2 张</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={() => void handleGenerate()}
+              disabled={generateDisabled}
+              className="inline-flex h-10 items-center justify-center rounded-xl bg-teal-600 px-5 text-sm font-bold text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+              data-testid="image-handoff-generate"
             >
-              <option value={1}>1 张</option>
-              <option value={2}>2 张</option>
-            </select>
-          </label>
+              {submitting ? "正在生成图片..." : "生成图片"}
+            </button>
           </div>
         </div>
       ) : null}
+
+      {/* 创作描述与生成约束（默认折叠） */}
+      <details className="mt-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 text-xs" data-testid="image-creative-details">
+        <summary className="flex cursor-pointer items-center justify-between font-bold text-slate-700 hover:text-slate-900">
+          <div className="flex items-center gap-2">
+            <span>查看 / 调整创作描述与生成约束</span>
+            <span className="rounded-full bg-slate-200/70 px-2 py-0.5 text-[11px] font-normal text-slate-600">Prompt · 模式 · 安全说明</span>
+          </div>
+          <span className="text-xs font-normal text-teal-700">展开详情 ↓</span>
+        </summary>
+        <div className="mt-3 space-y-3 border-t border-slate-200 pt-3">
+          <div>
+            <label htmlFor="task-image-creative-description" className="block text-xs font-bold text-slate-800">
+              创作描述
+            </label>
+            <p className="mt-1 text-xs text-slate-500">
+              系统已根据本次研究资料整理了一版图片创作描述，你可以修改后再生成。
+            </p>
+            <textarea
+              id="task-image-creative-description"
+              name="userCreativeDescription"
+              value={userCreativeDescription}
+              maxLength={1200}
+              rows={5}
+              onChange={(event) => {
+                setUserCreativeDescription(event.target.value);
+                setDescriptionDirty(true);
+              }}
+              disabled={submitting}
+              className="mt-2 w-full rounded-xl border border-slate-300 bg-white p-3 text-xs leading-5 text-slate-800 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 disabled:opacity-60"
+            />
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-600 space-y-1.5" data-testid="image-composition-notice">
+            <p className="font-bold text-slate-800">
+              {isComposition ? "概念创作模式" : "参考图创作模式"}
+            </p>
+            <p>
+              {isComposition
+                ? "当前没有已确认商品参考图。生成结果用于构图、场景和视觉方向参考，不代表真实商品外观。"
+                : "将参考已批准商品图片进行视觉创作，结果仍需人工检查商品外观和文字。"}
+            </p>
+            <p className="text-slate-500">
+              这是 AI 辅助图片草稿，不是最终上架图片。请人工复核构图、商品外观、认证标识和平台规则。系统不会自动上架，也不会承诺收益或销量表现。
+            </p>
+            <p className="text-slate-500">
+              白底主图要求干净背景，因此不使用生活方式场景。切换到其他图片用途后即可选择。
+            </p>
+            <p className="text-slate-500">
+              未批准商品参考图时，图片用途与场景只表示构图方向，不代表真实商品外观。
+            </p>
+            {isComposition && state.approvedVisualReferenceSummary.length === 0 ? (
+              <div className="mt-2 flex flex-wrap gap-2 pt-1">
+                <button
+                  type="button"
+                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  onClick={() => router.push(`/tasks/${encodeURIComponent(taskId)}#creative-materials`)}
+                >
+                  补充参考图
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  onClick={() => {
+                    if (window.confirm("切换到独立创作后，不再使用当前研究记录作为权威资料，并需要重新确认手动输入。是否继续？")) {
+                      router.push("/image-studio");
+                    }
+                  }}
+                >
+                  转为独立创作
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </details>
 
       {state.candidates.length > 0 ? (
         <div className="mt-4 grid gap-4 lg:grid-cols-2" data-testid="task-image-candidates">

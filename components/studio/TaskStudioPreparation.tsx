@@ -426,33 +426,31 @@ export function TaskStudioPreparation({
     const supplementalFacts = (detail?.confirmedFacts ?? []).filter((fact) => !authorityFieldNames.has(fact.field));
     return (
       <div data-testid="task-studio-authoritative-mode">
-        <section className="mb-2.5 rounded-xl border border-teal-200 bg-teal-50/40 p-2.5 text-xs text-slate-700">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-1.5 font-medium">
-              <span className="font-bold text-teal-900">创作资料已确认</span>
-              <span className="text-slate-300">·</span>
-              <span className="rounded-md border border-teal-100 bg-white px-2 py-0.5">已确认事实：{listingFactSummary.confirmedFacts}</span>
-              {kind === "listing" ? (
-                <>
-                  <span className="text-slate-300">·</span>
-                  <span className="rounded-md border border-teal-100 bg-white px-2 py-0.5">可用于 Listing：{listingFactSummary.listingEligibleFacts}</span>
-                </>
-              ) : null}
-              <span className="text-slate-300">·</span>
-              <span className={`rounded-md border px-2 py-0.5 ${listingFactSummary.prohibitedClaims > 0 ? "border-amber-200 bg-amber-50 text-amber-800" : "border-teal-100 bg-white"}`}>
-                禁止声明：{listingFactSummary.prohibitedClaims}
-              </span>
-              <span className="text-slate-300">·</span>
-              <span className="rounded-md border border-teal-100 bg-white px-2 py-0.5 text-slate-600">最终人工复核：必须</span>
+        {kind === "listing" ? (
+          <section className="mb-2.5 rounded-xl border border-teal-200 bg-teal-50/40 p-2.5 text-xs text-slate-700">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-1.5 font-medium">
+                <span className="font-bold text-teal-900">创作资料已确认</span>
+                <span className="text-slate-300">·</span>
+                <span className="rounded-md border border-teal-100 bg-white px-2 py-0.5">已确认事实：{listingFactSummary.confirmedFacts}</span>
+                <span className="text-slate-300">·</span>
+                <span className="rounded-md border border-teal-100 bg-white px-2 py-0.5">可用于 Listing：{listingFactSummary.listingEligibleFacts}</span>
+                <span className="text-slate-300">·</span>
+                <span className={`rounded-md border px-2 py-0.5 ${listingFactSummary.prohibitedClaims > 0 ? "border-amber-200 bg-amber-50 text-amber-800" : "border-teal-100 bg-white"}`}>
+                  禁止声明：{listingFactSummary.prohibitedClaims}
+                </span>
+                <span className="text-slate-300">·</span>
+                <span className="rounded-md border border-teal-100 bg-white px-2 py-0.5 text-slate-600">最终人工复核：必须</span>
+              </div>
+              <details className="inline-block text-xs">
+                <summary className="cursor-pointer text-teal-700 hover:underline">规则说明</summary>
+                <p className="mt-1 text-slate-600 leading-5">
+                  生成时服务器会再次读取研究记录、核对最新版本与当前身份；浏览器预填内容不作为权威事实。
+                </p>
+              </details>
             </div>
-            <details className="inline-block text-xs">
-              <summary className="cursor-pointer text-teal-700 hover:underline">规则说明</summary>
-              <p className="mt-1 text-slate-600 leading-5">
-                生成时服务器会再次读取研究记录、核对最新版本与当前身份；浏览器预填内容不作为权威事实。
-              </p>
-            </details>
-          </div>
-        </section>
+          </section>
+        ) : null}
         {/* 缺事实时的首屏轻量提示 */}
         {listingFactsMissing ? (
           <div className="mb-2.5 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs font-semibold text-amber-800">
@@ -462,11 +460,19 @@ export function TaskStudioPreparation({
 
         {/* V3 Visual Reference Confirmation（权威模式）：已确认态也必须能看到并批准商品参考图 */}
         {kind === "image" ? (
-          <section className="surface-card mb-4 border-slate-200 p-4" id="task-visual-reference-fieldset" data-testid="task-visual-reference-panel">
-            <p className="text-sm font-bold text-slate-900">商品参考图</p>
-            <p className="mt-1 text-xs leading-5 text-slate-500">
-              只有你在这里批准的当前研究参考图，才能用于具体商品视觉草稿。
-            </p>
+          <section className="surface-card mb-4 border-slate-200 p-3.5" id="task-visual-reference-fieldset" data-testid="task-visual-reference-panel">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+              <h3 className="text-sm font-bold text-slate-900">商品参考图</h3>
+              {visualOptions.length > 0 && visualOptions.every((option) => option.approvedForReference === true) ? (
+                <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-0.5 text-xs font-semibold text-teal-700">
+                  ✓ 商品参考图已确认
+                </span>
+              ) : (
+                <span className="text-xs font-semibold text-amber-700">
+                  生成真实商品外观前，需要先确认商品参考图。
+                </span>
+              )}
+            </div>
             {visualOptions.length > 0 ? (
               <div className="mt-3 grid gap-2 md:grid-cols-2">
                 {visualOptions.map((option) => {
@@ -477,13 +483,13 @@ export function TaskStudioPreparation({
                       {option.thumbnailUrl ? (
                         <VisualReferenceThumbnail taskId={taskId} thumbnailUrl={option.thumbnailUrl} />
                       ) : (
-                        <div className="h-20 w-20 shrink-0 rounded-lg border border-dashed border-slate-300 bg-slate-50" />
+                        <div className="h-16 w-16 shrink-0 rounded-lg border border-dashed border-slate-300 bg-slate-50" />
                       )}
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate font-medium text-slate-800">{option.summary || "研究记录中的商品参考图"}</span>
+                        <span className="block truncate font-medium text-slate-800">{option.summary || "当前商品参考图"}</span>
                         <span className="mt-0.5 block text-xs text-slate-500">来源：{visualReferenceSourceLabel(option.sourceTier)}</span>
                         <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${approved ? "bg-teal-100 text-teal-800" : "bg-amber-100 text-amber-800"}`}>
-                          {approved ? "✓ 已确认" : "待确认"}
+                          {approved ? "✓ 商品参考图已确认" : "待确认"}
                         </span>
                       </span>
                       <input
@@ -509,9 +515,9 @@ export function TaskStudioPreparation({
                 type="button"
                 disabled={submitting || selectedVisuals.length === 0}
                 onClick={() => void confirmVisualReference()}
-                className="mt-3 inline-flex h-10 items-center rounded-xl bg-teal-600 px-4 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="mt-3 inline-flex h-9 items-center rounded-xl bg-teal-600 px-4 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {submitting ? "正在确认…" : "确认作为商品参考图"}
+                {submitting ? "正在确认…" : "确认商品参考图"}
               </button>
             ) : null}
             {visualNotice ? (

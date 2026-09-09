@@ -73,4 +73,37 @@ describe("Listing Studio 交付结果页面化布局契约 (LISTING_STUDIO_DELIV
     expect(psSource).toContain("Listing生成规划");
     expect(prepSource).toContain("AI研究依据 · AI文案规划 · Listing生成规划");
   });
+
+  it("遵循 LISTING_STUDIO_UI_CLOSURE_V1 契约", () => {
+    // 1. 图片创作建议不再渲染
+    expect(source).not.toContain("图片创作建议");
+    expect(source).not.toContain("image-creation-suggestions");
+
+    // 2. Listing 结果 Title/Bullets/Description/Keywords 都存在
+    expect(source).toContain("Listing标题 Title");
+    expect(source).toContain("五点描述 Bullet Points");
+    expect(source).toContain("商品描述 Product Description");
+    expect(source).toContain("搜索关键词 Keywords");
+
+    // 3. 生成与审核详情默认 closed
+    expect(source).toContain('data-testid="listing-review-details"');
+    expect(source).not.toMatch(/<details[^>]*data-testid="listing-review-details"[^>]*open/);
+
+    // 5, 6, 7. 风险、依据、卖点在折叠区域内部
+    const reviewDetailsIdx = source.indexOf('data-testid="listing-review-details"');
+    const riskIdx = source.indexOf('data-testid="listing-risk-details"');
+    const evidenceIdx = source.indexOf('data-testid="listing-basis-details"');
+    const strategyIdx = source.indexOf('data-testid="listing-selling-points-wrapper"');
+    expect(reviewDetailsIdx).toBeGreaterThan(0);
+    expect(riskIdx).toBeGreaterThan(reviewDetailsIdx);
+    expect(evidenceIdx).toBeGreaterThan(riskIdx);
+    expect(strategyIdx).toBeGreaterThan(evidenceIdx);
+
+    // 8. 重新生成按钮只有一个
+    const regenMatches = source.match(/data-testid="regenerate-listing-draft"/g);
+    expect(regenMatches?.length).toBe(1);
+
+    // 9. 复制按钮保留
+    expect(source).toContain("复制完整 Listing");
+  });
 });
