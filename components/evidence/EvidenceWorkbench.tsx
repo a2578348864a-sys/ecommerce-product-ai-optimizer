@@ -1314,8 +1314,15 @@ export function EvidenceWorkbench({
             refreshToken={dataRevision}
             showManualImageSearch={false}
             onEvidenceChange={(confirmed) => {
-              setSourcingConfirmed(confirmed);
-              handleDataChanged();
+              // SourcingEvidencePanel also reports its persisted state after each
+              // refreshToken-driven reload. Only bubble a revision when the
+              // confirmed state actually changes; otherwise refreshToken and
+              // onEvidenceChange form a feedback loop that never settles.
+              setSourcingConfirmed((previous) => {
+                if (previous === confirmed) return previous;
+                handleDataChanged();
+                return confirmed;
+              });
             }}
           />
         </section>
