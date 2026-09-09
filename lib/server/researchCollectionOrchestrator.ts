@@ -184,6 +184,13 @@ export function sanitizeErrorMessage(error: unknown): string {
 const RUNNING_ORCHESTRATIONS = new Map<string, number>();
 const RUNNING_TIMEOUT_MS = 5 * 60 * 1000; // 5分钟自愈超时，防止单次异常阻断后续
 
+type LastOrchestrationCacheEntry = {
+  sources: ResearchOrchestratorSources;
+  timestamp: number;
+};
+const RECENT_ORCHESTRATION_CACHE = new Map<string, LastOrchestrationCacheEntry>();
+const ORCHESTRATION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
 export function isOrchestrationRunning(taskId: string): boolean {
   const startedAt = RUNNING_ORCHESTRATIONS.get(taskId);
   if (!startedAt) return false;

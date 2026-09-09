@@ -946,7 +946,10 @@ export function EvidenceWorkbench({
             const scrollAndHighlight = () => {
               const el = document.getElementById(cleanId);
               if (el) {
-                // 递归展开所有祖先 <details>
+                // 展开目标自身（若为 details）以及所有祖先 <details>
+                if (el.tagName === "DETAILS" || el.nodeName === "DETAILS") {
+                  (el as HTMLDetailsElement).open = true;
+                }
                 let parent = el.parentElement;
                 while (parent) {
                   if (parent.tagName === "DETAILS" || parent.nodeName === "DETAILS") {
