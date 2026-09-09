@@ -270,25 +270,17 @@ async function handleAmazonSource(
       };
     }
 
-    // 3. 检查是否有待确认的 Pending 预览（无副作用只读检测）
-    const subjectKey = browserEvidenceSubjectKey(context);
-    const pending = findPendingBrowserEvidencePreview({ subjectKey, taskId, asin });
-    if (pending !== null) {
-      return {
-        status: "awaiting_confirmation",
-        hasEvidence: false,
-        previewId: pending.evidenceId,
-        itemCount: 1,
-        message: "Amazon 详情已有待确认采集预览",
-      };
-    }
-
-    // 4. Fact Candidate 确认闭环：Preview 已按 taskId/ASIN/主体/previewId/
-    // candidate source identity 完成处理并被消费后，事实确认本身就是该来源的
-    // 可追溯完成凭据；不能因为内存 Preview 已消费就再次启动采集。
+    // 3. 读取最新事实快照。Pending Preview 是内存态，不能在它之前
+    //    无条件返回 awaiting_confirmation：历史确认流程可能已经把全部
+    //    canonical field 确认完，但没有留下 preview resolution。
     const taskAfterResolution = await getTaskSnapshot(context, taskId);
+    const parsedTaskResult = parseJsonSafe(taskAfterResolution.resultJson) ?? {};
+
+    // 4. 已持久化的来源 resolution 是确认动作的完成凭据。即使旧 Preview
+    //    因消费竞态仍短暂存在，也不能让它把已闭环状态重新显示为 pending。
+    const subjectKey = browserEvidenceSubjectKey(context);
     const resolved = findAmazonPreviewResolution({
-      resultJson: parseJsonSafe(taskAfterResolution.resultJson) ?? {},
+      resultJson: parsedTaskResult,
       taskId,
       asin,
       subjectKey,
@@ -301,7 +293,23 @@ async function handleAmazonSource(
         message: "Amazon 商品资料已完成事实确认闭环",
       };
     }
-    const parsedTaskResult = parseJsonSafe(taskAfterResolution.resultJson) ?? {};
+
+    // 5. Pending Preview 必须有真实的用户确认动作，不能因为 canonical
+    //    field 已有同值事实就由 Orchestrator 直接推导为 ready。
+    const pending = findPendingBrowserEvidencePreview({ subjectKey, taskId, asin });
+    if (pending !== null) {
+      return {
+        status: "awaiting_confirmation",
+        hasEvidence: false,
+        previewId: pending.evidenceId,
+        itemCount: 1,
+        message: "Amazon 详情已有待确认采集预览",
+      };
+    }
+
+    // 6. Fact Candidate 确认闭环：Preview 已按 taskId/ASIN/主体/previewId/
+    // candidate source identity 完成处理并被消费后，事实确认本身就是该来源的
+    // 可追溯完成凭据；不能因为内存 Preview 已消费就再次启动采集。
     if (hasLegacyAmazonFactClosure(parsedTaskResult)) {
       return {
         status: "ready",
@@ -310,7 +318,7 @@ async function handleAmazonSource(
       };
     }
 
-    // 5. inspect 模式仅检查状态，不执行采集
+    // 7. inspect 模式仅检查状态，不执行采集
     if (action === "inspect") {
       return {
         status: "needs_user",
@@ -319,7 +327,7 @@ async function handleAmazonSource(
       };
     }
 
-    // 6. orchestrate 模式：尝试采集 Preview（严格不自动确认入库）
+    // 8. orchestrate 模式：尝试采集 Preview（严格不自动确认入库）
     if (context.mode === "demo") {
       // Demo 模式回放预置 preview
       const preview = buildDemoBrowserCollectPreview(asin);

@@ -98,10 +98,12 @@ const SOURCE_META: Record<
 > = {
   amazon: {
     title: "Amazon 商品资料",
-    anchorId: "workbench-browser-evidence",
+    // 统一入口生成的待确认 Preview 最终在事实确认区提供动作；
+    // 避免用户被带到只读的原始证据区后看到“待确认 0 项”。
+    anchorId: "fact-candidate-review",
     tabKey: "market",
     defaultState: "needs_supplement",
-    allowedStates: new Set(["ready", "needs_supplement", "needs_user"]),
+    allowedStates: new Set(["ready", "pending_review", "needs_supplement", "needs_user", "failed", "running"]),
   },
   keywords_competitors: {
     title: "关键词与竞品",

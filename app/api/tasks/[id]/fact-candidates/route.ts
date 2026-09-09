@@ -22,30 +22,49 @@ import {
   getFactCandidates,
   type AmazonPreviewResolutionV1,
   humanManualCandidateId,
+  findAmazonPreviewResolution,
   MANUAL_FACT_FIELDS,
+  factCategoryOf,
   type ConfirmedFactCandidate,
   type FactCandidate,
 } from "@/lib/factCandidates";
 import { readBrowserEvidenceTaskAsin } from "@/lib/server/browserEvidence";
 import {
   browserEvidenceSubjectKey,
-  buildConfirmedSnapshot,
   consumeBrowserEvidencePreview,
   findPendingBrowserEvidencePreview,
 } from "@/lib/server/browserEvidenceCollect";
 import type { AccessContext } from "@/lib/server/accessPassword";
+import {
+  classifyAmazonPreviewAgainstConfirmedFacts,
+  confirmedFactCoversAmazonPreviewCandidate,
+  getPendingAmazonPreviewCandidates,
+  isPendingAmazonPreviewCovered,
+  sameValue,
+  toAmazonPreviewResolutionRefs,
+} from "@/lib/server/amazonPreviewClosure";
 
 export const runtime = "nodejs";
 
 type StorageVersion = { resultJsonHash: string; updatedAt: string };
 type ApiResponse =
-  | { ok: true; data: { candidates: unknown[]; confirmed: unknown[]; storageVersion: StorageVersion } }
+  | { ok: true; data: { candidates: unknown[]; confirmed: unknown[]; storageVersion: StorageVersion; amazonSourceReview?: unknown | null } }
   | {
       ok: true;
       data: {
         confirmedCount: number;
         alreadyConfirmedCount: number;
         conflicts: FactConfirmConflictView[];
+        confirmed: unknown[];
+        storageVersion: StorageVersion;
+      };
+    }
+  | {
+      ok: true;
+      data: {
+        confirmedCount: number;
+        alreadyConfirmedCount: number;
+        previewResolution: AmazonPreviewResolutionV1;
         confirmed: unknown[];
         storageVersion: StorageVersion;
       };
@@ -136,31 +155,32 @@ async function buildFactCandidateViewWithPendingAmazonPreview(
   if (!pending) return base;
 
   try {
-    const snapshot = buildConfirmedSnapshot({
-      preview: pending.preview,
-      taskAsin: asin,
-      capturedAt: pending.capturedAt,
-      context,
-    });
-    const syntheticBrowserEvidence = {
-      schema: "browser-evidence.v1",
-      version: 1,
-      candidateId: null,
-      targetAsin: asin,
-      snapshots: [snapshot],
-      updatedAt: pending.capturedAt,
-    };
-    const previewView = buildFactCandidateView({ browserEvidence: syntheticBrowserEvidence });
+    const previewCandidates = getPendingAmazonPreviewCandidates({ pending, taskAsin: asin, context });
+    if (!previewCandidates) return base;
     const confirmedIds = new Set(base.confirmed.map((item) => item.candidateId));
-    const confirmedFields = new Set(base.confirmed.map((item) => item.field));
+    const confirmedFactMap = new Map(base.confirmed.map((item) => [item.field, item]));
     const mergedCandidates: FactCandidate[] = base.candidates.map((candidate) => ({
       ...candidate,
       ...(candidate.alternateSources ? { alternateSources: [...candidate.alternateSources] } : {}),
-    })).filter((candidate) => !confirmedIds.has(candidate.candidateId) && !confirmedFields.has(candidate.field));
-    for (const candidate of previewView.candidates) {
-      // Pending Preview 不是第二个事实来源：确认某个 canonical field 后，
-      // 同字段的 Preview 候选必须从待确认列表消失，避免刷新后重复出现。
-      if (confirmedIds.has(candidate.candidateId) || confirmedFields.has(candidate.field)) continue;
+    })).filter((candidate) => {
+      if (confirmedIds.has(candidate.candidateId)) return false;
+      const confirmedFact = confirmedFactMap.get(candidate.field);
+      if (confirmedFact && (sameValue(confirmedFact.value, candidate.value) || factCategoryOf(candidate.field) === "market_observation")) {
+        return false;
+      }
+      return true;
+    });
+    for (const candidate of previewCandidates) {
+      if (confirmedIds.has(candidate.candidateId)) continue;
+      const confirmedFact = confirmedFactMap.get(candidate.field);
+      if (confirmedFact) {
+        if (sameValue(confirmedFact.value, candidate.value) || confirmedFactCoversAmazonPreviewCandidate(confirmedFact, candidate)) {
+          continue;
+        }
+        if (factCategoryOf(candidate.field) === "market_observation") {
+          continue;
+        }
+      }
       const sameField = mergedCandidates.find((item) => item.field === candidate.field);
       if (sameField) {
         sameField.alternateSources = [
@@ -185,6 +205,8 @@ async function buildFactCandidateViewWithPendingAmazonPreview(
  * 读取当前绑定 Preview 的完整候选身份集合。
  * 不能用 pendingCount 判断闭环；确认完成必须逐一匹配 Preview 的
  * candidateId / field / sourceKind / sourceRef，并同时校验 taskId、ASIN、主体和 previewId。
+ * 闭环匹配允许同 canonical field 的主候选确认，但前提是 Amazon alternate
+ * provenance 与值仍被保留并逐项匹配。
  */
 async function readPendingAmazonPreviewCandidateRefs(
   context: AccessContext,
@@ -199,30 +221,9 @@ async function readPendingAmazonPreviewCandidateRefs(
   });
   if (!pending) return null;
   try {
-    const snapshot = buildConfirmedSnapshot({
-      preview: pending.preview,
-      taskAsin: asin,
-      capturedAt: pending.capturedAt,
-      context,
-    });
-    const previewView = buildFactCandidateView({
-      browserEvidence: {
-        schema: "browser-evidence.v1",
-        version: 1,
-        candidateId: null,
-        targetAsin: asin,
-        snapshots: [snapshot],
-        updatedAt: pending.capturedAt,
-      },
-    });
-    const refs = previewView.candidates
-      .filter((candidate) => candidate.sourceKind === "amazon_browser_evidence" || candidate.sourceKind === "amazon_product_info")
-      .map((candidate) => ({
-        candidateId: candidate.candidateId,
-        field: candidate.field,
-        sourceKind: candidate.sourceKind,
-        sourceRef: candidate.sourceRef,
-      }));
+    const previewCandidates = getPendingAmazonPreviewCandidates({ pending, taskAsin: asin, context });
+    if (!previewCandidates) return null;
+    const refs = toAmazonPreviewResolutionRefs(previewCandidates);
     return { pending, refs };
   } catch {
     return null;
@@ -344,6 +345,7 @@ function checkBatchSelections(
             : source.value,
           sourceKind: source.sourceKind,
           sourceRef: source.sourceRef,
+          ...(source.alternateSources ? { alternateSources: source.alternateSources } : {}),
           humanConfirmationRequired: true,
           confirmedAt: existing.confirmedAt,
           confirmedBy: existing.confirmedBy,
@@ -364,6 +366,7 @@ function checkBatchSelections(
           : source.value,
         sourceKind: source.sourceKind,
         sourceRef: source.sourceRef,
+        ...(source.alternateSources ? { alternateSources: source.alternateSources } : {}),
         humanConfirmationRequired: true,
         confirmedAt: now,
         confirmedBy: actor,
@@ -387,9 +390,54 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id?
   if (!snapshot) return jsonResponse({ ok: false, error: { code: "not_found", message: "任务不存在或无权限。" } }, 404);
   const result = parseResultJson(snapshot.resultJson);
   const view = await buildFactCandidateViewWithPendingAmazonPreview(auth.context, taskId, result);
+  const asin = await readBrowserEvidenceTaskAsin(auth.context, taskId);
+  const pending = asin ? findPendingBrowserEvidencePreview({
+    subjectKey: browserEvidenceSubjectKey(auth.context),
+    taskId,
+    asin,
+  }) : null;
+  const classification = pending && asin
+    ? classifyAmazonPreviewAgainstConfirmedFacts({
+      pending,
+      taskAsin: asin,
+      context: auth.context,
+      confirmed: view.confirmed,
+    })
+    : null;
+  const amazonSourceReview = pending && classification
+    ? {
+      previewId: pending.evidenceId,
+      matchingConfirmedFacts: classification.matchingConfirmedFacts.map(({ candidate, confirmed, amazonSourceConfirmed }) => ({
+        field: candidate.field,
+        label: candidate.label,
+        value: candidate.value,
+        sourceKind: candidate.sourceKind,
+        sourceRef: candidate.sourceRef,
+        confirmedValue: confirmed.value,
+        confirmedSourceKind: confirmed.sourceKind,
+        amazonSourceConfirmed,
+      })),
+      newFacts: classification.newFacts.map((candidate) => ({
+        field: candidate.field,
+        label: candidate.label,
+        value: candidate.value,
+        sourceKind: candidate.sourceKind,
+        sourceRef: candidate.sourceRef,
+      })),
+      conflicts: classification.conflicts.map(({ candidate, confirmed }) => ({
+        field: candidate.field,
+        label: candidate.label,
+        value: candidate.value,
+        sourceKind: candidate.sourceKind,
+        sourceRef: candidate.sourceRef,
+        confirmedValue: confirmed.value,
+        confirmedSourceKind: confirmed.sourceKind,
+      })),
+    }
+    : null;
   return jsonResponse({
     ok: true,
-    data: { candidates: view.candidates, confirmed: view.confirmed, storageVersion: toStorageVersion(snapshot) },
+    data: { candidates: view.candidates, confirmed: view.confirmed, storageVersion: toStorageVersion(snapshot), amazonSourceReview },
   });
 }
 
@@ -412,6 +460,130 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   const expectedStorageVersion = parseStorageVersionInput(bodyRecord.expectedStorageVersion);
   if (expectedStorageVersion === null) {
     return jsonResponse({ ok: false, error: { code: "storage_version_required", message: "内容刚在其他位置更新，请刷新后重试。" } }, 400);
+  }
+
+  // Amazon 新来源确认：同 canonical field + 同值的已确认事实不需要再写一条
+  // 事实，但必须由用户明确确认 Amazon 页面证据，保存 provenance、resolution，
+  // 再消费 Preview。该分支与普通事实确认分离，不能由 pendingCount=0 触发。
+  const sourceConfirmation = isRecord(bodyRecord.amazonSourceConfirmation)
+    ? bodyRecord.amazonSourceConfirmation
+    : null;
+  if (sourceConfirmation) {
+    const previewId = asString(sourceConfirmation.previewId);
+    if (!previewId) {
+      return jsonResponse({ ok: false, error: { code: "invalid_preview", message: "缺少有效的 Amazon 预览标识。" } }, 400);
+    }
+    const preSnapshot = await loadSnapshot(auth.context, taskId);
+    if (!preSnapshot) return jsonResponse({ ok: false, error: { code: "not_found", message: "任务不存在或无权限。" } }, 404);
+    const runSourceMutation = (expected: StorageVersion) => mutateTaskResultJson<{
+      confirmedCount: number;
+      alreadyConfirmedCount: number;
+      previewResolution: AmazonPreviewResolutionV1;
+      confirmed: unknown[];
+    }>({
+      context: auth.context,
+      taskId,
+      writer: "fact-candidates",
+      expectedStorageVersion: expected,
+      mutate: async (current) => {
+        const currentResult = current as Record<string, unknown>;
+        const prior = getFactCandidates(currentResult);
+        const asin = await readBrowserEvidenceTaskAsin(auth.context, taskId);
+        if (!asin) throw new TaskResultJsonMutationError("invalid_preview", 409, "任务缺少绑定的 Amazon ASIN。");
+        const subjectKey = browserEvidenceSubjectKey(auth.context);
+        const existingResolution = findAmazonPreviewResolution({ resultJson: currentResult, taskId, asin, subjectKey });
+        if (existingResolution && existingResolution.previewId === previewId) {
+          return {
+            result: current,
+            value: { confirmedCount: 0, alreadyConfirmedCount: existingResolution.candidateRefs.length, previewResolution: existingResolution, confirmed: [] },
+          };
+        }
+        const pending = findPendingBrowserEvidencePreview({ subjectKey, taskId, asin });
+        if (!pending || pending.evidenceId !== previewId) {
+          throw new TaskResultJsonMutationError("preview_not_found", 409, "Amazon 预览已失效或已完成确认，请刷新页面。");
+        }
+        const classification = classifyAmazonPreviewAgainstConfirmedFacts({
+          pending,
+          taskAsin: asin,
+          context: auth.context,
+          confirmed: prior?.confirmed ?? [],
+        });
+        if (!classification) throw new TaskResultJsonMutationError("invalid_preview", 409, "Amazon 预览内容无法核验。");
+        if (classification.newFacts.length > 0 || classification.conflicts.length > 0 || classification.matchingConfirmedFacts.length === 0) {
+          throw new TaskResultJsonMutationError("source_confirmation_not_allowed", 409, "该预览包含新事实或冲突项，请先完成事实确认。");
+        }
+        const nextConfirmed = (prior?.confirmed ?? []).map((fact) => {
+          const matches = classification.matchingConfirmedFacts.filter((item) => item.confirmed.candidateId === fact.candidateId);
+          if (matches.length === 0) return fact;
+          const existingAlternates = fact.alternateSources ?? [];
+          const alternates = [...existingAlternates];
+          for (const match of matches) {
+            if (alternates.some((source) => source.sourceKind === match.candidate.sourceKind && source.sourceRef === match.candidate.sourceRef && String(source.value).trim() === String(match.candidate.value).trim())) continue;
+            alternates.push({ sourceKind: match.candidate.sourceKind, sourceRef: match.candidate.sourceRef, value: match.candidate.value });
+          }
+          return { ...fact, ...(alternates.length > 0 ? { alternateSources: alternates } : {}) };
+        });
+        const allCandidates = getPendingAmazonPreviewCandidates({ pending, taskAsin: asin, context: auth.context });
+        if (!allCandidates || allCandidates.length === 0) throw new TaskResultJsonMutationError("invalid_preview", 409, "Amazon 预览没有可核验字段。");
+        const previewResolution: AmazonPreviewResolutionV1 = {
+          previewId,
+          taskId,
+          asin: asin.trim().toUpperCase(),
+          subjectKey,
+          candidateRefs: toAmazonPreviewResolutionRefs(allCandidates),
+          resolvedAt: new Date().toISOString(),
+        };
+        const nextFactCandidates: Record<string, unknown> = {
+          schema: FACT_CANDIDATES_SCHEMA,
+          version: FACT_CANDIDATES_VERSION,
+          confirmed: nextConfirmed,
+          amazonPreviewResolutions: [
+            ...(prior?.amazonPreviewResolutions ?? []).filter((item) => item.previewId !== previewId),
+            previewResolution,
+          ],
+          updatedAt: new Date().toISOString(),
+        };
+        return {
+          result: { ...currentResult, factCandidates: nextFactCandidates },
+          value: {
+            confirmedCount: 0,
+            alreadyConfirmedCount: classification.matchingConfirmedFacts.length,
+            previewResolution,
+            confirmed: nextConfirmed.filter((fact) => classification.matchingConfirmedFacts.some((item) => item.confirmed.candidateId === fact.candidateId)),
+          },
+        };
+      },
+    });
+    const respondSourceSuccess = async (mutation: Awaited<ReturnType<typeof runSourceMutation>>) => {
+      consumeBrowserEvidencePreview(mutation.value.previewResolution.previewId, {
+        subjectKey: mutation.value.previewResolution.subjectKey,
+        taskId: mutation.value.previewResolution.taskId,
+      });
+      const snapshotAfter = await loadSnapshot(auth.context, taskId);
+      return jsonResponse({ ok: true, data: {
+        confirmedCount: mutation.value.confirmedCount,
+        alreadyConfirmedCount: mutation.value.alreadyConfirmedCount,
+        previewResolution: mutation.value.previewResolution,
+        confirmed: mutation.value.confirmed,
+        storageVersion: snapshotAfter ? toStorageVersion(snapshotAfter) : expectedStorageVersion,
+      } });
+    };
+    try {
+      return await respondSourceSuccess(await runSourceMutation(expectedStorageVersion));
+    } catch (error) {
+      if (error instanceof TaskResultJsonMutationError && error.code === "task_result_conflict") {
+        const latest = await loadSnapshot(auth.context, taskId);
+        if (!latest) return jsonResponse({ ok: false, error: { code: "not_found", message: "任务不存在或无权限。" } }, 404);
+        try {
+          return await respondSourceSuccess(await runSourceMutation(toStorageVersion(latest)));
+        } catch (retryError) {
+          if (retryError instanceof TaskResultJsonMutationError) return jsonResponse({ ok: false, error: { code: retryError.code, message: retryError.message } }, retryError.status ?? 409);
+          throw retryError;
+        }
+      }
+      if (error instanceof TaskResultJsonMutationError) return jsonResponse({ ok: false, error: { code: error.code, message: error.message } }, error.status ?? 409);
+      throw error;
+    }
   }
   const selectionsRaw = bodyRecord.selections;
   if (!Array.isArray(selectionsRaw) || selectionsRaw.length === 0 || selectionsRaw.length > 50) {
@@ -492,12 +664,23 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       }
       const prior = getFactCandidates(current);
       const nextMap = new Map((prior?.confirmed ?? []).map((c) => [c.candidateId, c]));
-      for (const item of toWrite) nextMap.set(item.candidateId, item);
+      for (const item of toWrite) {
+        for (const [id, oldFact] of nextMap.entries()) {
+          if (oldFact.field === item.field && oldFact.candidateId !== item.candidateId) {
+            nextMap.delete(id);
+          }
+        }
+        nextMap.set(item.candidateId, item);
+      }
       const pendingAmazon = await readPendingAmazonPreviewCandidateRefs(auth.context, taskId);
-      const confirmedIds = new Set(nextMap.keys());
       const previewResolved = pendingAmazon !== null
         && pendingAmazon.refs.length > 0
-        && pendingAmazon.refs.every((ref) => confirmedIds.has(ref.candidateId));
+        && isPendingAmazonPreviewCovered({
+          pending: pendingAmazon.pending,
+          taskAsin: pendingAmazon.pending.asin,
+          context: auth.context,
+          confirmed: [...nextMap.values()],
+        });
       const previewResolution: AmazonPreviewResolutionV1 | null = previewResolved && pendingAmazon
         ? {
             previewId: pendingAmazon.pending.evidenceId,

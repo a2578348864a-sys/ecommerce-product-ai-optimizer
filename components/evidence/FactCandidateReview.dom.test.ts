@@ -364,4 +364,51 @@ describe("FactCandidateReview 紧凑折叠入口 DOM 挂载测试", () => {
     const manualEntry = details!.querySelector('[data-testid="manual-fact-entry"]');
     expect(manualEntry).not.toBeNull();
   });
+
+  it("5. 同值已确认事实显示可操作的 Amazon 新来源确认卡片", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        data: {
+          candidates: [],
+          confirmed: mockConfirmed,
+          storageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-20" },
+          amazonSourceReview: {
+            previewId: "bev-preview-1",
+            matchingConfirmedFacts: [{
+              field: "material",
+              label: "材质",
+              value: "304 不锈钢",
+              sourceKind: "amazon_product_info",
+              sourceRef: "browserEvidence.snapshots[0].productInfo.material",
+              confirmedValue: "304 不锈钢",
+              confirmedSourceKind: "human_manual",
+              amazonSourceConfirmed: false,
+            }],
+            newFacts: [],
+            conflicts: [],
+          },
+        },
+      }),
+    })));
+    root = createRoot(container as unknown as HTMLElement);
+    await act(async () => {
+      root!.render(createElement(FactCandidateReview, {
+        taskId: "task-1",
+        storageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-20" },
+        onChanged: vi.fn(),
+      }));
+    });
+    await flush();
+    const details = documentInstance.getElementById("fact-candidate-review") as FakeElement | null;
+    expect(details).not.toBeNull();
+    details!.open = true;
+    await flush();
+    const panel = details!.querySelector('[data-testid="amazon-source-confirmation"]');
+    expect(panel).not.toBeNull();
+    expect(panel!.textContent).toContain("Amazon 页面证据待确认");
+    expect(panel!.textContent).toContain("不会覆盖现有事实");
+    expect(details!.querySelector('[data-testid="confirm-amazon-source"]')).not.toBeNull();
+  });
 });
