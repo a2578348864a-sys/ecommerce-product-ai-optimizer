@@ -25,6 +25,7 @@ import type { ListingGenerationInput } from "@/lib/listingHandoff/listingGenerat
 import type { ListingPlan } from "@/lib/listingHandoff/listingPlan";
 import type { ListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
 import type { ListingBrief } from "@/lib/listingHandoff/listingBrief";
+import type { CopyStrategyV1 } from "@/lib/listingHandoff/copyStrategy/types";
 import { buildRuntimePromptRules, LISTING_RUNTIME_SKILL_VERSION } from "@/lib/listingHandoff/listingRuntimeSkill";
 
 export type TaskLinkedAiListingErrorCode =
@@ -54,6 +55,8 @@ export type TaskLinkedAiListingClient = (input: {
   listingBrief: ListingBrief | null;
   prohibitedClaims: string[];
   creativeContext?: ListingGenerationInput["creativeContext"];
+  /** Reference-only framing; facts/evidence remain separate and authoritative. */
+  copyStrategy?: CopyStrategyV1;
 }) => Promise<unknown>;
 
 let injectedTaskLinkedClient: TaskLinkedAiListingClient | null = null;
@@ -92,9 +95,11 @@ function buildTaskLinkedAiPrompt(input: {
   listingBrief: ListingBrief | null;
   prohibitedClaims: string[];
   creativeContext?: ListingGenerationInput["creativeContext"];
+  copyStrategy?: CopyStrategyV1;
 }): string {
   const allowedFactIds = new Set(input.facts.map((f) => f.factId));
   const keywordOptimizationEnabled = input.keywordBrief !== null;
+  const targetBulletCount = Array.isArray(input.plan.bulletPlans) && input.plan.bulletPlans.length > 0 ? input.plan.bulletPlans.length : 5;
   const referenceLayers = buildResearchReferenceLayers(input.creativeContext);
   return [
     "You generate an Amazon US listing copy draft from confirmed product facts and an approved Listing Plan.",
@@ -119,13 +124,13 @@ function buildTaskLinkedAiPrompt(input: {
     "RULES:",
     "- Only confirmed facts may be stated as product facts. Every attribute value must be one of the exact confirmed values.",
     "- LISTING_CREATION_BRIEF is optional marketing guidance, not a confirmed product fact. Use it only for emphasis, ordering, audience framing and tone; never turn it into a product attribute, certification, performance, safety or guarantee claim.",
-    "- Each bullet MUST be based on at least one factId from the provided facts and express Feature → shopper relevance.",
-    "- Produce 3 to 5 bullets. Do not just repeat the title or print field labels (do not write 'Brand: Owala').",
-    "- Follow BULLET_PLANS in order where possible; each bullet must correspond to a different bullet role.",
-    "- Each bullet must communicate a different shopper value. Do not repeat the same feature, shopper angle, sentence, or fact combination in multiple bullets.",
-    "- If only 3 distinct supported bullet ideas exist, return 3 strong bullets instead of padding to 5.",
+    "- COPY_STRATEGY is optional reference-only guidance for target buyer, pain point, angle, tone and Feature → Benefit → Scenario organization. It is never a product fact, claim or evidence source.",
+    "- Produce EXACTLY " + targetBulletCount + " bullets in the 'bullets' array (one bullet per bulletPlan in LISTING_PLAN). Do NOT produce more or fewer bullets than " + targetBulletCount + ". Do not just repeat the title or print field labels (do not write 'Brand: Owala').",
+    "- Follow BULLET_PLANS strictly in order: bullet i MUST correspond to bulletPlans[i] and incorporate at least one fact specified in bulletPlans[i].featureFactIds.",
+    "- Each bullet must communicate a different shopper value. Do not repeat the same feature, shopper angle, sentence, or fact combination in multiple bullets. Within each bullet, avoid repeating the product type noun (do not write 'pack of hooks offers hooks' or 'bottle pairs with bottle').",
+    "- Attributes (dimensions, weight, quantity) must strictly match their confirmed field semantics. For example, a 'weight' fact represents item/set weight, never an unconfirmed weight capacity or load rating.",
     "- Title: clear, readable, no keyword stuffing, no unconfirmed attributes.",
-    "- Description: 2-4 natural sentences; do not copy the title verbatim; explain purpose, key features, use context, buyer value.",
+    "- Description: 2-4 natural sentences; do not copy the title verbatim; explain purpose, key features, use context, buyer value. Do not add unconfirmed durability adjectives (such as durable, long-lasting, unbreakable) unless confirmed; use confirmed features like heavy-duty or rust-resistant.",
     "- backendSearchTerms: use ONLY terms from the keyword brief backendSearchTerms. Do not invent search volume, do not say high-volume/high-converting/top keyword.",
     "- usedFactIds: every id must be one of the allowed fact ids.",
     "- Do not include internal identifiers (such as usedKeywordIds or keyword ids) in the response; the server derives them.",
@@ -139,7 +144,7 @@ function buildTaskLinkedAiPrompt(input: {
     "Return exactly this JSON shape:",
     JSON.stringify({
       title: "Short factual title",
-      bullets: ["Fact-based bullet with shopper relevance"],
+      bullets: Array.from({ length: targetBulletCount }, (_, i) => "Bullet " + (i + 1) + " based on bulletPlans[" + i + "]"),
       description: "2-4 sentence natural description",
       backendSearchTerms: keywordOptimizationEnabled ? ["term1", "term2"] : [],
       usedFactIds: ["factId-1"],
@@ -172,6 +177,27 @@ function buildTaskLinkedAiPrompt(input: {
     "LISTING_CREATION_BRIEF_START",
     JSON.stringify(input.listingBrief),
     "LISTING_CREATION_BRIEF_END",
+    ...(input.copyStrategy ? [
+      "COPY_STRATEGY_START",
+      JSON.stringify({
+        version: input.copyStrategy.version,
+        referenceOnly: true,
+        targetBuyer: input.copyStrategy.targetBuyer,
+        buyerPainPoints: input.copyStrategy.buyerPainPoints.slice(0, 6),
+        mainAngle: input.copyStrategy.mainAngle,
+        emotionalHook: input.copyStrategy.emotionalHook,
+        copyTone: input.copyStrategy.copyTone,
+        bulletStrategies: input.copyStrategy.bulletStrategies.slice(0, 5).map((item) => ({
+          order: item.order,
+          structure: item.structure,
+          purpose: item.purpose,
+        })),
+        titleStrategy: input.copyStrategy.titleStrategy,
+        descriptionStrategy: input.copyStrategy.descriptionStrategy,
+        avoidExpressions: input.copyStrategy.avoidExpressions.slice(0, 8),
+      }),
+      "COPY_STRATEGY_END",
+    ] : []),
     "RESEARCH_REFERENCE_LAYERS_START",
     referenceLayers,
     "RESEARCH_REFERENCE_LAYERS_END",
@@ -202,6 +228,7 @@ async function callDefaultTaskLinkedAiClient(input: {
   listingBrief: ListingBrief | null;
   prohibitedClaims: string[];
   creativeContext?: ListingGenerationInput["creativeContext"];
+  copyStrategy?: CopyStrategyV1;
 }): Promise<unknown> {
   const result = await callAiJson<unknown>({
     messages: [
@@ -274,6 +301,7 @@ export async function generateTaskLinkedAiListing(input: {
   listingBrief: ListingBrief | null;
   prohibitedClaims: string[];
   creativeContext?: ListingGenerationInput["creativeContext"];
+  copyStrategy?: CopyStrategyV1;
 }): Promise<TaskLinkedAiListingResult> {
   const client = injectedTaskLinkedClient || callDefaultTaskLinkedAiClient;
   let raw: unknown;

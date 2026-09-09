@@ -124,13 +124,17 @@ function exactWordCount(text: string, needle: string): number {
 /** usedFactIds → 锚定用事实值集合（factId/field 双匹配；与 Runtime 合同锚点判定同源）。 */
 export function usedFactValuesOf(facts: RuntimeFact[], usedFactIds: ReadonlyArray<string>): string[] {
   const used = usedFactIds ?? [];
-  return used
+  const rawValues = used
     .map((id) => valueOf(facts, id))
     .concat(used.map((id) => {
       const f = facts.find((x) => x.factId === id || x.field === id);
       return f ? String(f.value).trim() : "";
     }))
     .filter((v) => v.length > 0);
+  const atoms = rawValues.flatMap((val) =>
+    val.split(/[,;，；/]+/).map((s) => s.trim()).filter((s) => s && s !== val)
+  );
+  return [...rawValues, ...atoms];
 }
 
 /**
@@ -160,7 +164,22 @@ export function validateRuntimeBulletContract(input: {
     issues.push({ target: "bullets", code: "fragment", message: label + " 不是完整句（缺少句末标点）。" });
   }
   const lower = bullet.toLowerCase();
-  const anchored = (input.anchorValues ?? []).some((v) => lower.includes(v.toLowerCase()));
+  const normBullet = lower.replace(/[-_]/g, " ").replace(/\s+/g, " ");
+  const anchored = (input.anchorValues ?? []).some((v) => {
+    const rawVal = v.toLowerCase().trim();
+    if (!rawVal) return false;
+    if (lower.includes(rawVal)) return true;
+    const normVal = rawVal.replace(/[-_]/g, " ").replace(/\s+/g, " ");
+    if (normBullet.includes(normVal)) return true;
+    // Pack / pcs unit equivalence (e.g. "6pcs" vs "6-pack")
+    const packMatch = rawVal.match(/\b(\d+)\s*(pcs|pieces?|packs?|count|ct|pk)?\b/);
+    if (packMatch) {
+      const num = packMatch[1];
+      const packRe = new RegExp(`\\b${num}\\s*[- ]*(?:pcs|pieces?|packs?|count|ct|pk)?\\b`, "i");
+      if (packRe.test(lower)) return true;
+    }
+    return false;
+  });
   if (!anchored) {
     issues.push({ target: "bullets", code: "no_fact_anchor", message: label + " 未绑定已确认事实值。" });
   }
@@ -356,6 +375,7 @@ const FINITE_VERB_S = Object.freeze(new Set([
   "organizes", "separates", "divides", "accommodates", "arranges",
   "protects", "supports", "keeps", "works", "offers", "provides", "allows",
   "prevents", "reduces", "resists", "uses", "makes", "helps", "doubles", "requires",
+  "gives", "delivers", "ensures", "creates", "secures", "stays", "remains",
 ]));
 
 /** 复数/不可数主语的系动词与助动词（The parts are ... / The trays have ...） */
@@ -376,6 +396,7 @@ const UNAMBIGUOUS_BASE_VERBS = Object.freeze(new Set([
   "feature", "open", "close", "attach", "mount", "convert", "slide", "stand",
   "sit", "hang", "double", "help", "resist", "reduce", "prevent", "seal", "lock",
   "extend", "retract", "adjust", "divide", "arrange", "span", "comprise", "require",
+  "enjoy", "give", "deliver", "ensure", "create", "stay", "remain",
 ]));
 
 /**
@@ -388,6 +409,7 @@ const IMPERATIVE_HEAD_VERBS = Object.freeze(new Set([
   "avoid", "remove", "place", "store", "keep", "use", "insert", "attach", "detach",
   "fill", "empty", "expand", "collapse", "fold", "unfold", "press", "pull", "push", "turn",
   "hand", "air", "towel", "do", "refer", "follow", "check", "separate", "handle", "let",
+  "enjoy",
 ]));
 
 /**
@@ -691,12 +713,34 @@ export function validateCopyQualityContract(input: CopyQualityInput): CopyQualit
   if (plans.length > 0) {
     plans.forEach((bp, index) => {
       if (index >= bullets.length) return;
-      const wantValues = (bp.featureFactIds ?? []).map((fid) => {
-        const f = (input.facts ?? []).find((x) => x.factId === fid || x.field === fid);
-        return f ? String(f.value).toLowerCase() : "";
+      const bulletText = bullets[index]?.toLowerCase() ?? "";
+      const normBullet = bulletText.replace(/[-_]/g, " ").replace(/\s+/g, " ");
+      const wantFacts = (bp.featureFactIds ?? []).map((fid) => {
+        return (input.facts ?? []).find((x) => x.factId === fid || x.field === fid);
       }).filter(Boolean);
-      if (wantValues.length === 0) return;
-      const hit = wantValues.some((v) => bullets[index]?.toLowerCase().includes(v));
+      if (wantFacts.length === 0) return;
+      const hit = wantFacts.some((f) => {
+        const rawLower = String(f!.value ?? "").trim().toLowerCase();
+        if (!rawLower) return false;
+        const normVal = rawLower.replace(/[-_]/g, " ").replace(/\s+/g, " ");
+        if (normBullet.includes(normVal)) return true;
+        // 复合事实原子拆解（如 "Neodymium, Steel" 或 "Heavy Duty, Lockable, Magnetic, Rust Resistant"）
+        const atoms = rawLower
+          .split(/[,;，；/]+/)
+          .map((p) => p.trim().replace(/[-_]/g, " ").replace(/\s+/g, " "))
+          .filter(Boolean);
+        if (atoms.length > 1 && atoms.some((atom) => normBullet.includes(atom))) {
+          return true;
+        }
+        // 件数规格等价（如 6pcs 对应 6-pack / 6 pieces）
+        const packMatch = rawLower.match(/\b(\d+)\s*(pcs|pieces?|packs?|count|ct|pk)?\b/);
+        if (packMatch) {
+          const num = packMatch[1];
+          const packRe = new RegExp(`\\b${num}\\s*[- ]*(?:pcs|pieces?|packs?|count|ct|pk)?\\b`, "i");
+          if (packRe.test(bulletText)) return true;
+        }
+        return false;
+      });
       if (!hit) {
         issues.push({ target: "bullets", code: "role_mismatch", message: "Bullet " + (index + 1) + " 与其计划角色事实不匹配。" });
       }

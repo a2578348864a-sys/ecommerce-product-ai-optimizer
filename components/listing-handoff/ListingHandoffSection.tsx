@@ -6,6 +6,8 @@ import { createBrowserUuid } from "@/lib/browserUuid";
 import { copyPlainText } from "@/lib/client/copyPlainText";
 import { resolveEvidenceConflictRecovery } from "@/lib/client/evidenceConflictRecovery";
 import { evaluateListingQualityPolicy, type ListingQualityReport } from "@/lib/listingHandoff/listingQualityPolicy";
+import type { CopyStrategyV1 } from "@/lib/listingHandoff/copyStrategy/types";
+import { ListingCopyStrategyCard } from "@/components/listing-handoff/ListingCopyStrategyCard";
 
 type ListingStatus = "ready" | "active" | "stale" | "revoked" | "legacy_unbound" | "invalid";
 
@@ -90,6 +92,10 @@ type ListingDraftSafeSummary = {
   rendererQualifiedRoleCount?: number;
   plannerSelectedOptionCount?: number;
   plannerDecisionUsedInFinalDraft?: boolean;
+  /** Safe copy direction snapshot from the generation request; no fact ids or claims. */
+  copyStrategy?: CopyStrategyV1;
+  /** True only when the active generation path consumed the strategy input. */
+  copyStrategyApplied?: boolean;
 };
 
 type ListingStateResponse = {
@@ -1220,6 +1226,12 @@ export function ListingHandoffSection({
                 {copyButton("full", "复制完整 Listing", buildFullListingText(), true)}
               </div>
             </div>
+
+            {draft?.copyStrategy && draft.copyStrategyApplied === true ? (
+              <div className="mt-3">
+                <ListingCopyStrategyCard strategy={draft.copyStrategy} applied summaryOnly />
+              </div>
+            ) : null}
 
             {!canGenerate && !submitting ? (
               <p
