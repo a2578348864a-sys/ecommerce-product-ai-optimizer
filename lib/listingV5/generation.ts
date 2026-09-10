@@ -4,10 +4,18 @@ import type { ListingV5Context, ListingV5Strategy, ListingV5WriterDraft, Listing
 const ROLES: ListingV5BulletRole[] = ["core_outcome", "pain_relief", "use_scenario", "ease_of_use", "proof_or_fit"];
 const banned = /\b(best|premium|perfect|guaranteed|waterproof|rustproof|no\.\s*1|#1|100%|BPA[- ]?free)\b/gi;
 const clean = (value: unknown, max = 600) => typeof value === "string" ? value.replace(banned, "").replace(/\s+/g, " ").trim().slice(0, max) : "";
-const cleanProductIdentity = (value: string) => clean(value, 180)
+const cleanProductIdentity = (value: string) => clean(value, 120)
   .replace(/\s*(?:产品研究|商品研究)\s*$/u, "")
   .replace(/\s*\uFFFD.*$/u, "")
+  .replace(/\s+\S*$/, (tail, offset, whole) => whole.length >= 118 ? "" : tail)
   .trim() || "product";
+
+const compactFactValue = (value: string) => {
+  const normalized = value.replace(/^click\s+to\s+play\s+video\s*/i, "").trim();
+  const beforeColon = normalized.split(/\s*:\s*/, 2)[0]?.trim() || normalized;
+  const beforeSentence = beforeColon.length > 80 ? beforeColon.split(/[.!?]/, 1)[0]?.trim() || beforeColon : beforeColon;
+  return beforeSentence.slice(0, 80).trim() || "the confirmed product detail";
+};
 
 function fallback(context: ListingV5Context, strategy: ListingV5Strategy): ListingV5WriterDraft {
   const facts = context.confirmedFacts;
@@ -18,23 +26,24 @@ function fallback(context: ListingV5Context, strategy: ListingV5Strategy): Listi
     // uses bounded connective language. Free-form VOC/scenario text must not
     // be copied into product copy when the provider is unavailable.
     const field = fact.canonicalField.toLowerCase();
+    const value = compactFactValue(fact.value);
     const factPhrase = field === "material" || field === "construction"
-      ? `${product} is made with ${fact.value}`
+      ? `${product} is made with ${value}`
       : field === "quantity_or_pack_size" || field === "quantity"
-        ? `${product} comes as a ${fact.value} option`
+        ? `${product} comes as a ${value} option`
         : field === "capacity"
-          ? `${product} offers a ${fact.value} capacity`
+          ? `${product} offers a ${value} capacity`
           : field === "color_or_variant" || field === "color"
-            ? `${product} is available in ${fact.value}`
+            ? `${product} is available in ${value}`
             : field === "brand"
-              ? `${product} is from ${fact.value}`
-            : `${product} includes ${fact.value}`;
+              ? `${product} is from ${value}`
+            : `${product} includes ${value}`;
     const frames = [
       `${factPhrase}, helping shoppers understand the product at a glance.`,
-      `With ${fact.value}, shoppers can compare a clear product detail for everyday routines.`,
-      `For everyday routines, ${product} brings ${fact.value} into a simple product choice.`,
-      `${product} includes ${fact.value}, giving shoppers a clear detail to compare.`,
-      `A clear ${fact.value} detail helps shoppers decide whether ${product} fits their routine.`,
+      `With ${value}, shoppers can compare a clear product detail for everyday routines.`,
+      `For everyday routines, ${product} brings ${value} into a simple product choice.`,
+      `${product} includes ${value}, giving shoppers a clear detail to compare.`,
+      `A clear ${value} detail helps shoppers decide whether ${product} fits their routine.`,
     ];
     return { text: frames[index % frames.length], factIds: [fact.id], strategyRole: role };
   });

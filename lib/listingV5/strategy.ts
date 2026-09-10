@@ -16,11 +16,16 @@ function classifyReferenceNeeds(values: readonly string[]): string[] {
   return needs.slice(0, 5);
 }
 
+function strategyProductName(value: string): string {
+  const normalized = clean(value, 100).replace(/\s*(?:产品研究|商品研究)\s*$/u, "").replace(/\s*\uFFFD.*$/u, "").trim();
+  return normalized.replace(/\s+\S*$/, (tail, offset, whole) => whole.length >= 98 ? "" : tail) || "product";
+}
+
 export function buildListingV5Strategy(context: ListingV5Context): ListingV5Strategy {
   const voc = context.references.voc.map((item) => item.text.split(":").slice(1).join(":").trim() || item.text);
   const keywords = context.references.keywords.map((item) => item.text);
   const firstFact = context.confirmedFacts[0]?.label || "product features";
-  const product = context.productIdentity || firstFact;
+  const product = strategyProductName(context.productIdentity || firstFact);
   const painPoints = classifyReferenceNeeds(voc);
   const primaryKeyword = keywords[0] || product;
   const buyer = painPoints.length > 0 ? "Shoppers seeking a simpler everyday routine" : "Shoppers comparing practical product options";

@@ -139,6 +139,17 @@ describe("Listing V5", () => {
     expect(title.match(/24 oz/gi)?.length).toBe(1);
   });
 
+  it("bounds long confirmed values in deterministic copy", () => {
+    const value = context();
+    value.confirmedFacts = [{
+      id: "scenario-1", canonicalField: "use_scenario", label: "Use scenario",
+      value: "2-Piece Organization: The larger holder fits everyday tools such as spatulas, ladles and whisks while the smaller holder is ideal for serving spoons and flatware.", sourceRefs: [],
+    }];
+    const draft = buildListingV5FallbackDraft(value, buildListingV5Strategy(value));
+    expect(draft.bullets[0]?.text.length).toBeLessThan(240);
+    expect(draft.bullets[0]?.text).toContain("2-Piece Organization");
+  });
+
   it("allows a low-risk derived benefit anchored to a carrying loop", () => {
     const value = context();
     value.confirmedFacts = [{ id: "loop-1", canonicalField: "feature", label: "Feature", value: "carrying loop", sourceRefs: [] }];
