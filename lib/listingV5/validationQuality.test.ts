@@ -148,4 +148,16 @@ describe("Listing V5 validator correctness", () => {
     // A plain restatement of the confirmed material is fine.
     expect(unsupported("The bottle is made with stainless steel.")).toEqual([]);
   });
+
+  it("does not let a confirmed value vouch for an unrelated attribute", () => {
+    const ctx = context([{ ...brand }, { ...productType }, { factId: "mat-1", field: "material", label: "Material", value: "Steel" }]);
+    const strategy = buildListingV5Strategy(ctx);
+    const unsupported = (text: string) => validateListingV5Draft(ctx, strategy, draftWith({
+      bullets: [{ text, factIds: ["mat-1"], strategyRole: "core_outcome" }],
+    })).claims.unsupportedClaims;
+
+    expect(unsupported("Steel is red for a clear product choice.").length).toBeGreaterThan(0);
+    expect(unsupported("Steel is lightweight for daily carry.").length).toBeGreaterThan(0);
+    expect(unsupported("Steel helps shoppers compare a confirmed material detail.")).toEqual([]);
+  });
 });

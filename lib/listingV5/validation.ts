@@ -79,6 +79,12 @@ const normalizeTokens = (value: string) => value
 
 const contentTokens = (value: string) => normalizeTokens(value).filter((token) => !STOPWORDS.has(token));
 
+// A confirmed value cannot vouch for an unrelated attribute. We retain normal
+// shopper framing, but reject the common copular forms that introduce a new
+// appearance, weight, size, compatibility or performance assertion (for
+// example "Steel is red" or "Steel is lightweight").
+const UNSUPPORTED_ATTRIBUTE_ASSERTION = /\b(?:is|are|looks?|feels?|seems?|has|have)\s+(?:(?:an?|the)\s+)?(?!made\b|designed\b|available\b|included\b|listed\b|shown\b|intended\b|suited\b|used\b)[a-z][a-z-]*/i;
+
 /** True when the segment introduces a hard/escalation token this fact value does not cover. */
 function hasUncoveredHardToken(segmentTokens: Set<string>, valueSet: Set<string>): boolean {
   for (const token of segmentTokens) {
@@ -100,6 +106,7 @@ function hasUncoveredHardToken(segmentTokens: Set<string>, valueSet: Set<string>
 function isAnchoredToConfirmedValue(segment: string, factValues: readonly string[]): boolean {
   const segmentTokens = new Set(normalizeTokens(segment));
   const normalizedSegment = normalizeTokens(segment).join(" ");
+  const allConfirmedTokens = new Set(factValues.flatMap((value) => contentTokens(value)));
   for (const value of factValues) {
     const valueTokens = contentTokens(value);
     if (valueTokens.length === 0) continue;
@@ -107,7 +114,8 @@ function isAnchoredToConfirmedValue(segment: string, factValues: readonly string
     const containsValuePhrase = normalizedSegment.includes(valueTokens.join(" "));
     const hasAllValueTokens = valueTokens.every((token) => segmentTokens.has(token));
     if (!containsValuePhrase && !hasAllValueTokens) continue;
-    if (hasUncoveredHardToken(segmentTokens, valueSet)) continue;
+    if (hasUncoveredHardToken(segmentTokens, allConfirmedTokens)) continue;
+    if (UNSUPPORTED_ATTRIBUTE_ASSERTION.test(segment)) continue;
     return true;
   }
   return false;

@@ -328,6 +328,7 @@ describe("Listing V5 route", () => {
   it("reuses a current cached strategy without analyzing it again", async () => {
     state.resultJson = JSON.stringify({ listingV5: {
       version: "listing-v5.snapshot.v1",
+      strategyPromptVersion: "listing-v5-strategy.v4",
       researchRevision: 7,
       handoffRevision: 3,
       contextFingerprint: "fp-1",
