@@ -89,7 +89,7 @@ export async function repairListingV5Draft(input: {
 
   const response = await callAiJson<unknown>({
     messages: [
-      { role: "system", content: "Return JSON only as {repairs:[{path,text}]}. Repair exactly the requested listing text fields and nothing else. Preserve every other field verbatim. A repaired field must not introduce any unsupported, prohibited, performance, certification, duration, numeric, or competitor claim; remove the offending wording instead of restating it. Use only confirmed fact IDs and values for product facts. Strategy is framing only." },
+      { role: "system", content: "Return JSON only as {repairs:[{path,text}]}. Repair exactly the requested listing text fields and nothing else. Preserve every other field verbatim. Each repaired field must contain only wording that a Confirmed Fact supports: delete the offending phrase or restate it with the exact Confirmed Fact value. Never introduce another unconfirmed adjective, performance word, duration, certification or care wording. Keep the shopper benefit while dropping the unsupported wording. Strategy is framing only." },
       { role: "user", content: JSON.stringify({ repairs: requested, confirmedFacts: input.context.confirmedFacts, strategy: input.strategy }) },
     ],
     temperature: 0.2,

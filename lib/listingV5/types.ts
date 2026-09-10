@@ -5,8 +5,8 @@ export const LISTING_V5_STRATEGY_VERSION = "listing-v5.strategy.v1" as const;
 export const LISTING_V5_WRITER_VERSION = "listing-v5.writer-draft.v1" as const;
 export const LISTING_V5_VALIDATION_VERSION = "listing-v5.validation.v3" as const;
 export const LISTING_V5_STRATEGY_PROMPT_VERSION = "listing-v5-strategy.v4" as const;
-export const LISTING_V5_WRITER_PROMPT_VERSION = "listing-v5-writer.v2" as const;
-export const LISTING_V5_REPAIR_PROMPT_VERSION = "listing-v5-repair.v2" as const;
+export const LISTING_V5_WRITER_PROMPT_VERSION = "listing-v5-writer.v3" as const;
+export const LISTING_V5_REPAIR_PROMPT_VERSION = "listing-v5-repair.v3" as const;
 
 export type ListingV5Reference = {
   text: string;
