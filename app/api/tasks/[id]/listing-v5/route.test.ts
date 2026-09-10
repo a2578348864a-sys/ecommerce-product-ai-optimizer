@@ -18,6 +18,8 @@ const state = vi.hoisted(() => ({
   reserveCalls: [] as number[],
   startedCalls: 0,
   settledCalls: 0,
+  settlementOk: true,
+  lastExpectedStorageVersion: null as any,
 }));
 
 const mocks = vi.hoisted(() => ({
@@ -198,6 +200,8 @@ function reset(overrides: Partial<typeof state> = {}) {
   state.reserveCalls = [];
   state.startedCalls = 0;
   state.settledCalls = 0;
+  state.settlementOk = true;
+  state.lastExpectedStorageVersion = null;
 
   for (const mock of Object.values(mocks)) mock.mockReset();
   mocks.requireAuthenticated.mockImplementation(() => state.authResult);
@@ -221,8 +225,9 @@ function reset(overrides: Partial<typeof state> = {}) {
   mocks.buildListingV5FallbackDraft.mockReturnValue(state.generatedDraft);
   mocks.validateListingV5Draft.mockImplementation(() => state.validation);
   mocks.repairListingV5Draft.mockImplementation(async () => state.repair);
-  mocks.mutateTaskResultJson.mockImplementation(async ({ mutate }: { mutate: (current: Record<string, unknown>) => unknown }) => {
+  mocks.mutateTaskResultJson.mockImplementation(async ({ mutate, expectedStorageVersion }: { mutate: (current: Record<string, unknown>) => unknown; expectedStorageVersion?: unknown }) => {
     state.mutationCalls += 1;
+    state.lastExpectedStorageVersion = expectedStorageVersion ?? null;
     const parsed = JSON.parse(state.resultJson) as Record<string, unknown>;
     const output = mutate(parsed) as { result: Record<string, unknown> };
     state.resultJson = JSON.stringify(output.result);
@@ -240,7 +245,7 @@ function reset(overrides: Partial<typeof state> = {}) {
   });
   mocks.settleDemoAiCalls.mockImplementation(() => {
     state.settledCalls += 1;
-    return { ok: true, snapshot: null };
+    return state.settlementOk ? { ok: true, snapshot: null } : { ok: false, status: 409, code: "reservation_conflict", message: "quota settlement conflict" };
   });
 }
 
@@ -293,6 +298,23 @@ describe("Listing V5 route", () => {
     expect(state.startedCalls).toBe(2);
     expect(state.settledCalls).toBe(1);
     expect(mocks.mutateTaskResultJson).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed on quota settlement and does not persist a generated draft", async () => {
+    state.authResult = { ok: true, context: demoContext };
+    state.useProvider = true;
+    state.settlementOk = false;
+    const response = await POST(request("POST", "sandbox_task_1", { action: "generate", confirmRealAi: true }), { params: Promise.resolve({ id: "sandbox_task_1" }) });
+    expect(response.status).toBe(409);
+    expect((await json(response)).error.code).toBe("reservation_conflict");
+    expect(mocks.mutateTaskResultJson).not.toHaveBeenCalled();
+  });
+
+  it("forwards an expected storage version to the namespace writer for CAS", async () => {
+    const expectedStorageVersion = { resultJsonHash: "hash-before", updatedAt: "2026-09-10T00:00:00.000Z" };
+    const response = await POST(request("POST", "task-1", { action: "generate", expectedStorageVersion }), { params: Promise.resolve({ id: "task-1" }) });
+    expect(response.status).toBe(200);
+    expect(state.lastExpectedStorageVersion).toEqual(expectedStorageVersion);
   });
 
   it("rejects a stale context before persistence", async () => {

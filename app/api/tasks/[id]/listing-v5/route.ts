@@ -139,10 +139,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return error(quota.status, quota.code, quota.message);
   }
   let providerCallsStarted = 0;
+  let quotaSettled = false;
   const onProviderCallStart = () => {
     providerCallsStarted += 1;
     const marked = markDemoAiProviderCallStarted(verified.ctx!, quota.reservation, providerCallsStarted);
     if (!marked.ok) throw new Error(marked.code);
+  };
+  const settleQuota = () => {
+    if (!useProvider || quotaSettled) return { ok: true as const };
+    const settled = settleDemoAiCalls(verified.ctx!, quota.reservation, providerCallsStarted);
+    if (settled.ok) quotaSettled = true;
+    return settled;
   };
   try {
     const strategyResult = cachedStrategy ? { strategy: cachedStrategy, providerAttempted: false, providerSucceeded: false } : await analyzeListingV5Strategy(context, { useProvider, onProviderCallStart });
@@ -155,7 +162,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       draft = generated.draft; provider = { ...provider, writerAttempted: generated.providerAttempted, fallbackUsed: !generated.providerSucceeded };
       validation = validateListingV5Draft(context, strategyResult.strategy, draft);
       if (validation.status === "REPAIRABLE") {
-        const repaired = await repairListingV5Draft({ context, strategy: strategyResult.strategy, validation, useProvider, onProviderCallStart });
+        const repaired = await repairListingV5Draft({ context, strategy: strategyResult.strategy, validation, draft, useProvider, onProviderCallStart });
         provider = { ...provider, repairAttempted: repaired.attempted, fallbackUsed: provider.fallbackUsed || !repaired.succeeded };
         repairApplied = repaired.attempted;
         draft = repaired.draft;
@@ -175,7 +182,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const fresh = await buildContext(id, verified.ctx!);
     if (!fresh.context || fresh.context.contextFingerprint !== context.contextFingerprint) {
       if (useProvider) {
-        const settled = settleDemoAiCalls(verified.ctx!, quota.reservation, providerCallsStarted);
+        const settled = settleQuota();
         if (!settled.ok) {
           ACTIVE_V5_JOBS.delete(jobKey);
           return error(settled.status, settled.code, settled.message);
@@ -184,21 +191,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ACTIVE_V5_JOBS.delete(jobKey);
       return error(409, "listing_v5_stale_context", "研究资料在生成期间发生变化，请刷新后重新生成。");
     }
-    const expected = isRecord(body.expectedStorageVersion) && typeof body.expectedStorageVersion.resultJsonHash === "string" && typeof body.expectedStorageVersion.updatedAt === "string" ? body.expectedStorageVersion as { resultJsonHash: string; updatedAt: string } : undefined;
-    const saved = await mutateTaskResultJson({ context: verified.ctx!, taskId: id, writer: "listing-v5", expectedStorageVersion: expected, mutate: (existing) => ({ result: { ...existing, listingV5: snapshot }, value: { saved: true } }) });
-    const hash = createHash("sha256").update(saved.resultJson, "utf8").digest("hex");
     if (useProvider) {
-      const settled = settleDemoAiCalls(verified.ctx!, quota.reservation, providerCallsStarted);
+      const settled = settleQuota();
       if (!settled.ok) {
         ACTIVE_V5_JOBS.delete(jobKey);
         return error(settled.status, settled.code, settled.message);
       }
     }
+    const expected = isRecord(body.expectedStorageVersion) && typeof body.expectedStorageVersion.resultJsonHash === "string" && typeof body.expectedStorageVersion.updatedAt === "string" ? body.expectedStorageVersion as { resultJsonHash: string; updatedAt: string } : undefined;
+    const saved = await mutateTaskResultJson({ context: verified.ctx!, taskId: id, writer: "listing-v5", expectedStorageVersion: expected, mutate: (existing) => ({ result: { ...existing, listingV5: snapshot }, value: { saved: true } }) });
+    const hash = createHash("sha256").update(saved.resultJson, "utf8").digest("hex");
     ACTIVE_V5_JOBS.delete(jobKey);
     return NextResponse.json({ ok: true, data: { snapshot: safeSnapshot(snapshot, context.researchRevision, context.handoffRevision, context.contextFingerprint), storageVersion: { resultJsonHash: hash, updatedAt: saved.updatedAt } } });
   } catch (err) {
-    if (useProvider) {
-      const settled = settleDemoAiCalls(verified.ctx!, quota.reservation, providerCallsStarted);
+    if (useProvider && !quotaSettled) {
+      const settled = settleQuota();
       if (!settled.ok) {
         ACTIVE_V5_JOBS.delete(jobKey);
         return error(settled.status, settled.code, settled.message);
