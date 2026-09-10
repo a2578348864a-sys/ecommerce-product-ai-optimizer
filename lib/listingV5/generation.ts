@@ -4,14 +4,19 @@ import type { ListingV5Context, ListingV5Strategy, ListingV5WriterDraft, Listing
 const ROLES: ListingV5BulletRole[] = ["core_outcome", "pain_relief", "use_scenario", "ease_of_use", "proof_or_fit"];
 const banned = /\b(best|premium|perfect|guaranteed|waterproof|rustproof|no\.\s*1|#1|100%|BPA[- ]?free)\b/gi;
 const clean = (value: unknown, max = 600) => typeof value === "string" ? value.replace(banned, "").replace(/\s+/g, " ").trim().slice(0, max) : "";
+const cleanProductIdentity = (value: string) => clean(value, 180)
+  .replace(/\s*(?:产品研究|商品研究)\s*$/u, "")
+  .replace(/\s*\uFFFD.*$/u, "")
+  .trim() || "product";
 
 function fallback(context: ListingV5Context, strategy: ListingV5Strategy): ListingV5WriterDraft {
   const facts = context.confirmedFacts;
-  const product = context.productIdentity || facts[0]?.label || "product";
+  const product = cleanProductIdentity(context.productIdentity || facts[0]?.label || "product");
   const bullets = facts.slice(0, Math.min(5, Math.max(3, facts.length))).map((fact, index) => {
     const role = strategy.bulletAngles[index]?.role ?? ROLES[index] ?? "proof_or_fit";
-    const value = strategy.bulletAngles[index]?.shopperValue ?? "support a clear everyday choice";
-    const scenario = strategy.useCases[index % Math.max(1, strategy.useCases.length)] ?? "daily routines";
+    // Strategy controls ordering and role, while the deterministic fallback
+    // uses bounded connective language. Free-form VOC/scenario text must not
+    // be copied into product copy when the provider is unavailable.
     const field = fact.canonicalField.toLowerCase();
     const factPhrase = field === "material" || field === "construction"
       ? `${product} is made with ${fact.value}`
@@ -23,11 +28,11 @@ function fallback(context: ListingV5Context, strategy: ListingV5Strategy): Listi
             ? `${product} is available in ${fact.value}`
             : `${product} includes ${fact.value}`;
     const frames = [
-      `${factPhrase}, helping shoppers ${value}.`,
-      `With ${fact.value}, shoppers can focus on ${value} during ${scenario.toLowerCase()}.`,
-      `Use ${product} with ${fact.value} in ${scenario.toLowerCase()} for a clear, practical routine.`,
-      `${product} includes ${fact.value} as a clear detail to consider for ${scenario.toLowerCase()}.`,
-      `${fact.value} gives shoppers a supported detail to consider for ${scenario.toLowerCase()}.`,
+      `${factPhrase}, helping shoppers understand the product at a glance.`,
+      `With ${fact.value}, shoppers can compare a clear product detail for everyday routines.`,
+      `For everyday routines, ${product} brings ${fact.value} into a simple product choice.`,
+      `${product} includes ${fact.value}, giving shoppers a clear detail to compare.`,
+      `A clear ${fact.value} detail helps shoppers decide whether ${product} fits their routine.`,
     ];
     return { text: frames[index % frames.length], factIds: [fact.id], strategyRole: role };
   });

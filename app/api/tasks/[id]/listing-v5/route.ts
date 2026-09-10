@@ -82,8 +82,11 @@ async function buildContext(taskId: string, ctx: AccessContext) {
   const built = buildListingInputFromCreativeHandoff(gate.currentHandoff, researchRevision, { creativeContext: gate.creativeContext ?? null });
   if (!built.ok) return { gate, context: null };
   const latest = latestHandoff;
+  const productIdentity = typeof latest?.productIdentity?.displayName === "string"
+    ? latest.productIdentity.displayName
+    : String((gate.candidate as unknown as { productName?: string }).productName ?? "");
   const confirmedFacts = (latest?.confirmedFacts ?? []).filter((fact) => fact.usageScopes.includes("listing")).map((fact) => ({ factId: fact.factId, field: fact.field, label: fact.label, value: fact.value, sourceRefs: ["human_confirmation"] }));
-  return { gate, context: buildListingV5Context({ taskId, researchRevision, handoffRevision: gate.currentHandoff.currentRevision, productIdentity: String((gate.candidate as unknown as { productName?: string }).productName ?? ""), generationInput: built.input, creativeContext: gate.creativeContext ?? null, confirmedFacts, manualDirection: latest?.creativePreferences?.additionalRequirements ?? null }) };
+  return { gate, context: buildListingV5Context({ taskId, researchRevision, handoffRevision: gate.currentHandoff.currentRevision, productIdentity, generationInput: built.input, creativeContext: gate.creativeContext ?? null, confirmedFacts, manualDirection: latest?.creativePreferences?.additionalRequirements ?? null }) };
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

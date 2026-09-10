@@ -56,6 +56,7 @@ describe("Listing V5", () => {
     expect(draft.bullets.every((item) => item.factIds.length > 0)).toBe(true);
     expect(draft.bullets.every((item) => !/\b(?:brand|material|color|quantity|product type)\s*:/i.test(item.text))).toBe(true);
     expect(draft.bullets.join(" ")).not.toContain("Steel material");
+    expect(draft.bullets.join(" ")).not.toContain("messy counters");
     const report = validateListingV5Draft(value, strategy, draft);
     expect(report.claims.prohibitedClaims).toEqual([]);
     expect(report.claims.allHaveEvidence).toBe(true);
