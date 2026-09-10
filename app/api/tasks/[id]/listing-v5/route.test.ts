@@ -339,6 +339,20 @@ describe("Listing V5 route", () => {
     expect(mocks.generateListingV5Draft).toHaveBeenCalledTimes(1);
   });
 
+  it("forces a fresh strategy analysis when the user explicitly re-analyzes", async () => {
+    state.resultJson = JSON.stringify({ listingV5: {
+      version: "listing-v5.snapshot.v1",
+      researchRevision: 7,
+      handoffRevision: 3,
+      contextFingerprint: "fp-1",
+      strategy,
+    } });
+    const response = await POST(request("POST", "task-1", { action: "analyze_strategy", forceStrategy: true }), { params: Promise.resolve({ id: "task-1" }) });
+    expect(response.status).toBe(200);
+    expect(mocks.analyzeListingV5Strategy).toHaveBeenCalledTimes(1);
+    expect(mocks.mutateTaskResultJson).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects a duplicate in-flight action while the first request owns the job key", async () => {
     let release!: () => void;
     const blocked = new Promise<void>((resolve) => { release = resolve; });

@@ -23,7 +23,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
   const run = async (action: "analyze_strategy" | "generate") => {
     setLoading(true); setError("");
     try {
-      const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/listing-v5`, { method: "POST", headers: { "Content-Type": "application/json", ...buildAccessHeaders() }, body: JSON.stringify({ action, ...(confirmRealAi ? { confirmRealAi: true } : {}) }) });
+      const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/listing-v5`, { method: "POST", headers: { "Content-Type": "application/json", ...buildAccessHeaders() }, body: JSON.stringify({ action, ...(action === "analyze_strategy" ? { forceStrategy: true } : {}), ...(confirmRealAi ? { confirmRealAi: true } : {}) }) });
       const json = await response.json().catch(() => null);
       if (!response.ok || !json?.ok) { setError(json?.error?.message || "操作失败，请刷新后重试。"); return; }
       await load();

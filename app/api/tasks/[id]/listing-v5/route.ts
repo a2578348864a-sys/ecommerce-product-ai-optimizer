@@ -113,7 +113,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const context = prepared.context;
   const current = await readResult(id, verified.ctx!);
   const cached = isRecord(current?.listingV5) ? current.listingV5 : null;
-  const cachedStrategy = cached && cached.version === "listing-v5.snapshot.v1"
+  const forceStrategy = action === "analyze_strategy" && body.forceStrategy === true;
+  const cachedStrategy = !forceStrategy && cached && cached.version === "listing-v5.snapshot.v1"
     && cached.researchRevision === context.researchRevision
     && cached.handoffRevision === context.handoffRevision
     && cached.contextFingerprint === context.contextFingerprint
