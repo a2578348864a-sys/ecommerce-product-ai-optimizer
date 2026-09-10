@@ -6,12 +6,22 @@ const BANNED = /\b(best|premium|perfect|guaranteed|waterproof|rustproof|no\.\s*1
 const clean = (value: unknown, max = 240) => typeof value === "string" ? value.replace(BANNED, "").replace(/\s+/g, " ").trim().slice(0, max) : "";
 const unique = (values: readonly string[], max: number) => [...new Set(values.map((v) => clean(v)).filter(Boolean))].slice(0, max);
 
+function classifyReferenceNeeds(values: readonly string[]): string[] {
+  const corpus = values.join(" ").toLowerCase();
+  const needs: string[] = [];
+  if (/(messy|organize|storage|counter|厨房|整理|收纳)/i.test(corpus)) needs.push("keep everyday spaces organized");
+  if (/(sip|straw|drink|hydration|饮水|吸管|直饮)/i.test(corpus)) needs.push("make everyday sipping convenient");
+  if (/(carry|portable|convenient|easy|方便|小巧|携带)/i.test(corpus)) needs.push("keep routines simple to manage");
+  if (/(spill|leak|漏|防漏)/i.test(corpus)) needs.push("feel confident carrying the product");
+  return needs.slice(0, 5);
+}
+
 export function buildListingV5Strategy(context: ListingV5Context): ListingV5Strategy {
   const voc = context.references.voc.map((item) => item.text.split(":").slice(1).join(":").trim() || item.text);
   const keywords = context.references.keywords.map((item) => item.text);
   const firstFact = context.confirmedFacts[0]?.label || "product features";
   const product = context.productIdentity || firstFact;
-  const painPoints = unique(voc, 5);
+  const painPoints = classifyReferenceNeeds(voc);
   const primaryKeyword = keywords[0] || product;
   const buyer = painPoints.length > 0 ? "Shoppers seeking a simpler everyday routine" : "Shoppers comparing practical product options";
   // VOC is reference material for motivation and scenarios. Keep the primary
@@ -25,7 +35,7 @@ export function buildListingV5Strategy(context: ListingV5Context): ListingV5Stra
     targetAudience: [buyer],
     purchaseMotivations: unique(["clear everyday value", ...painPoints], 5),
     painPoints,
-    useCases: unique(["everyday use", ...context.references.voc.map((item) => item.text.split(":")[0])], 6),
+    useCases: unique(["everyday use", ...painPoints.map((need) => need.replace(/^keep |^make |^feel /, ""))], 6),
     primaryAngle: clean(angle),
     secondaryAngles: unique(["easy comparison", "simple setup", "routine fit"], 4),
     tone: ["clear", "practical", "shopper-focused"],
