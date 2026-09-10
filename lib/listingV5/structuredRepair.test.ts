@@ -48,7 +48,24 @@ describe("Listing V5 structured repair", () => {
 
   it("fails closed without provider and returns the original draft", async () => {
     const result = await repairListingV5Draft({ context, strategy, validation, draft, useProvider: false });
-    expect(result).toEqual({ draft, attempted: false, succeeded: false });
+    expect(result.draft).toEqual(draft);
+    expect(result.attempted).toBe(false);
+    expect(result.succeeded).toBe(false);
+    expect(result.trace).toMatchObject({ attempted: false, success: false, failureReason: "provider_disabled" });
     expect(callAiJson).not.toHaveBeenCalled();
+  });
+
+  it("records a bounded reason when repair is not allowed for the validation status", async () => {
+    const result = await repairListingV5Draft({ context, strategy, validation: { ...validation, repair: { allowed: false, reason: null } }, draft, useProvider: true });
+    expect(result.attempted).toBe(false);
+    expect(result.trace.failureReason).toBe("repair_not_allowed");
+    expect(callAiJson).not.toHaveBeenCalled();
+  });
+
+  it("records a bounded reason when the provider repair response has the wrong shape", async () => {
+    callAiJson.mockResolvedValue({ ok: true, data: { path: "title", text: "Wrong path" }, providerCallStarted: true });
+    const result = await repairListingV5Draft({ context, strategy, validation, draft, useProvider: true });
+    expect(result.succeeded).toBe(false);
+    expect(result.trace).toMatchObject({ attempted: true, success: false, failureReason: "repair_response_shape_invalid" });
   });
 });

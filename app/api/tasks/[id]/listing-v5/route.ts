@@ -13,7 +13,21 @@ import { analyzeListingV5Strategy } from "@/lib/listingV5/strategy";
 import { generateListingV5Draft, buildListingV5FallbackDraft } from "@/lib/listingV5/generation";
 import { repairListingV5Draft } from "@/lib/listingV5/structuredRepair";
 import { validateListingV5Draft } from "@/lib/listingV5/validation";
-import type { ListingV5Snapshot, ListingV5Strategy } from "@/lib/listingV5/types";
+import {
+  buildListingV5ExecutionTrace,
+  buildStageTrace,
+  isListingV5TraceEnabled,
+  idleStageTrace,
+  LISTING_V5_FALLBACK_REASONS,
+  LISTING_V5_STAGE_FAILURE_REASONS,
+  LISTING_V5_VALIDATION_STATUSES,
+  type ListingV5ExecutionTrace,
+  type ListingV5FallbackReason,
+  type ListingV5StageFailureReason,
+  type ListingV5StageTrace,
+  type ListingV5ValidationStatus,
+} from "@/lib/listingV5/trace";
+import type { ListingV5Snapshot, ListingV5Strategy, ListingV5ValidationResult } from "@/lib/listingV5/types";
 
 const ACTIVE_V5_JOBS = new Set<string>();
 
@@ -36,6 +50,84 @@ async function readResult(taskId: string, ctx: AccessContext): Promise<Record<st
   const task = await prisma.viralAnalysisRecord.findUnique({ where: { id: taskId }, select: { resultJson: true } });
   if (!task || typeof task.resultJson !== "string") return null;
   try { const value = JSON.parse(task.resultJson); return isRecord(value) ? value : null; } catch { return null; }
+}
+
+const STAGE_FAILURE_REASONS = new Set<string>(LISTING_V5_STAGE_FAILURE_REASONS);
+const FALLBACK_REASONS = new Set<string>(LISTING_V5_FALLBACK_REASONS);
+const VALIDATION_STATUSES = new Set<string>(LISTING_V5_VALIDATION_STATUSES);
+
+function boundedText(value: unknown, max: number) {
+  return typeof value === "string" ? value.slice(0, max) : null;
+}
+
+function boundedNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * The trace is persisted inside the snapshot, so it is re-validated field by
+ * field before it leaves the API - same posture as safeSnapshot.
+ */
+function safeStageTrace(value: unknown): ListingV5StageTrace {
+  if (!isRecord(value)) return idleStageTrace();
+  return {
+    attempted: value.attempted === true,
+    success: value.success === true,
+    failureReason: (STAGE_FAILURE_REASONS.has(String(value.failureReason))
+      ? String(value.failureReason)
+      : "none") as ListingV5StageFailureReason,
+    providerErrorCode: boundedText(value.providerErrorCode, 64),
+    providerHttpStatusClass: boundedText(value.providerHttpStatusClass, 32),
+    model: boundedText(value.model, 128),
+    jsonParseStage: boundedText(value.jsonParseStage, 32),
+    finishReason: boundedText(value.finishReason, 64),
+    completionTokens: boundedNumber(value.completionTokens),
+    reasoningTokens: boundedNumber(value.reasoningTokens),
+    responseCharLength: boundedNumber(value.responseCharLength),
+    elapsedMs: boundedNumber(value.elapsedMs),
+  };
+}
+
+function safeTrace(value: unknown): ListingV5ExecutionTrace | null {
+  if (!isRecord(value) || value.version !== "listing-v5.execution-trace.v1") return null;
+  const stages = isRecord(value.stages) ? value.stages : {};
+  return {
+    version: "listing-v5.execution-trace.v1",
+    strategyAttempted: value.strategyAttempted === true,
+    strategySuccess: value.strategySuccess === true,
+    strategyFailureReason: (STAGE_FAILURE_REASONS.has(String(value.strategyFailureReason))
+      ? String(value.strategyFailureReason)
+      : "none") as ListingV5StageFailureReason,
+    writerAttempted: value.writerAttempted === true,
+    writerSuccess: value.writerSuccess === true,
+    writerFailureReason: (STAGE_FAILURE_REASONS.has(String(value.writerFailureReason))
+      ? String(value.writerFailureReason)
+      : "none") as ListingV5StageFailureReason,
+    repairAttempted: value.repairAttempted === true,
+    repairSuccess: value.repairSuccess === true,
+    repairFailureReason: (STAGE_FAILURE_REASONS.has(String(value.repairFailureReason))
+      ? String(value.repairFailureReason)
+      : "none") as ListingV5StageFailureReason,
+    validationStatus: (VALIDATION_STATUSES.has(String(value.validationStatus))
+      ? String(value.validationStatus)
+      : "NOT_RUN") as ListingV5ValidationStatus,
+    finalValidationStatus: (VALIDATION_STATUSES.has(String(value.finalValidationStatus))
+      ? String(value.finalValidationStatus)
+      : "NOT_RUN") as ListingV5ValidationStatus,
+    validationBlockReasons: Array.isArray(value.validationBlockReasons)
+      ? value.validationBlockReasons.filter((item): item is string => typeof item === "string").map((item) => item.slice(0, 120)).slice(0, 12)
+      : [],
+    fallbackUsed: value.fallbackUsed === true,
+    fallbackReason: (FALLBACK_REASONS.has(String(value.fallbackReason))
+      ? String(value.fallbackReason)
+      : "none") as ListingV5FallbackReason,
+    stages: {
+      strategy: safeStageTrace(stages.strategy),
+      writer: safeStageTrace(stages.writer),
+      repair: safeStageTrace(stages.repair),
+    },
+    generatedAt: typeof value.generatedAt === "string" ? value.generatedAt.slice(0, 40) : "",
+  };
 }
 
 function safeSnapshot(snapshot: unknown, currentRevision: number, currentHandoffRevision?: number, currentFingerprint?: string) {
@@ -69,7 +161,7 @@ function safeSnapshot(snapshot: unknown, currentRevision: number, currentHandoff
     competitorOverlapCount: isRecord(snapshot.validation.claims) && Array.isArray(snapshot.validation.claims.competitorOverlap) ? snapshot.validation.claims.competitorOverlap.length : 0,
     quality: isRecord(snapshot.validation.quality) ? snapshot.validation.quality : { repetitive: false, keywordStuffing: false, mechanicalTemplate: false },
   } : null;
-  return { version: snapshot.version, researchRevision: snapshot.researchRevision, handoffRevision: snapshot.handoffRevision, strategy, listing, validation, repairApplied: snapshot.repairApplied === true, provider: snapshot.provider ?? { strategyAttempted: false, writerAttempted: false, repairAttempted: false, fallbackUsed: true }, humanReviewRequired: true, stale };
+  return { version: snapshot.version, researchRevision: snapshot.researchRevision, handoffRevision: snapshot.handoffRevision, strategy, listing, validation, repairApplied: snapshot.repairApplied === true, provider: snapshot.provider ?? { strategyAttempted: false, writerAttempted: false, repairAttempted: false, fallbackUsed: true }, humanReviewRequired: true, trace: isListingV5TraceEnabled() ? safeTrace(snapshot.trace) : undefined, stale };
 }
 
 async function buildContext(taskId: string, ctx: AccessContext) {
@@ -153,17 +245,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return settled;
   };
   try {
-    const strategyResult = cachedStrategy ? { strategy: cachedStrategy, providerAttempted: false, providerSucceeded: false } : await analyzeListingV5Strategy(context, { useProvider, onProviderCallStart });
+    const strategyResult = cachedStrategy
+      ? { strategy: cachedStrategy, providerAttempted: false, providerSucceeded: false, trace: buildStageTrace({ attempted: false, success: false, failureReason: "stage_not_run" }) }
+      : await analyzeListingV5Strategy(context, { useProvider, onProviderCallStart });
     let draft = null;
-    let validation = null;
+    let validation: ListingV5ValidationResult | null = null;
+    let firstValidation: ListingV5ValidationResult | null = null;
     let repairApplied = false;
+    let fallbackReason: ListingV5FallbackReason = "none";
+    let writerTrace: ListingV5StageTrace = idleStageTrace();
+    let repairTrace: ListingV5StageTrace = idleStageTrace();
     let provider = { strategyAttempted: strategyResult.providerAttempted, writerAttempted: false, repairAttempted: false, fallbackUsed: false };
     if (action !== "analyze_strategy") {
       const generated = await generateListingV5Draft(context, strategyResult.strategy, { useProvider, onProviderCallStart });
+      // The writer stage returning a fallback draft is the only writer-side fallback.
+      fallbackReason = generated.providerSucceeded ? "none" : "writer_stage_failed";
+      writerTrace = generated.trace ?? idleStageTrace();
       draft = generated.draft; provider = { ...provider, writerAttempted: generated.providerAttempted, fallbackUsed: !generated.providerSucceeded };
       validation = validateListingV5Draft(context, strategyResult.strategy, draft);
+      firstValidation = validation;
       if (validation.status === "REPAIRABLE") {
         const repaired = await repairListingV5Draft({ context, strategy: strategyResult.strategy, validation, draft, useProvider, onProviderCallStart });
+        // A failed bounded repair keeps the AI draft in place; it is not a fallback.
+        repairTrace = repaired.trace ?? idleStageTrace();
         provider = { ...provider, repairAttempted: repaired.attempted, fallbackUsed: provider.fallbackUsed || !repaired.succeeded };
         repairApplied = repaired.attempted;
         draft = repaired.draft;
@@ -172,13 +276,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (validation.status === "BLOCK") {
         draft = buildListingV5FallbackDraft(context, strategyResult.strategy);
         provider = { ...provider, fallbackUsed: true };
+        fallbackReason = "validation_blocked";
         validation = validateListingV5Draft(context, strategyResult.strategy, draft);
       }
     }
+    const trace = buildListingV5ExecutionTrace({
+      strategy: strategyResult.trace ?? idleStageTrace(),
+      writer: writerTrace,
+      repair: repairTrace,
+      validation: firstValidation ?? validation,
+      finalValidation: validation,
+      fallbackUsed: fallbackReason !== "none",
+      fallbackReason,
+    });
     const snapshot: ListingV5Snapshot = {
       version: "listing-v5.snapshot.v1", taskId: id, researchRevision: context.researchRevision, handoffRevision: context.handoffRevision, contextFingerprint: context.contextFingerprint,
       strategy: strategyResult.strategy, listing: draft, validation: validation ?? { version: "listing-v5.validation.v1", status: "PASS", title: { valid: true, issues: [] }, bullets: [], description: { valid: true, issues: [] }, claims: { allHaveEvidence: true, unsupportedClaims: [], prohibitedClaims: [], competitorOverlap: [] }, quality: { repetitive: false, keywordStuffing: false, mechanicalTemplate: false }, repair: { allowed: false, reason: null } },
-      strategyPromptVersion: "listing-v5-strategy.v1", writerPromptVersion: "listing-v5-writer.v1", validatorVersion: "listing-v5.validation.v1", repairApplied, repairPromptVersion: "listing-v5-repair.v1", provider, model: useProvider ? "configured-provider" : "deterministic-safe", generatedAt: new Date().toISOString(), humanReviewRequired: true,
+      strategyPromptVersion: "listing-v5-strategy.v1", writerPromptVersion: "listing-v5-writer.v1", validatorVersion: "listing-v5.validation.v1", repairApplied, repairPromptVersion: "listing-v5-repair.v1", provider,       model: useProvider ? "configured-provider" : "deterministic-safe", generatedAt: new Date().toISOString(), humanReviewRequired: true,
+      ...(isListingV5TraceEnabled() ? { trace } : {}),
     };
     const fresh = await buildContext(id, verified.ctx!);
     if (!fresh.context || fresh.context.contextFingerprint !== context.contextFingerprint) {

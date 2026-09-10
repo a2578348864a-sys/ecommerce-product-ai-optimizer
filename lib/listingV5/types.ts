@@ -1,3 +1,5 @@
+import type { ListingV5ExecutionTrace } from "./trace";
+
 export const LISTING_V5_CONTEXT_VERSION = "listing-v5.context.v1" as const;
 export const LISTING_V5_STRATEGY_VERSION = "listing-v5.strategy.v1" as const;
 export const LISTING_V5_WRITER_VERSION = "listing-v5.writer-draft.v1" as const;
@@ -103,4 +105,6 @@ export type ListingV5Snapshot = {
   model: string;
   generatedAt: string;
   humanReviewRequired: true;
+  /** Development / test only AI execution trace. Never emitted in production. */
+  trace?: ListingV5ExecutionTrace;
 };

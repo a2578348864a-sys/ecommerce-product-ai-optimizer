@@ -1,5 +1,6 @@
 import type { ListingV5Context, ListingV5Strategy, ListingV5ValidationResult, ListingV5WriterDraft } from "./types";
 import { callAiJson } from "@/lib/server/aiClient";
+import { buildStageTrace, classifyAiErrorReason, type ListingV5StageTrace } from "./trace";
 
 function firstRepairPath(validation: ListingV5ValidationResult):
   | { kind: "title" }
@@ -31,10 +32,16 @@ export async function repairListingV5Draft(input: {
   draft: ListingV5WriterDraft;
   useProvider?: boolean;
   onProviderCallStart?: () => void | Promise<void>;
-}): Promise<{ draft: ListingV5WriterDraft; attempted: boolean; succeeded: boolean; diagnostics?: unknown }> {
+}): Promise<{ draft: ListingV5WriterDraft; attempted: boolean; succeeded: boolean; diagnostics?: unknown; trace: ListingV5StageTrace }> {
   const target = firstRepairPath(input.validation);
-  if (!input.validation.repair.allowed || !target || !input.useProvider) {
-    return { draft: input.draft, attempted: false, succeeded: false };
+  if (!input.useProvider) {
+    return { draft: input.draft, attempted: false, succeeded: false, trace: buildStageTrace({ attempted: false, success: false, failureReason: "provider_disabled" }) };
+  }
+  if (!input.validation.repair.allowed) {
+    return { draft: input.draft, attempted: false, succeeded: false, trace: buildStageTrace({ attempted: false, success: false, failureReason: "repair_not_allowed" }) };
+  }
+  if (!target) {
+    return { draft: input.draft, attempted: false, succeeded: false, trace: buildStageTrace({ attempted: false, success: false, failureReason: "repair_target_missing" }) };
   }
   const targetLabel = target.kind === "bullet" ? `bullets[${target.index}]` : target.kind;
   const currentText = target.kind === "title"
@@ -51,15 +58,31 @@ export async function repairListingV5Draft(input: {
     maxTokens: 900,
     onProviderCallStart: input.onProviderCallStart,
   });
-  if (!response.ok || !response.data || typeof response.data !== "object" || Array.isArray(response.data)) {
-    return { draft: input.draft, attempted: response.providerCallStarted === true, succeeded: false, diagnostics: response.diagnostics };
+  if (!response.ok) {
+    return {
+      draft: input.draft,
+      attempted: response.providerCallStarted === true,
+      succeeded: false,
+      diagnostics: response.diagnostics,
+      trace: buildStageTrace({
+        attempted: response.providerCallStarted === true,
+        success: false,
+        failureReason: response.providerCallStarted === true
+          ? classifyAiErrorReason(response.error)
+          : "provider_not_started",
+        response,
+      }),
+    };
+  }
+  if (!response.data || typeof response.data !== "object" || Array.isArray(response.data)) {
+    return { draft: input.draft, attempted: true, succeeded: false, diagnostics: response.diagnostics, trace: buildStageTrace({ attempted: true, success: false, failureReason: "repair_response_shape_invalid", response }) };
   }
   const value = response.data as { path?: unknown; text?: unknown };
   if (value.path !== targetLabel || typeof value.text !== "string") {
-    return { draft: input.draft, attempted: true, succeeded: false, diagnostics: response.diagnostics };
+    return { draft: input.draft, attempted: true, succeeded: false, diagnostics: response.diagnostics, trace: buildStageTrace({ attempted: true, success: false, failureReason: "repair_response_shape_invalid", response }) };
   }
   const repaired = applyRepair(input.draft, target, value.text);
   return repaired
-    ? { draft: repaired, attempted: true, succeeded: true, diagnostics: response.diagnostics }
-    : { draft: input.draft, attempted: true, succeeded: false, diagnostics: response.diagnostics };
+    ? { draft: repaired, attempted: true, succeeded: true, diagnostics: response.diagnostics, trace: buildStageTrace({ attempted: true, success: true, failureReason: "none", response }) }
+    : { draft: input.draft, attempted: true, succeeded: false, diagnostics: response.diagnostics, trace: buildStageTrace({ attempted: true, success: false, failureReason: "repair_apply_failed", response }) };
 }
