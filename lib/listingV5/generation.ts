@@ -26,6 +26,8 @@ function fallback(context: ListingV5Context, strategy: ListingV5Strategy): Listi
           ? `${product} offers a ${fact.value} capacity`
           : field === "color_or_variant" || field === "color"
             ? `${product} is available in ${fact.value}`
+            : field === "brand"
+              ? `${product} is from ${fact.value}`
             : `${product} includes ${fact.value}`;
     const frames = [
       `${factPhrase}, helping shoppers understand the product at a glance.`,
@@ -37,8 +39,8 @@ function fallback(context: ListingV5Context, strategy: ListingV5Strategy): Listi
     return { text: frames[index % frames.length], factIds: [fact.id], strategyRole: role };
   });
   const selected = bullets.slice(0, 5);
-  const titleFacts = facts.slice(0, 3).map((fact) => fact.value);
-  const title = clean([titleFacts.join(" "), product].filter(Boolean).join(" "), 180) || product;
+  const titleFacts = facts.slice(0, 3).map((fact) => fact.value).filter((value) => !product.toLowerCase().includes(value.toLowerCase()));
+  const title = clean([product, ...titleFacts].filter(Boolean).join(" "), 180) || product;
   const descriptionFacts = facts.slice(0, 2).map((fact) => fact.value).join(" and ");
   const description = clean(`${product} brings together ${descriptionFacts || "confirmed product details"} for shoppers comparing practical options. It fits ${strategy.useCases[0] || "everyday routines"} where clear product information helps guide a purchase.`, 1200);
   return { version: "listing-v5.writer-draft.v1", title: { text: title, factIds: facts.slice(0, 3).map((fact) => fact.id) }, bullets: selected, description: { text: description, factIds: facts.slice(0, 2).map((fact) => fact.id) }, backendSearchTerms: strategy.keywordIntent.backendOnly.slice(0, 8), humanReviewRequired: true };

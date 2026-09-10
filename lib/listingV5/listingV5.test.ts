@@ -127,6 +127,18 @@ describe("Listing V5", () => {
     expect(draft.bullets.length).toBe(1);
   });
 
+  it("keeps a confirmed product identity from duplicating title facts", () => {
+    const value = buildListingV5Context({
+      taskId: "title-dedupe", researchRevision: 1, handoffRevision: 1,
+      productIdentity: "Owala FreeSip Stainless Steel Water Bottle 24 oz Denim",
+      generationInput: { schema: "listing-generation-input.v1", source: { handoffRevision: 1, researchRevision: 1 }, productFacts: [], stableSourceFacts: [], creativeReferences: [], creativePreferences: {}, prohibitedClaims: [], unknowns: [], humanReviewRequired: true, researchMode: "market_research_only", promotionEligible: false },
+      confirmedFacts: [{ factId: "brand", field: "brand", label: "Brand", value: "Owala" }, { factId: "capacity", field: "capacity", label: "Capacity", value: "24 oz" }],
+    });
+    const title = buildListingV5FallbackDraft(value, buildListingV5Strategy(value)).title.text;
+    expect(title.match(/Owala/gi)?.length).toBe(1);
+    expect(title.match(/24 oz/gi)?.length).toBe(1);
+  });
+
   it("allows a low-risk derived benefit anchored to a carrying loop", () => {
     const value = context();
     value.confirmedFacts = [{ id: "loop-1", canonicalField: "feature", label: "Feature", value: "carrying loop", sourceRefs: [] }];
