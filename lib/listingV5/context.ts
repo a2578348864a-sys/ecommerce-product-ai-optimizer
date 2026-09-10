@@ -1,0 +1,93 @@
+import { createHash } from "node:crypto";
+import type { CreativeContextV1 } from "@/lib/creativeContextBuilder";
+import type { ListingGenerationInput } from "@/lib/listingHandoff/listingGenerationInput";
+import { LISTING_V5_STRATEGY_PROMPT_VERSION, LISTING_V5_VALIDATION_VERSION, LISTING_V5_WRITER_PROMPT_VERSION } from "./types";
+import type { ListingV5Context, ListingV5Fact, ListingV5Reference } from "./types";
+
+const MAX_FACTS = 40;
+const MAX_REFERENCES = 20;
+const MAX_REFERENCE_CHARS = 300;
+const MAX_TOTAL_REFERENCE_CHARS = 7_000;
+const PROMPT_CONTROL_TEXT = /(?:\bignore\s+(?:all\s+)?previous\s+instructions?|\bsystem\s*:|\bdeveloper\s*:|\bassistant\s*:|\boutput\s+fake)/gi;
+
+function text(value: unknown, max = MAX_REFERENCE_CHARS): string {
+  return typeof value === "string" ? value.normalize("NFC").replace(/\s+/g, " ").trim().slice(0, max) : "";
+}
+
+function reference(textValue: string, sourceType: ListingV5Reference["sourceType"]): ListingV5Reference | null {
+  const value = text(textValue).replace(PROMPT_CONTROL_TEXT, "").replace(/\s+/g, " ").trim();
+  return value ? { text: value, sourceType, marker: "UNTRUSTED_REFERENCE_DATA", notProductFact: true } : null;
+}
+
+function boundedReferences(values: readonly string[], sourceType: ListingV5Reference["sourceType"], budget: { used: number }): ListingV5Reference[] {
+  const out: ListingV5Reference[] = [];
+  for (const value of values.slice(0, MAX_REFERENCES)) {
+    if (budget.used >= MAX_TOTAL_REFERENCE_CHARS) break;
+    const item = reference(value, sourceType);
+    if (!item) continue;
+    const room = MAX_TOTAL_REFERENCE_CHARS - budget.used;
+    const clipped = item.text.slice(0, room);
+    if (!clipped) break;
+    out.push({ ...item, text: clipped });
+    budget.used += clipped.length;
+  }
+  return out;
+}
+
+export type ListingV5ContextInput = {
+  taskId: string;
+  researchRevision: number;
+  handoffRevision: number;
+  marketplace?: string;
+  productIdentity?: string;
+  generationInput: ListingGenerationInput;
+  creativeContext?: CreativeContextV1 | null;
+  confirmedFacts: Array<{ factId: string; field: string; label: string; value: unknown; sourceRefs?: string[] }>;
+  manualDirection?: string | null;
+};
+
+/** Builds a bounded, immutable V5 context. Research material is reference-only. */
+export function buildListingV5Context(input: ListingV5ContextInput): ListingV5Context {
+  const facts: ListingV5Fact[] = input.confirmedFacts.slice(0, MAX_FACTS).map((fact) => ({
+    id: text(fact.factId, 120) || text(fact.field, 120),
+    canonicalField: text(fact.field, 120),
+    label: text(fact.label, 160) || text(fact.field, 120),
+    value: text(fact.value, 500),
+    sourceRefs: (fact.sourceRefs ?? []).filter((ref): ref is string => typeof ref === "string").map((ref) => text(ref, 160)).filter(Boolean).slice(0, 4),
+  })).filter((fact) => fact.id && fact.canonicalField && fact.value);
+
+  const context = input.creativeContext;
+  const budget = { used: 0 };
+  const voc = boundedReferences((context?.vocInsights ?? []).map((item) => `${item.theme}: ${item.summary}`), "VOC", budget);
+  const keywords = boundedReferences((context?.keywordCandidates ?? []).map((item) => item.keyword), "keyword", budget);
+  const competitors = boundedReferences((context?.competitiveContext ?? []).map((item) => item.note || item.asin), "competitor", budget);
+  const fingerprint = createHash("sha256").update(JSON.stringify({
+    taskId: input.taskId,
+    researchRevision: input.researchRevision,
+    handoffRevision: input.handoffRevision,
+    strategyPromptVersion: LISTING_V5_STRATEGY_PROMPT_VERSION,
+    writerPromptVersion: LISTING_V5_WRITER_PROMPT_VERSION,
+    validatorVersion: LISTING_V5_VALIDATION_VERSION,
+    marketplace: input.marketplace ?? "Amazon US",
+    productIdentity: text(input.productIdentity, 240),
+    facts,
+    prohibitedClaims: input.generationInput.prohibitedClaims.slice(0, 20).map((item) => text(item)),
+    unknowns: input.generationInput.unknowns.slice(0, 20).map((item) => text(item)),
+    references: { voc, keywords, competitors },
+    manualDirection: text(input.manualDirection, 300),
+  }), "utf8").digest("hex");
+  return {
+    version: "listing-v5.context.v1",
+    taskId: text(input.taskId, 200),
+    researchRevision: input.researchRevision,
+    handoffRevision: input.handoffRevision,
+    contextFingerprint: fingerprint,
+    marketplace: text(input.marketplace, 80) || "Amazon US",
+    productIdentity: text(input.productIdentity, 240),
+    confirmedFacts: facts,
+    prohibitedClaims: input.generationInput.prohibitedClaims.slice(0, 20).map((item) => text(item)).filter(Boolean),
+    unknowns: input.generationInput.unknowns.slice(0, 20).map((item) => text(item)).filter(Boolean),
+    references: { voc, keywords, competitors, sourcing: [] },
+    manualDirection: text(input.manualDirection, 300) || null,
+  };
+}
