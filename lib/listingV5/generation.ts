@@ -39,7 +39,9 @@ function fallback(context: ListingV5Context, strategy: ListingV5Strategy): Listi
     return { text: frames[index % frames.length], factIds: [fact.id], strategyRole: role };
   });
   const selected = bullets.slice(0, 5);
-  const titleFacts = facts.slice(0, 3).map((fact) => fact.value).filter((value) => !product.toLowerCase().includes(value.toLowerCase()));
+  const titleKey = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const productKey = titleKey(product);
+  const titleFacts = facts.slice(0, 3).map((fact) => fact.value).filter((value) => !productKey.includes(titleKey(value)));
   const title = clean([product, ...titleFacts].filter(Boolean).join(" "), 180) || product;
   const descriptionFacts = facts.slice(0, 2).map((fact) => fact.value).join(" and ");
   const description = clean(`${product} brings together ${descriptionFacts || "confirmed product details"} for shoppers comparing practical options. It fits ${strategy.useCases[0] || "everyday routines"} where clear product information helps guide a purchase.`, 1200);
