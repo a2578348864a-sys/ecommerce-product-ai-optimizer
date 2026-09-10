@@ -771,6 +771,112 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
           </details>
         ) : null}
 
+        {snapshot?.qualityEvaluation ? (
+          <details
+            data-testid="listing-v5-quality-evaluation"
+            open
+            className="group mt-3 rounded-xl border border-sky-200/60 bg-white/80 p-3 text-xs text-slate-700"
+          >
+            <summary className="flex cursor-pointer select-none items-center justify-between font-semibold text-slate-800 hover:text-sky-700">
+              <span>
+                转化质量评分 · {snapshot.qualityEvaluation.grade}（{snapshot.qualityEvaluation.total}/{snapshot.qualityEvaluation.max}）
+              </span>
+              <ChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="mt-2.5 space-y-2.5 border-t border-slate-100 pt-2.5">
+              {snapshot.qualityEvaluation.dimensions.map((dimension: any) => (
+                <div key={dimension.id}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-slate-700">{dimension.label}</span>
+                    <span className="tabular-nums text-slate-500">
+                      {dimension.score}/{dimension.max}
+                    </span>
+                  </div>
+                  <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className="h-1.5 rounded-full bg-sky-500"
+                      style={{ width: `${dimension.max > 0 ? Math.round((dimension.score / dimension.max) * 100) : 0}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+              {snapshot.qualityEvaluation.notes?.length ? (
+                <ul className="list-disc space-y-1 pl-4 text-slate-500">
+                  {snapshot.qualityEvaluation.notes.map((note: string) => (
+                    <li key={note}>{note}</li>
+                  ))}
+                </ul>
+              ) : null}
+              <p className="text-slate-400">评分仅用于展示转化质量，不改变 Validator 的通过或阻断结论。</p>
+            </div>
+          </details>
+        ) : null}
+
+        {snapshot?.conversionBlueprint ? (
+          <details
+            data-testid="listing-v5-conversion-blueprint"
+            className="group mt-3 rounded-xl border border-indigo-200/60 bg-white/80 p-3 text-xs text-slate-700"
+          >
+            <summary className="flex cursor-pointer select-none items-center justify-between font-semibold text-slate-800 hover:text-indigo-700">
+              <span>转化蓝图（买家意图 · 痛点 · 竞品差异）</span>
+              <ChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="mt-2.5 space-y-2 border-t border-slate-100 pt-2.5">
+              <p>
+                <strong>买家意图：</strong>
+                {snapshot.conversionBlueprint.buyerIntent?.primary || "按关键词意图"}
+                {snapshot.conversionBlueprint.buyerIntent?.stage ? `（${snapshot.conversionBlueprint.buyerIntent.stage}）` : ""}
+              </p>
+              <p>
+                <strong>转化角度：</strong>
+                {snapshot.conversionBlueprint.conversionAngle?.angle || "事实优先"}
+              </p>
+              <div>
+                <strong>买家痛点：</strong>
+                {snapshot.conversionBlueprint.painPoints?.length ? (
+                  <ul className="mt-1 space-y-1">
+                    {snapshot.conversionBlueprint.painPoints.map((pain: any, index: number) => (
+                      <li key={`${pain.pain}-${index}`} className="flex flex-wrap items-center gap-1.5">
+                        <span>{pain.pain}</span>
+                        <span
+                          className={
+                            pain.factBacked
+                              ? "rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700"
+                              : "rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500"
+                          }
+                        >
+                          {pain.factBacked ? `有事实支撑 ${pain.proofFactCount}` : "无事实支撑 · 不得承诺"}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  "未从研究资料中提取到痛点"
+                )}
+              </div>
+              <p>
+                <strong>竞品差异点：</strong>
+                {snapshot.conversionBlueprint.competitorGaps?.length
+                  ? snapshot.conversionBlueprint.competitorGaps.map((gap: any) => gap.dimension).join("、")
+                  : "无可用对比属性"}
+              </p>
+              <p>
+                <strong>证据点：</strong>
+                {snapshot.conversionBlueprint.proofPointCount} 条已确认事实；卖点顺序{" "}
+                {snapshot.conversionBlueprint.benefitOrder?.map((item: any) => item.role).join(" → ") || "默认顺序"}
+              </p>
+              {snapshot.conversionBlueprint.disallowedTemptations?.length ? (
+                <p className="text-slate-500">
+                  <strong>本商品无事实支撑的表述（禁止使用）：</strong>
+                  {snapshot.conversionBlueprint.disallowedTemptations.slice(0, 8).join("、")}
+                  {snapshot.conversionBlueprint.disallowedTemptations.length > 8 ? " 等" : ""}
+                </p>
+              ) : null}
+              <p className="text-slate-400">蓝图仅用于组织卖点与表达，事实仍以已确认资料为唯一依据。</p>
+            </div>
+          </details>
+        ) : null}
+
         {snapshot?.stale ? (
           <div className="mt-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs font-semibold text-amber-800">
             <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />

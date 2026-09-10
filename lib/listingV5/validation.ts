@@ -1,7 +1,8 @@
-import { verifyListingClaims } from "@/lib/listingHandoff/listingClaimEvidenceResolver";
+﻿import { verifyListingClaims } from "@/lib/listingHandoff/listingClaimEvidenceResolver";
 import type { ListingGenerationInput } from "@/lib/listingHandoff/listingGenerationInput";
 import { factAnchorValues } from "./context";
 import { LISTING_V5_VALIDATION_VERSION } from "./types";
+import { HARD_OR_ESCALATION_TOKENS as SHARED_HARD_OR_ESCALATION_TOKENS } from "./claimVocabulary";
 import type { ListingV5Context, ListingV5IssueCode, ListingV5Strategy, ListingV5UnsupportedDetail, ListingV5ValidationResult, ListingV5WriterDraft } from "./types";
 
 const words = (value: string) => value.toLowerCase().match(/[a-z0-9]+/g) ?? [];
@@ -59,15 +60,15 @@ const sentenceCount = (value: string) => segmentSentences(value).length;
 const STOPWORDS = new Set(["a", "an", "the", "of", "for", "to", "and", "in", "on", "with", "is", "are", "that", "this", "it", "its", "as", "at", "by", "or", "be", "from"]);
 
 /** Language that either asserts performance/certification or escalates an existing fact. */
-const HARD_OR_ESCALATION_TOKENS = new Set([
-  "durable", "durability", "lasting", "leakproof", "leak", "spillproof", "spill", "waterproof", "rustproof", "rust",
-  "certified", "certification", "fda", "approved", "nontoxic", "toxic", "bpa", "scratch", "odor", "resistant", "resistance",
-  "guarantee", "guaranteed", "unbreakable", "shatterproof", "tough", "strongest", "dishwasher", "safe", "foodsafe", "nonstick",
-  "cold", "hot", "warm", "hour", "hours", "minute", "minutes", "overnight", "freeze", "frozen", "boil", "microwave",
-  "bacteria", "mold", "insulated", "insulation",
-  "high", "higher", "highest", "maximum", "max", "extreme", "ultra", "super", "heavy", "duty", "professional", "industrial",
-  "perfect", "best", "most", "complete", "total", "fully", "always", "never", "only", "every", "all",
-]);
+const HARD_OR_ESCALATION_TOKENS = SHARED_HARD_OR_ESCALATION_TOKENS;
+
+/**
+ * The same hard-claim vocabulary, exposed read-only so upstream stages (the
+ * Conversion Blueprint) can warn the Writer with exactly the words this
+ * Validator rejects. Deriving it here keeps the two from drifting apart; it
+ * changes no validation behaviour.
+ */
+export const LISTING_V5_HARD_CLAIM_TOKENS: ReadonlySet<string> = HARD_OR_ESCALATION_TOKENS;
 
 const normalizeTokens = (value: string) => value
   .normalize("NFC")

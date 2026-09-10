@@ -143,6 +143,39 @@ describe("Listing V5 prompt contracts", () => {
     expect(JSON.stringify(result.strategy)).not.toContain("Shoppers comparing practical product options");
   });
 
+  it("hands the Writer a Conversion Blueprint before it writes", async () => {
+    callAiJson.mockResolvedValueOnce({
+      ok: true,
+      providerCallStarted: true,
+      data: {
+        title: { text: "Stainless steel bottle with a dishwasher-safe lid", factIds: ["fact-material"] },
+        bullets: [
+          { text: "Stainless steel body keeps daily carrying simple.", factIds: ["fact-material"], strategyRole: "core_outcome" },
+          { text: "dishwasher-safe bottle and lid helps reduce cleanup.", factIds: ["fact-care"], strategyRole: "pain_relief" },
+          { text: "A 24 oz routine fits commuting.", factIds: ["fact-material"], strategyRole: "use_scenario" },
+        ],
+        description: { text: "Stainless steel with a dishwasher-safe lid for commuting.", factIds: ["fact-material"] },
+        backendSearchTerms: [],
+        humanReviewRequired: true,
+      },
+    });
+    const result = await generateListingV5Draft(context, strategy, { useProvider: true });
+    expect(result.providerSucceeded).toBe(true);
+    expect(systemPromptOf(0)).toContain("CONVERSION BLUEPRINT");
+    expect(systemPromptOf(0)).toMatch(/disallowedTemptations/);
+    const payload = JSON.parse(userPayloadOf(0)) as { conversionBlueprint?: Record<string, unknown> };
+    expect(payload.conversionBlueprint).toBeTruthy();
+    expect(payload.conversionBlueprint).toHaveProperty("buyerIntent");
+    expect(payload.conversionBlueprint).toHaveProperty("painPoints");
+    expect(payload.conversionBlueprint).toHaveProperty("competitorGaps");
+    expect(payload.conversionBlueprint).toHaveProperty("conversionAngle");
+    expect(payload.conversionBlueprint).toHaveProperty("proofPoints");
+    expect(payload.conversionBlueprint).toHaveProperty("benefitOrder");
+    // The blueprint may only point at confirmed facts.
+    const proofPoints = (payload.conversionBlueprint as { proofPoints: Array<{ factId: string }> }).proofPoints;
+    expect(proofPoints.every((point) => point.factId === "fact-care" || point.factId === "fact-material")).toBe(true);
+  });
+
   it("falls back explicitly when the provider strategy is not viable instead of mixing templates", async () => {
     callAiJson.mockResolvedValueOnce({ ok: true, providerCallStarted: true, data: { targetAudience: ["someone"], primaryAngle: "" } });
     const result = await analyzeListingV5Strategy(context, { useProvider: true });

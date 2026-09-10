@@ -64,6 +64,21 @@ function reference(textValue: string, sourceType: ListingV5Reference["sourceType
   return value ? { text: value, sourceType, marker: "UNTRUSTED_REFERENCE_DATA", notProductFact: true } : null;
 }
 
+/**
+ * Owner-authored direction (`creativePreferences.additionalRequirements`) reaches
+ * the strategy prompt as free text. It is untrusted input like any other, so the
+ * same prompt-control stripping applies before it can steer the model. The
+ * sanitized value is what both the fingerprint and the prompt see.
+ */
+function cleanDirection(value: string | null | undefined, max = 300): string {
+  return text(value ?? "", max)
+    .replace(PROMPT_CONTROL_TEXT, "")
+    .replace(/^[\s.,;:!?\-–—]+/, "")
+    .replace(/[\s.,;:!?\-–—]+$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function boundedReferences(values: readonly string[], sourceType: ListingV5Reference["sourceType"], budget: { used: number }): ListingV5Reference[] {
   const out: ListingV5Reference[] = [];
   for (const value of values.slice(0, MAX_REFERENCES)) {
@@ -103,6 +118,7 @@ export function buildListingV5Context(input: ListingV5ContextInput): ListingV5Co
 
   const context = input.creativeContext;
   const budget = { used: 0 };
+  const manualDirection = cleanDirection(input.manualDirection);
   const voc = boundedReferences((context?.vocInsights ?? []).map((item) => `${item.theme}: ${item.summary}`), "VOC", budget);
   const keywords = boundedReferences((context?.keywordCandidates ?? []).map((item) => item.keyword), "keyword", budget);
   const competitors = boundedReferences((context?.competitiveContext ?? []).map((item) => item.note || item.asin), "competitor", budget);
@@ -119,7 +135,7 @@ export function buildListingV5Context(input: ListingV5ContextInput): ListingV5Co
     prohibitedClaims: input.generationInput.prohibitedClaims.slice(0, 20).map((item) => text(item)),
     unknowns: input.generationInput.unknowns.slice(0, 20).map((item) => text(item)),
     references: { voc, keywords, competitors },
-    manualDirection: text(input.manualDirection, 300),
+    manualDirection,
   }), "utf8").digest("hex");
   return {
     version: "listing-v5.context.v1",
@@ -133,6 +149,6 @@ export function buildListingV5Context(input: ListingV5ContextInput): ListingV5Co
     prohibitedClaims: input.generationInput.prohibitedClaims.slice(0, 20).map((item) => text(item)).filter(Boolean),
     unknowns: input.generationInput.unknowns.slice(0, 20).map((item) => text(item)).filter(Boolean),
     references: { voc, keywords, competitors, sourcing: [] },
-    manualDirection: text(input.manualDirection, 300) || null,
+    manualDirection: manualDirection || null,
   };
 }

@@ -22,6 +22,18 @@ function strategyProductName(value: string): string {
   return normalized.replace(/\s+\S*$/, (tail, offset, whole) => whole.length >= 98 ? "" : tail) || "product";
 }
 
+/**
+ * Backend search terms are wording shoppers actually type, taken from the
+ * keyword references. They never create a fact and are only ever passed through
+ * as search wording, so the visible copy stays fact-anchored.
+ */
+function backendOnlyTerms(context: ListingV5Context, primary: string[], secondary: string[]): string[] {
+  const taken = new Set([...primary, ...secondary].map((term) => term.toLowerCase()));
+  return unique(context.references.keywords.map((item) => item.text), 20)
+    .filter((term) => term.length >= 3 && !taken.has(term.toLowerCase()))
+    .slice(0, 8);
+}
+
 export function buildListingV5Strategy(context: ListingV5Context): ListingV5Strategy {
   const voc = context.references.voc.map((item) => item.text.split(":").slice(1).join(":").trim() || item.text);
   const keywords = context.references.keywords.map((item) => item.text);
@@ -29,6 +41,10 @@ export function buildListingV5Strategy(context: ListingV5Context): ListingV5Stra
   const product = strategyProductName(context.productIdentity || firstFact);
   const painPoints = classifyReferenceNeeds(voc);
   const primaryKeyword = keywords[0] || product;
+  const primaryIntent = unique([primaryKeyword], 5);
+  // Visible intent stays deliberately small so the remaining keyword references
+  // are still available as backend-only search wording.
+  const secondaryIntent = unique(keywords.slice(1), 6);
   const buyer = painPoints.length > 0 ? "Shoppers seeking a simpler everyday routine" : "Shoppers comparing practical product options";
   // VOC is reference material for motivation and scenarios. Keep the primary
   // angle product-scoped so a review summary is never presented as a product
@@ -45,7 +61,7 @@ export function buildListingV5Strategy(context: ListingV5Context): ListingV5Stra
     primaryAngle: clean(angle),
     secondaryAngles: unique(["easy comparison", "simple setup", "routine fit"], 4),
     tone: ["clear", "practical", "shopper-focused"],
-    keywordIntent: { primary: unique([primaryKeyword], 5), secondary: unique(keywords.slice(1), 8), backendOnly: [] },
+    keywordIntent: { primary: primaryIntent, secondary: secondaryIntent, backendOnly: backendOnlyTerms(context, primaryIntent, secondaryIntent) },
     bulletAngles: ROLES.slice(0, Math.min(5, Math.max(3, context.confirmedFacts.length))).map((role, index) => ({
       role,
       shopperValue: ["understand the main product value", "address a common need", "picture a realistic use", "follow the product details", "choose with confidence"][index]!,
@@ -121,11 +137,11 @@ function normalizeProviderStrategy(value: unknown, context: ListingV5Context): L
     primaryAngle,
     secondaryAngles: unique(Array.isArray(raw.secondaryAngles) ? raw.secondaryAngles as string[] : [], 4),
     tone: unique(Array.isArray(raw.tone) ? raw.tone as string[] : [], 3),
-    keywordIntent: {
-      primary: providerPrimary.length > 0 ? providerPrimary : keywordFallback.primary,
-      secondary: providerSecondary.length > 0 ? providerSecondary : keywordFallback.secondary,
-      backendOnly: [],
-    },
+    keywordIntent: (() => {
+      const primary = providerPrimary.length > 0 ? providerPrimary : keywordFallback.primary;
+      const secondary = providerSecondary.length > 0 ? providerSecondary : keywordFallback.secondary;
+      return { primary, secondary, backendOnly: backendOnlyTerms(context, primary, secondary) };
+    })(),
     bulletAngles,
     avoidClaims: unique(Array.isArray(raw.avoidClaims) ? raw.avoidClaims as string[] : [], 8),
   };

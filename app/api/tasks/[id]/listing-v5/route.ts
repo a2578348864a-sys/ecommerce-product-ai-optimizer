@@ -9,6 +9,8 @@ import { buildListingInputFromCreativeHandoff } from "@/lib/listingHandoff/listi
 import { mutateTaskResultJson, TaskResultJsonMutationError } from "@/lib/server/taskResultJsonMutation";
 import { prisma } from "@/lib/server/db";
 import { buildListingV5Context } from "@/lib/listingV5/context";
+import { buildListingV5ConversionBlueprint } from "@/lib/listingV5/conversionBlueprint";
+import { evaluateListingV5Quality } from "@/lib/listingV5/qualityEvaluation";
 import { analyzeListingV5Strategy } from "@/lib/listingV5/strategy";
 import { generateListingV5Draft, buildListingV5FallbackDraft } from "@/lib/listingV5/generation";
 import { repairListingV5Draft } from "@/lib/listingV5/structuredRepair";
@@ -167,7 +169,62 @@ function safeSnapshot(snapshot: unknown, currentRevision: number, currentHandoff
     competitorOverlapCount: isRecord(snapshot.validation.claims) && Array.isArray(snapshot.validation.claims.competitorOverlap) ? snapshot.validation.claims.competitorOverlap.length : 0,
     quality: isRecord(snapshot.validation.quality) ? snapshot.validation.quality : { repetitive: false, keywordStuffing: false, mechanicalTemplate: false },
   } : null;
-  return { version: snapshot.version, researchRevision: snapshot.researchRevision, handoffRevision: snapshot.handoffRevision, strategy, listing, validation, repairApplied: snapshot.repairApplied === true, provider: snapshot.provider ?? { strategyAttempted: false, writerAttempted: false, repairAttempted: false, fallbackUsed: true }, humanReviewRequired: true, trace: isListingV5TraceEnabled() ? safeTrace(snapshot.trace) : undefined, stale };
+  // Conversion intelligence layer projection: bounded, reference-only, and
+  // additive. It never carries Validator authority and never carries facts.
+  const conversionBlueprint = isRecord(snapshot.conversionBlueprint) ? {
+    version: String(snapshot.conversionBlueprint.version ?? ""),
+    referenceOnly: true,
+    buyerIntent: isRecord(snapshot.conversionBlueprint.buyerIntent) ? {
+      primary: String(snapshot.conversionBlueprint.buyerIntent.primary ?? ""),
+      secondary: Array.isArray(snapshot.conversionBlueprint.buyerIntent.secondary) ? snapshot.conversionBlueprint.buyerIntent.secondary.filter((item): item is string => typeof item === "string").slice(0, 5) : [],
+      stage: String(snapshot.conversionBlueprint.buyerIntent.stage ?? ""),
+    } : null,
+    painPoints: Array.isArray(snapshot.conversionBlueprint.painPoints)
+      ? snapshot.conversionBlueprint.painPoints.filter(isRecord).slice(0, 6).map((item) => ({
+        pain: String(item.pain ?? ""),
+        source: String(item.source ?? ""),
+        factBacked: item.factBacked === true,
+        proofFactCount: Array.isArray(item.proofFactIds) ? item.proofFactIds.length : 0,
+      }))
+      : [],
+    competitorGaps: Array.isArray(snapshot.conversionBlueprint.competitorGaps)
+      ? snapshot.conversionBlueprint.competitorGaps.filter(isRecord).slice(0, 4).map((item) => ({
+        dimension: String(item.dimension ?? ""),
+        ourFactCount: Array.isArray(item.ourFactIds) ? item.ourFactIds.length : 0,
+      }))
+      : [],
+    conversionAngle: isRecord(snapshot.conversionBlueprint.conversionAngle) ? {
+      angle: String(snapshot.conversionBlueprint.conversionAngle.angle ?? ""),
+      whyItConverts: String(snapshot.conversionBlueprint.conversionAngle.whyItConverts ?? ""),
+    } : null,
+    proofPointCount: Array.isArray(snapshot.conversionBlueprint.proofPoints) ? snapshot.conversionBlueprint.proofPoints.length : 0,
+    benefitOrder: Array.isArray(snapshot.conversionBlueprint.benefitOrder)
+      ? snapshot.conversionBlueprint.benefitOrder.filter(isRecord).slice(0, 5).map((item) => ({
+        role: String(item.role ?? ""),
+        shopperValue: String(item.shopperValue ?? ""),
+        hasPrimaryFact: typeof item.primaryFactId === "string" && item.primaryFactId.length > 0,
+      }))
+      : [],
+    disallowedTemptations: Array.isArray(snapshot.conversionBlueprint.disallowedTemptations) ? snapshot.conversionBlueprint.disallowedTemptations.filter((item): item is string => typeof item === "string").slice(0, 24) : [],
+  } : null;
+  const qualityEvaluation = isRecord(snapshot.qualityEvaluation) ? {
+    version: String(snapshot.qualityEvaluation.version ?? ""),
+    total: typeof snapshot.qualityEvaluation.total === "number" ? snapshot.qualityEvaluation.total : 0,
+    max: 100,
+    grade: String(snapshot.qualityEvaluation.grade ?? "D"),
+    deterministicFallback: snapshot.qualityEvaluation.deterministicFallback === true,
+    notes: Array.isArray(snapshot.qualityEvaluation.notes) ? snapshot.qualityEvaluation.notes.filter((item): item is string => typeof item === "string").slice(0, 4) : [],
+    dimensions: Array.isArray(snapshot.qualityEvaluation.dimensions)
+      ? snapshot.qualityEvaluation.dimensions.filter(isRecord).slice(0, 5).map((item) => ({
+        id: String(item.id ?? ""),
+        label: String(item.label ?? ""),
+        score: typeof item.score === "number" ? item.score : 0,
+        max: typeof item.max === "number" ? item.max : 0,
+        evidence: Array.isArray(item.evidence) ? item.evidence.filter((line): line is string => typeof line === "string").slice(0, 4) : [],
+      }))
+      : [],
+  } : null;
+  return { version: snapshot.version, researchRevision: snapshot.researchRevision, handoffRevision: snapshot.handoffRevision, strategy, listing, validation, conversionBlueprint, qualityEvaluation, repairApplied: snapshot.repairApplied === true, provider: snapshot.provider ?? { strategyAttempted: false, writerAttempted: false, repairAttempted: false, fallbackUsed: true }, humanReviewRequired: true, trace: isListingV5TraceEnabled() ? safeTrace(snapshot.trace) : undefined, stale };
 }
 
 async function buildContext(taskId: string, ctx: AccessContext) {
@@ -327,10 +384,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       fallbackUsed: fallbackReason !== "none",
       fallbackReason,
     });
+    const snapshotListing = draft ?? carriedListing;
+    const snapshotProvider = carriedProvider ?? provider;
+    // Conversion intelligence layer (Phase 2/3/4): deterministic, provider-free,
+    // and strictly additive. The Validator result above is never modified here.
+    const conversionBlueprint = snapshotListing ? buildListingV5ConversionBlueprint(context, strategyResult.strategy) : null;
+    const qualityEvaluation = snapshotListing && finalValidation
+      ? evaluateListingV5Quality({
+        context,
+        strategy: strategyResult.strategy,
+        blueprint: conversionBlueprint!,
+        draft: snapshotListing,
+        validation: finalValidation,
+        deterministicFallback: snapshotProvider.fallbackUsed,
+      })
+      : null;
     const snapshot: ListingV5Snapshot = {
       version: "listing-v5.snapshot.v1", taskId: id, researchRevision: context.researchRevision, handoffRevision: context.handoffRevision, contextFingerprint: context.contextFingerprint,
-      strategy: strategyResult.strategy, listing: draft ?? carriedListing, validation: finalValidation ?? { version: LISTING_V5_VALIDATION_VERSION, status: "PASS", title: { valid: true, issues: [] }, bullets: [], description: { valid: true, issues: [] }, claims: { allHaveEvidence: true, unsupportedClaims: [], prohibitedClaims: [], competitorOverlap: [] }, quality: { repetitive: false, keywordStuffing: false, mechanicalTemplate: false }, repair: { allowed: false, reason: null, targets: [] } },
-      strategyPromptVersion: LISTING_V5_STRATEGY_PROMPT_VERSION, writerPromptVersion: LISTING_V5_WRITER_PROMPT_VERSION, validatorVersion: LISTING_V5_VALIDATION_VERSION, repairApplied: carriedRepairApplied ?? repairApplied, repairPromptVersion: LISTING_V5_REPAIR_PROMPT_VERSION, provider: carriedProvider ?? provider,       model: useProvider ? "configured-provider" : "deterministic-safe", generatedAt: new Date().toISOString(), humanReviewRequired: true,
+      strategy: strategyResult.strategy, listing: snapshotListing, validation: finalValidation ?? { version: LISTING_V5_VALIDATION_VERSION, status: "PASS", title: { valid: true, issues: [] }, bullets: [], description: { valid: true, issues: [] }, claims: { allHaveEvidence: true, unsupportedClaims: [], prohibitedClaims: [], competitorOverlap: [] }, quality: { repetitive: false, keywordStuffing: false, mechanicalTemplate: false }, repair: { allowed: false, reason: null, targets: [] } },
+      conversionBlueprint, qualityEvaluation,
+      strategyPromptVersion: LISTING_V5_STRATEGY_PROMPT_VERSION, writerPromptVersion: LISTING_V5_WRITER_PROMPT_VERSION, validatorVersion: LISTING_V5_VALIDATION_VERSION, repairApplied: carriedRepairApplied ?? repairApplied, repairPromptVersion: LISTING_V5_REPAIR_PROMPT_VERSION, provider: snapshotProvider,       model: useProvider ? "configured-provider" : "deterministic-safe", generatedAt: new Date().toISOString(), humanReviewRequired: true,
       ...(isListingV5TraceEnabled() ? { trace } : {}),
     };
     const fresh = await buildContext(id, verified.ctx!);
