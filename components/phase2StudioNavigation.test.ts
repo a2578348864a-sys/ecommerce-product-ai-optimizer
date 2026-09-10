@@ -7,13 +7,12 @@ function source(path: string) {
 }
 
 describe("Phase 2 Studio entry points", () => {
-  it("renders Listing Studio in Manual and Task modes instead of redirecting", () => {
+  it("renders the V5 Listing Studio entry point instead of redirecting", () => {
     const page = source("app/listing-studio/page.tsx");
     expect(page).not.toContain("redirect(");
-    expect(page).toContain("ListingStudioClient");
+    expect(page).toContain("ListingStudioV5Client");
     expect(page).toContain("taskId");
-    expect(page).toContain("独立创作");
-    expect(page).toContain("来自研究记录");
+    expect(page).toContain("营销策略、Listing 草稿与安全复核");
   });
 
   it("renders Image Studio in Manual and Task modes instead of redirecting", () => {
