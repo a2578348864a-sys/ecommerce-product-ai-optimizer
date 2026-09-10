@@ -12,7 +12,7 @@ describe("Phase 2 Studio entry points", () => {
     expect(page).not.toContain("redirect(");
     expect(page).toContain("ListingStudioV5Client");
     expect(page).toContain("taskId");
-    expect(page).toContain("营销策略、Listing 草稿与安全复核");
+    expect(page).toContain("基于服务端重新核验的研究事实生成 Listing 草稿");
   });
 
   it("renders Image Studio in Manual and Task modes instead of redirecting", () => {

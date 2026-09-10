@@ -194,7 +194,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { gate, context } = await buildContext(id, verified.ctx!);
   if (!context) return error(422, gate.reason, "当前研究资料还不能生成 Listing V5。请先完成研究与人工确认。");
   const result = await readResult(id, verified.ctx!);
-  return NextResponse.json({ ok: true, data: { context: { researchRevision: context.researchRevision, handoffRevision: context.handoffRevision, contextFingerprint: context.contextFingerprint, factCount: context.confirmedFacts.length, referenceCounts: { voc: context.references.voc.length, keywords: context.references.keywords.length, competitors: context.references.competitors.length, sourcing: context.references.sourcing.length } }, snapshot: safeSnapshot(result?.listingV5, context.researchRevision, context.handoffRevision, context.contextFingerprint) } });
+  // `realAiEnabled` is server-authoritative so the client can disable (and
+  // explain) the real-AI confirmation instead of letting the user tick a box
+  // that cannot change anything.
+  return NextResponse.json({ ok: true, data: { realAiEnabled: isRealAiListingEnabled(), context: { researchRevision: context.researchRevision, handoffRevision: context.handoffRevision, contextFingerprint: context.contextFingerprint, factCount: context.confirmedFacts.length, referenceCounts: { voc: context.references.voc.length, keywords: context.references.keywords.length, competitors: context.references.competitors.length, sourcing: context.references.sourcing.length } }, snapshot: safeSnapshot(result?.listingV5, context.researchRevision, context.handoffRevision, context.contextFingerprint) } });
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
