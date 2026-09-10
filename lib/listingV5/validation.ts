@@ -160,6 +160,11 @@ function uncoveredAttributeAssertions(segment: string, segmentTokens: Set<string
       const word = (match[1] ?? "").toLowerCase();
       if (!word) continue;
       if (allConfirmedTokens.has(word)) continue;
+      // A hyphenated compound is covered when every part of it is a confirmed
+      // token: "dishwasher-safe" restates the confirmed "dishwasher-safe bottle
+      // and lid" even though the token set holds the split form.
+      const parts = normalizeTokens(word);
+      if (parts.length > 1 && parts.every((token) => allConfirmedTokens.has(token))) continue;
       if (RELATIONAL_COMPLEMENTS.has(word)) continue;
       if (hasConfirmedNumber && MEASUREMENT_PARTICIPLES.has(word)) continue;
       offenders.push(word);
@@ -325,6 +330,8 @@ function locateDraftField(draft: ListingV5WriterDraft, segment: string): string 
 const MAX_REPAIRABLE_CLAIMS = 4;
 const MAX_REPAIRABLE_FIELDS = 3;
 const MAX_REPAIR_TARGETS = 3;
+/** Bound on the reported violation evidence, resolver-derived and scanned alike. */
+const MAX_UNSUPPORTED_DETAILS = 10;
 
 export function validateListingV5Draft(context: ListingV5Context, strategy: ListingV5Strategy, draft: ListingV5WriterDraft): ListingV5ValidationResult {
   const allowed = new Set(context.confirmedFacts.map((fact) => fact.id));
@@ -371,12 +378,40 @@ export function validateListingV5Draft(context: ListingV5Context, strategy: List
   const unsupportedDetails: ListingV5UnsupportedDetail[] = evidence.unsupportedClaims
     .filter((item) => item.reason !== "unclassified_factual_claim"
       || !isAnchoredToConfirmedValue(item.text, allowedValues))
-    .slice(0, 10)
+    .slice(0, MAX_UNSUPPORTED_DETAILS)
     .map((item) => {
       const violation = describeUnsupportedSegment(item.text, allowedValues);
       return { text: item.text, reason: item.reason, field: locateDraftField(draft, item.text), ...violation };
     });
-  const unsupportedClaims = unsupportedDetails.map((item) => item.text);
+  // The upstream Claim Evidence resolver only reports a sentence when its own
+  // (largely Chinese) risk vocabulary fires, so an English claim such as
+  // "Leakproof lid keeps drinks secure all day." reached this validator
+  // unflagged and passed: the hard-token / copula net below never saw it.
+  // Every sentence of the draft is therefore scanned here, independently of
+  // what the resolver reported, using the same detectors. Nothing about the
+  // permission model changes - these are the validator's own findings.
+  const alreadyFlagged = new Set(unsupportedDetails.map((item) => normalize(item.text)));
+  const scannedDetails: ListingV5UnsupportedDetail[] = [];
+  const draftSegments: Array<{ field: string; text: string }> = [
+    { field: "title", text: draft.title.text },
+    ...draft.bullets.map((bullet, index) => ({ field: `bullets[${index}]`, text: bullet.text })),
+    { field: "description", text: draft.description.text },
+  ];
+  for (const entry of draftSegments) {
+    for (const segment of segmentSentences(entry.text)) {
+      if (scannedDetails.length >= MAX_UNSUPPORTED_DETAILS) break;
+      const key = normalize(segment);
+      if (!key || alreadyFlagged.has(key)) continue;
+      alreadyFlagged.add(key);
+      const violation = describeUnsupportedSegment(segment, allowedValues);
+      // "unsupported_claim" means no offending word was identified, so the
+      // sentence stays with the resolver-derived set only.
+      if (violation.issueCode === "unsupported_claim") continue;
+      scannedDetails.push({ text: segment, reason: "unclassified_factual_claim", field: entry.field, ...violation });
+    }
+  }
+  const allDetails: ListingV5UnsupportedDetail[] = [...unsupportedDetails, ...scannedDetails].slice(0, MAX_UNSUPPORTED_DETAILS);
+  const unsupportedClaims = allDetails.map((item) => item.text);
   const prohibitedClaims = evidence.prohibitedClaims.slice(0, 10);
   const keywordStuffing = hasKeywordStuffing(strategy, draft);
   const repetitive = new Set(draft.bullets.map((item) => normalize(item.text))).size !== draft.bullets.length;
@@ -385,8 +420,8 @@ export function validateListingV5Draft(context: ListingV5Context, strategy: List
 
   // Blocking reasons are the ones that cannot be confined to one text field.
   const blockingClaims = prohibitedClaims.length + competitorOverlap.length
-    + unsupportedDetails.filter((item) => !isLocallyRepairableClaim(item) || item.field === "unknown").length;
-  const locallyRepairable = unsupportedDetails.filter((item) => isLocallyRepairableClaim(item) && item.field !== "unknown");
+    + allDetails.filter((item) => !isLocallyRepairableClaim(item) || item.field === "unknown").length;
+  const locallyRepairable = allDetails.filter((item) => isLocallyRepairableClaim(item) && item.field !== "unknown");
   const repairableFields = new Set(locallyRepairable.map((item) => item.field));
   const repairScopeTooBroad = locallyRepairable.length > MAX_REPAIRABLE_CLAIMS || repairableFields.size > MAX_REPAIRABLE_FIELDS;
 
@@ -414,7 +449,7 @@ export function validateListingV5Draft(context: ListingV5Context, strategy: List
     version: LISTING_V5_VALIDATION_VERSION, status,
     title: { valid: titleIssues.length === 0, issues: titleIssues }, bullets: bulletResults,
     description: { valid: descriptionIssues.length === 0, issues: descriptionIssues },
-    claims: { allHaveEvidence: unsupportedClaims.length === 0 && prohibitedClaims.length === 0, unsupportedClaims, prohibitedClaims, competitorOverlap, unsupportedDetails },
+    claims: { allHaveEvidence: unsupportedClaims.length === 0 && prohibitedClaims.length === 0, unsupportedClaims, prohibitedClaims, competitorOverlap, unsupportedDetails: allDetails },
     quality: { repetitive, keywordStuffing, mechanicalTemplate },
     repair: { allowed: status === "REPAIRABLE" && repairTargets.length > 0, reason: status === "REPAIRABLE" ? "仅允许一次结构化修复" : null, targets: status === "REPAIRABLE" ? repairTargets : [] },
   };

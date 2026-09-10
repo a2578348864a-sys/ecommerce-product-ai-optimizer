@@ -27,7 +27,7 @@ import {
   type ListingV5StageTrace,
   type ListingV5ValidationStatus,
 } from "@/lib/listingV5/trace";
-import type { ListingV5Snapshot, ListingV5Strategy, ListingV5ValidationResult } from "@/lib/listingV5/types";
+import type { ListingV5Snapshot, ListingV5Strategy, ListingV5ValidationResult, ListingV5WriterDraft } from "@/lib/listingV5/types";
 import {
   LISTING_V5_REPAIR_PROMPT_VERSION,
   LISTING_V5_STRATEGY_PROMPT_VERSION,
@@ -230,23 +230,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // analyze_strategy and generate run concurrently and race on the same
   // listingV5 snapshot.
   const jobKey = `${id}:${context.contextFingerprint}`;
+  // The lock is taken only after every pre-flight step that can fail or throw
+  // has passed: a rejected request must never leave the key behind, which would
+  // wedge this task+context with 409 until the process restarts. The check and
+  // the add stay in one synchronous block, so they remain atomic.
   if (ACTIVE_V5_JOBS.has(jobKey)) return error(409, "listing_v5_running", "Listing V5 正在处理中，请等待当前请求完成。");
-  ACTIVE_V5_JOBS.add(jobKey);
   const useProvider = isRealAiListingEnabled();
   if (useProvider && verified.ctx!.mode === "demo" && !isRealAiVisitorListingEnabled()) {
-    ACTIVE_V5_JOBS.delete(jobKey);
     return error(403, "visitor_listing_generation_disabled", "Listing 真实 AI 暂未对访客开放。");
   }
   if (useProvider && body.confirmRealAi !== true) {
-    ACTIVE_V5_JOBS.delete(jobKey);
     return error(400, "real_ai_confirmation_required", "调用真实 AI 前需要再次确认。");
   }
   const plannedCalls = action === "analyze_strategy" ? 1 : cachedStrategy ? 2 : 3;
-  const quota = useProvider ? reserveDemoAiCalls(verified.ctx!, plannedCalls) : { ok: true as const, reservation: null };
-  if (!quota.ok) {
-    ACTIVE_V5_JOBS.delete(jobKey);
-    return error(quota.status, quota.code, quota.message);
+  let quota: { ok: true; reservation: null } | { ok: false; status: number; code: string; message: string };
+  try {
+    quota = useProvider ? (reserveDemoAiCalls(verified.ctx!, plannedCalls) as typeof quota) : { ok: true as const, reservation: null };
+  } catch {
+    // The reservation is the last step before the lock is taken, so a failure
+    // here must fail the request cleanly instead of escaping as an unhandled
+    // error (and it can never strand the job key).
+    return error(500, "listing_v5_failed", "Listing V5 暂时无法完成，请稍后重试。");
   }
+  if (!quota.ok) return error(quota.status, quota.code, quota.message);
+  ACTIVE_V5_JOBS.add(jobKey);
   let providerCallsStarted = 0;
   let quotaSettled = false;
   const onProviderCallStart = () => {
@@ -302,19 +309,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         validation = validateListingV5Draft(context, strategyResult.strategy, draft);
       }
     }
+    // `analyze_strategy` refreshes the strategy only: it must not discard a
+    // listing the user already generated, and it must never publish a
+    // validation result that does not belong to the listing in the snapshot.
+    const strategyOnly = action === "analyze_strategy";
+    const carriedListing = strategyOnly && isRecord(cached?.listing) ? (cached.listing as unknown as ListingV5WriterDraft) : null;
+    const carriedValidation = strategyOnly && isRecord(cached?.validation) ? (cached.validation as unknown as ListingV5ValidationResult) : null;
+    const carriedProvider = strategyOnly && carriedListing && isRecord(cached?.provider) ? (cached.provider as typeof provider) : null;
+    const carriedRepairApplied = strategyOnly && carriedListing ? cached?.repairApplied === true : null;
+    const finalValidation = validation ?? carriedValidation;
     const trace = buildListingV5ExecutionTrace({
       strategy: strategyResult.trace ?? idleStageTrace(),
       writer: writerTrace,
       repair: repairTrace,
-      validation: firstValidation ?? validation,
-      finalValidation: validation,
+      validation: firstValidation ?? finalValidation,
+      finalValidation,
       fallbackUsed: fallbackReason !== "none",
       fallbackReason,
     });
     const snapshot: ListingV5Snapshot = {
       version: "listing-v5.snapshot.v1", taskId: id, researchRevision: context.researchRevision, handoffRevision: context.handoffRevision, contextFingerprint: context.contextFingerprint,
-      strategy: strategyResult.strategy, listing: draft, validation: validation ?? { version: LISTING_V5_VALIDATION_VERSION, status: "PASS", title: { valid: true, issues: [] }, bullets: [], description: { valid: true, issues: [] }, claims: { allHaveEvidence: true, unsupportedClaims: [], prohibitedClaims: [], competitorOverlap: [] }, quality: { repetitive: false, keywordStuffing: false, mechanicalTemplate: false }, repair: { allowed: false, reason: null, targets: [] } },
-      strategyPromptVersion: LISTING_V5_STRATEGY_PROMPT_VERSION, writerPromptVersion: LISTING_V5_WRITER_PROMPT_VERSION, validatorVersion: LISTING_V5_VALIDATION_VERSION, repairApplied, repairPromptVersion: LISTING_V5_REPAIR_PROMPT_VERSION, provider,       model: useProvider ? "configured-provider" : "deterministic-safe", generatedAt: new Date().toISOString(), humanReviewRequired: true,
+      strategy: strategyResult.strategy, listing: draft ?? carriedListing, validation: finalValidation ?? { version: LISTING_V5_VALIDATION_VERSION, status: "PASS", title: { valid: true, issues: [] }, bullets: [], description: { valid: true, issues: [] }, claims: { allHaveEvidence: true, unsupportedClaims: [], prohibitedClaims: [], competitorOverlap: [] }, quality: { repetitive: false, keywordStuffing: false, mechanicalTemplate: false }, repair: { allowed: false, reason: null, targets: [] } },
+      strategyPromptVersion: LISTING_V5_STRATEGY_PROMPT_VERSION, writerPromptVersion: LISTING_V5_WRITER_PROMPT_VERSION, validatorVersion: LISTING_V5_VALIDATION_VERSION, repairApplied: carriedRepairApplied ?? repairApplied, repairPromptVersion: LISTING_V5_REPAIR_PROMPT_VERSION, provider: carriedProvider ?? provider,       model: useProvider ? "configured-provider" : "deterministic-safe", generatedAt: new Date().toISOString(), humanReviewRequired: true,
       ...(isListingV5TraceEnabled() ? { trace } : {}),
     };
     const fresh = await buildContext(id, verified.ctx!);

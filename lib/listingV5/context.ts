@@ -39,6 +39,26 @@ function text(value: unknown, max = MAX_REFERENCE_CHARS): string {
   return typeof value === "string" ? value.normalize("NFC").replace(/\s+/g, " ").trim().slice(0, max) : "";
 }
 
+/**
+ * A confirmed fact value may be a string, a number, a boolean or a string list
+ * (ProductCreativeHandoffFactValue). Only strings used to survive this far, so
+ * an array fact such as ["Expandable", "Food Safe"] silently disappeared from
+ * the fact set and could never anchor copy. The value is normalised the same way
+ * the legacy listing input does instead of being dropped.
+ */
+function factValueText(value: unknown, max: number): string {
+  if (Array.isArray(value)) {
+    const parts = value
+      .filter((item) => typeof item === "string" || typeof item === "number" || typeof item === "boolean")
+      .map((item) => String(item).normalize("NFC").replace(/\s+/g, " ").trim())
+      .filter(Boolean);
+    return text(parts.join(", "), max);
+  }
+  if (typeof value === "number" && Number.isFinite(value)) return text(String(value), max);
+  if (typeof value === "boolean") return text(value ? "true" : "false", max);
+  return text(value, max);
+}
+
 function reference(textValue: string, sourceType: ListingV5Reference["sourceType"]): ListingV5Reference | null {
   const value = text(textValue).replace(PROMPT_CONTROL_TEXT, "").replace(/\s+/g, " ").trim();
   return value ? { text: value, sourceType, marker: "UNTRUSTED_REFERENCE_DATA", notProductFact: true } : null;
@@ -77,7 +97,7 @@ export function buildListingV5Context(input: ListingV5ContextInput): ListingV5Co
     id: text(fact.factId, 120) || text(fact.field, 120),
     canonicalField: text(fact.field, 120),
     label: text(fact.label, 160) || text(fact.field, 120),
-    value: text(fact.value, 500),
+    value: factValueText(fact.value, 500),
     sourceRefs: (fact.sourceRefs ?? []).filter((ref): ref is string => typeof ref === "string").map((ref) => text(ref, 160)).filter(Boolean).slice(0, 4),
   })).filter((fact) => fact.id && fact.canonicalField && fact.value);
 
