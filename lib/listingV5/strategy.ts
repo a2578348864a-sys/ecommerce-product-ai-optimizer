@@ -14,7 +14,10 @@ export function buildListingV5Strategy(context: ListingV5Context): ListingV5Stra
   const painPoints = unique(voc, 5);
   const primaryKeyword = keywords[0] || product;
   const buyer = painPoints.length > 0 ? "Shoppers seeking a simpler everyday routine" : "Shoppers comparing practical product options";
-  const angle = painPoints[0] ? `Make ${painPoints[0].toLowerCase()} easier to address` : `Make ${product.toLowerCase()} easier to understand and use`;
+  // VOC is reference material for motivation and scenarios. Keep the primary
+  // angle product-scoped so a review summary is never presented as a product
+  // fact or copied directly into the strategy headline.
+  const angle = `Make ${product.toLowerCase()} easier to understand and use`;
   return {
     version: "listing-v5.strategy.v1",
     referenceOnly: true,

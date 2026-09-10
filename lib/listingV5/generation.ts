@@ -12,11 +12,21 @@ function fallback(context: ListingV5Context, strategy: ListingV5Strategy): Listi
     const role = strategy.bulletAngles[index]?.role ?? ROLES[index] ?? "proof_or_fit";
     const value = strategy.bulletAngles[index]?.shopperValue ?? "support a clear everyday choice";
     const scenario = strategy.useCases[index % Math.max(1, strategy.useCases.length)] ?? "daily routines";
+    const field = fact.canonicalField.toLowerCase();
+    const factPhrase = field === "material" || field === "construction"
+      ? `${product} is made with ${fact.value}`
+      : field === "quantity_or_pack_size" || field === "quantity"
+        ? `${product} comes as a ${fact.value} option`
+        : field === "capacity"
+          ? `${product} offers a ${fact.value} capacity`
+          : field === "color_or_variant" || field === "color"
+            ? `${product} is available in ${fact.value}`
+            : `${product} includes ${fact.value}`;
     const frames = [
-      `${fact.value} ${fact.label.toLowerCase()} helps shoppers ${value} when choosing ${product}.`,
+      `${factPhrase}, helping shoppers ${value}.`,
       `With ${fact.value}, shoppers can focus on ${value} during ${scenario.toLowerCase()}.`,
       `Use ${product} with ${fact.value} in ${scenario.toLowerCase()} for a clear, practical routine.`,
-      `${fact.value} offers a clear product detail to consider for ${scenario.toLowerCase()}.`,
+      `${product} includes ${fact.value} as a clear detail to consider for ${scenario.toLowerCase()}.`,
       `${fact.value} gives shoppers a supported detail to consider for ${scenario.toLowerCase()}.`,
     ];
     return { text: frames[index % frames.length], factIds: [fact.id], strategyRole: role };

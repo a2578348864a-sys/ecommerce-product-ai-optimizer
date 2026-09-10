@@ -45,6 +45,7 @@ describe("Listing V5", () => {
     expect(strategy.referenceOnly).toBe(true);
     expect(strategy).not.toHaveProperty("factId");
     expect(strategy.primaryAngle).toContain("easier");
+    expect(strategy.primaryAngle).not.toContain("messy counters");
   });
 
   it("renders a safe draft with fact anchors and validates it", () => {
@@ -54,6 +55,7 @@ describe("Listing V5", () => {
     expect(draft.bullets.length).toBeGreaterThanOrEqual(3);
     expect(draft.bullets.every((item) => item.factIds.length > 0)).toBe(true);
     expect(draft.bullets.every((item) => !/\b(?:brand|material|color|quantity|product type)\s*:/i.test(item.text))).toBe(true);
+    expect(draft.bullets.join(" ")).not.toContain("Steel material");
     const report = validateListingV5Draft(value, strategy, draft);
     expect(report.claims.prohibitedClaims).toEqual([]);
     expect(report.claims.allHaveEvidence).toBe(true);
