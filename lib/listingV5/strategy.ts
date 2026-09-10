@@ -96,7 +96,8 @@ export async function analyzeListingV5Strategy(context: ListingV5Context, option
       { role: "user", content: JSON.stringify({ task: "Create bounded reference-only strategy", productIdentity: context.productIdentity, confirmedFactLabels: context.confirmedFacts.map((f) => f.label), references: context.references, manualDirection: context.manualDirection }) },
     ],
     temperature: 0.2,
-    maxTokens: 1800,
+    maxTokens: 8000,
+    thinkingMode: "disabled",
     onProviderCallStart: options.onProviderCallStart,
   });
   if (!response.ok) return { strategy: buildListingV5Strategy(context), providerAttempted: response.providerCallStarted === true, providerSucceeded: false, diagnostics: response.diagnostics, trace: traceProviderStage({ useProvider: true, response, normalized: false }) };

@@ -55,7 +55,8 @@ export async function repairListingV5Draft(input: {
       { role: "user", content: JSON.stringify({ path: targetLabel, currentText, issues: input.validation, confirmedFacts: input.context.confirmedFacts, strategy: input.strategy }) },
     ],
     temperature: 0.2,
-    maxTokens: 900,
+    maxTokens: 2000,
+    thinkingMode: "disabled",
     onProviderCallStart: input.onProviderCallStart,
   });
   if (!response.ok) {

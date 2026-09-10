@@ -91,7 +91,8 @@ export async function generateListingV5Draft(context: ListingV5Context, strategy
       { role: "user", content: JSON.stringify({ confirmedFacts: context.confirmedFacts, strategy, prohibitedClaims: context.prohibitedClaims, unknowns: context.unknowns, keywordIntent: strategy.keywordIntent }) },
     ],
     temperature: 0.35,
-    maxTokens: 3200,
+    maxTokens: 8000,
+    thinkingMode: "disabled",
     onProviderCallStart: options.onProviderCallStart,
   });
   if (!response.ok) return { draft: fallback(context, strategy), providerAttempted: response.providerCallStarted === true, providerSucceeded: false, diagnostics: response.diagnostics, trace: traceProviderStage({ useProvider: true, response, normalized: false }) };
