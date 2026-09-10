@@ -355,19 +355,150 @@ describe("Listing V5 route", () => {
   });
 
   it("rejects a duplicate in-flight action while the first request owns the job key", async () => {
+    // A dedicated context fingerprint keeps this test's job lock from leaking
+    // into any other test, even when an assertion below fails.
+    state.context = context("fp-duplicate");
+    let signalEntered!: () => void;
+    const entered = new Promise<void>((resolve) => { signalEntered = resolve; });
     let release!: () => void;
     const blocked = new Promise<void>((resolve) => { release = resolve; });
     mocks.generateListingV5Draft.mockImplementationOnce(async () => {
+      signalEntered();
       await blocked;
       return { draft: state.generatedDraft, providerAttempted: false, providerSucceeded: false };
     });
 
     const first = POST(request("POST", "task-1", { action: "generate" }), { params: Promise.resolve({ id: "task-1" }) });
-    await Promise.resolve();
-    const duplicate = await POST(request("POST", "task-1", { action: "generate" }), { params: Promise.resolve({ id: "task-1" }) });
-    expect(duplicate.status).toBe(409);
-    expect((await json(duplicate)).error.code).toBe("listing_v5_running");
-    release();
-    expect((await first).status).toBe(200);
+    // The mocked stage only runs after the route has taken the lock, so waiting
+    // for it proves lock ownership instead of guessing with Promise.resolve().
+    await entered;
+    try {
+      const duplicate = await POST(request("POST", "task-1", { action: "generate" }), { params: Promise.resolve({ id: "task-1" }) });
+      expect(duplicate.status).toBe(409);
+      expect((await json(duplicate)).error.code).toBe("listing_v5_running");
+    } finally {
+      // Must run even when an assertion throws: otherwise the blocked first
+      // request never settles and its job key stays in ACTIVE_V5_JOBS.
+      release();
+    }
+    const firstResponse = await first;
+    expect(firstResponse.status).toBe(200);
+  });
+
+  it("rejects the removed revalidate action instead of regenerating the listing", async () => {
+    const response = await POST(request("POST", "task-1", { action: "revalidate" }), { params: Promise.resolve({ id: "task-1" }) });
+    expect(response.status).toBe(400);
+    expect((await json(response)).error.code).toBe("invalid_action");
+    // Re-validating must never reach the writer or touch persisted state.
+    expect(mocks.generateListingV5Draft).not.toHaveBeenCalled();
+    expect(mocks.analyzeListingV5Strategy).not.toHaveBeenCalled();
+    expect(mocks.mutateTaskResultJson).not.toHaveBeenCalled();
+  });
+
+  it("serializes generate behind an in-flight analyze_strategy on the same task and context", async () => {
+    state.context = context("fp-analyze-generate");
+    let signalEntered!: () => void;
+    const entered = new Promise<void>((resolve) => { signalEntered = resolve; });
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+    mocks.analyzeListingV5Strategy.mockImplementationOnce(async () => {
+      signalEntered();
+      await blocked;
+      return { strategy: state.strategy, providerAttempted: false, providerSucceeded: false };
+    });
+
+    const first = POST(request("POST", "task-1", { action: "analyze_strategy" }), { params: Promise.resolve({ id: "task-1" }) });
+    await entered;
+    try {
+      const duplicate = await POST(request("POST", "task-1", { action: "generate" }), { params: Promise.resolve({ id: "task-1" }) });
+      expect(duplicate.status).toBe(409);
+      expect((await json(duplicate)).error.code).toBe("listing_v5_running");
+      // The blocked second request must not start a writer run.
+      expect(mocks.generateListingV5Draft).not.toHaveBeenCalled();
+    } finally {
+      release();
+    }
+    const firstResponse = await first;
+    expect(firstResponse.status).toBe(200);
+  });
+
+  it("serializes analyze_strategy behind an in-flight generate on the same task and context", async () => {
+    state.context = context("fp-generate-analyze");
+    let signalEntered!: () => void;
+    const entered = new Promise<void>((resolve) => { signalEntered = resolve; });
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+    mocks.generateListingV5Draft.mockImplementationOnce(async () => {
+      signalEntered();
+      await blocked;
+      return { draft: state.generatedDraft, providerAttempted: false, providerSucceeded: false };
+    });
+
+    const first = POST(request("POST", "task-1", { action: "generate" }), { params: Promise.resolve({ id: "task-1" }) });
+    await entered;
+    try {
+      const duplicate = await POST(request("POST", "task-1", { action: "analyze_strategy" }), { params: Promise.resolve({ id: "task-1" }) });
+      expect(duplicate.status).toBe(409);
+      expect((await json(duplicate)).error.code).toBe("listing_v5_running");
+      // The first request is a generate run, so it legitimately analyzes the
+      // strategy once; the blocked second request must not add a second call.
+      expect(mocks.analyzeListingV5Strategy).toHaveBeenCalledTimes(1);
+    } finally {
+      release();
+    }
+    const firstResponse = await first;
+    expect(firstResponse.status).toBe(200);
+  });
+
+  it("falls back honestly when a successful repair still leaves the draft invalid", async () => {
+    state.useProvider = true;
+    // Own job-lock key: a lock leaked by another test must not turn this
+    // expected 200 into a 409.
+    state.context = context("fp-repair-fallback");
+    const repairable = {
+      ...passValidation,
+      status: "REPAIRABLE" as const,
+      claims: { ...passValidation.claims, unsupportedClaims: ["an unsupported claim"] },
+      repair: { allowed: true, reason: "仅允许一次结构化修复", targets: ["description"] },
+    };
+    const repairedDraft = {
+      ...draft,
+      description: { text: "A repaired description that still fails validation.", factIds: ["fact-1"] },
+    };
+    const fallbackDraft = {
+      ...draft,
+      title: { text: "Safe Fallback Title", factIds: ["fact-1"] },
+      description: { text: "Safe fallback description.", factIds: ["fact-1"] },
+    };
+    // 1st validation: writer draft is repairable. 2nd: after the successful
+    // repair it is STILL not PASS. 3rd: the fallback draft validates.
+    mocks.validateListingV5Draft
+      .mockReturnValueOnce(repairable)
+      .mockReturnValueOnce(repairable)
+      .mockReturnValue(passValidation);
+    mocks.repairListingV5Draft.mockResolvedValue({
+      draft: repairedDraft,
+      attempted: true,
+      succeeded: true,
+      appliedPaths: ["description"],
+    });
+    mocks.buildListingV5FallbackDraft.mockReturnValue(fallbackDraft);
+
+    const response = await POST(request("POST", "task-1", { action: "generate", confirmRealAi: true }), { params: Promise.resolve({ id: "task-1" }) });
+    const body = await json(response);
+    expect(response.status).toBe(200);
+
+    const snapshot = body.data.snapshot;
+    // The repaired AI draft never passed, so it must not be published and no
+    // deterministic rewrite may patch it into PASS.
+    expect(snapshot.listing.description.text).toBe("Safe fallback description.");
+    expect(snapshot.listing.description.text).not.toBe(repairedDraft.description.text);
+    expect(snapshot.listing.title.text).toBe("Safe Fallback Title");
+    expect(snapshot.provider.fallbackUsed).toBe(true);
+    expect(snapshot.validation.status).toBe("PASS");
+    expect(mocks.buildListingV5FallbackDraft).toHaveBeenCalledTimes(1);
+    // The repair really was applied before the fallback, and that stays visible.
+    expect(mocks.repairListingV5Draft).toHaveBeenCalledTimes(1);
+    expect(snapshot.repairApplied).toBe(true);
   });
 });

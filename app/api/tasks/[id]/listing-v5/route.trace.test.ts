@@ -257,7 +257,9 @@ describe("Listing V5 AI execution trace", () => {
     expect(trace.repairSuccess).toBe(true);
     expect(trace.repairFailureReason).toBe("none");
     expect(trace.finalValidationStatus).toBe("PASS");
-    // A failed bounded repair would keep the AI draft, so no fallback happened here.
+    // Repair succeeded and the repaired draft passed, so this really is an AI
+    // result: fallbackUsed stays false. (If the repaired draft were still not
+    // PASS the route must fall back instead - see the repair-failure test.)
     expect(trace.fallbackUsed).toBe(false);
     expect(trace.fallbackReason).toBe("none");
   });

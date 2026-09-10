@@ -160,4 +160,13 @@ describe("Listing V5 validator correctness", () => {
     expect(unsupported("Steel is lightweight for daily carry.").length).toBeGreaterThan(0);
     expect(unsupported("Steel helps shoppers compare a confirmed material detail.")).toEqual([]);
   });
+
+  it("allows a confirmed brand relation phrased as from", () => {
+    const ctx = context([{ ...brand }, { ...productType }]);
+    const strategy = buildListingV5Strategy(ctx);
+    const draft = draftWith({
+      bullets: [{ text: "The product is from Example Brand, helping shoppers identify the confirmed brand.", factIds: ["brand-1"], strategyRole: "core_outcome" }],
+    });
+    expect(validateListingV5Draft(ctx, strategy, draft).claims.unsupportedClaims).toEqual([]);
+  });
 });
