@@ -39,6 +39,23 @@ import {
 
 const ACTIVE_V5_JOBS = new Set<string>();
 
+/**
+ * Fail-closed placeholder for "there is no validation result for this listing".
+ * It must never claim PASS: returning a verified status for a listing nobody
+ * validated is exactly the fake-PASS failure mode this pipeline forbids, so an
+ * unvalidated snapshot reports BLOCK and says why.
+ */
+const NOT_VALIDATED_PLACEHOLDER: ListingV5ValidationResult = {
+  version: LISTING_V5_VALIDATION_VERSION,
+  status: "BLOCK",
+  title: { valid: false, issues: ["validation_not_run"] },
+  bullets: [],
+  description: { valid: false, issues: ["validation_not_run"] },
+  claims: { allHaveEvidence: false, unsupportedClaims: [], prohibitedClaims: [], competitorOverlap: [] },
+  quality: { repetitive: false, keywordStuffing: false, mechanicalTemplate: false },
+  repair: { allowed: false, reason: "validation_not_run", targets: [] },
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
 function error(status: number, code: string, message: string) { return NextResponse.json({ error: { code, message } }, { status }); }
 
@@ -370,10 +387,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // listing the user already generated, and it must never publish a
     // validation result that does not belong to the listing in the snapshot.
     const strategyOnly = action === "analyze_strategy";
+    // A cached listing may only be carried forward when it belongs to the same
+    // frozen context and was validated by the current Validator version.
+    // Otherwise the draft is kept (the user's copy must not disappear) but its
+    // validation is replaced by a fail-closed "not run" result: a stale PASS must
+    // never be republished under a new fingerprint.
+    // The context fingerprint already hashes the Validator version, so a matching
+    // fingerprint proves both; a snapshot written before the explicit version
+    // field existed is therefore acceptable through the fingerprint match alone.
     const carriedListing = strategyOnly && isRecord(cached?.listing) ? (cached.listing as unknown as ListingV5WriterDraft) : null;
-    const carriedValidation = strategyOnly && isRecord(cached?.validation) ? (cached.validation as unknown as ListingV5ValidationResult) : null;
-    const carriedProvider = strategyOnly && carriedListing && isRecord(cached?.provider) ? (cached.provider as typeof provider) : null;
-    const carriedRepairApplied = strategyOnly && carriedListing ? cached?.repairApplied === true : null;
+    const carriedListingIsCurrent = carriedListing !== null
+      && cached?.contextFingerprint === context.contextFingerprint
+      && (cached?.validatorVersion === undefined || cached?.validatorVersion === LISTING_V5_VALIDATION_VERSION);
+    const carriedValidation = carriedListingIsCurrent && isRecord(cached?.validation)
+      ? (cached.validation as unknown as ListingV5ValidationResult)
+      : null;
+    const carriedProvider = strategyOnly && carriedListing && carriedListingIsCurrent && isRecord(cached?.provider) ? (cached.provider as typeof provider) : null;
+    const carriedRepairApplied = strategyOnly && carriedListing && carriedListingIsCurrent ? cached?.repairApplied === true : null;
     const finalValidation = validation ?? carriedValidation;
     const trace = buildListingV5ExecutionTrace({
       strategy: strategyResult.trace ?? idleStageTrace(),
@@ -401,7 +431,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       : null;
     const snapshot: ListingV5Snapshot = {
       version: "listing-v5.snapshot.v1", taskId: id, researchRevision: context.researchRevision, handoffRevision: context.handoffRevision, contextFingerprint: context.contextFingerprint,
-      strategy: strategyResult.strategy, listing: snapshotListing, validation: finalValidation ?? { version: LISTING_V5_VALIDATION_VERSION, status: "PASS", title: { valid: true, issues: [] }, bullets: [], description: { valid: true, issues: [] }, claims: { allHaveEvidence: true, unsupportedClaims: [], prohibitedClaims: [], competitorOverlap: [] }, quality: { repetitive: false, keywordStuffing: false, mechanicalTemplate: false }, repair: { allowed: false, reason: null, targets: [] } },
+      strategy: strategyResult.strategy, listing: snapshotListing, validation: finalValidation ?? NOT_VALIDATED_PLACEHOLDER,
       conversionBlueprint, qualityEvaluation,
       strategyPromptVersion: LISTING_V5_STRATEGY_PROMPT_VERSION, writerPromptVersion: LISTING_V5_WRITER_PROMPT_VERSION, validatorVersion: LISTING_V5_VALIDATION_VERSION, repairApplied: carriedRepairApplied ?? repairApplied, repairPromptVersion: LISTING_V5_REPAIR_PROMPT_VERSION, provider: snapshotProvider,       model: useProvider ? "configured-provider" : "deterministic-safe", generatedAt: new Date().toISOString(), humanReviewRequired: true,
       ...(isListingV5TraceEnabled() ? { trace } : {}),

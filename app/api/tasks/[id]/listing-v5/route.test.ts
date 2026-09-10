@@ -385,6 +385,34 @@ describe("Listing V5 route", () => {
     expect(firstResponse.status).toBe(200);
   });
 
+  it("never republishes a cached validation that belongs to another context fingerprint", async () => {
+    // Security regression: the carried-forward path used to move cached.listing
+    // and cached.validation into the snapshot without checking which frozen
+    // context they were validated against, so a stale PASS could be republished
+    // under a new fingerprint and shown as "verified".
+    state.resultJson = JSON.stringify({ listingV5: {
+      version: "listing-v5.snapshot.v1",
+      researchRevision: 7,
+      handoffRevision: 3,
+      contextFingerprint: "fp-other-context",
+      strategy,
+      listing: draft,
+      validation: { ...passValidation },
+      repairApplied: true,
+      provider: { strategyAttempted: true, writerAttempted: true, repairAttempted: false, fallbackUsed: false },
+    } });
+    const response = await POST(request("POST", "task-1", { action: "analyze_strategy", forceStrategy: true }), { params: Promise.resolve({ id: "task-1" }) });
+    expect(response.status).toBe(200);
+    const saved = JSON.parse(state.resultJson).listingV5 as Record<string, any>;
+    // The user's copy survives the strategy refresh...
+    expect(saved.listing).toEqual(draft);
+    // ...but its previous PASS is not republished as if it validated this context.
+    expect(saved.validation.status).toBe("BLOCK");
+    expect(saved.validation.title.issues).toContain("validation_not_run");
+    expect(saved.validation.claims.allHaveEvidence).toBe(false);
+    expect(saved.repairApplied).toBe(false);
+  });
+
   it("keeps the generated listing when the strategy is re-analyzed", async () => {
     // Regression: analyze_strategy used to write `listing: null` plus a
     // synthetic PASS validation, so one click of "重新分析策略" destroyed the

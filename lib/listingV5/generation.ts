@@ -1,6 +1,6 @@
-import { callAiJson } from "@/lib/server/aiClient";
+﻿import { callAiJson } from "@/lib/server/aiClient";
 import type { ListingV5Context, ListingV5Strategy, ListingV5WriterDraft, ListingV5BulletRole } from "./types";
-import { buildListingV5ConversionBlueprint } from "./conversionBlueprint";
+import { buildListingV5ConversionBlueprint, type ListingV5ConversionBlueprint } from "./conversionBlueprint";
 import { buildStageTrace, traceProviderStage, type ListingV5StageTrace } from "./trace";
 
 const ROLES: ListingV5BulletRole[] = ["core_outcome", "pain_relief", "use_scenario", "ease_of_use", "proof_or_fit"];
@@ -114,16 +114,42 @@ const WRITER_SYSTEM_PROMPT = [
   "Return JSON only as {\"title\":{\"text\",\"factIds\"},\"bullets\":[{\"text\",\"factIds\",\"strategyRole\"}],\"description\":{\"text\",\"factIds\"},\"backendSearchTerms\":[],\"humanReviewRequired\":true}. factIds must be ids of Confirmed Facts. strategyRole must be one of core_outcome, pain_relief, use_scenario, ease_of_use, proof_or_fit.",
 ].join("\n");
 
+/**
+ * Keeps the blueprint's reference-derived text inside the same vocabulary rules
+ * the copy rules enforce. Only wording is touched; no fact, dimension or
+ * factId is added, removed or re-pointed.
+ */
+function sanitizeBlueprintForPrompt(blueprint: ListingV5ConversionBlueprint): ListingV5ConversionBlueprint {
+  const scrub = (value: string) => value.replace(banned, "").replace(strategyRiskWords, "").replace(/\s{2,}/g, " ").trim();
+  return {
+    ...blueprint,
+    buyerIntent: {
+      ...blueprint.buyerIntent,
+      primary: scrub(blueprint.buyerIntent.primary),
+      secondary: blueprint.buyerIntent.secondary.map(scrub).filter(Boolean),
+    },
+    painPoints: blueprint.painPoints
+      .map((pain) => ({ ...pain, pain: scrub(pain.pain) }))
+      .filter((pain) => pain.pain.length > 0),
+    competitorGaps: blueprint.competitorGaps.map((gap) => ({ ...gap, competitorSignal: scrub(gap.competitorSignal) })),
+  };
+}
+
 export async function generateListingV5Draft(context: ListingV5Context, strategy: ListingV5Strategy, options: {
   useProvider?: boolean;
   onProviderCallStart?: () => void | Promise<void>;
 } = {}): Promise<{ draft: ListingV5WriterDraft; providerAttempted: boolean; providerSucceeded: boolean; diagnostics?: unknown; trace: ListingV5StageTrace }> {
   if (!options.useProvider) return { draft: fallback(context, strategy), providerAttempted: false, providerSucceeded: false, trace: buildStageTrace({ attempted: false, success: false, failureReason: "provider_disabled" }) };
-  const blueprint = buildListingV5ConversionBlueprint(context, strategy);
+  // The blueprint shares one prompt with the copy rules, so it is built from the
+  // scrubbed strategy and its reference excerpts are scrubbed the same way: a
+  // pain point reading "durable lid" next to a rule banning "durable" invites a
+  // draft the Validator must reject.
+  const safeStrategy = sanitizeStrategyForCopy(strategy);
+  const blueprint = sanitizeBlueprintForPrompt(buildListingV5ConversionBlueprint(context, safeStrategy));
   const response = await callAiJson<unknown>({
     messages: [
       { role: "system", content: WRITER_SYSTEM_PROMPT },
-      { role: "user", content: JSON.stringify({ confirmedFacts: context.confirmedFacts, strategy: sanitizeStrategyForCopy(strategy), conversionBlueprint: blueprint, prohibitedClaims: context.prohibitedClaims, unknowns: context.unknowns, keywordIntent: strategy.keywordIntent }) },
+      { role: "user", content: JSON.stringify({ confirmedFacts: context.confirmedFacts, strategy: safeStrategy, conversionBlueprint: blueprint, prohibitedClaims: context.prohibitedClaims, unknowns: context.unknowns, keywordIntent: safeStrategy.keywordIntent }) },
     ],
     temperature: 0.35,
     maxTokens: 8000,

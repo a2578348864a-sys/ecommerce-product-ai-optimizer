@@ -176,6 +176,46 @@ describe("Listing V5 prompt contracts", () => {
     expect(proofPoints.every((point) => point.factId === "fact-care" || point.factId === "fact-material")).toBe(true);
   });
 
+  it("keeps claim wording from research references out of the blueprint handed to the Writer", async () => {
+    // Security regression: the blueprint shares one prompt with the copy rules.
+    // Reference text such as "durable, leakproof premium lid" used to reach the
+    // prompt verbatim, so the model read a rule banning those words and a
+    // blueprint using them in the same request.
+    const riskyContext = {
+      ...context,
+      references: {
+        voc: [{ text: "durability: the lid is durable and leakproof premium quality", sourceType: "VOC", marker: "UNTRUSTED_REFERENCE_DATA", notProductFact: true }],
+        keywords: [],
+        competitors: [{ text: "leakproof premium tumbler with durable shell", sourceType: "competitor", marker: "UNTRUSTED_REFERENCE_DATA", notProductFact: true }],
+        sourcing: [],
+      },
+    } as ListingV5Context;
+    callAiJson.mockResolvedValueOnce({
+      ok: true,
+      providerCallStarted: true,
+      data: {
+        title: { text: "Stainless steel bottle", factIds: ["fact-material"] },
+        bullets: [
+          { text: "Stainless steel body suits daily carrying.", factIds: ["fact-material"], strategyRole: "core_outcome" },
+          { text: "dishwasher-safe bottle and lid helps cleanup.", factIds: ["fact-care"], strategyRole: "pain_relief" },
+          { text: "A 24 oz size fits commuting.", factIds: ["fact-material"], strategyRole: "use_scenario" },
+        ],
+        description: { text: "Stainless steel with a dishwasher-safe lid for commuting.", factIds: ["fact-material"] },
+        backendSearchTerms: [],
+        humanReviewRequired: true,
+      },
+    });
+    const result = await generateListingV5Draft(riskyContext, strategy, { useProvider: true });
+    expect(result.providerSucceeded).toBe(true);
+    const payload = JSON.parse(userPayloadOf(0)) as { conversionBlueprint?: Record<string, unknown> };
+    const blueprint = payload.conversionBlueprint ?? {};
+    // Reference-derived text must not carry claim wording into the prompt. The
+    // prohibition list itself is allowed to name the forbidden words.
+    expect(JSON.stringify(blueprint.painPoints ?? [])).not.toMatch(/durable|leakproof|premium/i);
+    expect(JSON.stringify(blueprint.competitorGaps ?? [])).not.toMatch(/durable|leakproof|premium/i);
+    expect(JSON.stringify(blueprint.buyerIntent ?? {})).not.toMatch(/durable|leakproof|premium/i);
+  });
+
   it("falls back explicitly when the provider strategy is not viable instead of mixing templates", async () => {
     callAiJson.mockResolvedValueOnce({ ok: true, providerCallStarted: true, data: { targetAudience: ["someone"], primaryAngle: "" } });
     const result = await analyzeListingV5Strategy(context, { useProvider: true });
