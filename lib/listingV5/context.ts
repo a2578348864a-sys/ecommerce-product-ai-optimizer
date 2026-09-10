@@ -10,6 +10,31 @@ const MAX_REFERENCE_CHARS = 300;
 const MAX_TOTAL_REFERENCE_CHARS = 7_000;
 const PROMPT_CONTROL_TEXT = /(?:\bignore\s+(?:all\s+)?previous\s+instructions?|\bsystem\s*:|\bdeveloper\s*:|\bassistant\s*:|\boutput\s+fake)/gi;
 
+/**
+ * Fields whose value is a declared multi-value enumeration.
+ *
+ * Only these are atomized for claim anchoring. A comma-joined capability list
+ * such as "Extra Large Capacity, Expandable, Sturdy, Food Safe, Waterproof" is
+ * five independent claims, and demanding that one sentence restate all five
+ * would make any single one impossible to anchor.
+ *
+ * Deliberately excluded: dimensions, product identity, material phrases and
+ * care instructions. A comma inside those is part of one value, not a list, so
+ * splitting them would invent claims the confirmed data never made.
+ */
+const MULTI_VALUE_FACT_FIELDS = new Set(["functional_feature", "feature", "features", "feature_list", "capabilities"]);
+
+/**
+ * The values a single confirmed fact may be anchored against. The fact id
+ * contract is unchanged: the writer still cites one factId, and the validator
+ * accepts a restatement of any one atomic value of that fact.
+ */
+export function factAnchorValues(fact: { canonicalField: string; value: string }): string[] {
+  if (!MULTI_VALUE_FACT_FIELDS.has(fact.canonicalField)) return [fact.value];
+  const parts = fact.value.split(",").map((part) => part.trim()).filter(Boolean);
+  return parts.length > 1 ? parts : [fact.value];
+}
+
 function text(value: unknown, max = MAX_REFERENCE_CHARS): string {
   return typeof value === "string" ? value.normalize("NFC").replace(/\s+/g, " ").trim().slice(0, max) : "";
 }

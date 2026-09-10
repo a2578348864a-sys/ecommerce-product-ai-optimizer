@@ -40,13 +40,6 @@ const ACTIVE_V5_JOBS = new Set<string>();
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
 function error(status: number, code: string, message: string) { return NextResponse.json({ error: { code, message } }, { status }); }
 
-/** True when the AI draft still asserts something the confirmed facts do not support. */
-function hasResidualClaims(validation: ListingV5ValidationResult): boolean {
-  return validation.claims.unsupportedClaims.length > 0
-    || validation.claims.prohibitedClaims.length > 0
-    || validation.claims.competitorOverlap.length > 0;
-}
-
 function auth(req: NextRequest, taskId: string, body: Record<string, unknown>): { ctx: AccessContext | null; response: NextResponse | null } {
   const result = requireAuthenticated(req, body);
   if (!result.ok) return { ctx: null, response: error(result.status, result.code === "not_found" ? "task_not_found" : result.code, result.message) };
@@ -211,8 +204,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!isRecord(body)) return error(400, "invalid_json", "请求格式无效。");
   const verified = auth(req, id, body);
   if (verified.response) return verified.response;
-  const action = body.action === "analyze_strategy" || body.action === "generate" || body.action === "revalidate" ? body.action : null;
-  if (!action) return error(400, "invalid_action", "只支持 analyze_strategy、generate 或 revalidate。");
+  // Only two public actions exist. A "revalidate" action used to be accepted
+  // here but ran the full writer path again, which is not what re-validating an
+  // existing listing means; it was removed rather than left half-implemented.
+  const action = body.action === "analyze_strategy" || body.action === "generate" ? body.action : null;
+  if (!action) return error(400, "invalid_action", "只支持 analyze_strategy 或 generate。");
   const prepared = await buildContext(id, verified.ctx!);
   if (!prepared.context) return error(422, prepared.gate.reason, "当前研究资料还不能生成 Listing V5。请先完成研究与人工确认。");
   const context = prepared.context;
@@ -227,7 +223,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     && isRecord(cached.strategy)
     ? cached.strategy as unknown as ListingV5Strategy
     : null;
-  const jobKey = `${id}:${action}:${context.contextFingerprint}`;
+  // One write lock per task + context. Keying by action would let
+  // analyze_strategy and generate run concurrently and race on the same
+  // listingV5 snapshot.
+  const jobKey = `${id}:${context.contextFingerprint}`;
   if (ACTIVE_V5_JOBS.has(jobKey)) return error(409, "listing_v5_running", "Listing V5 正在处理中，请等待当前请求完成。");
   ACTIVE_V5_JOBS.add(jobKey);
   const useProvider = isRealAiListingEnabled();
@@ -280,16 +279,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       firstValidation = validation;
       if (validation.status === "REPAIRABLE") {
         const repaired = await repairListingV5Draft({ context, strategy: strategyResult.strategy, validation, draft, useProvider, onProviderCallStart });
-        // A failed bounded repair keeps the AI draft in place; it is not a fallback.
+        // Repair returns its draft for re-validation even when it failed or only
+        // partly applied, so the AI draft stays in place here and this step is
+        // NOT a fallback by itself. If the re-validation on the next line is
+        // still not PASS, the block below takes the honest fallback path.
         repairTrace = repaired.trace ?? idleStageTrace();
-        provider = { ...provider, repairAttempted: repaired.attempted, fallbackUsed: provider.fallbackUsed || !repaired.succeeded };
-        repairApplied = repaired.attempted;
+        provider = { ...provider, repairAttempted: repaired.attempted };
+        repairApplied = repaired.succeeded && repaired.appliedPaths.length > 0;
         draft = repaired.draft;
         validation = validateListingV5Draft(context, strategyResult.strategy, draft);
       }
-      // A draft that still carries unsupported / prohibited / competitor claims
-      // after the single bounded repair pass must not be published as the AI result.
-      if (validation.status === "BLOCK" || hasResidualClaims(validation)) {
+      // Deterministic code validates facts; it never rewrites marketing copy to
+      // make a draft pass. A draft that is still not PASS after the single
+      // bounded AI repair pass takes the honest fail-closed fallback path.
+      if (validation.status !== "PASS") {
         draft = buildListingV5FallbackDraft(context, strategyResult.strategy);
         provider = { ...provider, fallbackUsed: true };
         fallbackReason = "validation_blocked";

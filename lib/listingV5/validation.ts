@@ -1,7 +1,8 @@
 import { verifyListingClaims } from "@/lib/listingHandoff/listingClaimEvidenceResolver";
 import type { ListingGenerationInput } from "@/lib/listingHandoff/listingGenerationInput";
+import { factAnchorValues } from "./context";
 import { LISTING_V5_VALIDATION_VERSION } from "./types";
-import type { ListingV5Context, ListingV5Strategy, ListingV5ValidationResult, ListingV5WriterDraft } from "./types";
+import type { ListingV5Context, ListingV5IssueCode, ListingV5Strategy, ListingV5UnsupportedDetail, ListingV5ValidationResult, ListingV5WriterDraft } from "./types";
 
 const words = (value: string) => value.toLowerCase().match(/[a-z0-9]+/g) ?? [];
 const normalize = (value: string) => words(value).join(" ");
@@ -72,6 +73,11 @@ const normalizeTokens = (value: string) => value
   .normalize("NFC")
   .toLowerCase()
   .replace(/[\u2010-\u2015\u2212]/g, "-")
+  // A measurement written without a space ("24oz") must tokenize exactly like
+  // the spaced form ("24 oz"). Without this, a writer that restates a Confirmed
+  // Fact verbatim could never anchor to it, because the fact tokenized to a
+  // single "24oz" token while the copy produced "24" + "oz".
+  .replace(/(\d)([a-z])/g, "$1 $2")
   .replace(/[^a-z0-9]+/g, " ")
   .trim()
   .split(" ")
@@ -83,22 +89,145 @@ const contentTokens = (value: string) => normalizeTokens(value).filter((token) =
 // shopper framing, but reject the common copular forms that introduce a new
 // appearance, weight, size, compatibility or performance assertion (for
 // example "Steel is red" or "Steel is lightweight").
-const UNSUPPORTED_ATTRIBUTE_ASSERTION = /\b(?:is|are|looks?|feels?|seems?|has|have)\s+(?:(?:an?|the)\s+)?(?!made\b|designed\b|available\b|included\b|listed\b|shown\b|intended\b|suited\b|used\b)[a-z][a-z-]*/i;
+//
+// The article is a separate alternative, never an optional group: an optional
+// "a|an|the" can backtrack and let the article itself be matched as the
+// asserted adjective, which rejected every anchored sentence containing
+// "is a" / "is the" (for example "... is a 24 oz bottle made for ...").
+const COPULA_WORDS = "is|are|looks?|feels?|seems?|has|have";
+const COPULA_ALLOWED_COMPLEMENTS = "made|designed|available|included|listed|shown|intended|suited|used|from";
+/**
+ * Function words that cannot be the adjective a copula asserts. A noun
+ * homograph such as "a clean look that fits" would otherwise be read as the
+ * verb "look" asserting "that"; the same shape covers "a look of the kitchen".
+ */
+const COPULA_NON_COMPLEMENTS = "that|which|who|whom|whose|of|for|in|on|at|and|or|but|with|to|as|by|near|over|under|into|onto|is|are|was|were|be|been|it|its|this|these|those|there";
+/**
+ * Relational nouns describe placement or purpose, not a product attribute, so
+ * "each have a place" is idiomatic rather than a claim. Performance nouns
+ * ("has a waterproof coating") are unaffected, and are additionally caught by
+ * the hard-token rule.
+ */
+const RELATIONAL_COMPLEMENTS = new Set(["place", "places", "spot", "spots", "home", "role", "purpose", "use", "uses", "sense", "look", "looks", "feel", "way", "ways"]);
+/**
+ * Measurement participles only restate the size or weight the sentence has
+ * already anchored to a confirmed numeric value. This is a deliberately tiny
+ * closed set, not a general past-participle allowance.
+ */
+const MEASUREMENT_PARTICIPLES = new Set(["sized", "measured", "weighed"]);
+
+/** Copula directly followed by a non-article adjective. */
+const COPULA_BARE_ADJECTIVE = new RegExp(
+  `\\b(?:${COPULA_WORDS})\\s+(?!(?:an?|the)\\b)(?!(?:${COPULA_ALLOWED_COMPLEMENTS})\\b)(?!(?:${COPULA_NON_COMPLEMENTS})\\b)([a-z][a-z-]*)`,
+  "gi",
+);
+/** Copula followed by an article and then a non-allowed adjective. */
+const COPULA_ARTICLE_ADJECTIVE = new RegExp(
+  `\\b(?:${COPULA_WORDS})\\s+(?:an?|the)\\s+(?!(?:${COPULA_ALLOWED_COMPLEMENTS})\\b)(?!(?:${COPULA_NON_COMPLEMENTS})\\b)([a-z][a-z-]*)`,
+  "gi",
+);
+
+/**
+ * True when a copula asserts an attribute that no confirmed value covers.
+ *
+ * A complement already present in a confirmed value only restates a fact
+ * ("and it is hand wash only" against the confirmed care value "Hand Wash
+ * Only"). A measurement participle does the same once the sentence carries a
+ * confirmed numeric value. Everything else still counts, which keeps
+ * "Steel is red", "is lightweight" and "is durable" rejected.
+ */
+function hasUncoveredAttributeAssertion(segment: string, segmentTokens: Set<string>, allConfirmedTokens: Set<string>): boolean {
+  return uncoveredAttributeAssertions(segment, segmentTokens, allConfirmedTokens).length > 0;
+}
+
+/**
+ * The specific offenders, not just a yes/no verdict.
+ *
+ * Why this exists: a repair step that only receives the whole failing sentence
+ * cannot tell which word actually failed, so it rewrites the sentence and keeps
+ * the offending word (observed on a real case: "high-use" survived a repair
+ * that had rewritten the rest of the sentence). The Validator already knows the
+ * exact token, so it reports it instead of making the model guess.
+ *
+ * Deterministic and bounded: it is the same detector as the boolean verdict,
+ * reading only the segment and the confirmed fact tokens.
+ */
+function uncoveredAttributeAssertions(segment: string, segmentTokens: Set<string>, allConfirmedTokens: Set<string>): string[] {
+  const hasConfirmedNumber = [...segmentTokens].some((token) => /^\d+$/.test(token) && allConfirmedTokens.has(token));
+  const offenders: string[] = [];
+  for (const pattern of [COPULA_BARE_ADJECTIVE, COPULA_ARTICLE_ADJECTIVE]) {
+    for (const match of segment.matchAll(pattern)) {
+      const word = (match[1] ?? "").toLowerCase();
+      if (!word) continue;
+      if (allConfirmedTokens.has(word)) continue;
+      if (RELATIONAL_COMPLEMENTS.has(word)) continue;
+      if (hasConfirmedNumber && MEASUREMENT_PARTICIPLES.has(word)) continue;
+      offenders.push(word);
+    }
+  }
+  return offenders;
+}
+
+/** Hard/escalation tokens this segment introduces that no confirmed value covers. */
+function uncoveredHardTokens(segmentTokens: Set<string>, confirmedTokens: Set<string>): string[] {
+  const offenders: string[] = [];
+  for (const token of segmentTokens) {
+    if (!HARD_OR_ESCALATION_TOKENS.has(token)) continue;
+    if (confirmedTokens.has(token)) continue;
+    offenders.push(token);
+  }
+  return offenders;
+}
 
 /** True when the segment introduces a hard/escalation token this fact value does not cover. */
 function hasUncoveredHardToken(segmentTokens: Set<string>, valueSet: Set<string>): boolean {
-  for (const token of segmentTokens) {
-    if (!HARD_OR_ESCALATION_TOKENS.has(token)) continue;
-    if (valueSet.has(token)) continue;
-    return true;
+  return uncoveredHardTokens(segmentTokens, valueSet).length > 0;
+}
+
+const MAX_OFFENDING_SPANS = 6;
+const MAX_OFFENDING_SPAN_LENGTH = 48;
+
+/**
+ * Maps offender tokens back onto the words that actually appear in the text, so
+ * the repair step receives `high-use` rather than the bare token `high`.
+ * Only words already present in the segment can be returned: the output is a
+ * subset of the input text and can never introduce new content.
+ */
+function surfaceSpansForOffenders(segment: string, offenders: Set<string>): string[] {
+  if (offenders.size === 0) return [];
+  const spans: string[] = [];
+  for (const word of segment.match(/[A-Za-z0-9][A-Za-z0-9'\u2019-]*/g) ?? []) {
+    if (spans.length >= MAX_OFFENDING_SPANS) break;
+    if (!normalizeTokens(word).some((token) => offenders.has(token))) continue;
+    if (spans.includes(word)) continue;
+    spans.push(word.slice(0, MAX_OFFENDING_SPAN_LENGTH));
   }
-  return false;
+  return spans;
+}
+
+/**
+ * Bounded violation evidence for one failing sentence: which code fired and
+ * which surface words carried it. Falls back to an empty span list when the
+ * failure is not attributable to a specific word, so the repair step still
+ * learns that the sentence (not a word) is the problem.
+ */
+function describeUnsupportedSegment(segment: string, allowedValues: readonly string[]): { issueCode: ListingV5IssueCode; offendingSpans: string[] } {
+  const segmentTokens = new Set(normalizeTokens(segment));
+  const allConfirmedTokens = new Set(allowedValues.flatMap((value) => contentTokens(value)));
+  const hard = uncoveredHardTokens(segmentTokens, allConfirmedTokens);
+  const attributes = uncoveredAttributeAssertions(segment, segmentTokens, allConfirmedTokens);
+  const offenders = new Set([...hard, ...attributes]);
+  return {
+    issueCode: hard.length > 0 ? "unsupported_hard_claim" : attributes.length > 0 ? "unsupported_attribute_assertion" : "unsupported_claim",
+    offendingSpans: surfaceSpansForOffenders(segment, offenders),
+  };
 }
 
 /**
  * Anchored iff the segment restates a confirmed fact value — either the exact
  * (normalized) value appears or every token of the value appears — AND no hard
- * or escalation token is introduced that the value does not already cover.
+ * or escalation token is introduced that the value does not already cover, AND
+ * the copula does not assert an attribute no confirmed value covers.
  * That accepts "dishwasher safe" as a formatting variant of a confirmed
  * "dishwasher-safe bottle and lid" while still rejecting "durable stainless
  * steel" and "dishwasher-safe at high heat".
@@ -115,7 +244,7 @@ function isAnchoredToConfirmedValue(segment: string, factValues: readonly string
     const hasAllValueTokens = valueTokens.every((token) => segmentTokens.has(token));
     if (!containsValuePhrase && !hasAllValueTokens) continue;
     if (hasUncoveredHardToken(segmentTokens, allConfirmedTokens)) continue;
-    if (UNSUPPORTED_ATTRIBUTE_ASSERTION.test(segment)) continue;
+    if (hasUncoveredAttributeAssertion(segment, segmentTokens, allConfirmedTokens)) continue;
     return true;
   }
   return false;
@@ -238,12 +367,15 @@ export function validateListingV5Draft(context: ListingV5Context, strategy: List
   // unconfirmed hard / escalation token was introduced. Unknown, performance,
   // certification and prohibited reasons are never softened.
   // A fact anchor cannot vouch for every additional assertion in its sentence.
-  const allowedValues = context.confirmedFacts.map((fact) => fact.value).filter(Boolean);
-  const unsupportedDetails = evidence.unsupportedClaims
+  const allowedValues = context.confirmedFacts.flatMap((fact) => factAnchorValues(fact)).filter(Boolean);
+  const unsupportedDetails: ListingV5UnsupportedDetail[] = evidence.unsupportedClaims
     .filter((item) => item.reason !== "unclassified_factual_claim"
       || !isAnchoredToConfirmedValue(item.text, allowedValues))
     .slice(0, 10)
-    .map((item) => ({ text: item.text, reason: item.reason, field: locateDraftField(draft, item.text) }));
+    .map((item) => {
+      const violation = describeUnsupportedSegment(item.text, allowedValues);
+      return { text: item.text, reason: item.reason, field: locateDraftField(draft, item.text), ...violation };
+    });
   const unsupportedClaims = unsupportedDetails.map((item) => item.text);
   const prohibitedClaims = evidence.prohibitedClaims.slice(0, 10);
   const keywordStuffing = hasKeywordStuffing(strategy, draft);
@@ -266,16 +398,23 @@ export function validateListingV5Draft(context: ListingV5Context, strategy: List
   // One repair pass, at most three text fields, structural problems first.
   const repairTargets = [...new Set([...structuralRepairTargets, ...claimRepairTargets])].slice(0, MAX_REPAIR_TARGETS);
 
+  // Copy-quality flags (repetitive / keywordStuffing / mechanicalTemplate) are
+  // warnings, not fact-safety findings. They are still reported in `quality`
+  // and surfaced for human review, but on their own they must not turn a
+  // fact-safe, structurally valid draft into REPAIRABLE: there is no repair
+  // target for them, so doing so could only ever force the honest fallback path
+  // and throw away a usable AI listing. Only a locally repairable claim or a
+  // structural problem makes a draft REPAIRABLE.
   const status = blockingClaims > 0 || repairScopeTooBroad
     ? "BLOCK"
-    : locallyRepairable.length > 0 || structuralIssues > 0 || repetitive || keywordStuffing || mechanicalTemplate
+    : locallyRepairable.length > 0 || structuralIssues > 0
       ? "REPAIRABLE"
       : "PASS";
   return {
     version: LISTING_V5_VALIDATION_VERSION, status,
     title: { valid: titleIssues.length === 0, issues: titleIssues }, bullets: bulletResults,
     description: { valid: descriptionIssues.length === 0, issues: descriptionIssues },
-    claims: { allHaveEvidence: unsupportedClaims.length === 0 && prohibitedClaims.length === 0, unsupportedClaims, prohibitedClaims, competitorOverlap },
+    claims: { allHaveEvidence: unsupportedClaims.length === 0 && prohibitedClaims.length === 0, unsupportedClaims, prohibitedClaims, competitorOverlap, unsupportedDetails },
     quality: { repetitive, keywordStuffing, mechanicalTemplate },
     repair: { allowed: status === "REPAIRABLE" && repairTargets.length > 0, reason: status === "REPAIRABLE" ? "仅允许一次结构化修复" : null, targets: status === "REPAIRABLE" ? repairTargets : [] },
   };

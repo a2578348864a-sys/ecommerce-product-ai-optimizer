@@ -76,13 +76,40 @@ export type ListingV5WriterDraft = {
   humanReviewRequired: true;
 };
 
+/**
+ * Why one sentence failed fact anchoring, in a form a repair step can act on.
+ * `offendingSpans` are the exact surface words that the Validator rejected
+ * (`high-use`), never a paraphrase and never new content. They explain a
+ * failure; they are NOT a fact source - Confirmed Facts remain the only
+ * factual authority.
+ */
+export type ListingV5UnsupportedDetail = {
+  text: string;
+  reason: string;
+  field: string;
+  issueCode: ListingV5IssueCode;
+  offendingSpans: string[];
+};
+
+export type ListingV5IssueCode =
+  | "unsupported_hard_claim"
+  | "unsupported_attribute_assertion"
+  | "unsupported_claim";
+
 export type ListingV5ValidationResult = {
   version: typeof LISTING_V5_VALIDATION_VERSION;
   status: "PASS" | "REPAIRABLE" | "BLOCK";
   title: { valid: boolean; issues: string[] };
   bullets: Array<{ valid: boolean; factIds: string[]; strategyRole: ListingV5BulletRole; issues: string[] }>;
   description: { valid: boolean; issues: string[] };
-  claims: { allHaveEvidence: boolean; unsupportedClaims: string[]; prohibitedClaims: string[]; competitorOverlap: string[] };
+  claims: {
+    allHaveEvidence: boolean;
+    unsupportedClaims: string[];
+    prohibitedClaims: string[];
+    competitorOverlap: string[];
+    /** Bounded, deterministic violation evidence for the repair step. */
+    unsupportedDetails?: ListingV5UnsupportedDetail[];
+  };
   quality: { repetitive: boolean; keywordStuffing: boolean; mechanicalTemplate: boolean };
   /** `targets` lists the bounded text fields one repair pass may rewrite. */
   repair: { allowed: boolean; reason: string | null; targets: string[] };

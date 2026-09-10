@@ -4,7 +4,24 @@ import { buildStageTrace, traceProviderStage, type ListingV5StageTrace } from ".
 
 const ROLES: ListingV5BulletRole[] = ["core_outcome", "pain_relief", "use_scenario", "ease_of_use", "proof_or_fit"];
 const banned = /\b(best|premium|perfect|guaranteed|waterproof|rustproof|no\.\s*1|#1|100%|BPA[- ]?free)\b/gi;
+const strategyRiskWords = /\b(best|premium|perfect|guaranteed|waterproof|rustproof|durable|durability|leakproof|leak[- ]?resistant|spillproof|spill[- ]?proof|portable|insulated|insulation|heavy[- ]?duty|break[- ]?resistant|unbreakable|shatterproof)\b/gi;
 const clean = (value: unknown, max = 600) => typeof value === "string" ? value.replace(banned, "").replace(/\s+/g, " ").trim().slice(0, max) : "";
+function sanitizeStrategyForCopy(strategy: ListingV5Strategy): ListingV5Strategy {
+  const scrub = (value: string) => value.replace(strategyRiskWords, "").replace(/\s{2,}/g, " ").trim();
+  return {
+    ...strategy,
+    targetAudience: strategy.targetAudience.map(scrub),
+    purchaseMotivations: strategy.purchaseMotivations.map(scrub),
+    painPoints: strategy.painPoints.map(scrub),
+    useCases: strategy.useCases.map(scrub),
+    primaryAngle: scrub(strategy.primaryAngle),
+    secondaryAngles: strategy.secondaryAngles.map(scrub),
+    tone: strategy.tone.map(scrub),
+    bulletAngles: strategy.bulletAngles.map((item) => ({ ...item, shopperValue: scrub(item.shopperValue) })),
+    avoidClaims: strategy.avoidClaims.map(scrub),
+    keywordIntent: strategy.keywordIntent,
+  };
+}
 const cleanProductIdentity = (value: string) => clean(value, 120)
   .replace(/\s*(?:产品研究|商品研究)\s*$/u, "")
   .replace(/\s*\uFFFD.*$/u, "")
@@ -103,7 +120,7 @@ export async function generateListingV5Draft(context: ListingV5Context, strategy
   const response = await callAiJson<unknown>({
     messages: [
       { role: "system", content: WRITER_SYSTEM_PROMPT },
-      { role: "user", content: JSON.stringify({ confirmedFacts: context.confirmedFacts, strategy, prohibitedClaims: context.prohibitedClaims, unknowns: context.unknowns, keywordIntent: strategy.keywordIntent }) },
+      { role: "user", content: JSON.stringify({ confirmedFacts: context.confirmedFacts, strategy: sanitizeStrategyForCopy(strategy), prohibitedClaims: context.prohibitedClaims, unknowns: context.unknowns, keywordIntent: strategy.keywordIntent }) },
     ],
     temperature: 0.35,
     maxTokens: 8000,
