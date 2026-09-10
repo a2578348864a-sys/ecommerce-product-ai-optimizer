@@ -150,7 +150,7 @@ describe("Listing V5 validator correctness", () => {
   });
 
   it("does not let a confirmed value vouch for an unrelated attribute", () => {
-    const ctx = context([{ ...brand }, { ...productType }, { factId: "mat-1", field: "material", label: "Material", value: "Steel" }]);
+    const ctx = context([...baseFacts, { factId: "mat-1", field: "material", label: "Material", value: "Steel" }]);
     const strategy = buildListingV5Strategy(ctx);
     const unsupported = (text: string) => validateListingV5Draft(ctx, strategy, draftWith({
       bullets: [{ text, factIds: ["mat-1"], strategyRole: "core_outcome" }],
@@ -162,7 +162,7 @@ describe("Listing V5 validator correctness", () => {
   });
 
   it("allows a confirmed brand relation phrased as from", () => {
-    const ctx = context([{ ...brand }, { ...productType }]);
+    const ctx = context(baseFacts);
     const strategy = buildListingV5Strategy(ctx);
     const draft = draftWith({
       bullets: [{ text: "The product is from Example Brand, helping shoppers identify the confirmed brand.", factIds: ["brand-1"], strategyRole: "core_outcome" }],

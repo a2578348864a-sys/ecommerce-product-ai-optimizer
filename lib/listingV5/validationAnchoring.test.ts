@@ -189,3 +189,50 @@ describe("Listing V5 factual enumeration atomization", () => {
     expect(reportedFor(UKEETAP_FACTS, "Its expandable design adjusts to different drawer sizes.", ["feature-1"])).toEqual([]);
   });
 });
+
+/**
+ * The resolver reports a sentence only when its own (largely Chinese) risk
+ * vocabulary fires, so English hard claims used to reach the validator
+ * unflagged and PASS. Every sentence is now scanned by the validator itself,
+ * with the same detectors, independently of what the resolver reported.
+ */
+describe("Listing V5 scans every sentence for uncovered hard claims", () => {
+  function reportFor(
+    facts: Array<{ factId: string; field: string; label: string; value: string }>,
+    text: string,
+    factIds: string[],
+  ) {
+    const ctx = context(facts);
+    return validateListingV5Draft(ctx, buildListingV5Strategy(ctx), probeDraft(text, factIds));
+  }
+
+  it("flags claims the resolver never reports, with the offending span", () => {
+    const cases: Array<[string, string]> = [
+      ["Leakproof lid keeps drinks secure all day.", "Leakproof"],
+      ["The bottle keeps drinks cold for hours.", "hours"],
+      ["Dishwasher safe for easy cleaning.", "Dishwasher"],
+      ["BPA free and non-toxic materials.", "BPA"],
+      ["Odor resistant interior.", "resistant"],
+    ];
+    for (const [text, span] of cases) {
+      const report = reportFor(OWALA_FACTS, text, ["material-1"]);
+      expect(report.status, text).not.toBe("PASS");
+      const spans = (report.claims.unsupportedDetails ?? []).flatMap((detail) => detail.offendingSpans);
+      expect(spans, text).toContain(span);
+    }
+  });
+
+  it("still passes covered hard words, hyphenated confirmed values and plain benefits", () => {
+    // "Insulated" is part of a confirmed feature value.
+    expect(reportFor(OWALA_FACTS, "The bottle is insulated for daily routines.", ["feature-1"]).status).toBe("PASS");
+    // "dishwasher-safe" is the hyphenated form of the confirmed care value; the
+    // token set holds the split form, so the compound must not read as new.
+    expect(reportFor(
+      [...OWALA_FACTS, { factId: "care-wash", field: "care", label: "Care", value: "dishwasher-safe bottle and lid" }],
+      "The bottle and lid are dishwasher-safe for easy cleaning.",
+      ["care-wash"],
+    ).status).toBe("PASS");
+    // Pure benefit framing with no hard token stays allowed.
+    expect(reportFor(OWALA_FACTS, "The carrying loop makes the bottle easier to take along.", ["feature-1"]).status).toBe("PASS");
+  });
+});

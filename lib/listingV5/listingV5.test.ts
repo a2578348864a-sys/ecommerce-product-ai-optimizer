@@ -28,7 +28,10 @@ function context(vocSummary = "messy counters", withSourcing = false) {
 function singleFactDraft(text: string, factId: string) {
   return {
     version: "listing-v5.writer-draft.v1" as const,
-    title: { text: "Insulated Bottle", factIds: [factId] },
+    // Claim-free title: these fixtures test the bullet/description rules, and a
+    // title that asserts insulation would itself be an unsupported claim for the
+    // carrying-loop / straw / capacity fact sets used below.
+    title: { text: "Bottle", factIds: [factId] },
     bullets: [{ text, factIds: [factId], strategyRole: "core_outcome" as const }],
     description: { text: "This bottle fits everyday routines. Clear product details help shoppers compare options.", factIds: [factId] },
     backendSearchTerms: [],
@@ -37,6 +40,29 @@ function singleFactDraft(text: string, factId: string) {
 }
 
 describe("Listing V5", () => {
+  it("keeps non-string confirmed fact values instead of dropping them", () => {
+    // ProductCreativeHandoffFactValue allows string[] / number / boolean. They
+    // used to be normalised to "" and filtered out, so real facts vanished from
+    // the fact set and could never anchor copy.
+    const value = buildListingV5Context({
+      taskId: "task-values", researchRevision: 1, handoffRevision: 1, productIdentity: "Organizer",
+      generationInput: {
+        schema: "listing-generation-input.v1", source: { handoffRevision: 1, researchRevision: 1 },
+        productFacts: [], stableSourceFacts: [], creativeReferences: [], creativePreferences: {},
+        prohibitedClaims: [], unknowns: [], humanReviewRequired: true, researchMode: "market_research_only", promotionEligible: false,
+      },
+      confirmedFacts: [
+        { factId: "f-list", field: "features", label: "Features", value: ["Expandable", "Food Safe"] },
+        { factId: "f-num", field: "weight", label: "Weight", value: 0.81 },
+        { factId: "f-bool", field: "foldable", label: "Foldable", value: true },
+      ],
+    } as never);
+    const byId = new Map(value.confirmedFacts.map((fact) => [fact.id, fact.value]));
+    expect(byId.get("f-list")).toBe("Expandable, Food Safe");
+    expect(byId.get("f-num")).toBe("0.81");
+    expect(byId.get("f-bool")).toBe("true");
+  });
+
   it("builds bounded reference-only context and deterministic strategy", () => {
     const value = context();
     expect(value.references.voc[0]?.notProductFact).toBe(true);

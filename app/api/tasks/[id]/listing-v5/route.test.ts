@@ -385,6 +385,45 @@ describe("Listing V5 route", () => {
     expect(firstResponse.status).toBe(200);
   });
 
+  it("keeps the generated listing when the strategy is re-analyzed", async () => {
+    // Regression: analyze_strategy used to write `listing: null` plus a
+    // synthetic PASS validation, so one click of "重新分析策略" destroyed the
+    // user's listing (and reported it as validated).
+    state.resultJson = JSON.stringify({ listingV5: {
+      version: "listing-v5.snapshot.v1",
+      researchRevision: 7,
+      handoffRevision: 3,
+      contextFingerprint: "fp-1",
+      strategy,
+      listing: draft,
+      validation: { ...passValidation, status: "REPAIRABLE" },
+      repairApplied: true,
+      provider: { strategyAttempted: true, writerAttempted: true, repairAttempted: true, fallbackUsed: true },
+    } });
+    const response = await POST(request("POST", "task-1", { action: "analyze_strategy", forceStrategy: true }), { params: Promise.resolve({ id: "task-1" }) });
+    expect(response.status).toBe(200);
+    const saved = JSON.parse(state.resultJson).listingV5 as Record<string, any>;
+    expect(saved.listing).toEqual(draft);
+    expect(saved.validation.status).toBe("REPAIRABLE");
+    expect(saved.repairApplied).toBe(true);
+    expect(saved.provider.fallbackUsed).toBe(true);
+  });
+
+  it("fails a request whose quota reservation throws, without stranding the job lock", async () => {
+    state.authResult = { ok: true, context: demoContext };
+    state.useProvider = true;
+    state.context = context("fp-reservation-throw");
+    mocks.reserveDemoAiCalls.mockImplementationOnce(() => { throw new Error("reservation_store_unavailable"); });
+    const failed = await POST(request("POST", "sandbox_task_1", { action: "generate", confirmRealAi: true }), { params: Promise.resolve({ id: "sandbox_task_1" }) });
+    expect(failed.status).toBe(500);
+    expect((await json(failed)).error.code).toBe("listing_v5_failed");
+    expect(mocks.mutateTaskResultJson).not.toHaveBeenCalled();
+
+    // The same task+context must still be usable: a leaked job key would 409 here.
+    const retry = await POST(request("POST", "sandbox_task_1", { action: "generate", confirmRealAi: true }), { params: Promise.resolve({ id: "sandbox_task_1" }) });
+    expect(retry.status).toBe(200);
+  });
+
   it("rejects the removed revalidate action instead of regenerating the listing", async () => {
     const response = await POST(request("POST", "task-1", { action: "revalidate" }), { params: Promise.resolve({ id: "task-1" }) });
     expect(response.status).toBe(400);
