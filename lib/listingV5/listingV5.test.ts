@@ -72,7 +72,7 @@ describe("Listing V5", () => {
     expect(report.claims.prohibitedClaims.length + report.claims.unsupportedClaims.length).toBeGreaterThan(0);
   });
 
-  it("does not let a fact anchor vouch for an extra hard claim", () => {
+  it("reports an unbacked hard claim on a fact-anchored sentence and keeps it repairable in one field", () => {
     const value = context();
     const strategy = buildListingV5Strategy(value);
     const draft = buildListingV5FallbackDraft(value, strategy);
@@ -83,8 +83,12 @@ describe("Listing V5", () => {
       strategyRole: "core_outcome",
     };
     const report = validateListingV5Draft(value, strategy, draft);
-    expect(report.status).toBe("BLOCK");
+    // The claim must still be reported, but it is confined to one bullet, so the
+    // draft is repairable instead of throwing the whole AI draft away.
+    expect(report.status).toBe("REPAIRABLE");
     expect(report.claims.unsupportedClaims.some((item) => /dishwasher/i.test(item))).toBe(true);
+    expect(report.repair.allowed).toBe(true);
+    expect(report.repair.targets).toEqual(["bullets[0]"]);
   });
 
   it("does not mutate context", () => {
@@ -174,7 +178,7 @@ describe("Listing V5", () => {
     expect(report.claims.unsupportedClaims).toEqual([]);
   });
 
-  it("allows material and insulation framing but blocks an unconfirmed duration", () => {
+  it("allows material and insulation framing but never lets an unconfirmed duration pass", () => {
     const value = context();
     value.confirmedFacts = [{ id: "build-1", canonicalField: "construction", label: "Construction", value: "insulated stainless steel", sourceRefs: [] }];
     const strategy = buildListingV5Strategy(value);
@@ -182,7 +186,9 @@ describe("Listing V5", () => {
     const unsafe = validateListingV5Draft(value, strategy, singleFactDraft("Insulated stainless steel keeps drinks cold for 24 hours.", "build-1"));
     expect(safe.status).not.toBe("BLOCK");
     expect(safe.claims.unsupportedClaims).toEqual([]);
-    expect(unsafe.status).toBe("BLOCK");
+    // An invented duration is reported and must be repaired before it can be published.
+    expect(unsafe.status).not.toBe("PASS");
     expect(unsafe.claims.unsupportedClaims.length).toBeGreaterThan(0);
+    expect(unsafe.repair.targets).toContain("bullets[0]");
   });
 });

@@ -262,7 +262,7 @@ describe("Listing V5 AI execution trace", () => {
     expect(trace.fallbackReason).toBe("none");
   });
 
-  it("3. records a validator block with bounded block reasons and the validation fallback", async () => {
+  it("3. records a locally repairable claim, repairs that one field and keeps the AI draft", async () => {
     const blocked = writerJson({
       bullets: [
         { text: "Insulated stainless steel keeps drinks cold for 24 hours.", factIds: ["material-1"], strategyRole: "core_outcome" },
@@ -272,16 +272,40 @@ describe("Listing V5 AI execution trace", () => {
     });
     mocks.callAiJson
       .mockResolvedValueOnce(ok(strategyJson))
-      .mockResolvedValueOnce(ok(blocked));
+      .mockResolvedValueOnce(ok(blocked))
+      .mockResolvedValueOnce(ok({ repairs: [{ path: "bullets[0]", text: "Insulated stainless steel construction fits everyday routines." }] }));
     const snapshot = await generate();
     const trace = snapshot.trace;
     expect(trace.strategySuccess).toBe(true);
     expect(trace.writerSuccess).toBe(true);
-    expect(trace.validationStatus).toBe("BLOCK");
+    // A single invented duration inside one bullet is repairable, not fatal.
+    expect(trace.validationStatus).toBe("REPAIRABLE");
     expect(trace.validationBlockReasons.some((reason: string) => reason.startsWith("claims:unsupported:"))).toBe(true);
+    expect(trace.repairAttempted).toBe(true);
+    expect(trace.repairSuccess).toBe(true);
+    expect(trace.finalValidationStatus).toBe("PASS");
+    expect(trace.fallbackUsed).toBe(false);
+    expect(snapshot.listing.bullets[0].text).toBe("Insulated stainless steel construction fits everyday routines.");
+  });
+
+  it("3b. records a blocking claim that cannot be confined to one field and falls back", async () => {
+    const blocked = writerJson({
+      bullets: [
+        { text: "FDA approved and BPA free construction for families.", factIds: ["material-1"], strategyRole: "core_outcome" },
+        { text: "A 2 pack option helps shoppers comparing practical choices.", factIds: ["quantity-1"], strategyRole: "pain_relief" },
+        { text: "The Black finish fits a range of everyday spaces.", factIds: ["color-1"], strategyRole: "use_scenario" },
+      ],
+    });
+    mocks.callAiJson
+      .mockResolvedValueOnce(ok(strategyJson))
+      .mockResolvedValueOnce(ok(blocked));
+    const snapshot = await generate();
+    const trace = snapshot.trace;
+    expect(trace.writerSuccess).toBe(true);
+    expect(trace.validationStatus).toBe("BLOCK");
     expect(trace.fallbackUsed).toBe(true);
     expect(trace.fallbackReason).toBe("validation_blocked");
-    expect(trace.finalValidationStatus).toBe("PASS");
+    expect(trace.repairAttempted).toBe(false);
   });
 
   it("4. records a provider request failure with its classified error code and no raw provider text", async () => {
@@ -325,13 +349,13 @@ describe("Listing V5 AI execution trace", () => {
     expect(trace.writerAttempted).toBe(false);
     expect(trace.writerFailureReason).toBe("provider_disabled");
     expect(trace.repairAttempted).toBe(false);
-    expect(trace.repairFailureReason).toBe("provider_disabled");
+    expect(trace.repairFailureReason).toBe("stage_not_run");
     expect(trace.fallbackUsed).toBe(true);
     expect(trace.fallbackReason).toBe("writer_stage_failed");
-    // The deterministic draft for this context is structurally repairable, and
-    // repair is provider-only, so it stays REPAIRABLE with no repair attempted.
-    expect(trace.validationStatus).toBe("REPAIRABLE");
-    expect(trace.finalValidationStatus).toBe("REPAIRABLE");
+    // The deterministic draft is now clean (no false keyword-stuffing signal), so
+    // no repair is needed and nothing is flagged for repair.
+    expect(trace.validationStatus).toBe("PASS");
+    expect(trace.finalValidationStatus).toBe("PASS");
   });
 
   it("never writes provider credentials or raw model output into the persisted snapshot", async () => {

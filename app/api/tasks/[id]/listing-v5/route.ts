@@ -28,11 +28,24 @@ import {
   type ListingV5ValidationStatus,
 } from "@/lib/listingV5/trace";
 import type { ListingV5Snapshot, ListingV5Strategy, ListingV5ValidationResult } from "@/lib/listingV5/types";
+import {
+  LISTING_V5_REPAIR_PROMPT_VERSION,
+  LISTING_V5_STRATEGY_PROMPT_VERSION,
+  LISTING_V5_VALIDATION_VERSION,
+  LISTING_V5_WRITER_PROMPT_VERSION,
+} from "@/lib/listingV5/types";
 
 const ACTIVE_V5_JOBS = new Set<string>();
 
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
 function error(status: number, code: string, message: string) { return NextResponse.json({ error: { code, message } }, { status }); }
+
+/** True when the AI draft still asserts something the confirmed facts do not support. */
+function hasResidualClaims(validation: ListingV5ValidationResult): boolean {
+  return validation.claims.unsupportedClaims.length > 0
+    || validation.claims.prohibitedClaims.length > 0
+    || validation.claims.competitorOverlap.length > 0;
+}
 
 function auth(req: NextRequest, taskId: string, body: Record<string, unknown>): { ctx: AccessContext | null; response: NextResponse | null } {
   const result = requireAuthenticated(req, body);
@@ -273,7 +286,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         draft = repaired.draft;
         validation = validateListingV5Draft(context, strategyResult.strategy, draft);
       }
-      if (validation.status === "BLOCK") {
+      // A draft that still carries unsupported / prohibited / competitor claims
+      // after the single bounded repair pass must not be published as the AI result.
+      if (validation.status === "BLOCK" || hasResidualClaims(validation)) {
         draft = buildListingV5FallbackDraft(context, strategyResult.strategy);
         provider = { ...provider, fallbackUsed: true };
         fallbackReason = "validation_blocked";
@@ -291,8 +306,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
     const snapshot: ListingV5Snapshot = {
       version: "listing-v5.snapshot.v1", taskId: id, researchRevision: context.researchRevision, handoffRevision: context.handoffRevision, contextFingerprint: context.contextFingerprint,
-      strategy: strategyResult.strategy, listing: draft, validation: validation ?? { version: "listing-v5.validation.v1", status: "PASS", title: { valid: true, issues: [] }, bullets: [], description: { valid: true, issues: [] }, claims: { allHaveEvidence: true, unsupportedClaims: [], prohibitedClaims: [], competitorOverlap: [] }, quality: { repetitive: false, keywordStuffing: false, mechanicalTemplate: false }, repair: { allowed: false, reason: null } },
-      strategyPromptVersion: "listing-v5-strategy.v1", writerPromptVersion: "listing-v5-writer.v1", validatorVersion: "listing-v5.validation.v1", repairApplied, repairPromptVersion: "listing-v5-repair.v1", provider,       model: useProvider ? "configured-provider" : "deterministic-safe", generatedAt: new Date().toISOString(), humanReviewRequired: true,
+      strategy: strategyResult.strategy, listing: draft, validation: validation ?? { version: LISTING_V5_VALIDATION_VERSION, status: "PASS", title: { valid: true, issues: [] }, bullets: [], description: { valid: true, issues: [] }, claims: { allHaveEvidence: true, unsupportedClaims: [], prohibitedClaims: [], competitorOverlap: [] }, quality: { repetitive: false, keywordStuffing: false, mechanicalTemplate: false }, repair: { allowed: false, reason: null, targets: [] } },
+      strategyPromptVersion: LISTING_V5_STRATEGY_PROMPT_VERSION, writerPromptVersion: LISTING_V5_WRITER_PROMPT_VERSION, validatorVersion: LISTING_V5_VALIDATION_VERSION, repairApplied, repairPromptVersion: LISTING_V5_REPAIR_PROMPT_VERSION, provider,       model: useProvider ? "configured-provider" : "deterministic-safe", generatedAt: new Date().toISOString(), humanReviewRequired: true,
       ...(isListingV5TraceEnabled() ? { trace } : {}),
     };
     const fresh = await buildContext(id, verified.ctx!);

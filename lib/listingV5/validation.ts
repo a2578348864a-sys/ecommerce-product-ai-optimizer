@@ -1,9 +1,9 @@
 import { verifyListingClaims } from "@/lib/listingHandoff/listingClaimEvidenceResolver";
 import type { ListingGenerationInput } from "@/lib/listingHandoff/listingGenerationInput";
+import { LISTING_V5_VALIDATION_VERSION } from "./types";
 import type { ListingV5Context, ListingV5Strategy, ListingV5ValidationResult, ListingV5WriterDraft } from "./types";
 
 const words = (value: string) => value.toLowerCase().match(/[a-z0-9]+/g) ?? [];
-const sentenceCount = (value: string) => value.split(/[.!?]+/).map((s) => s.trim()).filter(Boolean).length;
 const normalize = (value: string) => words(value).join(" ");
 const overlap = (candidate: string, reference: string) => {
   const a = words(candidate);
@@ -14,6 +14,176 @@ const overlap = (candidate: string, reference: string) => {
   }
   return null;
 };
+
+// ── Sentence counting ───────────────────────────────────────────────
+// A naive split on [.!?] counted "YETI Rambler Jr. 12 oz ..." as two sentences,
+// which made an otherwise valid description fail description_should_be_2_to_4_sentences.
+// Intl.Segmenter already keeps "Jr." attached, but still breaks after title
+// abbreviations such as "Mr." / "Dr.", so those fragments are merged back.
+
+const NON_TERMINAL_ABBREVIATIONS = new Set([
+  "mr", "mrs", "ms", "dr", "prof", "jr", "sr", "st", "mt", "vs", "etc", "no", "inc", "ltd", "co", "corp", "dept", "est", "approx", "fig", "al",
+]);
+
+function endsWithNonTerminalAbbreviation(segment: string): boolean {
+  const match = segment.match(/([A-Za-z][A-Za-z.]*)\.\s*$/);
+  if (!match) return false;
+  return NON_TERMINAL_ABBREVIATIONS.has(match[1]!.replace(/\./g, "").toLowerCase());
+}
+
+function segmentSentences(value: string): string[] {
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+  const raw = typeof Intl !== "undefined" && "Segmenter" in Intl
+    ? [...new Intl.Segmenter("en", { granularity: "sentence" }).segment(trimmed)].map((item) => item.segment.trim()).filter(Boolean)
+    : trimmed.split(/(?<=[.!?])\s+/).map((item) => item.trim()).filter(Boolean);
+  const merged: string[] = [];
+  for (const part of raw) {
+    const previous = merged[merged.length - 1];
+    if (previous !== undefined && endsWithNonTerminalAbbreviation(previous)) merged[merged.length - 1] = `${previous} ${part}`;
+    else merged.push(part);
+  }
+  return merged;
+}
+
+const sentenceCount = (value: string) => segmentSentences(value).length;
+
+// ── Fact anchoring ─────────────────────────────────────────────────
+// A confirmed fact value such as "dishwasher-safe bottle and lid" must still be
+// anchored when the model writes "the bottle and lid are dishwasher-safe", and
+// "dishwasher safe" must be accepted as a safe formatting variant. The same
+// allowance must NOT let an escalation through ("dishwasher-safe at high heat")
+// or an invented adjective that no confirmed fact supports ("durable steel").
+
+const STOPWORDS = new Set(["a", "an", "the", "of", "for", "to", "and", "in", "on", "with", "is", "are", "that", "this", "it", "its", "as", "at", "by", "or", "be", "from"]);
+
+/** Language that either asserts performance/certification or escalates an existing fact. */
+const HARD_OR_ESCALATION_TOKENS = new Set([
+  "durable", "durability", "lasting", "leakproof", "leak", "spillproof", "spill", "waterproof", "rustproof", "rust",
+  "certified", "certification", "fda", "approved", "nontoxic", "toxic", "bpa", "scratch", "odor", "resistant", "resistance",
+  "guarantee", "guaranteed", "unbreakable", "shatterproof", "tough", "strongest", "dishwasher", "safe", "foodsafe", "nonstick",
+  "cold", "hot", "warm", "hour", "hours", "minute", "minutes", "overnight", "freeze", "frozen", "boil", "microwave",
+  "bacteria", "mold", "insulated", "insulation",
+  "high", "higher", "highest", "maximum", "max", "extreme", "ultra", "super", "heavy", "duty", "professional", "industrial",
+  "perfect", "best", "most", "complete", "total", "fully", "always", "never", "only", "every", "all",
+]);
+
+const normalizeTokens = (value: string) => value
+  .normalize("NFC")
+  .toLowerCase()
+  .replace(/[\u2010-\u2015\u2212]/g, "-")
+  .replace(/[^a-z0-9]+/g, " ")
+  .trim()
+  .split(" ")
+  .filter(Boolean);
+
+const contentTokens = (value: string) => normalizeTokens(value).filter((token) => !STOPWORDS.has(token));
+
+/** True when the segment introduces a hard/escalation token this fact value does not cover. */
+function hasUncoveredHardToken(segmentTokens: Set<string>, valueSet: Set<string>): boolean {
+  for (const token of segmentTokens) {
+    if (!HARD_OR_ESCALATION_TOKENS.has(token)) continue;
+    if (valueSet.has(token)) continue;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Anchored iff the segment restates a confirmed fact value — either the exact
+ * (normalized) value appears or every token of the value appears — AND no hard
+ * or escalation token is introduced that the value does not already cover.
+ * That accepts "dishwasher safe" as a formatting variant of a confirmed
+ * "dishwasher-safe bottle and lid" while still rejecting "durable stainless
+ * steel" and "dishwasher-safe at high heat".
+ */
+function isAnchoredToConfirmedValue(segment: string, factValues: readonly string[]): boolean {
+  const segmentTokens = new Set(normalizeTokens(segment));
+  const normalizedSegment = normalizeTokens(segment).join(" ");
+  for (const value of factValues) {
+    const valueTokens = contentTokens(value);
+    if (valueTokens.length === 0) continue;
+    const valueSet = new Set(valueTokens);
+    const containsValuePhrase = normalizedSegment.includes(valueTokens.join(" "));
+    const hasAllValueTokens = valueTokens.every((token) => segmentTokens.has(token));
+    if (!containsValuePhrase && !hasAllValueTokens) continue;
+    if (hasUncoveredHardToken(segmentTokens, valueSet)) continue;
+    return true;
+  }
+  return false;
+}
+
+// ── Keyword stuffing ───────────────────────────────────────────────
+// The previous matcher used substring containment, so the single letter "a"
+// matched inside "kids water bottle" and any normal listing looked stuffed.
+// Matching is now phrase/token based.
+
+const STOPWORD_ONLY = new Set([...STOPWORDS]);
+
+function keywordPhrases(strategy: ListingV5Strategy): string[][] {
+  const raw = [...strategy.keywordIntent.primary, ...strategy.keywordIntent.secondary];
+  const phrases: string[][] = [];
+  for (const term of raw) {
+    const tokens = normalizeTokens(term);
+    if (tokens.length === 0) continue;
+    // A keyword made only of stopwords or single characters carries no stuffing signal.
+    if (tokens.length === 1 && (STOPWORD_ONLY.has(tokens[0]!) || tokens[0]!.length < 3)) continue;
+    phrases.push(tokens);
+  }
+  return phrases;
+}
+
+function countPhraseMatches(textTokens: string[], phrase: string[]): number {
+  if (phrase.length === 0 || phrase.length > textTokens.length) return 0;
+  let count = 0;
+  for (let i = 0; i + phrase.length <= textTokens.length; i += 1) {
+    let matched = true;
+    for (let j = 0; j < phrase.length; j += 1) {
+      if (textTokens[i + j] !== phrase[j]) { matched = false; break; }
+    }
+    if (matched) count += 1;
+  }
+  return count;
+}
+
+function hasKeywordStuffing(strategy: ListingV5Strategy, draft: ListingV5WriterDraft): boolean {
+  const phrases = keywordPhrases(strategy);
+  if (phrases.length === 0) return false;
+  const titleBullets = normalizeTokens([draft.title.text, ...draft.bullets.map((item) => item.text)].join(" "));
+  const bulletsOnly = normalizeTokens(draft.bullets.map((item) => item.text).join(" "));
+  let total = 0;
+  for (const phrase of phrases) {
+    const inBullets = countPhraseMatches(bulletsOnly, phrase);
+    // Repeating the product's own keyword once per bullet is normal Amazon copy;
+    // mechanical stuffing is the same phrase firing four or more times in the body.
+    if (inBullets >= 4) return true;
+    total += countPhraseMatches(titleBullets, phrase);
+  }
+  return total > 8;
+}
+
+/**
+ * A claim that sits in one text field and can be fixed by rewriting that field
+ * (an invented adjective such as "durable") stays repairable. Anything that
+ * touches certification, absolute promises, conflicting facts, unknown fact
+ * ids, prohibited wording or competitor copy stays blocking.
+ */
+function isLocallyRepairableClaim(item: { text: string; reason: string }): boolean {
+  return item.reason === "unclassified_factual_claim";
+}
+
+function locateDraftField(draft: ListingV5WriterDraft, segment: string): string {
+  if (draft.title.text.includes(segment)) return "title";
+  for (let index = 0; index < draft.bullets.length; index += 1) {
+    if (draft.bullets[index]!.text.includes(segment)) return `bullets[${index}]`;
+  }
+  if (draft.description.text.includes(segment)) return "description";
+  return "unknown";
+}
+
+const MAX_REPAIRABLE_CLAIMS = 4;
+const MAX_REPAIRABLE_FIELDS = 3;
+const MAX_REPAIR_TARGETS = 3;
 
 export function validateListingV5Draft(context: ListingV5Context, strategy: ListingV5Strategy, draft: ListingV5WriterDraft): ListingV5ValidationResult {
   const allowed = new Set(context.confirmedFacts.map((fact) => fact.id));
@@ -31,8 +201,7 @@ export function validateListingV5Draft(context: ListingV5Context, strategy: List
   });
   const descriptionIssues: string[] = [];
   if (!draft.description.text.trim()) descriptionIssues.push("description_empty");
-  const sentences = sentenceCount(draft.description.text);
-  if (sentences < 2 || sentences > 4) descriptionIssues.push("description_should_be_2_to_4_sentences");
+  if (sentenceCount(draft.description.text) < 2 || sentenceCount(draft.description.text) > 4) descriptionIssues.push("description_should_be_2_to_4_sentences");
   if (normalize(draft.description.text) === normalize(draft.title.text)) descriptionIssues.push("description_repeats_title");
   const generationInput: ListingGenerationInput = {
     schema: "listing-generation-input.v1",
@@ -51,35 +220,51 @@ export function validateListingV5Draft(context: ListingV5Context, strategy: List
     return hit ? [hit] : [];
   });
   // Existing Claim Evidence remains the authority for hard claims. V5 permits
-  // only bounded connective shopper language when the same segment contains an
-  // exact confirmed value; unknown/performance/certification/prohibited reasons
-  // remain blocking and are never softened.
+  // only bounded connective shopper language: a segment is accepted when it
+  // restates a confirmed value (normalized for case / hyphen / spacing
+  // differences) or when every token of a confirmed value is present and no
+  // unconfirmed hard / escalation token was introduced. Unknown, performance,
+  // certification and prohibited reasons are never softened.
   // A fact anchor cannot vouch for every additional assertion in its sentence.
-  // Keep the existing resolver's safe connective-language allowance for
-  // bounded Feature -> Benefit prose, but reject unclassified segments that
-  // contain a recognizable hard/performance/care assertion even when a fact
-  // value is also present (for example, "Steel ... dishwasher safe").
-  const allowedValues = context.confirmedFacts.map((fact) => fact.value.toLowerCase()).filter(Boolean);
-  const unsupportedHardLanguage = /\b(?:dishwasher\s+safe|food\s+safe|leakproof|spillproof|durable|long[- ]lasting|keeps?|stays?|lasts?|certified|bpa[- ]?free|fda|safe\s+for|resists?|prevents?)\b/i;
-  const unsupportedClaims = evidence.unsupportedClaims
+  const allowedValues = context.confirmedFacts.map((fact) => fact.value).filter(Boolean);
+  const unsupportedDetails = evidence.unsupportedClaims
     .filter((item) => item.reason !== "unclassified_factual_claim"
-      || unsupportedHardLanguage.test(item.text)
-      || !allowedValues.some((value) => item.text.toLowerCase().includes(value)))
-    .map((item) => item.text).slice(0, 10);
+      || !isAnchoredToConfirmedValue(item.text, allowedValues))
+    .slice(0, 10)
+    .map((item) => ({ text: item.text, reason: item.reason, field: locateDraftField(draft, item.text) }));
+  const unsupportedClaims = unsupportedDetails.map((item) => item.text);
   const prohibitedClaims = evidence.prohibitedClaims.slice(0, 10);
-  const keywordStuffing = strategy.keywordIntent.primary.length + strategy.keywordIntent.secondary.length > 0
-    && words([draft.title.text, ...draft.bullets.map((item) => item.text)].join(" ")).filter((word) => strategy.keywordIntent.primary.some((term) => normalize(term).includes(word))).length > 8;
+  const keywordStuffing = hasKeywordStuffing(strategy, draft);
   const repetitive = new Set(draft.bullets.map((item) => normalize(item.text))).size !== draft.bullets.length;
   const mechanicalTemplate = draft.bullets.filter((item) => /^(?:with|this|the)\s/i.test(item.text)).length >= 4;
-  const hardIssues = unsupportedClaims.length + prohibitedClaims.length + competitorOverlap.length;
   const structuralIssues = titleIssues.length + bulletResults.filter((item) => !item.valid).length + descriptionIssues.length;
-  const status = hardIssues > 0 ? "BLOCK" : structuralIssues > 0 || repetitive || keywordStuffing || mechanicalTemplate ? "REPAIRABLE" : "PASS";
+
+  // Blocking reasons are the ones that cannot be confined to one text field.
+  const blockingClaims = prohibitedClaims.length + competitorOverlap.length
+    + unsupportedDetails.filter((item) => !isLocallyRepairableClaim(item) || item.field === "unknown").length;
+  const locallyRepairable = unsupportedDetails.filter((item) => isLocallyRepairableClaim(item) && item.field !== "unknown");
+  const repairableFields = new Set(locallyRepairable.map((item) => item.field));
+  const repairScopeTooBroad = locallyRepairable.length > MAX_REPAIRABLE_CLAIMS || repairableFields.size > MAX_REPAIRABLE_FIELDS;
+
+  const structuralRepairTargets: string[] = [];
+  bulletResults.forEach((result, index) => { if (!result.valid) structuralRepairTargets.push(`bullets[${index}]`); });
+  if (titleIssues.length > 0) structuralRepairTargets.push("title");
+  if (descriptionIssues.length > 0) structuralRepairTargets.push("description");
+  const claimRepairTargets = locallyRepairable.map((item) => item.field).filter((field) => field !== "unknown");
+  // One repair pass, at most three text fields, structural problems first.
+  const repairTargets = [...new Set([...structuralRepairTargets, ...claimRepairTargets])].slice(0, MAX_REPAIR_TARGETS);
+
+  const status = blockingClaims > 0 || repairScopeTooBroad
+    ? "BLOCK"
+    : locallyRepairable.length > 0 || structuralIssues > 0 || repetitive || keywordStuffing || mechanicalTemplate
+      ? "REPAIRABLE"
+      : "PASS";
   return {
-    version: "listing-v5.validation.v1", status,
+    version: LISTING_V5_VALIDATION_VERSION, status,
     title: { valid: titleIssues.length === 0, issues: titleIssues }, bullets: bulletResults,
     description: { valid: descriptionIssues.length === 0, issues: descriptionIssues },
     claims: { allHaveEvidence: unsupportedClaims.length === 0 && prohibitedClaims.length === 0, unsupportedClaims, prohibitedClaims, competitorOverlap },
     quality: { repetitive, keywordStuffing, mechanicalTemplate },
-    repair: { allowed: status === "REPAIRABLE", reason: status === "REPAIRABLE" ? "仅允许一次结构化修复" : null },
+    repair: { allowed: status === "REPAIRABLE" && repairTargets.length > 0, reason: status === "REPAIRABLE" ? "仅允许一次结构化修复" : null, targets: status === "REPAIRABLE" ? repairTargets : [] },
   };
 }

@@ -11,14 +11,14 @@ import type { ListingV5ValidationResult } from "./types";
 
 function validation(overrides: Partial<ListingV5ValidationResult> = {}): ListingV5ValidationResult {
   return {
-    version: "listing-v5.validation.v1",
+    version: "listing-v5.validation.v2",
     status: "PASS",
     title: { valid: true, issues: [] },
     bullets: [],
     description: { valid: true, issues: [] },
     claims: { allHaveEvidence: true, unsupportedClaims: [], prohibitedClaims: [], competitorOverlap: [] },
     quality: { repetitive: false, keywordStuffing: false, mechanicalTemplate: false },
-    repair: { allowed: false, reason: null },
+    repair: { allowed: false, reason: null, targets: [] },
     ...overrides,
   };
 }

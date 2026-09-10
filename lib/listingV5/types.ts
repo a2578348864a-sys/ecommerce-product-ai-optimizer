@@ -3,10 +3,10 @@ import type { ListingV5ExecutionTrace } from "./trace";
 export const LISTING_V5_CONTEXT_VERSION = "listing-v5.context.v1" as const;
 export const LISTING_V5_STRATEGY_VERSION = "listing-v5.strategy.v1" as const;
 export const LISTING_V5_WRITER_VERSION = "listing-v5.writer-draft.v1" as const;
-export const LISTING_V5_VALIDATION_VERSION = "listing-v5.validation.v1" as const;
-export const LISTING_V5_STRATEGY_PROMPT_VERSION = "listing-v5-strategy.v1" as const;
-export const LISTING_V5_WRITER_PROMPT_VERSION = "listing-v5-writer.v1" as const;
-export const LISTING_V5_REPAIR_PROMPT_VERSION = "listing-v5-repair.v1" as const;
+export const LISTING_V5_VALIDATION_VERSION = "listing-v5.validation.v2" as const;
+export const LISTING_V5_STRATEGY_PROMPT_VERSION = "listing-v5-strategy.v2" as const;
+export const LISTING_V5_WRITER_PROMPT_VERSION = "listing-v5-writer.v2" as const;
+export const LISTING_V5_REPAIR_PROMPT_VERSION = "listing-v5-repair.v2" as const;
 
 export type ListingV5Reference = {
   text: string;
@@ -84,7 +84,8 @@ export type ListingV5ValidationResult = {
   description: { valid: boolean; issues: string[] };
   claims: { allHaveEvidence: boolean; unsupportedClaims: string[]; prohibitedClaims: string[]; competitorOverlap: string[] };
   quality: { repetitive: boolean; keywordStuffing: boolean; mechanicalTemplate: boolean };
-  repair: { allowed: boolean; reason: string | null };
+  /** `targets` lists the bounded text fields one repair pass may rewrite. */
+  repair: { allowed: boolean; reason: string | null; targets: string[] };
 };
 
 export type ListingV5Snapshot = {
