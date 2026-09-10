@@ -22,14 +22,17 @@ function unique(values: readonly string[]): string[] {
 function strategyFrom(input: CopyStrategyInput): CopyStrategyV1 {
   const insight = input.marketingInsight ?? null;
   const quality = input.qualityReport ?? null;
+  const brief = input.listingBrief ?? null;
   const painPoints = unique((insight?.painPoints ?? []).map((item) => item.summary)).slice(0, 6);
-  const angle = insight?.marketAngles[0]?.summary ?? insight?.keywordThemes[0]?.summary ?? null;
-  const targetBuyer = hasTopic(insight, "kitchen_convenience")
+  const angle = brief?.coreSellingPoint ?? insight?.marketAngles[0]?.summary ?? insight?.keywordThemes[0]?.summary ?? null;
+  const targetBuyer = brief?.targetAudience
+    ?? (hasTopic(insight, "kitchen_convenience")
     ? "Buyers seeking practical organization for everyday kitchen spaces"
-    : painPoints.length > 0
-      ? "Buyers looking for a clearer, easier everyday routine"
-      : null;
-  const emotionalHook = painPoints.length > 0 ? "Make everyday organization feel simpler and easier to maintain." : null;
+      : painPoints.length > 0
+        ? "Buyers looking for a clearer, easier everyday routine"
+        : null);
+  const emotionalHook = brief?.contentEmphasis
+    ?? (painPoints.length > 0 ? "Make everyday organization feel simpler and easier to maintain." : null);
   const issueCodes = new Set((quality?.issues ?? []).map((issue) => issue.code));
   const suggestions = quality?.suggestions ?? [];
   const avoidExpressions = unique([
@@ -62,7 +65,7 @@ function strategyFrom(input: CopyStrategyInput): CopyStrategyV1 {
     copyTone: quality && quality.bulletScore < 70 ? "practical" : "clear",
     bulletStrategies: factCount > 0 ? bulletStrategies : bulletStrategies.slice(0, 3),
     titleStrategy: angle ? "Brand or product type first, then one primary angle; keep confirmed attributes readable and avoid repetition." : null,
-    descriptionStrategy: painPoints.length > 0 ? "Open with what the product is, connect one supported benefit to the buyer need, then place it in a clear use scenario." : null,
+    descriptionStrategy: (painPoints.length > 0 || brief?.useScenario) ? `Open with what the product is, connect one supported benefit to the buyer need, then place it in a clear use scenario${brief?.useScenario ? ` (${brief.useScenario})` : ""}.` : null,
     avoidExpressions,
   };
 }

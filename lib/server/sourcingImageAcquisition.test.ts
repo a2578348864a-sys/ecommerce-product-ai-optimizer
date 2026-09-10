@@ -429,8 +429,12 @@ describe("Native1688ExtensionDriver 编排错误映射", () => {
   it("错误归一化：SourcingAcquisitionError 透传 code/status", () => {
     const normalized = normalizeImageAcquisitionError(new SourcingAcquisitionError("auth_required", 401, "msg"));
     expect(normalized).toEqual({ code: "auth_required", status: 401, message: "msg" });
+    const phaseError = new SourcingAcquisitionError("search_trigger_not_confirmed", 422, "msg") as SourcingAcquisitionError & { diagnosticCode?: string };
+    phaseError.diagnosticCode = "result_page_proof_failed";
+    expect(normalizeImageAcquisitionError(phaseError).diagnosticCode).toBe("result_page_proof_failed");
     const generic = normalizeImageAcquisitionError(new Error("boom"));
     expect(generic.code).toBe("extension_bridge_not_available");
+    expect(generic.diagnosticCode).toBeUndefined();
   });
 
   // V3 Final R13：upload 重试必须重新注册 job（Bridge 图片一次性消费；防止 job_image_consumed）

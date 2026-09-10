@@ -4,6 +4,7 @@ import { callAiJson } from "@/lib/server/aiClient";
 import type { ListingGenerationInput } from "@/lib/listingHandoff/listingGenerationInput";
 import { LISTING_COMPOSER_VERSION, LISTING_GENERATION_POLICY_VERSION } from "@/lib/listingHandoff/listingGenerationInput";
 import type { ListingBrief } from "@/lib/listingHandoff/listingBrief";
+import type { CopyStrategyV1 } from "@/lib/listingHandoff/copyStrategy/types";
 import type { ListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
 import type { ListingPlan, ListingPlanRole } from "@/lib/listingHandoff/listingPlan";
 import { composeOptimizedListingDraft } from "@/lib/listingHandoff/listingComposition";
@@ -40,6 +41,8 @@ export type ListingPlannerInput = {
   plan: ListingPlan;
   keywordBrief: ListingKeywordBrief | null;
   listingBrief: ListingBrief | null;
+  /** Reference-only shopper framing; never used as facts or evidence. */
+  copyStrategy?: CopyStrategyV1;
   prohibitedClaims: string[];
   creativeContext?: ListingGenerationInput["creativeContext"];
   englishRenderings?: ListingGenerationInput["englishRenderings"];
@@ -116,6 +119,7 @@ function inputToGeneration(input: ListingPlannerInput): ListingGenerationInput {
       productFacts: input.facts.map((f) => ({ field: f.field, label: f.label, value: f.value })), stableSourceFacts: [], creativeReferences: [], creativePreferences: {}, prohibitedClaims: input.prohibitedClaims, unknowns: [], humanReviewRequired: true, researchMode: "market_research_only", promotionEligible: false,
     creativeContext: input.creativeContext,
     englishRenderings: input.englishRenderings,
+    copyStrategy: input.copyStrategy,
   };
 }
 
@@ -139,6 +143,8 @@ export function buildListingPlannerPrompt(input: ListingPlannerInput): string {
     "You are a Listing Planner, not a copywriter. Return exactly one JSON object.",
     "Select only IDs and template IDs from PLANNER_INPUT. Values are read-only context. Do not rewrite values, add claims, output prose, or add explanatory properties.",
     "Research signals are REFERENCE_ONLY and may influence priority only.",
+    "COPY_STRATEGY is REFERENCE_ONLY and may guide audience, angle, tone and role ordering only; never treat it as a product fact or claim.",
+    ...(input.copyStrategy ? ["COPY_STRATEGY_START", JSON.stringify({ targetBuyer: input.copyStrategy.targetBuyer, buyerPainPoints: input.copyStrategy.buyerPainPoints.slice(0, 6), mainAngle: input.copyStrategy.mainAngle, copyTone: input.copyStrategy.copyTone, bulletStrategies: input.copyStrategy.bulletStrategies.slice(0, 5).map((item) => ({ order: item.order, structure: item.structure, purpose: item.purpose })), titleStrategy: input.copyStrategy.titleStrategy, descriptionStrategy: input.copyStrategy.descriptionStrategy, avoidExpressions: input.copyStrategy.avoidExpressions.slice(0, 8) }), "COPY_STRATEGY_END"] : []),
     "For each bullet, use exactly the four keys: role, factIds, keywordIds, templateId.",
     "OUTPUT_SCHEMA=" + JSON.stringify({ schemaVersion: LISTING_PLANNER_SCHEMA_VERSION, title: { factIds: view.availableTitleFactIds.slice(0, 2), keywordIds: [] }, bullets: exampleBullets, description: { factIds: view.availableDescriptionFactIds.slice(0, 2) }, backendKeywordIds: [] }),
     "PLANNER_INPUT=" + JSON.stringify(view),

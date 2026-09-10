@@ -712,7 +712,7 @@ function WorkflowDecisionSummary({
       </div>
 
       {/* ── Phase 2: Evidence Workbench（商品证据工作台） ── */}
-      <EvidenceWorkbench taskId={taskId} result={result} />
+      <EvidenceWorkbench taskId={taskId} result={result} sourceImageUrl={resolvePublicSourceImageUrl(result, taskId, null)} />
 
       {/* ── Section 3: 接下来可以使用什么 — Listing ── */}
       {hasListingPrep && (
@@ -1891,7 +1891,7 @@ function LegacyRecordContent({
         </div>
       </section>
       {decisionEvidence ? <DecisionEvidencePanel evidence={decisionEvidence} compact /> : null}
-      {result ? <EvidenceWorkbench taskId={record.id} result={result} onDataChanged={onUpdated} /> : null}
+      {result ? <EvidenceWorkbench taskId={record.id} result={result} sourceImageUrl={resolvePublicSourceImageUrl(result, record.id, record.productImage)} onDataChanged={onUpdated} /> : null}
       {result ? <WorkflowResultSection result={result} /> : null}
       <section className="mt-6 border-t border-slate-200 pt-6" aria-label="下一步：Listing 准备情况">
         <ReferenceListingDraftPanel taskId={record.id} onDraftGenerated={onUpdated} />
@@ -2121,7 +2121,7 @@ function FormalV2RecordContent({
             taskId={record.id}
             result={result}
             lifecycleSnapshot={lifecycleSnapshot}
-            sourceImageUrl={resolvePublicSourceImageUrl(result)}
+            sourceImageUrl={resolvePublicSourceImageUrl(result, record.id, record.productImage)}
             onDataChanged={onUpdated}
             onMaterialRowsChange={onMaterialRowsChange}
             activeTab={activeTab}

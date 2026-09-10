@@ -41,10 +41,15 @@ export type OrchestratorSourceState =
   | "needs_supplement" // ⚠ 需要补充 (Amazon)
   | "pending_review" // ⚠ 待确认 (关键词与竞品 / 1688)
   | "pending" // ○ 待补齐 (关键词与竞品)
-  | "failed" // ❌ 失败 (关键词与竞品)
+  | "failed" // ❌ 失败 (关键词与竞品 / Amazon / VOC)
   | "needs_action" // ⚠ 需要处理 (VOC)
   | "needs_login" // ⚠ 需要登录 (1688)
-  | "needs_user"; // ⚠ 需要人工处理
+  | "needs_user" // ⚠ 需要人工处理
+  | "ready_to_search" // ⚡ 图搜已就绪 (1688)
+  | "confirmed_no_reviews" // ○ 页面明确无公开评论 (VOC)
+  | "extraction_empty" // ⚠ 评论模块未完成提取 (VOC)
+  | "no_public_reviews" // legacy：历史结果未能确认是否无评论
+  | "running"; // ⚡ 执行中
 
 export type OrchestratorSourceItem = {
   key: OrchestratorSourceKey;
@@ -98,31 +103,33 @@ const SOURCE_META: Record<
 > = {
   amazon: {
     title: "Amazon 商品资料",
-    anchorId: "workbench-browser-evidence",
+    // 统一入口生成的待确认 Preview 最终在事实确认区提供动作；
+    // 避免用户被带到只读的原始证据区后看到“待确认 0 项”。
+    anchorId: "fact-candidate-review",
     tabKey: "market",
     defaultState: "needs_supplement",
-    allowedStates: new Set(["ready", "needs_supplement", "needs_user"]),
+    allowedStates: new Set(["ready", "pending_review", "needs_supplement", "needs_user", "failed", "running"]),
   },
   keywords_competitors: {
     title: "关键词与竞品",
     anchorId: "formal-v2-market-evidence",
     tabKey: "market",
     defaultState: "pending",
-    allowedStates: new Set(["ready", "pending_review", "pending", "failed", "needs_user"]),
+    allowedStates: new Set(["ready", "pending_review", "pending", "failed", "needs_user", "running"]),
   },
   voc: {
     title: "买家评论 / VOC",
     anchorId: "formal-v2-buyer-evidence",
     tabKey: "buyers",
     defaultState: "needs_action",
-    allowedStates: new Set(["ready", "pending_review", "needs_action", "needs_user", "failed"]),
+    allowedStates: new Set(["ready", "pending_review", "needs_action", "needs_user", "failed", "confirmed_no_reviews", "extraction_empty", "no_public_reviews", "running"]),
   },
   sourcing_1688: {
     title: "1688 供应链",
     anchorId: "formal-v2-sourcing-evidence",
     tabKey: "sourcing",
     defaultState: "pending_review",
-    allowedStates: new Set(["ready", "pending_review", "needs_login", "needs_user"]),
+    allowedStates: new Set(["ready", "pending_review", "needs_login", "needs_user", "ready_to_search", "failed", "running"]),
   },
 };
 
@@ -287,13 +294,19 @@ export function normalizeState(
     if (s === "ready" || s === "existing" || s === "已有" || s === "completed" || s === "confirmed") {
       return "ready";
     }
+    if (s === "ready_to_search" || s === "可找货") {
+      return "ready_to_search";
+    }
     if (s === "needs_supplement" || s === "missing" || s === "需要补充") {
       return "needs_supplement";
     }
     if (s === "pending_review" || s === "to_confirm" || s === "待确认" || s === "preview" || s === "awaiting_confirmation") {
       return "pending_review";
     }
-    if (s === "pending" || s === "待补齐" || s === "idle" || s === "running") {
+    if (s === "running" || s === "执行中" || s === "采集正在执行中") {
+      return "running";
+    }
+    if (s === "pending" || s === "待补齐" || s === "idle") {
       return "pending";
     }
     if (s === "failed" || s === "error" || s === "失败") {
@@ -305,10 +318,19 @@ export function normalizeState(
     if (s === "needs_login" || s === "unauthorized" || s === "需要登录") {
       return "needs_login";
     }
+    if (s === "no_public_reviews") {
+      return "no_public_reviews";
+    }
+    if (s === "confirmed_no_reviews") {
+      return "confirmed_no_reviews";
+    }
+    if (s === "extraction_empty" || s === "no_reviews_extracted") {
+      return "extraction_empty";
+    }
     if (s === "needs_user") {
       if (key === "amazon") return "needs_supplement";
       if (key === "voc") return "needs_action";
-      if (key === "sourcing_1688") return "needs_login";
+      if (key === "sourcing_1688") return "needs_supplement";
       return "needs_user";
     }
   }
@@ -319,14 +341,25 @@ export function normalizeState(
   return SOURCE_META[key].defaultState;
 }
 
-export function formatBadgeLabel(state: OrchestratorSourceState): {
-  icon: "check" | "alert" | "circle" | "x";
+export function formatBadgeLabel(
+  state: OrchestratorSourceState,
+  key?: OrchestratorSourceKey,
+): {
+  icon: "check" | "alert" | "circle" | "x" | "loader";
   text: string;
   variant: "emerald" | "amber" | "slate" | "rose";
 } {
+  if (state === "running") {
+    return { icon: "loader", text: "⚡ 执行中", variant: "amber" };
+  }
+  if (state === "failed" && key === "amazon") {
+    return { icon: "circle", text: "○ 获取失败", variant: "amber" };
+  }
   switch (state) {
     case "ready":
       return { icon: "check", text: "✓ 已有", variant: "emerald" };
+    case "ready_to_search":
+      return { icon: "circle", text: "⚡ 图搜已就绪", variant: "amber" };
     case "needs_supplement":
       return { icon: "alert", text: "⚠ 需要补充", variant: "amber" };
     case "pending_review":
@@ -338,6 +371,12 @@ export function formatBadgeLabel(state: OrchestratorSourceState): {
       return { icon: "alert", text: "⚠ 需要登录", variant: "amber" };
     case "pending":
       return { icon: "circle", text: "○ 待补齐", variant: "slate" };
+    case "confirmed_no_reviews":
+      return { icon: "circle", text: "○ 确认无公开评论", variant: "slate" };
+    case "extraction_empty":
+      return { icon: "alert", text: "⚠ 评论提取未完成", variant: "amber" };
+    case "no_public_reviews":
+      return { icon: "alert", text: "⚠ 评论状态未确认", variant: "amber" };
     case "failed":
       return { icon: "x", text: "❌ 失败", variant: "rose" };
   }
@@ -356,7 +395,11 @@ export function computeSummary(
       i.state === "needs_supplement" ||
       i.state === "failed" ||
       i.state === "pending" ||
-      i.state === "needs_user",
+      i.state === "ready_to_search" ||
+      i.state === "needs_user" ||
+      i.state === "running" ||
+      i.state === "extraction_empty" ||
+      i.state === "no_public_reviews",
   ).length;
 
   const allReady = reusedCount === items.length;
@@ -390,6 +433,27 @@ export function computeSummary(
   };
 }
 
+export function getAmazonFailureReason(detail?: string): string {
+  if (!detail) return "页面无法识别";
+  const lower = detail.toLowerCase();
+  if (lower.includes("captcha") || lower.includes("login") || lower.includes("验证")) {
+    return "Amazon验证阻断";
+  }
+  if (lower.includes("asin")) {
+    return "ASIN异常";
+  }
+  if (
+    lower.includes("无法识别") ||
+    lower.includes("未识别") ||
+    lower.includes("容器") ||
+    lower.includes("标题") ||
+    lower.includes("page_unknown")
+  ) {
+    return "页面无法识别";
+  }
+  return detail;
+}
+
 function getSourceDescription(
   item: OrchestratorSourceItem,
   isRetrying: boolean,
@@ -397,10 +461,16 @@ function getSourceDescription(
   needsUserItem?: NeedsUserQueueItem,
 ): string {
   if (isRetrying) {
-    return "正在重新采集关键词与竞品…";
+    return item.key === "keywords_competitors" ? "正在重新采集关键词与竞品…" : "正在重新采集资料…";
+  }
+  if (item.state === "running") {
+    return item.detail || "正在执行资料采集…";
   }
   if (item.state === "ready") {
     return item.detail || (item.key === "amazon" ? "Amazon 详情资料已就绪" : "资料已就绪");
+  }
+  if (item.state === "ready_to_search") {
+    return item.detail || "已准备商品素材，可进入 1688 图片找货";
   }
   if (item.state === "pending_review") {
     return pendingItem?.countText || item.detail || "存在待确认条目";
@@ -418,10 +488,22 @@ function getSourceDescription(
     );
   }
   if (item.state === "failed") {
+    if (item.key === "amazon") {
+      return getAmazonFailureReason(item.detail);
+    }
     return item.detail || "上次采集未完成";
   }
   if (item.state === "pending") {
     return item.detail || "待补齐";
+  }
+  if (item.state === "confirmed_no_reviews") {
+    return item.detail || "页面明确显示无公开评论";
+  }
+  if (item.state === "extraction_empty") {
+    return item.detail || "评论提取未完成，请重试";
+  }
+  if (item.state === "no_public_reviews") {
+    return item.detail || "评论状态未确认，请重试";
   }
   return item.detail || "待补充";
 }
@@ -484,7 +566,14 @@ export function ResearchCollectionOrchestratorCard({
       const fromSrc = rawMap[key];
       if (fromSrc && typeof fromSrc === "object") {
         const iv = fromSrc as Record<string, unknown>;
-        const state = normalizeState(key, iv.status ?? iv.state, iv.ready);
+        const errorCode =
+          iv.error && typeof iv.error === "object" && iv.error !== null
+            ? (iv.error as Record<string, unknown>).code
+            : undefined;
+        const effectiveState =
+          errorCode === "confirmed_no_reviews" ? "confirmed_no_reviews" :
+            errorCode === "extraction_empty" || errorCode === "no_public_reviews" ? "extraction_empty" : iv.status ?? iv.state;
+        const state = normalizeState(key, effectiveState, iv.ready);
         const detail = sanitizeDetail(extractDetailFromPayload(iv));
         return { state, detail };
       }
@@ -515,8 +604,8 @@ export function ResearchCollectionOrchestratorCard({
         anchorId: meta.anchorId,
         tabKey: meta.tabKey,
         canRetry:
-          k === "keywords_competitors" &&
-          (raw?.state === "failed" || raw?.state === "needs_user"),
+          raw?.state === "failed" ||
+          (k === "keywords_competitors" && raw?.state === "needs_user"),
       };
     });
   }, [rawItemStates]);
@@ -534,6 +623,9 @@ export function ResearchCollectionOrchestratorCard({
         window.location.hash = cleanId;
         const el = document.getElementById(cleanId);
         if (el) {
+          if (el.tagName === "DETAILS" || el.nodeName === "DETAILS") {
+            (el as HTMLDetailsElement).open = true;
+          }
           let parent = el.parentElement;
           while (parent) {
             if (parent.tagName === "DETAILS" || parent.nodeName === "DETAILS") {
@@ -588,11 +680,39 @@ export function ResearchCollectionOrchestratorCard({
                   : s[k]);
             if (itemVal && typeof itemVal === "object") {
               const iv = itemVal as Record<string, unknown>;
-              const state = normalizeState(k, iv.state ?? iv.status, iv.ready);
+              const errorCode =
+                iv.error && typeof iv.error === "object" && iv.error !== null
+                  ? (iv.error as Record<string, unknown>).code
+                  : undefined;
+              const effectiveState =
+                errorCode === "confirmed_no_reviews" ? "confirmed_no_reviews" :
+                  errorCode === "extraction_empty" || errorCode === "no_public_reviews" ? "extraction_empty" : iv.state ?? iv.status;
+              const state = normalizeState(k, effectiveState, iv.ready);
               const extractedDetail = extractDetailFromPayload(iv);
+              const prevState = prev[k]?.state;
+              if (
+                (prevState === "failed" || prevState === "ready_to_search") &&
+                (state === "needs_user" || state === "needs_supplement" || state === "needs_login" || state === "pending") &&
+                !extractedDetail
+              ) {
+                continue;
+              }
+              if (
+                prevState === "running" &&
+                (state === "needs_user" || state === "ready_to_search" || state === "pending") &&
+                !iv.previewId && !iv.hasEvidence
+              ) {
+                continue;
+              }
+              if (
+                (prevState === "ready" || prevState === "pending_review") &&
+                (state === "needs_user" || state === "pending")
+              ) {
+                continue;
+              }
               nextRaw[k] = {
                 state,
-                detail: sanitizeDetail(extractedDetail),
+                detail: sanitizeDetail(extractedDetail) ?? (prevState === "failed" && state === "failed" ? prev[k]?.detail : undefined),
               };
               if (state === "pending_review" && (iv.previewId || iv.hasPreview)) {
                 hasPreview = true;
@@ -613,11 +733,39 @@ export function ResearchCollectionOrchestratorCard({
                   (k === "keywords_competitors" && keyStr === "keywordCompetitor"),
               );
               if (targetKey) {
-                const state = normalizeState(targetKey, it.state ?? it.status, it.ready);
+                const errorCode =
+                  it.error && typeof it.error === "object" && it.error !== null
+                    ? (it.error as Record<string, unknown>).code
+                    : undefined;
+                const effectiveState =
+                  errorCode === "confirmed_no_reviews" ? "confirmed_no_reviews" :
+                    errorCode === "extraction_empty" || errorCode === "no_public_reviews" ? "extraction_empty" : it.state ?? it.status;
+                const state = normalizeState(targetKey, effectiveState, it.ready);
                 const extractedDetail = extractDetailFromPayload(it);
+                const prevState = prev[targetKey]?.state;
+                if (
+                  (prevState === "failed" || prevState === "ready_to_search") &&
+                  (state === "needs_user" || state === "needs_supplement" || state === "needs_login" || state === "pending") &&
+                  !extractedDetail
+                ) {
+                  continue;
+                }
+                if (
+                  prevState === "running" &&
+                  (state === "needs_user" || state === "ready_to_search" || state === "pending") &&
+                  !it.previewId && !it.hasPreview
+                ) {
+                  continue;
+                }
+                if (
+                  (prevState === "ready" || prevState === "pending_review") &&
+                  (state === "needs_user" || state === "pending")
+                ) {
+                  continue;
+                }
                 nextRaw[targetKey] = {
                   state,
-                  detail: sanitizeDetail(extractedDetail),
+                  detail: sanitizeDetail(extractedDetail) ?? (prevState === "failed" && state === "failed" ? prev[targetKey]?.detail : undefined),
                 };
                 if (state === "pending_review" && (it.previewId || it.hasPreview)) {
                   hasPreview = true;
@@ -727,6 +875,19 @@ export function ResearchCollectionOrchestratorCard({
       void executeInspect();
     }
   }, [dataRevision, executeInspect]);
+
+  // 检查是否有任何来源处于 running 状态，若有则自动轮询 inspect 直至全部完成
+  const hasRunningSource = useMemo(() => {
+    return Object.values(rawItemStates).some((item) => item?.state === "running");
+  }, [rawItemStates]);
+
+  useEffect(() => {
+    if (!hasRunningSource) return;
+    const timer = setInterval(() => {
+      void executeInspect();
+    }, 2500);
+    return () => clearInterval(timer);
+  }, [hasRunningSource, executeInspect]);
 
   // 点击「补齐研究资料」
   const handleOrchestrate = useCallback(async () => {
@@ -886,7 +1047,7 @@ export function ResearchCollectionOrchestratorCard({
         className="mt-3 divide-y divide-slate-100 rounded-xl border border-slate-100 bg-slate-50/50"
       >
         {sourceItems.map((item) => {
-          const badge = formatBadgeLabel(item.state);
+          const badge = formatBadgeLabel(item.state, item.key);
           const isRetryingThis = retryingSource === item.key;
           const pendingItem = pendingItems.find((p) => p.sourceKey === item.key);
           const needsUserItem = needsUserItems.find((n) => n.sourceKey === item.key);
@@ -936,6 +1097,9 @@ export function ResearchCollectionOrchestratorCard({
                     </>
                   ) : (
                     <>
+                      {badge.icon === "loader" && (
+                        <Loader2 className="h-3 w-3 shrink-0 animate-spin text-amber-600" />
+                      )}
                       {badge.icon === "check" && <Check className="h-3 w-3 shrink-0" />}
                       {badge.icon === "alert" && (
                         <AlertTriangle className="h-3 w-3 shrink-0 text-amber-600" />
@@ -951,7 +1115,7 @@ export function ResearchCollectionOrchestratorCard({
 
                 {/* 说明文字 */}
                 <span
-                  className="text-xs text-slate-500 truncate"
+                  className={`text-xs ${item.state === "failed" ? "text-rose-600 font-medium break-all" : "text-slate-500 truncate"}`}
                   title={descriptionText}
                 >
                   {descriptionText}
@@ -974,6 +1138,26 @@ export function ResearchCollectionOrchestratorCard({
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     <span>处理中…</span>
                   </button>
+                ) : item.state === "running" ? (
+                  <button
+                    type="button"
+                    disabled
+                    data-testid={`action-running-${item.key}`}
+                    className="inline-flex items-center justify-center gap-1 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 px-3 py-1.5 text-xs font-semibold shadow-sm cursor-not-allowed"
+                  >
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <span>执行中…</span>
+                  </button>
+                ) : item.state === "ready_to_search" && item.key !== "sourcing_1688" ? (
+                  <button
+                    type="button"
+                    data-testid={`action-search-${item.key}`}
+                    onClick={() => handleNavigate(item.tabKey, item.anchorId)}
+                    className="inline-flex items-center justify-center gap-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 text-xs font-semibold shadow-sm transition-colors"
+                  >
+                    <span>去1688图片搜索</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </button>
                 ) : item.state === "pending_review" ? (
                   <button
                     type="button"
@@ -984,6 +1168,31 @@ export function ResearchCollectionOrchestratorCard({
                     <span>查看并确认</span>
                     <ArrowRight className="h-3.5 w-3.5" />
                   </button>
+                ) : item.state === "failed" && item.key === "amazon" ? (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      data-testid="action-retry-amazon"
+                      onClick={() => {
+                        setRetryingSource("amazon");
+                        void handleOrchestrate();
+                      }}
+                      disabled={isOrchestrating || isInspecting || retryingSource !== null}
+                      className="inline-flex items-center justify-center gap-1 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 px-2.5 py-1.5 text-xs font-semibold shadow-sm transition-colors disabled:opacity-50"
+                    >
+                      <RotateCw className="h-3.5 w-3.5" />
+                      <span>重新尝试</span>
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="action-manual-amazon"
+                      onClick={() => handleNavigate(item.tabKey, item.anchorId)}
+                      className="inline-flex items-center justify-center gap-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 px-2.5 py-1.5 text-xs font-semibold shadow-sm transition-colors"
+                    >
+                      <span>人工补充</span>
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 ) : item.state === "failed" ? (
                   <button
                     type="button"
@@ -996,6 +1205,7 @@ export function ResearchCollectionOrchestratorCard({
                       if (item.key === "keywords_competitors") {
                         handleRetryKeywords();
                       } else {
+                        setRetryingSource(item.key);
                         void handleOrchestrate();
                       }
                     }}

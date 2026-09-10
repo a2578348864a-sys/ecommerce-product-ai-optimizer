@@ -9,6 +9,7 @@ import {
   ResearchCollectionOrchestratorCard,
   computeSummary,
   formatBadgeLabel,
+  getAmazonFailureReason,
   normalizeState,
   sanitizeDetail,
   extractDetailFromPayload,
@@ -869,7 +870,7 @@ describe("ResearchCollectionOrchestratorCard (Phase 3 UI / Interaction)", () => 
       await act(async () => {
         btnAmazon?.click();
       });
-      expect(onNavigate).toHaveBeenCalledWith("market", "workbench-browser-evidence");
+      expect(onNavigate).toHaveBeenCalledWith("market", "fact-candidate-review");
 
       // 2. VOC 前往处理
       const btnVoc = container.querySelector('[data-testid="action-handle-voc"]');
@@ -1648,6 +1649,169 @@ describe("ResearchCollectionOrchestratorCard (Phase 3 UI / Interaction)", () => 
       expect(workbenchSource).toContain("const [dataRevision, setDataRevision] = useState(0)");
       expect(workbenchSource).toContain("dataRevision={dataRevision}");
       expect(workbenchSource).toContain("handleDataChanged");
+    });
+
+    it("1688 具备主图时仅展示图搜状态，不再提供独立搜索入口", async () => {
+      root = createRoot(container as unknown as Element);
+      await act(async () => {
+        root?.render(
+          createElement(ResearchCollectionOrchestratorCard, {
+            taskId: "task-sourcing-ready",
+            skipAutoInspect: true,
+            initialData: {
+              items: {
+                sourcing_1688: {
+                  state: "ready_to_search",
+                  detail: "已准备商品素材，可进入 1688 图片找货",
+                },
+              },
+            },
+          }),
+        );
+      });
+      await flush();
+
+      const badge = container.querySelector('[data-testid="badge-sourcing_1688"]');
+      expect(badge?.textContent).toContain("⚡ 图搜已就绪");
+
+      const searchBtn = container.querySelector('[data-testid="action-search-sourcing_1688"]');
+      expect(searchBtn).toBeNull();
+      expect(container.textContent).not.toContain("去1688图片搜索");
+    });
+
+    it("VOC 历史 no_public_reviews 结果不再伪装成暂无公开评论", async () => {
+      const onNavigate = vi.fn();
+      root = createRoot(container as unknown as Element);
+      await act(async () => {
+        root?.render(
+          createElement(ResearchCollectionOrchestratorCard, {
+            taskId: "task-voc-no-reviews",
+            skipAutoInspect: true,
+            onNavigate,
+            initialData: {
+              items: {
+                voc: {
+                  state: "no_public_reviews",
+                  detail: "未找到公开评论",
+                },
+              },
+            },
+          }),
+        );
+      });
+      await flush();
+
+      const badge = container.querySelector('[data-testid="badge-voc"]');
+      expect(badge?.textContent).toContain("⚠ 评论状态未确认");
+
+      // 关键断言：no_public_reviews 状态不渲染任何操作按钮
+      expect(container.querySelector('[data-testid="action-handle-voc"]')).toBeNull();
+      expect(container.querySelector('[data-testid="action-retry-voc"]')).toBeNull();
+      expect(container.querySelector('[data-testid="action-review-voc"]')).toBeNull();
+      expect(container.querySelector('[data-testid="action-search-voc"]')).toBeNull();
+
+      // 行为校验：直接传入 error.code 也应被归一化为 no_public_reviews
+      const sourcesPayload: any = {
+        voc: {
+          state: "failed",
+          error: { code: "no_public_reviews", message: "未找到公开评论" },
+        },
+      };
+      await act(async () => {
+        root?.render(
+          createElement(ResearchCollectionOrchestratorCard, {
+            taskId: "task-voc-no-reviews-2",
+            skipAutoInspect: true,
+            onNavigate,
+            initialData: {
+              rawSources: sourcesPayload,
+            },
+          }),
+        );
+      });
+      await flush();
+      const badge2 = container.querySelector('[data-testid="badge-voc"]');
+      expect(badge2?.textContent).toContain("⚠ 评论状态未确认");
+      expect(container.querySelector('[data-testid="action-handle-voc"]')).toBeNull();
+    });
+
+    it("VOC 新状态分别显示提取未完成与确认无公开评论", async () => {
+      root = createRoot(container as unknown as Element);
+      await act(async () => {
+        root?.render(
+          createElement(ResearchCollectionOrchestratorCard, {
+            taskId: "task-voc-extraction-empty",
+            skipAutoInspect: true,
+            initialData: {
+              items: {
+                voc: { state: "extraction_empty" },
+              },
+            },
+          }),
+        );
+      });
+      await flush();
+      const extractionRow = container.querySelector('[data-testid="source-row-voc"]');
+      expect(extractionRow?.textContent).toContain("评论提取未完成");
+      expect(extractionRow?.textContent).not.toContain("暂无公开评论");
+
+      root?.unmount();
+      root = createRoot(container as unknown as Element);
+      await act(async () => {
+        root?.render(
+          createElement(ResearchCollectionOrchestratorCard, {
+            taskId: "task-voc-confirmed-empty",
+            skipAutoInspect: true,
+            initialData: {
+              items: {
+                voc: { state: "confirmed_no_reviews" },
+              },
+            },
+          }),
+        );
+      });
+      await flush();
+      const confirmedRow = container.querySelector('[data-testid="source-row-voc"]');
+      expect(confirmedRow?.textContent).toContain("确认无公开评论");
+    });
+
+    it("Amazon verification blocker is not presented as an ASIN error", () => {
+      expect(getAmazonFailureReason("Amazon验证阻断")).toBe("Amazon验证阻断");
+    });
+
+    it("Amazon 失败时展示 ○ 获取失败徽章、收敛原因与双按钮（重新尝试+人工补充），消除恐慌红字", async () => {
+      root = createRoot(container as unknown as Element);
+      await act(async () => {
+        root?.render(
+          createElement(ResearchCollectionOrchestratorCard, {
+            taskId: "task-amazon-failed",
+            skipAutoInspect: true,
+            initialData: {
+              items: {
+                amazon: {
+                  state: "failed",
+                  detail: "Amazon 商品详情页未识别到有效商品容器或标题",
+                },
+              },
+            },
+          }),
+        );
+      });
+      await flush();
+
+      const badge = container.querySelector('[data-testid="badge-amazon"]');
+      expect(badge?.textContent).toContain("○ 获取失败");
+
+      const row = container.querySelector('[data-testid="source-row-amazon"]');
+      expect(row?.textContent).toContain("页面无法识别");
+
+      const retryBtn = container.querySelector('[data-testid="action-retry-amazon"]');
+      expect(retryBtn).not.toBeNull();
+      expect(retryBtn?.textContent).toContain("重新尝试");
+
+      const manualBtn = container.querySelector('[data-testid="action-manual-amazon"]');
+      expect(manualBtn).not.toBeNull();
+      expect(manualBtn?.textContent).toContain("人工补充");
     });
   });
 });

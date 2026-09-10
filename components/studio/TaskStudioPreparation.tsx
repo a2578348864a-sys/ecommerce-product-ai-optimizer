@@ -17,6 +17,7 @@ import { MarketingIntelligencePanel } from "@/components/listing-handoff/Marketi
 import { marketingReferenceFromSummary } from "@/components/listing-handoff/MarketingIntelligencePanel";
 import { CopyStrategyPanel } from "@/components/listing-handoff/CopyStrategyPanel";
 import { CopyStrategyPlannerSuggestionPanel } from "@/components/listing-handoff/CopyStrategyPlannerSuggestionPanel";
+import { ListingCopyStrategyCard } from "@/components/listing-handoff/ListingCopyStrategyCard";
 import { analyzeMarketingIntelligence } from "@/lib/listingHandoff/marketingIntelligence/analyzer";
 import { buildCopyStrategy } from "@/lib/listingHandoff/copyStrategy/analyzer";
 import { buildCopyStrategyPlannerSuggestion } from "@/lib/listingHandoff/copyStrategy/plannerSuggestion";
@@ -527,6 +528,7 @@ export function TaskStudioPreparation({
         ) : null}
 
         {/* 【第一层主角】：Listing 工作区与结果（优先展现） */}
+        {kind === "listing" ? <ListingCopyStrategyCard strategy={copyStrategy} /> : null}
         {children}
 
         {/* 【第二层折叠】：策略分析与详细证据来源（默认收起，按需查阅） */}

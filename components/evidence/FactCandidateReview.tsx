@@ -26,13 +26,37 @@ type FactCandidateView = {
   field: string;
   label: string;
   value: string | number;
-  sourceKind: "seller_sprite_product_facts" | "amazon_browser_evidence" | "product_title" | "human_manual";
+  sourceKind: "seller_sprite_product_facts" | "amazon_browser_evidence" | "amazon_product_info" | "product_title" | "human_manual";
   sourceRef: string;
   /** V3R（契约③ PROVENANCE_MERGE）：同字段其他来源的并列值（多 Provenance 保留，供人工核对） */
   alternateSources?: Array<{ sourceKind: string; sourceRef: string; value: string | number }>;
 };
 
 type ConfirmedFactView = FactCandidateView & { confirmedAt: string; confirmedBy: string };
+
+type AmazonSourceReview = {
+  previewId: string;
+  matchingConfirmedFacts: Array<{
+    field: string;
+    label: string;
+    value: string | number;
+    sourceKind: string;
+    sourceRef: string;
+    confirmedValue: string | number;
+    confirmedSourceKind: string;
+    amazonSourceConfirmed: boolean;
+  }>;
+  newFacts: Array<{ field: string; label: string; value: string | number; sourceKind: string; sourceRef: string }>;
+  conflicts: Array<{
+    field: string;
+    label: string;
+    value: string | number;
+    sourceKind: string;
+    sourceRef: string;
+    confirmedValue: string | number;
+    confirmedSourceKind: string;
+  }>;
+};
 
 const SOURCE_LABELS: Record<string, string> = {
   seller_sprite_product_facts: "SellerSprite 商品数据",
@@ -155,7 +179,9 @@ export function FactCandidateReview({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [amazonSourceReview, setAmazonSourceReview] = useState<AmazonSourceReview | null>(null);
   const [factStorageVersion, setFactStorageVersion] = useState(storageVersion);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   // V3 UX Closure Manual Fact：手动补充商品事实（SYSTEM CANNOT EXTRACT → 用户手动补充）
   const [manualOpen, setManualOpen] = useState(false);
   const [manualField, setManualField] = useState(MANUAL_FACT_FIELDS[0]?.field ?? "");
@@ -179,7 +205,7 @@ export function FactCandidateReview({
         cache: "no-store",
       });
       const json = await res.json() as
-        | { ok: true; data: { candidates: FactCandidateView[]; confirmed: ConfirmedFactView[]; storageVersion: { resultJsonHash: string; updatedAt: string } } }
+        | { ok: true; data: { candidates: FactCandidateView[]; confirmed: ConfirmedFactView[]; storageVersion: { resultJsonHash: string; updatedAt: string }; amazonSourceReview?: AmazonSourceReview | null } }
         | { ok: false; error?: { message?: string } };
       if (!res.ok || !json.ok) {
         setError((json as { error?: { message?: string } }).error?.message ?? "无法读取待确认商品事实。");
@@ -188,6 +214,16 @@ export function FactCandidateReview({
       setCandidates(json.data.candidates);
       setConfirmed(json.data.confirmed);
       setFactStorageVersion(json.data.storageVersion);
+      setAmazonSourceReview(json.data.amazonSourceReview ?? null);
+      const hasAmazonPending = Boolean(
+        json.data.amazonSourceReview && (
+          json.data.amazonSourceReview.matchingConfirmedFacts.some((f) => !f.amazonSourceConfirmed) ||
+          json.data.amazonSourceReview.newFacts.length > 0
+        )
+      );
+      if (typeof window !== "undefined" && window.location.hash === "#fact-candidate-review") {
+        setDetailsOpen(true);
+      }
       // V3 Final HWF：Selection Preservation——候选已不存在的勾选项清理（其余保留用户意图）
       const alive = new Set<string>();
       for (const c of json.data.candidates) alive.add(c.candidateId);
@@ -208,6 +244,7 @@ export function FactCandidateReview({
     function checkHash() {
       if (typeof window === "undefined") return;
       if (window.location.hash === "#fact-candidate-review") {
+        setDetailsOpen(true);
         const el = document.getElementById("fact-candidate-review");
         if (el && "open" in el) {
           (el as HTMLDetailsElement).open = true;
@@ -316,6 +353,41 @@ export function FactCandidateReview({
     }
   }
 
+  type AmazonSourceConfirmResponse =
+    | { ok: true; data: { confirmedCount: number; alreadyConfirmedCount?: number } }
+    | { ok: false; error?: { code?: string; message?: string } };
+
+  async function confirmAmazonSource() {
+    if (!factStorageVersion || !amazonSourceReview) return;
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/fact-candidates`, {
+        method: "POST",
+        headers: buildFetchHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          amazonSourceConfirmation: { previewId: amazonSourceReview.previewId },
+          expectedStorageVersion: factStorageVersion,
+        }),
+        signal: AbortSignal.timeout(60_000),
+      });
+      const json = await res.json() as AmazonSourceConfirmResponse;
+      if (!res.ok || !json.ok) {
+        setError(json.ok ? "Amazon 页面证据确认失败，请刷新后重试。" : (json.error?.message ?? "Amazon 页面证据确认失败，请刷新后重试。"));
+        if (!json.ok && (json.error?.code === "task_result_conflict" || json.error?.code === "preview_not_found")) await load();
+        return;
+      }
+      setNotice("已确认 Amazon 页面证据；原事实值未改变，Amazon 来源已补充并完成闭环。");
+      await load();
+      onChanged();
+    } catch {
+      setError("Amazon 页面证据确认失败，请重试。");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function addManualFact() {
     if (!factStorageVersion) return;
     const field = manualField.trim();
@@ -391,10 +463,22 @@ export function FactCandidateReview({
     );
   }
 
+  const hasPendingAmazonEvidence = Boolean(
+    amazonSourceReview && (
+      amazonSourceReview.matchingConfirmedFacts.some((item) => !item.amazonSourceConfirmed) ||
+      amazonSourceReview.newFacts.length > 0
+    )
+  );
   const total = (candidates?.length ?? 0) + (confirmed?.length ?? 0);
-  if (total === 0 && !error) {
+  if (total === 0 && !amazonSourceReview && !error) {
     return (
-      <details id="fact-candidate-review" className="mt-4 scroll-mt-6 rounded-2xl border border-slate-200/90 bg-white shadow-xs overflow-hidden" data-testid="fact-candidate-review">
+      <details
+        id="fact-candidate-review"
+        open={detailsOpen}
+        onToggle={(e) => setDetailsOpen(e.currentTarget.open)}
+        className="mt-4 scroll-mt-6 rounded-2xl border border-slate-200/90 bg-white shadow-xs overflow-hidden"
+        data-testid="fact-candidate-review"
+      >
         <summary className="cursor-pointer bg-slate-50/70 px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-100/70 transition-colors flex items-center justify-between select-none">
           <div className="flex items-center gap-2">
             <span className="font-bold text-slate-900">商品事实确认</span>
@@ -411,12 +495,14 @@ export function FactCandidateReview({
     );
   }
 
-  const pendingCount = candidates?.length ?? 0;
+  const pendingCount = (candidates?.length ?? 0) + (hasPendingAmazonEvidence ? 1 : 0);
   const confirmedCount = confirmed?.length ?? 0;
 
   return (
     <details
       id="fact-candidate-review"
+      open={detailsOpen}
+      onToggle={(e) => setDetailsOpen(e.currentTarget.open)}
       className="mt-4 scroll-mt-6 rounded-2xl border border-slate-200/90 bg-white shadow-xs overflow-hidden"
       data-testid="fact-candidate-review"
     >
@@ -467,6 +553,58 @@ export function FactCandidateReview({
       </p>
       {error && <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">{error}</p>}
       {notice && <p className="mt-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-700">{notice}</p>}
+
+      {amazonSourceReview && (
+        <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50/60 px-3 py-3" data-testid="amazon-source-confirmation">
+          <p className="text-sm font-bold text-indigo-900">Amazon 页面证据待确认</p>
+          {amazonSourceReview.matchingConfirmedFacts.length > 0 && (
+            <>
+              <p className="mt-1 text-xs leading-5 text-indigo-800">
+                Amazon 本次验证到 {amazonSourceReview.matchingConfirmedFacts.length} 个与你已确认事实一致的字段。确认后不会覆盖现有事实，只会补充 Amazon 来源。
+              </p>
+              <ul className="mt-2 space-y-1 text-xs text-slate-700">
+                {amazonSourceReview.matchingConfirmedFacts.map((item) => (
+                  <li key={`${item.field}:${item.sourceRef}`} className="flex items-start justify-between gap-2 rounded-lg bg-white/70 px-2.5 py-1.5">
+                    <span className="font-semibold">{item.label}</span>
+                    <span>
+                      {String(item.value)}
+                      {item.confirmedValue !== undefined && String(item.value).trim() !== String(item.confirmedValue).trim() && (
+                        <span className="ml-1 font-normal text-[11px] text-slate-500">（当前：{String(item.confirmedValue)}）</span>
+                      )}
+                    </span>
+                    <span className="shrink-0 text-[11px] text-slate-500">Amazon 页面证据</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {amazonSourceReview.newFacts.length > 0 && (
+            <p className="mt-2 text-xs text-amber-800">另有 {amazonSourceReview.newFacts.length} 个新字段，请在下方事实候选中逐项确认。</p>
+          )}
+          {amazonSourceReview.conflicts.length > 0 && (
+            <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-2 text-xs text-rose-800">
+              <p className="font-semibold">Amazon 数据与已确认事实存在冲突，请走下方事实复核，不能直接确认页面证据。</p>
+              <ul className="mt-1 space-y-0.5">
+                {amazonSourceReview.conflicts.map((item) => <li key={`${item.field}:${item.sourceRef}`}>{item.label}：已确认“{String(item.confirmedValue)}”，Amazon 为“{String(item.value)}”</li>)}
+              </ul>
+            </div>
+          )}
+          {amazonSourceReview.matchingConfirmedFacts.length > 0 && amazonSourceReview.newFacts.length === 0 && amazonSourceReview.conflicts.length === 0 && (
+            amazonSourceReview.matchingConfirmedFacts.every((item) => item.amazonSourceConfirmed)
+              ? <p className="mt-2 text-xs font-semibold text-teal-700">Amazon 来源已保留，正在完成预览闭环。</p>
+              : <button
+                type="button"
+                disabled={saving}
+                onClick={() => void confirmAmazonSource()}
+                className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-indigo-300 bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                data-testid="confirm-amazon-source"
+              >
+                {saving ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
+                确认此 Amazon 页面证据
+              </button>
+          )}
+        </div>
+      )}
 
       {confirmed && confirmed.length > 0 && (
         <div className="mt-3">

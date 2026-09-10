@@ -81,6 +81,7 @@ import {
   createReviewCollectPreview,
   storeReviewCollectPreview,
   findPendingReviewCollectPreview,
+  isReusableReviewCollectPreview,
   reviewCollectSubjectKey,
   ReviewCollectorError,
   type ReviewSnippetPreviewItem,
@@ -88,17 +89,31 @@ import {
 } from "@/lib/server/reviewCollector";
 
 
-// 来源 4：1688 Sourcing Evidence
+// 来源 4：1688 Sourcing Evidence & Collector
 import {
   getSourcingEvidence,
   findPendingSourcingPreview,
+  createSourcingPreview,
 } from "@/lib/server/sourcingEvidence";
+import {
+  acquireByImage,
+  normalizeImageAcquisitionError,
+  IMAGE_ACQUISITION_DRIVER_VERSION,
+} from "@/lib/server/sourcingImageAcquisition";
+import { getTaskProductImageBuffer } from "@/lib/server/taskProductImage";
+import { DEMO_SOURCING_EVIDENCE_SAMPLE } from "@/lib/server/demoAcquisitionSamples";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { resolvePublicSourceImageUrl } from "@/lib/client/sourceImageUrl";
 
 export type SourceStatus =
   | "ready"
   | "running"
   | "awaiting_confirmation"
   | "needs_user"
+  | "ready_to_search"
+  | "blocked"
   | "failed";
 
 export type OrchestratorAction = "inspect" | "orchestrate";
@@ -114,6 +129,8 @@ export type OrchestratorSourceDetail = {
   error?: {
     code: string;
     message: string;
+    /** 仅供服务端诊断；不改变前端用户文案。 */
+    diagnosticCode?: string;
   } | null;
 };
 
@@ -167,6 +184,13 @@ export function sanitizeErrorMessage(error: unknown): string {
 const RUNNING_ORCHESTRATIONS = new Map<string, number>();
 const RUNNING_TIMEOUT_MS = 5 * 60 * 1000; // 5分钟自愈超时，防止单次异常阻断后续
 
+type LastOrchestrationCacheEntry = {
+  sources: ResearchOrchestratorSources;
+  timestamp: number;
+};
+const RECENT_ORCHESTRATION_CACHE = new Map<string, LastOrchestrationCacheEntry>();
+const ORCHESTRATION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
 export function isOrchestrationRunning(taskId: string): boolean {
   const startedAt = RUNNING_ORCHESTRATIONS.get(taskId);
   if (!startedAt) return false;
@@ -177,8 +201,27 @@ export function isOrchestrationRunning(taskId: string): boolean {
   return true;
 }
 
+type ActiveSourcingJob = {
+  taskId: string;
+  status: "running" | "done" | "failed";
+  message?: string;
+  error?: { code: string; message: string; diagnosticCode?: string };
+  previewId?: string;
+  itemCount?: number;
+  startedAt: number;
+};
+
+const ACTIVE_SOURCING_JOBS = new Map<string, ActiveSourcingJob>();
+const SOURCING_JOB_TIMEOUT_MS = 2 * 60 * 1000;
+
+export function _clearSourcingJobsForTests(): void {
+  ACTIVE_SOURCING_JOBS.clear();
+}
+
 export function _clearOrchestratorRunningStateForTests(): void {
   RUNNING_ORCHESTRATIONS.clear();
+  RECENT_ORCHESTRATION_CACHE.clear();
+  ACTIVE_SOURCING_JOBS.clear();
 }
 
 /* ── 计算总体状态 ──────────────────────────────────────────────────────── */
@@ -270,25 +313,17 @@ async function handleAmazonSource(
       };
     }
 
-    // 3. 检查是否有待确认的 Pending 预览（无副作用只读检测）
-    const subjectKey = browserEvidenceSubjectKey(context);
-    const pending = findPendingBrowserEvidencePreview({ subjectKey, taskId, asin });
-    if (pending !== null) {
-      return {
-        status: "awaiting_confirmation",
-        hasEvidence: false,
-        previewId: pending.evidenceId,
-        itemCount: 1,
-        message: "Amazon 详情已有待确认采集预览",
-      };
-    }
-
-    // 4. Fact Candidate 确认闭环：Preview 已按 taskId/ASIN/主体/previewId/
-    // candidate source identity 完成处理并被消费后，事实确认本身就是该来源的
-    // 可追溯完成凭据；不能因为内存 Preview 已消费就再次启动采集。
+    // 3. 读取最新事实快照。Pending Preview 是内存态，不能在它之前
+    //    无条件返回 awaiting_confirmation：历史确认流程可能已经把全部
+    //    canonical field 确认完，但没有留下 preview resolution。
     const taskAfterResolution = await getTaskSnapshot(context, taskId);
+    const parsedTaskResult = parseJsonSafe(taskAfterResolution.resultJson) ?? {};
+
+    // 4. 已持久化的来源 resolution 是确认动作的完成凭据。即使旧 Preview
+    //    因消费竞态仍短暂存在，也不能让它把已闭环状态重新显示为 pending。
+    const subjectKey = browserEvidenceSubjectKey(context);
     const resolved = findAmazonPreviewResolution({
-      resultJson: parseJsonSafe(taskAfterResolution.resultJson) ?? {},
+      resultJson: parsedTaskResult,
       taskId,
       asin,
       subjectKey,
@@ -301,7 +336,23 @@ async function handleAmazonSource(
         message: "Amazon 商品资料已完成事实确认闭环",
       };
     }
-    const parsedTaskResult = parseJsonSafe(taskAfterResolution.resultJson) ?? {};
+
+    // 5. Pending Preview 必须有真实的用户确认动作，不能因为 canonical
+    //    field 已有同值事实就由 Orchestrator 直接推导为 ready。
+    const pending = findPendingBrowserEvidencePreview({ subjectKey, taskId, asin });
+    if (pending !== null) {
+      return {
+        status: "awaiting_confirmation",
+        hasEvidence: false,
+        previewId: pending.evidenceId,
+        itemCount: 1,
+        message: "Amazon 详情已有待确认采集预览",
+      };
+    }
+
+    // 6. Fact Candidate 确认闭环：Preview 已按 taskId/ASIN/主体/previewId/
+    // candidate source identity 完成处理并被消费后，事实确认本身就是该来源的
+    // 可追溯完成凭据；不能因为内存 Preview 已消费就再次启动采集。
     if (hasLegacyAmazonFactClosure(parsedTaskResult)) {
       return {
         status: "ready",
@@ -310,7 +361,7 @@ async function handleAmazonSource(
       };
     }
 
-    // 5. inspect 模式仅检查状态，不执行采集
+    // 7. inspect 模式仅检查状态，不执行采集
     if (action === "inspect") {
       return {
         status: "needs_user",
@@ -319,7 +370,7 @@ async function handleAmazonSource(
       };
     }
 
-    // 6. orchestrate 模式：尝试采集 Preview（严格不自动确认入库）
+    // 8. orchestrate 模式：尝试采集 Preview（严格不自动确认入库）
     if (context.mode === "demo") {
       // Demo 模式回放预置 preview
       const preview = buildDemoBrowserCollectPreview(asin);
@@ -376,16 +427,28 @@ async function handleAmazonSource(
     };
   } catch (error) {
     if (error instanceof BrowserEvidenceCollectError) {
-      const needsUser = [
-        "browser_unavailable",
-        "page_blocked_captcha",
-        "page_blocked_login_wall",
-      ].includes(error.code);
+      const isTypedBlockerOrUnavailable =
+        error.code === "browser_unavailable" ||
+        error.code === "page_blocked_login_wall" ||
+        error.code === "page_blocked_captcha";
+      const diagReason =
+        error.code === "page_unknown"
+          ? "页面无法识别"
+          : error.code === "page_blocked_login_wall" || error.code === "page_blocked_captcha"
+            ? "Amazon验证阻断"
+            : error.code === "asin_mismatch" || error.code === "asin_not_found"
+              ? "ASIN异常"
+              : error.message;
+      // 统一给前端一个稳定的用户语义：Amazon 的登录墙、验证码和中间验证页
+      // 都属于 Amazon 验证阻断，避免错误文本中的 "ASIN" 触发 ASIN 异常展示。
+      const message = error.code === "page_blocked_login_wall" || error.code === "page_blocked_captcha"
+        ? "Amazon验证阻断"
+        : error.message || diagReason;
       return {
-        status: needsUser ? "needs_user" : "failed",
+        status: isTypedBlockerOrUnavailable ? "needs_user" : "failed",
         hasEvidence: false,
-        message: error.message,
-        error: { code: error.code, message: error.message },
+        message,
+        error: { code: error.code, message },
       };
     }
     const sanitized = sanitizeErrorMessage(error);
@@ -670,10 +733,13 @@ async function handleVocSource(
       };
     }
 
-    // 3. Pending Review Preview 幂等（无副作用查询；subjectKey/taskId 严格匹配；过期不复用）
+    // 3. Pending Review Preview 幂等（无副作用查询；subjectKey/taskId 严格匹配；过期不复用）。
+    //    只有「用户可操作」的 Pending 才复用（有待确认条目 / 页面被阻断 / 明确无评论）；
+    //    extraction_empty 等瞬时失败不复用，落到下方正常采集分支重试，否则空 Preview
+    //    会在 TTL 内把所有「补齐研究资料」点击都挡在同一个失败上。
     const subjectKey = reviewCollectSubjectKey(context);
     const pending = findPendingReviewCollectPreview({ subjectKey, taskId, asin });
-    if (pending !== null) {
+    if (pending !== null && isReusableReviewCollectPreview(pending)) {
       const pendingItems = pending.items.length;
       const blockingPage = pending.pageResults.find((page) =>
         page.status === "blocked_redirect" || page.status === "login_required" || page.status === "captcha_required",
@@ -702,13 +768,15 @@ async function handleVocSource(
         };
       }
       if (pendingItems === 0) {
+        // 复用判定过滤后，到这里且条目为空的只剩「页面明确无评论」这一种可操作空态。
+        const message = "Amazon 页面明确显示暂无公开评论";
         return {
           status: "needs_user",
           hasEvidence: false,
           previewId: pending.previewId,
           itemCount: 0,
-          message: "当前页面未发现公开评论片段，可重试或粘贴导入该商品评论",
-          error: { code: "no_public_reviews", message: "当前页面未发现公开评论片段" },
+          message,
+          error: { code: "confirmed_no_reviews", message },
         };
       }
       return {
@@ -793,14 +861,30 @@ async function handleVocSource(
         error: { code, message },
       };
     }
+    const errorPage = preview.pageResults.find((page) => page.status === "error");
+    if (preview.items.length === 0 && errorPage) {
+      const message = errorPage.note ?? "买家评论页面访问异常或超时，请稍后重试";
+      return {
+        status: "failed",
+        hasEvidence: false,
+        previewId: preview.previewId,
+        itemCount: 0,
+        message,
+        error: { code: "review_collect_error", message },
+      };
+    }
     if (preview.items.length === 0) {
+      const confirmedNoReviews = preview.pageResults.some((page) => page.status === "confirmed_no_reviews");
+      const message = confirmedNoReviews
+        ? "Amazon 页面明确显示暂无公开评论"
+        : "评论模块未完成提取，暂时无法确认是否无评论，请重试";
       return {
         status: "needs_user",
         hasEvidence: false,
         previewId: preview.previewId,
         itemCount: 0,
-        message: "当前页面未发现公开评论片段，可重试或粘贴导入该商品评论",
-        error: { code: "no_public_reviews", message: "当前页面未发现公开评论片段" },
+        message,
+        error: { code: confirmedNoReviews ? "confirmed_no_reviews" : "extraction_empty", message },
       };
     }
     return {
@@ -855,15 +939,199 @@ function storeDemoReviewPreview(input: {
 
 /* ── Source 4: 1688 货源处理 ───────────────────────────────────────────── */
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasProductImageForSourcing(parsedResult: Record<string, unknown> | null): boolean {
+  if (!parsedResult) return false;
+  // 必须具备真实商品主图（公网 HTTPS 图片 URL，用于 1688 图搜）
+  const publicUrl = resolvePublicSourceImageUrl(parsedResult);
+  return Boolean(publicUrl);
+}
+
+// 检查 sourceMeta.candidateSnapshot.productImageSnapshot.dataUrl
+// 是否为合法的 data:image/(jpeg|png);base64,... 快照
+function hasBase64ImageForSourcing(parsedResult: Record<string, unknown> | null): boolean {
+  if (!parsedResult) return false;
+  const sourceMeta = isRecord(parsedResult.sourceMeta) ? parsedResult.sourceMeta : null;
+  if (!sourceMeta) return false;
+  const candidateSnapshot = isRecord(sourceMeta.candidateSnapshot) ? sourceMeta.candidateSnapshot : null;
+  if (!candidateSnapshot) return false;
+  const productImageSnapshot = isRecord(candidateSnapshot.productImageSnapshot)
+    ? candidateSnapshot.productImageSnapshot
+    : null;
+  if (!productImageSnapshot) return false;
+  const dataUrl = productImageSnapshot.dataUrl;
+  if (typeof dataUrl !== "string" || dataUrl.length === 0) return false;
+  return /^data:image\/(?:jpeg|png);base64,([A-Za-z0-9+/]+={0,2})$/u.test(dataUrl);
+}
+
+// 检查 result/productIdentity/sourceMeta.productBatchSnapshot 任意一个标题字段
+// 是否为非空字符串（trim 后长度 ≥ 1）
+function hasProductTitleForSourcing(parsedResult: Record<string, unknown> | null): boolean {
+  if (!parsedResult) return false;
+  const rootTitle = typeof parsedResult.productName === "string"
+    ? parsedResult.productName.trim()
+    : "";
+  if (rootTitle.length >= 1) return true;
+
+  const productIdentity = isRecord(parsedResult.productIdentity) ? parsedResult.productIdentity : null;
+  if (productIdentity && typeof productIdentity.title === "string"
+    && productIdentity.title.trim().length >= 1) {
+    return true;
+  }
+
+  const sourceMeta = isRecord(parsedResult.sourceMeta) ? parsedResult.sourceMeta : null;
+  const batchSnapshot = sourceMeta && isRecord(sourceMeta.productBatchSnapshot)
+    ? sourceMeta.productBatchSnapshot
+    : null;
+  if (batchSnapshot) {
+    if (typeof batchSnapshot.productTitle === "string"
+      && batchSnapshot.productTitle.trim().length >= 1) {
+      return true;
+    }
+    if (typeof batchSnapshot.query === "string"
+      && batchSnapshot.query.trim().length >= 1) {
+      return true;
+    }
+    const productFacts = isRecord(batchSnapshot.productFacts) ? batchSnapshot.productFacts : null;
+    if (productFacts && typeof productFacts.productTitle === "string"
+      && productFacts.productTitle.trim().length >= 1) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function runSourcingJobAsync(
+  context: AccessContext,
+  taskId: string,
+  publicUrl: string | null,
+  taskImage: { buffer: Buffer; mimeType: string } | null,
+): Promise<void> {
+  try {
+    // Demo 模式：生成演示候选预览
+    if (context.mode === "demo") {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const demoCandidates = DEMO_SOURCING_EVIDENCE_SAMPLE.candidates.map((c) => ({ ...c }));
+      const preview = createSourcingPreview({
+        context,
+        taskId,
+        method: "image",
+        query: publicUrl || `/api/tasks/${taskId}/image`,
+        runTrace: {
+          source: "1688",
+          method: "image",
+          query: "demo-image",
+          timestamp: new Date().toISOString(),
+          driverVersion: IMAGE_ACQUISITION_DRIVER_VERSION,
+          resolverVersion: null,
+          success: true,
+          failClosedReason: null,
+        },
+        candidates: demoCandidates,
+      });
+      const job = ACTIVE_SOURCING_JOBS.get(taskId);
+      if (job) {
+        job.status = "done";
+        job.previewId = preview.previewId;
+        job.itemCount = demoCandidates.length;
+        job.message = `1688 图搜完成（演示数据），已生成 ${demoCandidates.length} 条待确认候选`;
+      }
+      return;
+    }
+
+    // 真实运行模式：bridge 生命周期与扩展 readiness 统一由 acquireByImage 负责。
+    // 编排器不再复制一套短 timeout 检查，避免 bridge 冷启动时提前误判扩展未就绪。
+
+    // 构造本地临时文件（若存在 taskImage Buffer）
+    let tempDirToClean: string | undefined;
+    let localImagePath: string | undefined;
+    try {
+      if (taskImage) {
+        const tempDir = await mkdtemp(join(tmpdir(), "v35-orch-sourcing-img-"));
+        tempDirToClean = tempDir;
+        const ext = taskImage.mimeType === "image/png" ? "png" : "jpg";
+        const tempFile = join(tempDir, `product-image.${ext}`);
+        await writeFile(tempFile, taskImage.buffer);
+        localImagePath = tempFile;
+      }
+
+      const { candidates, trace } = await acquireByImage({
+        imageUrl: localImagePath ? undefined : (publicUrl ?? undefined),
+        localImagePath,
+        taskId,
+        candidateId: `task:${taskId}`,
+      });
+
+      const preview = createSourcingPreview({
+        context,
+        taskId,
+        method: "image",
+        query: publicUrl || `/api/tasks/${taskId}/image`,
+        runTrace: {
+          source: "1688",
+          method: "image",
+          query: publicUrl || `/api/tasks/${taskId}/image`,
+          timestamp: new Date().toISOString(),
+          driverVersion: trace.driverVersion,
+          resolverVersion: trace.resolverVersion,
+          success: trace.success,
+          failClosedReason: trace.failClosedReason,
+        },
+        candidates,
+      });
+
+      const job = ACTIVE_SOURCING_JOBS.get(taskId);
+      if (job) {
+        job.status = "done";
+        job.previewId = preview.previewId;
+        job.itemCount = candidates.length;
+        job.message = `1688 图搜完成，生成 ${candidates.length} 条待确认候选`;
+      }
+    } finally {
+      if (tempDirToClean) {
+        await rm(tempDirToClean, { recursive: true, force: true }).catch(() => undefined);
+      }
+    }
+  } catch (error) {
+    const normalized = normalizeImageAcquisitionError(error);
+    const userFriendlyMessage =
+      normalized.code === "auth_required"
+        ? "1688 未登录，请在普通 Chrome 中登录 1688 后重试"
+        : normalized.code === "no_1688_tab"
+          ? "未检测到 1688 标签页，请在普通 Chrome 中打开 1688 页面"
+          : normalized.code === "extension_not_installed"
+            ? "未检测到 1688 助手扩展，请先加载扩展"
+            : normalized.code === "extension_disconnected"
+              ? "1688 助手连接中断，请检查 Chrome 窗口与助手状态后重试"
+              : (normalized.message || "1688 图搜未成功，请重试");
+
+    const job = ACTIVE_SOURCING_JOBS.get(taskId);
+    if (job) {
+      job.status = "failed";
+      job.message = userFriendlyMessage;
+      job.error = {
+        code: normalized.code,
+        message: userFriendlyMessage,
+        ...(normalized.diagnosticCode ? { diagnosticCode: normalized.diagnosticCode } : {}),
+      };
+    }
+  }
+}
+
 async function handleSourcingSource(
   context: AccessContext,
   taskId: string,
-  _action: OrchestratorAction,
+  taskResultJson: string,
+  action: OrchestratorAction,
 ): Promise<OrchestratorSourceDetail> {
   try {
     // 1. 检查已保存的正式货源证据
     const sourcingEv = await getSourcingEvidence(context, taskId);
     if (sourcingEv !== null && sourcingEv.humanConfirmed.length > 0) {
+      ACTIVE_SOURCING_JOBS.delete(taskId);
       return {
         status: "ready",
         hasEvidence: true,
@@ -875,20 +1143,87 @@ async function handleSourcingSource(
     // 2. 检查是否有待确认的货源预览（无副作用只读检测）
     const pending = findPendingSourcingPreview(taskId);
     if (pending !== null) {
+      ACTIVE_SOURCING_JOBS.delete(taskId);
       return {
         status: "awaiting_confirmation",
         hasEvidence: false,
         previewId: pending.previewId,
         itemCount: pending.candidates.length,
-        message: "1688 货源已有待确认预览",
+        message: `1688 货源已有待确认预览（${pending.candidates.length} 条候选）`,
       };
     }
 
-    // 3. 1688 找货需要指定具体搜词或图片，暂无输入时标记 needs_user
+    // 3. 检查是否有处于后台运行中的异步 Sourcing 任务
+    const activeJob = ACTIVE_SOURCING_JOBS.get(taskId);
+    if (activeJob) {
+      if (activeJob.status === "running") {
+        if (Date.now() - activeJob.startedAt < SOURCING_JOB_TIMEOUT_MS) {
+          return {
+            status: "running",
+            hasEvidence: false,
+            message: activeJob.message || "1688 图片找货执行中...",
+          };
+        } else {
+          ACTIVE_SOURCING_JOBS.delete(taskId);
+        }
+      } else if (activeJob.status === "failed") {
+        return {
+          status: "failed",
+          hasEvidence: false,
+          message: activeJob.message || "1688 图搜未成功",
+          error: activeJob.error,
+        };
+      }
+    }
+
+    // 4. 检查任务是否已具备商品素材（公网主图 / Base64 快照 / 商品标题）
+    const parsedTask = parseJsonSafe(taskResultJson);
+    const publicUrl = resolvePublicSourceImageUrl(parsedTask, taskId);
+    const taskImage = await getTaskProductImageBuffer(taskId);
+    const hasImageMaterial = Boolean(publicUrl || taskImage);
+    const hasBase64 = hasBase64ImageForSourcing(parsedTask);
+    const hasTitle = hasProductTitleForSourcing(parsedTask);
+
+    if (!hasImageMaterial && !hasBase64 && !hasTitle) {
+      return {
+        status: "needs_user",
+        hasEvidence: false,
+        message: "待补充商品主图后搜索 1688 货源",
+      };
+    }
+
+    // 5. 只读检查（action === "inspect"）：不触发外部搜索，返回准备就绪
+    if (action === "inspect") {
+      return {
+        status: "ready_to_search",
+        hasEvidence: false,
+        message: "已准备商品素材，可进入1688图片找货",
+      };
+    }
+
+    // 6. 编排采集模式（action === "orchestrate"）：启动非阻塞后台任务并立即返回 running
+    if (!hasImageMaterial) {
+      return {
+        status: "needs_user",
+        hasEvidence: false,
+        message: "当前任务无商品主图素材，无法自动发起图搜",
+      };
+    }
+
+    const job: ActiveSourcingJob = {
+      taskId,
+      status: "running",
+      message: "1688 图片找货执行中...",
+      startedAt: Date.now(),
+    };
+    ACTIVE_SOURCING_JOBS.set(taskId, job);
+
+    void runSourcingJobAsync(context, taskId, publicUrl, taskImage);
+
     return {
-      status: "needs_user",
+      status: "running",
       hasEvidence: false,
-      message: "待搜索或导入 1688 货源",
+      message: "1688 图片找货执行中...",
     };
   } catch (error) {
     const sanitized = sanitizeErrorMessage(error);
@@ -897,7 +1232,7 @@ async function handleSourcingSource(
       hasEvidence: false,
       message: sanitized,
       error: {
-        code: "sourcing_check_failed",
+        code: "sourcing_failed",
         message: sanitized,
       },
     };
@@ -938,12 +1273,48 @@ export async function orchestrateResearchCollection(options: {
     const task = await getTaskSnapshot(options.context, taskId);
 
     // 3. 并行执行 4 大来源的状态检测与采集（各源内部自包含 failure isolation）
-    const [amazon, keywordCompetitor, voc, sourcing1688] = await Promise.all([
+    const [rawAmazon, rawKeywordCompetitor, rawVoc, rawSourcing1688] = await Promise.all([
       handleAmazonSource(options.context, taskId, action),
       handleKeywordCompetitorSource(options.context, taskId, task.resultJson, action),
       handleVocSource(options.context, taskId, action),
-      handleSourcingSource(options.context, taskId, action),
+      handleSourcingSource(options.context, taskId, task.resultJson, action),
     ]);
+
+    let amazon = rawAmazon;
+    let keywordCompetitor = rawKeywordCompetitor;
+    let voc = rawVoc;
+    let sourcing1688 = rawSourcing1688;
+
+    if (action === "orchestrate") {
+      // 记录最新主动 orchestrate 结果缓存，供后续只读 inspect 保持状态延续
+      RECENT_ORCHESTRATION_CACHE.set(taskId, {
+        sources: { amazon, keywordCompetitor, voc, sourcing1688 },
+        timestamp: Date.now(),
+      });
+    } else {
+      // action === "inspect"
+      const cached = RECENT_ORCHESTRATION_CACHE.get(taskId);
+      if (cached && Date.now() - cached.timestamp <= ORCHESTRATION_CACHE_TTL_MS) {
+        // 如果 inspect 探测为弱状态 needs_user（未生成新 evidence 也无新 preview），
+        // 但最近主动 orchestrate 产生了真实状态（如 failed, ready_to_search, 或带具体错误的 needs_user），
+        // 则予以保留，防止只读探测瞬间抹白刚刚执行的失败状态！
+        if (amazon.status === "needs_user" && (cached.sources.amazon.status === "failed" || cached.sources.amazon.status === "ready")) {
+          amazon = { ...cached.sources.amazon };
+        }
+        if (voc.status === "needs_user" && (cached.sources.voc.status === "failed" || cached.sources.voc.status === "ready" || cached.sources.voc.error)) {
+          voc = { ...cached.sources.voc };
+        }
+        if (
+          (sourcing1688.status === "needs_user" || sourcing1688.status === "ready_to_search") &&
+          (cached.sources.sourcing1688.status === "awaiting_confirmation" || cached.sources.sourcing1688.status === "failed")
+        ) {
+          sourcing1688 = { ...cached.sources.sourcing1688 };
+        }
+        if (keywordCompetitor.status === "needs_user" && (cached.sources.keywordCompetitor.status === "failed" || cached.sources.keywordCompetitor.status === "awaiting_confirmation")) {
+          keywordCompetitor = { ...cached.sources.keywordCompetitor };
+        }
+      }
+    }
 
     const sources: ResearchOrchestratorSources = {
       amazon,

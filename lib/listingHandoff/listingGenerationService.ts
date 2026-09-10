@@ -34,6 +34,9 @@ import { parseProductCreativeHandoff } from "@/lib/productCreativeHandoff";
 import { getProductResearchRecord, getProductResearchVerification, verifyProductResearchHash } from "@/lib/productResearchRecord";
 import { applyListingPlannerDecision, buildFinalizablePlannerCatalog, buildRendererQualifiedOptions, completePlannerSelectionsToFinalizablePlan, generateListingPlanDecision, renderPlannerListing } from "@/lib/listingHandoff/listingPlanner";
 import { evaluateListingQualityPolicy, parseListingQualityReport, type ListingQualityReport } from "@/lib/listingHandoff/listingQualityPolicy";
+import { analyzeMarketingIntelligence } from "@/lib/listingHandoff/marketingIntelligence/analyzer";
+import { buildCopyStrategy } from "@/lib/listingHandoff/copyStrategy/analyzer";
+import type { CopyStrategyV1 } from "@/lib/listingHandoff/copyStrategy/types";
 
 export class ListingHandoffError extends Error {
   constructor(public readonly code: string, public readonly status: number, message: string) {
@@ -152,6 +155,20 @@ export type ListingDraftSafeSummary = {
   rendererFailureReasonCode?: string;
   rendererRejectedBulletCount?: number;
   rendererUnrenderableRoleCount?: number;
+  /** Safe, value-free copy direction used for this generation request. */
+  copyStrategy?: {
+    targetBuyer: string | null;
+    buyerPainPoints: string[];
+    mainAngle: string | null;
+    emotionalHook: string | null;
+    copyTone: string;
+    bulletStrategies: Array<{ order: number; structure: string; purpose: string }>;
+    titleStrategy: string | null;
+    descriptionStrategy: string | null;
+    avoidExpressions: string[];
+  };
+  /** True only when the active Provider path received the strategy. */
+  copyStrategyApplied?: boolean;
 };
 
 /** HISTORICAL_KEYWORD_READ_GUARD：读取投影所需上下文（当前有效 Brief + 关键词策略上下文）。 */
@@ -214,8 +231,73 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * Build the strategy consumed by the current Listing provider from the
+ * existing research sidecar. The result is a value-free framing contract:
+ * confirmed product facts remain the only source of product assertions.
+ */
+function copyStrategyForListingInput(
+  input: ListingGenerationInput,
+): CopyStrategyV1 | undefined {
+  const context = input.creativeContext;
+  const hasResearch = Boolean(context && (
+    context.vocInsights.length > 0
+    || context.keywordCandidates.length > 0
+    || context.competitiveContext.length > 0
+    || context.sourcingContext.length > 0
+  ));
+  if (!hasResearch && !input.listingBrief) return undefined;
+  const insight = context
+    ? analyzeMarketingIntelligence({
+        voc: context.vocInsights,
+        keywords: context.keywordCandidates,
+        competitors: context.competitiveContext,
+        sourcing: context.sourcingContext,
+      })
+    : null;
+  return buildCopyStrategy({
+    marketingInsight: insight,
+    confirmedFactSummary: {
+      count: input.productFacts.length,
+      labels: input.productFacts.map((fact) => fact.label),
+    },
+    listingBrief: input.listingBrief ?? null,
+  });
+}
+
 function safeString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function safeCopyStrategySummary(value: unknown): ListingDraftSafeSummary["copyStrategy"] | undefined {
+  if (!isRecord(value)) return undefined;
+  const asText = (candidate: unknown, max: number): string | null =>
+    typeof candidate === "string" && candidate.trim().length > 0 ? candidate.trim().slice(0, max) : null;
+  const textArray = (candidate: unknown, maxItems: number, maxText: number): string[] =>
+    Array.isArray(candidate)
+      ? candidate.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+          .map((item) => item.trim().slice(0, maxText)).slice(0, maxItems)
+      : [];
+  const bulletStrategies = Array.isArray(value.bulletStrategies)
+    ? value.bulletStrategies.flatMap((item) => {
+        if (!isRecord(item) || typeof item.order !== "number" || !Number.isInteger(item.order)
+          || typeof item.structure !== "string" || typeof item.purpose !== "string") return [];
+        return [{ order: Math.min(5, Math.max(1, item.order)), structure: item.structure.slice(0, 64), purpose: item.purpose.trim().slice(0, 300) }];
+      }).slice(0, 5)
+    : [];
+  const copyTone = asText(value.copyTone, 40);
+  if (!copyTone) return undefined;
+  return {
+    targetBuyer: asText(value.targetBuyer, 200),
+    buyerPainPoints: textArray(value.buyerPainPoints, 6, 300),
+    mainAngle: asText(value.mainAngle, 300),
+    emotionalHook: asText(value.emotionalHook, 300),
+    copyTone,
+    bulletStrategies,
+    titleStrategy: asText(value.titleStrategy, 300),
+    descriptionStrategy: asText(value.descriptionStrategy, 400),
+    avoidExpressions: textArray(value.avoidExpressions, 8, 200),
+  };
 }
 
 function safeStringArray(value: unknown): string[] {
@@ -548,6 +630,7 @@ export function revalidateHistoricalDraftRead(value: Record<string, unknown>): H
 export function draftSafeSummary(value: unknown, keywordContext?: HistoricalKeywordReadContext | null): ListingDraftSafeSummary | null {
   if (!isRecord(value) || !isHandoffListedDraftShape(value)) return null;
   const readGuard = revalidateHistoricalDraftRead(value);
+  const copyStrategySummary = safeCopyStrategySummary(value.copyStrategy);
   const BLOCKED_EMPTY = readGuard.listingUnqualified;
   const titlesOut = BLOCKED_EMPTY ? [] : safeStringArray(value.titles).slice(0, 3);
   const bulletsOut = BLOCKED_EMPTY ? [] : safeStringArray(value.bullets).slice(0, 5);
@@ -683,6 +766,10 @@ export function draftSafeSummary(value: unknown, keywordContext?: HistoricalKeyw
     rendererFailureReasonCode: typeof value.rendererFailureReasonCode === "string" ? value.rendererFailureReasonCode.slice(0, 96) : undefined,
     rendererRejectedBulletCount: typeof value.rendererRejectedBulletCount === "number" && Number.isInteger(value.rendererRejectedBulletCount) && value.rendererRejectedBulletCount >= 0 ? Math.min(value.rendererRejectedBulletCount, 100) : undefined,
     rendererUnrenderableRoleCount: typeof value.rendererUnrenderableRoleCount === "number" && Number.isInteger(value.rendererUnrenderableRoleCount) && value.rendererUnrenderableRoleCount >= 0 ? Math.min(value.rendererUnrenderableRoleCount, 10) : undefined,
+    ...(copyStrategySummary ? { copyStrategy: copyStrategySummary } : {}),
+    ...(typeof value.copyStrategyApplied === "boolean"
+      ? { copyStrategyApplied: value.copyStrategyApplied && value.fallbackApplied !== true }
+      : {}),
     fallbackApplied: value.fallbackApplied === true,
     fallbackReason: typeof value.fallbackReason === "string" && value.fallbackReason ? value.fallbackReason : null,
     // R6：历史/既有快照亦诚实标注（检测碎片句），不把低质量快照当可用成果
@@ -921,9 +1008,29 @@ export function aiBulletsBindToPlan(
       issues.push("bullet " + (idx + 1) + " 角色重复：" + role);
     }
     usedRoles.add(role);
+    const normBullet = lower.replace(/[-_]/g, " ").replace(/\s+/g, " ");
     const factHit = bp.featureFactIds.some((fid) => {
       const f = facts.find((x) => x.field === fid);
-      return f && f.value.trim() && lower.includes(f.value.trim().toLowerCase());
+      if (!f || !f.value.trim()) return false;
+      const rawLower = f.value.trim().toLowerCase();
+      const normVal = rawLower.replace(/[-_]/g, " ").replace(/\s+/g, " ");
+      if (normBullet.includes(normVal)) return true;
+      // 复合事实原子拆解（如 "Neodymium, Steel" 或 "Heavy Duty, Lockable, Magnetic, Rust Resistant"）
+      const atoms = rawLower
+        .split(/[,;，；/]+/)
+        .map((p) => p.trim().replace(/[-_]/g, " ").replace(/\s+/g, " "))
+        .filter(Boolean);
+      if (atoms.length > 1 && atoms.some((atom) => normBullet.includes(atom))) {
+        return true;
+      }
+      // 件数规格等价（如 6pcs 对应 6-pack / 6 pieces）
+      const packMatch = rawLower.match(/\b(\d+)\s*(pcs|pieces?|packs?|count|ct|pk)?\b/);
+      if (packMatch) {
+        const num = packMatch[1];
+        const packRe = new RegExp(`\\b${num}\\s*[- ]*(?:pcs|pieces?|packs?|count|ct|pk)?\\b`, "i");
+        if (packRe.test(lower)) return true;
+      }
+      return false;
     });
     if (!factHit) issues.push("bullet " + (idx + 1) + " 未命中其计划事实");
     // 非身份硬事实只要真实出现在正文就计入，不能在另一条五点借用后再次成为核心表达。
@@ -1172,6 +1279,10 @@ export async function generateListingDraftFromHandoff(
   } else {
     throw new ListingHandoffError("listing_english_rendering_failed", 422, `事实英文化失败：${renderingResult.message}`);
   }
+  // Marketing Intelligence → Copy Strategy：只把研究侧的受限表达策略带入
+  // 生成输入；它不进入 productFacts、Claim Evidence 或任何事实溯源集合。
+  const copyStrategy = copyStrategyForListingInput(generationInput);
+  if (copyStrategy) generationInput = { ...generationInput, copyStrategy };
   // 第八轮根因修复：确认 Keyword Brief 会改变生成语义（keywords/keywordReady/计划关键词），
   // 必须纳入幂等指纹；锁内生成链使用同一规范化函数，两阶段语义不一致 → 语义冲突 409。
   const keywordBriefSemantics = effectiveKeywordBriefSemanticsOf(gateA.keywordBriefRaw, generationInput);
@@ -1648,6 +1759,7 @@ export async function generateListingDraftFromHandoff(
         prohibitedClaims: generationInput.prohibitedClaims,
         creativeContext: generationInput.creativeContext,
         englishRenderings: generationInput.englishRenderings,
+        copyStrategy: generationInput.copyStrategy,
       };
       const qualifiedCatalog = buildRendererQualifiedOptions(plannerInput);
       const finalizableCatalog = buildFinalizablePlannerCatalog(plannerInput, plan.bulletPlans.length);
@@ -1788,6 +1900,7 @@ export async function generateListingDraftFromHandoff(
           listingBrief: generationInput.listingBrief ?? null,
           prohibitedClaims: generationInput.prohibitedClaims,
           creativeContext: generationInput.creativeContext,
+          copyStrategy: generationInput.copyStrategy,
         };
         const aiResult = await generateTaskLinkedAiListing(aiInput);
         if (aiResult.ok) {
@@ -1854,19 +1967,30 @@ export async function generateListingDraftFromHandoff(
                 : [];
               return [{ field: f.field, label: f.label, value }, ...atoms.map((atom) => ({ field: f.field, label: f.label, value: atom }))];
             });
-          const aiAllText = [aiResult.data.title, ...aiResult.data.bullets, aiResult.data.description];
+          const descSentences = String(aiResult.data.description ?? "")
+            .split(/(?<=[.!?。！？])\s+/)
+            .map((s) => s.trim())
+            .filter(Boolean);
+          const aiAllText = [
+            aiResult.data.title,
+            ...aiResult.data.bullets,
+            ...(descSentences.length > 0 ? descSentences : [aiResult.data.description]),
+          ];
           const aiTiered = classifyClaimTier(aiAllText, tierInput.map((f) => f.value));
           const blockedTexts = aiTiered.filter((r) => r.tier === "blocked").map((r) => r.text);
           const reviewTexts = aiTiered.filter((r) => r.tier === "review").map((r) => r.text);
-          // LISTING_FINAL_CLOSURE：blocked 与 review 同待遇——任一条命中即从正式字段移除；
-          // review 句只保留在 humanReviewClaims（待人工确认），不得停留在 title/bullets/description。
-              const removedTierTexts = [...blockedTexts, ...reviewTexts];
+          // LISTING_FINAL_CLOSURE：blocked 句从正式字段移除；
+          // review 句保留在草稿中并写入 humanReviewClaims（供人工确认），严禁擅自物理删除。
+          const removedTierTexts = [...blockedTexts];
           const safeTitle = !removedTierTexts.some((x) => String(aiResult.data.title ?? "").includes(x)) ? aiResult.data.title : "";
           const safeBullets = aiResult.data.bullets.filter((b: string) => !removedTierTexts.some((x) => b.includes(x)));
-          const safeDescription = aiResult.data.description && !removedTierTexts.some((x) => String(aiResult.data.description).includes(x))
-            ? aiResult.data.description
-            : "";
-      const safeAiDraft = {
+          const safeDescSentences = descSentences.filter((s) => !removedTierTexts.some((x) => s.includes(x)));
+          const safeDescription = safeDescSentences.length >= 2
+            ? safeDescSentences.join(" ")
+            : (aiResult.data.description && !removedTierTexts.some((x) => String(aiResult.data.description).includes(x))
+              ? aiResult.data.description
+              : "");
+          const safeAiDraft = {
             ...aiDraft,
             titles: [safeTitle],
             bullets: safeBullets,
@@ -2092,6 +2216,9 @@ export async function generateListingDraftFromHandoff(
       const generationInputResearchReferenceCount = Object.values(generationInputReferenceCounts).reduce((sum, count) => sum + count, 0);
       const draftSnapshot = {
         ...safeDraftWithPlan,
+        ...(generationInput.copyStrategy
+          ? { copyStrategy: generationInput.copyStrategy, copyStrategyApplied: providerSucceeded && !fallbackApplied }
+          : {}),
         draftKind,
         providerAttempted,
         providerSucceeded,

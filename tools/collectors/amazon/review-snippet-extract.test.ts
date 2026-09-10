@@ -9,7 +9,9 @@
 import { describe, expect, it } from "vitest";
 import {
   REVIEW_SNIPPET_EXTRACTOR_SOURCE,
+  buildReviewDomReadinessExpression,
   buildReviewSnippetExtractionExpression,
+  REVIEW_DOM_READINESS_SOURCE,
   type ReviewSnippet,
 } from "@/tools/collectors/amazon/review-snippet-extract";
 
@@ -72,5 +74,112 @@ describe("REVIEW_SNIPPET_EXTRACTOR_SOURCE（自包含工件）", () => {
     const expression = buildReviewSnippetExtractionExpression({ maxItems: 1 });
     const result = runExpression<ReviewSnippet[]>(expression, fakeDom());
     expect(result).toHaveLength(1);
+  });
+});
+
+describe("Review DOM readiness（有界等待与诚实空态）", () => {
+  function readinessDom(input: { title: boolean; reviewCount: number; body: string; onScroll?: () => void; reviewCountAfterScroll?: number }) {
+    let reviewCount = input.reviewCount;
+    return {
+      title: "Amazon product",
+      body: { innerText: input.body },
+      querySelector: (selector: string) => selector === "#productTitle" && input.title ? {} : null,
+      querySelectorAll: (selector: string) => selector === '[data-hook="review"]' ? Array.from({ length: reviewCount }, () => ({})) : [],
+      window: {
+        innerHeight: 800,
+        scrollBy: () => {
+          input.onScroll?.();
+          if (typeof input.reviewCountAfterScroll === "number") reviewCount = input.reviewCountAfterScroll;
+        },
+      },
+    };
+  }
+
+  it("商品标题和 review DOM 都就绪时返回节点数", async () => {
+    const expression = buildReviewDomReadinessExpression({ timeoutMs: 0, pollIntervalMs: 10 });
+    const factory = new Function("document", "window", `return ${expression}`) as (document: unknown, window: unknown) => Promise<unknown>;
+    const dom = readinessDom({ title: true, reviewCount: 3, body: "Product details" });
+    const result = await factory(dom, dom.window);
+    expect(result).toMatchObject({ productTitlePresent: true, reviewNodeCount: 3, explicitNoReviews: false, pageTitle: "Amazon product", retryAttempt: 0, scrollTriggered: false });
+  });
+
+  it("首次为空时触发一次轻量滚动，第二次出现评论则通过", async () => {
+    const expression = buildReviewDomReadinessExpression({ timeoutMs: 0, pollIntervalMs: 10 });
+    const factory = new Function("document", "window", `return ${expression}`) as (document: unknown, window: unknown) => Promise<any>;
+    let scrolled = 0;
+    const dom = readinessDom({ title: true, reviewCount: 0, body: "Product details", onScroll: () => { scrolled += 1; }, reviewCountAfterScroll: 2 });
+    const result = await factory(dom, dom.window);
+    expect(scrolled).toBe(1);
+    expect(result).toMatchObject({ productTitlePresent: true, reviewNodeCount: 2, explicitNoReviews: false, retryAttempt: 1, scrollTriggered: true });
+  });
+
+  it("重试窗口内评论仍未出现时，按固定间隔继续向评论区推进直至懒加载触发", async () => {
+    const expression = buildReviewDomReadinessExpression({ timeoutMs: 600, pollIntervalMs: 10, scrollStepMs: 20 });
+    const factory = new Function("document", "window", `return ${expression}`) as (document: unknown, window: unknown) => Promise<any>;
+    let scrollCalls = 0;
+    let reviewCount = 0;
+    const dom = {
+      title: "Amazon product",
+      body: { innerText: "Product details" },
+      querySelector: (selector: string) => (selector === "#productTitle" ? {} : null),
+      querySelectorAll: (selector: string) => (selector === '[data-hook="review"]' ? Array.from({ length: reviewCount }, () => ({})) : []),
+      documentElement: null,
+      window: {
+        innerHeight: 800,
+        scrollY: 0,
+        scrollBy: () => {
+          scrollCalls += 1;
+          if (scrollCalls >= 3) reviewCount = 2;
+        },
+      },
+    };
+    const result = await factory(dom, dom.window);
+    expect(scrollCalls).toBeGreaterThanOrEqual(3);
+    expect(result).toMatchObject({ productTitlePresent: true, reviewNodeCount: 2, retryAttempt: 1, scrollTriggered: true });
+  });
+
+  it("评论始终不出现时如实报未完成提取，滚动有界且页底后停止", async () => {
+    const expression = buildReviewDomReadinessExpression({ timeoutMs: 300, pollIntervalMs: 10, scrollStepMs: 40 });
+    const factory = new Function("document", "window", `return ${expression}`) as (document: unknown, window: unknown) => Promise<any>;
+    let scrollCalls = 0;
+    const dom = {
+      title: "Amazon product",
+      body: { innerText: "Product details" },
+      querySelector: (selector: string) => (selector === "#productTitle" ? {} : null),
+      querySelectorAll: () => [],
+      documentElement: { scrollHeight: 3000 },
+      window: {
+        innerHeight: 800,
+        get scrollY() { return scrollCalls * 900; },
+        scrollBy: () => { scrollCalls += 1; },
+      },
+    };
+    const result = await factory(dom, dom.window);
+    expect(result).toMatchObject({ productTitlePresent: true, reviewNodeCount: 0, explicitNoReviews: false, retryAttempt: 1, scrollTriggered: true });
+    // 页高 3000、视口 800：渐进步进 900px，触底后 scrollViewport 返回 false，次数受页高约束
+    expect(scrollCalls).toBeLessThanOrEqual(4);
+  });
+
+  it("明确无评论信号与提取为空严格分开", async () => {
+    const expression = buildReviewDomReadinessExpression({ timeoutMs: 0, pollIntervalMs: 10 });
+    const factory = new Function("document", "window", `return ${expression}`) as (document: unknown, window: unknown) => Promise<any>;
+    const confirmedDom = readinessDom({ title: true, reviewCount: 0, body: "Be the first to review this product" });
+    const emptyDom = readinessDom({ title: true, reviewCount: 0, body: "Product details" });
+    const confirmed = await factory(confirmedDom, confirmedDom.window);
+    const empty = await factory(emptyDom, emptyDom.window);
+    expect(confirmed.explicitNoReviews).toBe(true);
+    expect(empty.explicitNoReviews).toBe(false);
+    expect(empty.reviewNodeCount).toBe(0);
+    expect(empty.retryAttempt).toBe(1);
+    expect(empty.scrollTriggered).toBe(true);
+  });
+
+  it("源码是显式自包含工件并替换有界参数", () => {
+    expect(REVIEW_DOM_READINESS_SOURCE).toContain("__TIMEOUT_MS__");
+    expect(REVIEW_DOM_READINESS_SOURCE).toContain("__POLL_INTERVAL_MS__");
+    expect(REVIEW_DOM_READINESS_SOURCE).toContain("__SCROLL_STEP_MS__");
+    expect(buildReviewDomReadinessExpression({ timeoutMs: 500, pollIntervalMs: 50 })).toContain("const TIMEOUT_MS = 500;");
+    expect(() => buildReviewDomReadinessExpression({ timeoutMs: 30_001 })).toThrow();
+    expect(() => buildReviewDomReadinessExpression({ scrollStepMs: 5_001 })).toThrow();
   });
 });

@@ -693,15 +693,15 @@ export function verifyListingClaims(
         }
 
         if (highRisk.length > 0) {
-          const reasonType = (rc: ClaimReasonCode): FactType | null => {
+          const reasonTypes = (rc: ClaimReasonCode): FactType[] => {
             switch (rc) {
-              case "unsupported_material_claim": return "material";
-              case "unsupported_dimension_claim": return "dimension";
-              case "unsupported_certification_claim": return "certification";
-              case "unsupported_compatibility_claim": return "compatibility";
-              case "unsupported_performance_claim": return "performance";
-              case "unsupported_origin_claim": return "origin";
-              default: return null;
+              case "unsupported_material_claim": return ["material"];
+              case "unsupported_dimension_claim": return ["dimension", "weight"];
+              case "unsupported_certification_claim": return ["certification"];
+              case "unsupported_compatibility_claim": return ["compatibility"];
+              case "unsupported_performance_claim": return ["performance"];
+              case "unsupported_origin_claim": return ["origin"];
+              default: return [];
             }
           };
           // 高风险词类别与命中事实值类别相同 → 仅当该高风险词本身逐字来自
@@ -709,10 +709,10 @@ export function verifyListingClaims(
           // "Heavy Duty"）。先移除已确认原子再复查类别，避免
           // "Heavy Duty + Super Heavy Duty" 借一个已确认词整体放行。
           const sameCategoryCovered = highRisk.some((rc) => {
-            const t = reasonType(rc);
-            if (!t) return false;
+            const types = reasonTypes(rc);
+            if (types.length === 0) return false;
             const normalized = normalizeUnitSpacing(normalizeText(segment));
-            const categoryEntries = entries.filter((e) => e.factType === t && e.normalizedValue);
+            const categoryEntries = entries.filter((e) => types.includes(e.factType) && e.normalizedValue);
             if (!categoryEntries.some((entry) => normalized.includes(entry.normalizedValue))) return false;
             // 认证/兼容/尺寸/产地等类别沿用“已确认值 + 字段词”的既有窄例外；
             // 性能/材质/效果/绝对化词只有在剩余文本本身仍是中性语法时才能放行。

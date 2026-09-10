@@ -141,7 +141,14 @@ export function detectDetailPageStatus(root: {
   if (/captcha|robot check|enter the characters you see|type the characters you see|验证码|机器人/i.test(bodyText)) {
     return "captcha";
   }
-  if (/sign in to continue|login to continue|please sign in|登录后继续/i.test(bodyText)) {
+  // Amazon may show a same-origin "Continue shopping" interstitial before the
+  // detail page. It is an access/verification blocker, not an ASIN problem.
+  // Keep the product-title gate intact so a normal product page containing
+  // incidental wording is still classified as `ok`.
+  if (
+    !root.querySelector("#productTitle")
+    && /sign in to continue|login to continue|please sign in|登录后继续|click the button below to continue shopping|continue shopping/i.test(bodyText)
+  ) {
     return "login_wall";
   }
   if (/sorry[, ]+something went wrong|service unavailable|internal server error|页面出错/i.test(bodyText)) {

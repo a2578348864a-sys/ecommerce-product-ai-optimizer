@@ -1,5 +1,6 @@
 import type { MarketingInsightV1 } from "@/lib/listingHandoff/marketingIntelligence/types";
 import type { ListingQualityReport } from "@/lib/listingHandoff/listingQualityPolicy";
+import type { ListingBrief } from "@/lib/listingHandoff/listingBrief";
 
 export const COPY_STRATEGY_SCHEMA = "copy-strategy.v1" as const;
 
@@ -36,4 +37,6 @@ export type CopyStrategyInput = {
   marketingInsight?: MarketingInsightV1 | null;
   confirmedFactSummary?: ConfirmedFactSummary | null;
   qualityReport?: Pick<ListingQualityReport, "titleScore" | "bulletScore" | "descriptionScore" | "issues" | "suggestions"> | null;
+  /** Optional operator guidance; changes framing only and is never a fact source. */
+  listingBrief?: ListingBrief | null;
 };

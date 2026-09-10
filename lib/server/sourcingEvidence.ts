@@ -278,10 +278,10 @@ class SourcingPreviewStore {
    * 无副作用检测指定任务是否有未过期的待确认货源预览。
    * 纯只读探测，不消耗，用于编排器幂等检查。
    */
-  findPending(taskId: string): SourcingPreviewEntry | null {
+  findPending(taskId: string, subjectKey?: string): SourcingPreviewEntry | null {
     this.prune();
     for (const entry of this.entries.values()) {
-      if (entry.taskId === taskId && entry.expiresAt > Date.now()) {
+      if (entry.taskId === taskId && (!subjectKey || entry.subjectKey === subjectKey) && entry.expiresAt > Date.now()) {
         return entry;
       }
     }
@@ -348,9 +348,9 @@ export function consumeSourcingPreview(
 /**
  * 无副作用检测是否有待确认的货源预览（供采集编排器等使用）。
  */
-export function findPendingSourcingPreview(taskId: string): SourcingPreviewEntry | null {
+export function findPendingSourcingPreview(taskId: string, subjectKey?: string): SourcingPreviewEntry | null {
   if (typeof taskId !== "string" || !taskId.trim()) return null;
-  return previewStore.findPending(taskId.trim());
+  return previewStore.findPending(taskId.trim(), subjectKey);
 }
 
 /** 供测试：清空 preview store */

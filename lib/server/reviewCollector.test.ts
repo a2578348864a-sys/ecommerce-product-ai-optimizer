@@ -46,7 +46,17 @@ function createSamplePreview(overrides: Partial<ReviewCollectPreview> = {}): Rev
       },
     ],
     pageResults: [
-      { asin: ASIN, status: "ok", note: null, extractedCount: 1 },
+      {
+        asin: ASIN,
+        status: "ok",
+        note: null,
+        extractedCount: 1,
+        reviewNodeCount: 3,
+        finalUrl: `https://www.amazon.com/dp/${ASIN}?language=en_US`,
+        pageTitle: "Amazon product",
+        waitElapsedMs: 142,
+        pageStatus: "ok",
+      },
       { asin: "B0COMPET01", status: "ok", note: null, extractedCount: 1 },
     ],
     capturedAt,
@@ -85,6 +95,13 @@ describe("getPendingReviewCollectPreviewDto 纯只读契约", () => {
       duplicate: false,
     });
     expect(dto1?.pageResults).toHaveLength(2);
+    expect(dto1?.pageResults[0]).toMatchObject({
+      reviewNodeCount: 3,
+      finalUrl: `https://www.amazon.com/dp/${ASIN}?language=en_US`,
+      pageTitle: "Amazon product",
+      waitElapsedMs: 142,
+      pageStatus: "ok",
+    });
 
     // 第二次读取依然存在（不消费）
     const dto2 = getPendingReviewCollectPreviewDto({
