@@ -147,15 +147,19 @@ function countPhraseMatches(textTokens: string[], phrase: string[]): number {
 }
 
 function hasKeywordStuffing(strategy: ListingV5Strategy, draft: ListingV5WriterDraft): boolean {
-  const phrases = keywordPhrases(strategy);
+  const titleTokens = normalizeTokens(draft.title.text);
+  const phrases = keywordPhrases(strategy)
+    // A keyword that is part of the product's own title (for example "water
+    // bottle" inside the product identity) is expected in every bullet and is
+    // not a stuffing signal.
+    .filter((phrase) => countPhraseMatches(titleTokens, phrase) === 0);
   if (phrases.length === 0) return false;
   const titleBullets = normalizeTokens([draft.title.text, ...draft.bullets.map((item) => item.text)].join(" "));
   const bulletsOnly = normalizeTokens(draft.bullets.map((item) => item.text).join(" "));
   let total = 0;
   for (const phrase of phrases) {
     const inBullets = countPhraseMatches(bulletsOnly, phrase);
-    // Repeating the product's own keyword once per bullet is normal Amazon copy;
-    // mechanical stuffing is the same phrase firing four or more times in the body.
+    // Repeating the same phrase four or more times inside the body is mechanical.
     if (inBullets >= 4) return true;
     total += countPhraseMatches(titleBullets, phrase);
   }

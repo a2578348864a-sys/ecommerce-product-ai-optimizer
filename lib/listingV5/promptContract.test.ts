@@ -105,7 +105,9 @@ describe("Listing V5 prompt contracts", () => {
     const prompt = systemPromptOf(0);
     const payload = JSON.parse(userPayloadOf(0)) as { availableEvidenceCounts: Record<string, number> };
     expect(prompt).toMatch(/availableEvidenceCounts/i);
-    expect(prompt).toMatch(/It is correct and expected to return empty arrays/i);
+    expect(prompt).toMatch(/Write every field in English/i);
+    expect(prompt).toMatch(/Use the supplied references/i);
+    expect(prompt).toMatch(/Return an empty array only for a field the evidence genuinely does not support/i);
     expect(payload.availableEvidenceCounts).toEqual({ confirmedFacts: 2, voc: 0, keywords: 0, competitors: 0 });
   });
 
