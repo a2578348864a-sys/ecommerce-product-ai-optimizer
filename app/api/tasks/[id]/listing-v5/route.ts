@@ -74,11 +74,14 @@ function safeSnapshot(snapshot: unknown, currentRevision: number, currentHandoff
 
 async function buildContext(taskId: string, ctx: AccessContext) {
   const gate = await checkCreativeHandoffGate(taskId, ctx);
-  if (!gate.allowed || !gate.currentHandoff || !gate.candidate) return { gate, context: null };
+  const latestHandoff = gate.currentHandoff?.versions[gate.currentHandoff.versions.length - 1];
+  const hasListingConfirmedFact = Boolean(latestHandoff?.confirmedFacts.some((fact) => fact.usageScopes.includes("listing")));
+  const degradedGateWithPersistedFacts = gate.reason === "no_confirmed_facts" && hasListingConfirmedFact;
+  if ((!gate.allowed && !degradedGateWithPersistedFacts) || !gate.currentHandoff || !gate.candidate) return { gate, context: null };
   const researchRevision = gate.candidate.sourceResearch.researchRevision;
   const built = buildListingInputFromCreativeHandoff(gate.currentHandoff, researchRevision, { creativeContext: gate.creativeContext ?? null });
   if (!built.ok) return { gate, context: null };
-  const latest = gate.currentHandoff.versions[gate.currentHandoff.versions.length - 1];
+  const latest = latestHandoff;
   const confirmedFacts = (latest?.confirmedFacts ?? []).filter((fact) => fact.usageScopes.includes("listing")).map((fact) => ({ factId: fact.factId, field: fact.field, label: fact.label, value: fact.value, sourceRefs: ["human_confirmation"] }));
   return { gate, context: buildListingV5Context({ taskId, researchRevision, handoffRevision: gate.currentHandoff.currentRevision, productIdentity: String((gate.candidate as unknown as { productName?: string }).productName ?? ""), generationInput: built.input, creativeContext: gate.creativeContext ?? null, confirmedFacts, manualDirection: latest?.creativePreferences?.additionalRequirements ?? null }) };
 }
