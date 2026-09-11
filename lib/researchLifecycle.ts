@@ -152,6 +152,8 @@ export async function collectPagedTasks<T>(
 
 import type { DecisionStatus } from "@/lib/tasks/decisionStatus";
 import { deriveResearchHistoryStatus, readResearchCompletionStatus } from "@/lib/taskResearchHistoryPresentation";
+// 只读类型导入（不引入服务端实现）：展示层直接消费 Bridge V1 的 Reader 快照 JSON。
+import type { ResearchLifecycleSnapshot } from "@/lib/server/researchLifecycleReader";
 
 export type ProductProjectGroup = "needs_action" | "researching" | "completed";
 
@@ -160,6 +162,42 @@ export type ProductProjectGroupView = {
   statusLabel: string;
   nextLabel: string;
 };
+
+/**
+ * 展示层状态映射（第十二轮 UI 一致性修复）：单一来源 = 服务端 Reader 快照。
+ *
+ * 只做「同一 Snapshot → 同一中文语义」的映射，不新增状态机、不改动任何生命周期判据：
+ * 判据全部来自既有 ResearchLifecycleSnapshot（phase / stale / completionStatus）。
+ * - 待确认事实 / 资料缺失 / 人工决定未完成 / 需重新确认 → needs_action
+ * - 自动采集与分析进行中 → researching
+ * - 真正 researchCompletion=completed 且未过期 → completed
+ * 标签文案与商品详情页 lifecycleStatusLabel 同语义，避免卡片与详情页各说一套。
+ */
+export function deriveGroupFromLifecycle(snapshot: ResearchLifecycleSnapshot): ProductProjectGroupView {
+  // 过期（完成研究后证据变化）优先：结论尚未对应当前资料，必须先由用户重新确认。
+  if (snapshot.stale) {
+    return { group: "needs_action", statusLabel: "研究资料需重新确认", nextLabel: "重新确认研究资料" };
+  }
+  switch (snapshot.phase) {
+    case "completed":
+      return { group: "completed", statusLabel: "研究已完成", nextLabel: "查看研究结果" };
+    case "abandoned":
+      return { group: "needs_action", statusLabel: "已放弃", nextLabel: "查看研究记录" };
+    case "awaiting_confirmation":
+      return { group: "needs_action", statusLabel: "待确认事实", nextLabel: "确认待确认事实" };
+    case "ready_to_complete":
+      return { group: "needs_action", statusLabel: "待完成研究", nextLabel: "完成研究并保存记录" };
+    case "awaiting_decision":
+      return { group: "needs_action", statusLabel: "待人工决定", nextLabel: "查看并决定" };
+    case "collecting":
+      return { group: "researching", statusLabel: "资料采集中", nextLabel: "查看研究进度" };
+    case "blocked":
+      return { group: "needs_action", statusLabel: "研究受阻", nextLabel: "核对研究状态" };
+    case "created":
+    default:
+      return { group: "needs_action", statusLabel: "待补充研究资料", nextLabel: "补充研究资料" };
+  }
+}
 
 /**
  * 工作台与商品研究列表共用的项目状态分类（第十一轮重定义，唯一口径）：
@@ -175,6 +213,8 @@ export function deriveProductProjectGroup(input: {
   decisionStatus: DecisionStatus;
   result: unknown;
   oneLineSummary: string;
+  /** Bridge V1 服务端 Reader 快照（/api/tasks 列表行同名投影）；缺失时回退本地推导。 */
+  lifecycle?: ResearchLifecycleSnapshot | null;
 }): ProductProjectGroupView {
   const runStatus = typeof input.aiRunStatus === "string" ? input.aiRunStatus : "";
   if (runStatus === "research_stale") {
@@ -194,6 +234,10 @@ export function deriveProductProjectGroup(input: {
   if (runStatus === "running") {
     return { group: "researching", statusLabel: "研究中", nextLabel: "查看研究进度" };
   }
+  // 第十二轮（工作台状态语义一致性）：拿到服务端 Reader 快照时以快照为唯一展示口径——
+  // 列表投影 result 看不到 researchRecord / researchVerification / factCandidates，
+  // 二次推导会与商品详情页同一 Snapshot 得出不同状态（旧：卡片「研究记录待补充」vs 详情「待人工决定」）。
+  if (input.lifecycle) return deriveGroupFromLifecycle(input.lifecycle);
   const researchStatus = deriveResearchHistoryStatus({
     result: input.result,
     decisionStatus: input.decisionStatus,

@@ -37,6 +37,8 @@ import type { ResearchProductImageDisplay } from "@/lib/productResearchImage";
 import { resolveTaskProductDisplayName } from "@/lib/productDisplayName";
 import { deriveResearchHistoryStatus, type ResearchHistoryStatus } from "@/lib/taskResearchHistoryPresentation";
 import { collectPagedTasks, deriveProductProjectGroup, ProductResearchTasksUnavailableError } from "@/lib/researchLifecycle";
+// 只读类型：列表 DTO 的服务端 Reader 快照（Bridge V1），工作台状态展示与详情页同源。
+import type { ResearchLifecycleSnapshot } from "@/lib/server/researchLifecycleReader";
 export { collectPagedTasks, ProductResearchTasksUnavailableError } from "@/lib/researchLifecycle";
 
 async function collectStartableCandidateCount(): Promise<number> {
@@ -209,6 +211,8 @@ export type LocalTaskItem = {
   aiRunStatus?: string;
   /** 服务端从该候选最新 V4ResearchRun 给出的 run.updatedAt（研究尝试真正时间源）；无 run 时不下发。 */
   runUpdatedAt?: string;
+  /** Bridge V1 服务端 Reader 生命周期快照（列表行同名投影）：工作台状态展示的唯一口径，与商品详情页同源。 */
+  researchLifecycle?: ResearchLifecycleSnapshot | null;
 };
 
 type LocalTasksResponse =
@@ -302,13 +306,15 @@ function localConclusion(task: LocalTaskItem): string {
 }
 
 /** 服务端正式投影状态 → 三组语义。失败/取消终态优先于旧研究/决定（§2.4）。 */
-function localProjectState(task: LocalTaskItem, researchStatus: ResearchHistoryStatus) {
-  // 轮 6：与 /research 共用同一口径（唯一分类器）
+function localProjectState(task: LocalTaskItem) {
+  // 轮 6：与 /research 共用同一口径（唯一分类器）。
+  // 第十二轮：快照优先——列表 DTO 已带服务端 Reader 快照时，卡片状态与商品详情页同一 Snapshot 同语义。
   return deriveProductProjectGroup({
     aiRunStatus: task.aiRunStatus,
     decisionStatus: task.decisionStatus,
     result: task.result,
     oneLineSummary: task.oneLineSummary,
+    lifecycle: task.researchLifecycle ?? null,
   });
 }
 
@@ -385,7 +391,7 @@ export function buildLocalProductProjects(tasks: LocalTaskItem[]): LocalProductP
         decisionStatus: task.decisionStatus,
         oneLineSummary: task.oneLineSummary,
       });
-      const state = localProjectState(task, researchStatus);
+      const state = localProjectState(task);
       return {
         key,
         task,
@@ -1146,7 +1152,7 @@ function LocalWorkspace({ runtime }: { runtime: HomeRuntime }) {
               <div className="grid min-w-0 gap-4 xl:grid-cols-3">
                 <LocalProductSection
                   title="需要我处理"
-                  description="等你决定才能继续：待确认研究资料或研究尚未开始的商品都在这里，它们不属于「研究中」。"
+                  description="等你决定才能继续：待确认事实、资料缺失、人工决定未保存或研究资料需重新确认的商品都在这里，它们不属于「研究中」。"
                   items={needsAction}
                   loading={loading}
                   unavailable={unavailable}
@@ -1155,12 +1161,12 @@ function LocalWorkspace({ runtime }: { runtime: HomeRuntime }) {
                 />
                 <LocalProductSection
                   title="研究中"
-                  description="研究已开始但尚未正式收口；需要你确认的商品会出现在「需要我处理」，不在这里。"
+                  description="AI 正在自动采集或分析资料，还没有需要你决定的事情。"
                   items={researching}
                   loading={loading}
                   unavailable={unavailable}
                   testId="local-status-researching"
-                  emptyHint="当前没有未收口的研究；等待你确认的商品见「需要我处理」。"
+                  emptyHint="当前没有正在研究的商品。"
                 />
                 <LocalProductSection
                   title="已完成"

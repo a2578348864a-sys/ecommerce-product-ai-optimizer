@@ -46,6 +46,8 @@ export type ResearchViewItem = {
   decisionStatus: DecisionStatus;
   result: unknown;
   oneLineSummary: string;
+  /** Bridge V1：服务端 Reader 快照；存在时分组与标签以它为准（与详情页同一语义）。 */
+  researchLifecycle?: ResearchLifecycleSnapshot | null;
 };
 
 export type ResearchGroupTabValue = "needs" | "researching" | "";
@@ -69,6 +71,8 @@ export function deriveResearchViewGroups<T extends ResearchViewItem>(
       decisionStatus: item.decisionStatus,
       result: item.result,
       oneLineSummary: item.oneLineSummary,
+      // 第十二轮：与工作台/详情页同一口径——有服务端 Reader 快照时按快照分组与显示标签。
+      lifecycle: item.researchLifecycle ?? null,
     }),
   }));
 }
