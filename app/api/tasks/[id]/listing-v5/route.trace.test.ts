@@ -372,4 +372,73 @@ describe("Listing V5 AI execution trace", () => {
     expect(serialized).toContain("listing-v5.execution-trace.v1");
     expect(serialized).toContain('"responseCharLength":54321');
   });
+
+  it("6. records the conversion rewrite stage and its re-validation in the trace", async () => {
+    const blocked = writerJson({
+      bullets: [
+        { text: "FDA approved and BPA free construction for families.", factIds: ["material-1"], strategyRole: "core_outcome" },
+        { text: "A 2 pack option helps shoppers comparing practical choices.", factIds: ["quantity-1"], strategyRole: "pain_relief" },
+        { text: "The Black finish fits a range of everyday spaces.", factIds: ["color-1"], strategyRole: "use_scenario" },
+      ],
+    });
+    // V5.2: the BLOCKed draft is not repairable in place, so the chain spends its
+    // single Conversion Rewrite on it. The rewrite is built from Confirmed Facts
+    // only, so the same Validator passes the rewritten draft and that draft is
+    // what the user receives - no fallback.
+    const rewritten = writerJson({ backendSearchTerms: ["ant bait stations", "insulated"] });
+    mocks.callAiJson
+      .mockResolvedValueOnce(ok(strategyJson))
+      .mockResolvedValueOnce(ok(blocked))
+      .mockResolvedValueOnce(ok(rewritten));
+    const snapshot = await generate();
+    const trace = snapshot.trace;
+    expect(trace.validationStatus).toBe("BLOCK");
+    expect(trace.repairAttempted).toBe(false);
+    expect(trace.rewriteAttempted).toBe(true);
+    // "none" means the rewrite stage ran and reported no failure of its own; the
+    // re-validation below is what decides whether its draft is usable.
+    expect(trace.rewriteReason).toBe("none");
+    expect(trace.rewriteValidationStatus).toBe("PASS");
+    expect(trace.stages.rewrite.attempted).toBe(true);
+    expect(trace.stages.rewrite.success).toBe(true);
+    expect(trace.finalValidationStatus).toBe("PASS");
+    expect(trace.fallbackUsed).toBe(false);
+    expect(trace.fallbackReason).toBe("none");
+    expect(snapshot.provider.rewriteAttempted).toBe(true);
+    expect(snapshot.provider.fallbackUsed).toBe(false);
+    // backendSearchTerms is the one field no Validator rule inspects, so the
+    // rewrite filters it against the hard-claim vocabulary: "insulated" is a hard
+    // claim and never reaches the client through the keyword list.
+    expect(snapshot.listing.backendSearchTerms).toEqual(["ant bait stations"]);
+  });
+
+  it("7. records the recovery stage in the trace when recovery is the stage that delivers", async () => {
+    const blocked = writerJson({
+      bullets: [
+        { text: "FDA approved and BPA free construction for families.", factIds: ["material-1"], strategyRole: "core_outcome" },
+        { text: "A 2 pack option helps shoppers comparing practical choices.", factIds: ["quantity-1"], strategyRole: "pain_relief" },
+        { text: "The Black finish fits a range of everyday spaces.", factIds: ["color-1"], strategyRole: "use_scenario" },
+      ],
+    });
+    // Rewrite answers with an unusable structure, so the last-resort recovery pass
+    // runs and its draft is the one that validates. Before V5.2 the route never
+    // passed the recovery stage into the trace, so this was invisible.
+    mocks.callAiJson
+      .mockResolvedValueOnce(ok(strategyJson))
+      .mockResolvedValueOnce(ok(blocked))
+      .mockResolvedValueOnce(ok({ title: { text: "no bullets and no description" } }))
+      .mockResolvedValueOnce(ok(writerJson()));
+    const snapshot = await generate();
+    const trace = snapshot.trace;
+    expect(trace.rewriteAttempted).toBe(true);
+    expect(trace.rewriteReason).toBe("schema_normalization_failed");
+    expect(trace.rewriteValidationStatus).toBeNull();
+    expect(trace.recoveryAttempted).toBe(true);
+    expect(trace.recoveryValidationStatus).toBe("PASS");
+    expect(trace.stages.recovery.attempted).toBe(true);
+    expect(trace.stages.recovery.success).toBe(true);
+    expect(trace.finalValidationStatus).toBe("PASS");
+    expect(trace.fallbackUsed).toBe(false);
+    expect(snapshot.provider.recoveryAttempted).toBe(true);
+  });
 });
