@@ -80,9 +80,9 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
   const [notice, setNotice] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [confirmRealAi, setConfirmRealAi] = useState(false);
-  // Server-authoritative: the checkbox can only ever confirm a provider call the
-  // server is actually willing to make.
+  // Server-authoritative AI status. The page never decides whether a provider call may
+  // happen: it only reports what the server says, and mirrors that same flag back in the
+  // request so the server's own gate stays satisfied.
   const [realAiEnabled, setRealAiEnabled] = useState<boolean | null>(null);
   const busy = pendingAction !== null;
 
@@ -126,7 +126,9 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
           body: JSON.stringify({
             action,
             ...(action === "analyze_strategy" ? { forceStrategy: true } : {}),
-            ...(confirmRealAi && realAiEnabled === true ? { confirmRealAi: true } : {}),
+            // The server's own gate is the only source of this confirmation: the page
+            // cannot pretend AI is on when the deployment has it switched off.
+            ...(realAiEnabled === true ? { confirmRealAi: true } : {}),
           }),
         }
       );
@@ -187,6 +189,8 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
   const validation = snapshot?.validation;
   const provider = snapshot?.provider;
   const trace = snapshot?.trace;
+  // The model name is only known after a provider call; it is displayed read-only.
+  const aiModelLabel: string | null = trace?.stages?.writer?.model ?? trace?.stages?.strategy?.model ?? null;
   const traceStages: Array<[string, any]> = trace
     ? [
         ["Strategy", trace.stages?.strategy],
@@ -321,20 +325,32 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
           </button>
         </div>
 
-        <label className="mt-3 flex items-center gap-2 rounded-lg border border-slate-200/70 bg-slate-50/70 px-3 py-1.5 text-xs text-slate-600">
-          <input
-            type="checkbox"
-            checked={confirmRealAi}
-            disabled={realAiEnabled !== true}
-            onChange={(event) => setConfirmRealAi(event.target.checked)}
-            className="size-3.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 disabled:opacity-50"
-          />
-          <span>
+        <div
+          data-testid="listing-v5-ai-status"
+          role="status"
+          className={`mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1 rounded-lg border px-3 py-2 text-xs ${
+            realAiEnabled === true
+              ? "border-emerald-200 bg-emerald-50/70 text-emerald-900"
+              : realAiEnabled === false
+              ? "border-amber-200 bg-amber-50/70 text-amber-900"
+              : "border-slate-200 bg-slate-50/70 text-slate-600"
+          }`}
+        >
+          <span className="font-bold">
             {realAiEnabled === true
-              ? "确认本次可以调用已配置的真实 AI；未勾选时仅使用确定性安全回退。"
-              : "服务端未启用真实 AI（OPENAI_LISTING_ENABLED != true），本次只能使用确定性安全回退，勾选不会调用 AI。"}
+              ? "AI Writer 已启用"
+              : realAiEnabled === false
+              ? "安全演示模式（未启用真实 AI）"
+              : "正在读取服务端 AI 状态…"}
           </span>
-        </label>
+          <span className="text-[11px] leading-relaxed">
+            {realAiEnabled === true
+              ? `本次生成会调用服务端已配置的 Provider${aiModelLabel ? `（模型 ${aiModelLabel}）` : ""}，链路为 Writer → Validator，失败时按有界预算回退到确定性安全稿。是否调用由服务端决定，页面不能自行开启或关闭。`
+              : realAiEnabled === false
+              ? "服务端未启用真实 AI，本次生成只使用确定性安全模板（Safe Fallback），文案全部来自已确认事实。这是部署开关（服务端 OPENAI_LISTING_ENABLED），界面无法开启。"
+              : "状态来自服务端 realAiEnabled。"}
+          </span>
+        </div>
 
         {notice ? (
           <p role="status" className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800">
@@ -439,9 +455,22 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
                 安全检查通过
               </span>
             ) : null}
-            {provider?.fallbackUsed ? (
-              <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
-                Safe Fallback · 基础安全稿
+            {provider ? (
+              <span
+                data-testid="listing-v5-output-source"
+                className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                  provider.fallbackUsed
+                    ? "border-amber-200 bg-amber-50 text-amber-700"
+                    : provider.writerAttempted
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border-slate-200 bg-slate-50 text-slate-600"
+                }`}
+              >
+                {provider.fallbackUsed
+                  ? "确定性 fallback 输出 · 安全模板"
+                  : provider.writerAttempted
+                  ? "AI Writer 输出"
+                  : "确定性输出"}
               </span>
             ) : null}
           </div>
@@ -765,9 +794,11 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
               <p>
                 <strong>生成方式：</strong>
                 {provider?.fallbackUsed
-                  ? "Safe Fallback · 基础安全稿"
+                  ? "确定性 fallback · 安全模板稿（未使用 AI 输出）"
                   : provider?.recoveryAttempted
-                  ? "Conversion Recovery · 安全转化恢复稿"
+                  ? "Conversion Recovery · 安全转化恢复稿（AI）"
+                  : provider?.rewriteAttempted
+                  ? "Conversion Rewrite · 整篇重写稿（AI）"
                   : provider?.repairAttempted
                   ? "AI Draft Repaired · 修复后 AI 草稿"
                   : "AI Draft Passed · AI 草稿"}
