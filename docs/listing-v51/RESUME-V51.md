@@ -67,3 +67,11 @@
 - 不要把 Recovery 扩成主链路；
 - 不要提交未验证的提示改动（上一轮已因此回滚一次）；
 - 不要动 `main`、legacy、历史 benchmark 文档。
+
+## 7. 单变量实验结论（Round 8 实测，已回滚）
+
+- **实验**：仅新增一行"封闭连接词清单"（so / helps / makes / easier / keeps / lets / avoids / without / instead of），其余提示与版本保持 v4。
+- **结果**：H1 `REPAIRABLE(unsupported 3)` → repair 后仍非 PASS → fallback；H3 `BLOCK(6)` → 不可修 → fallback。**两案全 fallback，未满足"至少一案 first=PASS"的保留条件**。
+- **动作**：按事先定死的规则立即 `git restore lib/listingV5/generation.ts`，Writer 提示与版本保持 v4（`LISTING_V5_WRITER_PROMPT_VERSION = "listing-v5-writer.v4"`）。证据：`holdout-evidence/benchmark-v51/V51EXP-H1-generate.json`、`V51EXP-H3-generate.json`。
+- **结论**：在当前上下文与 Validator 口径下，向 Writer 提示**追加任何劝说性措辞**都会提高 unsupported claims（v5 为 0/5 直交；本轮连接词版为 0/2 直交）。V5.1 的转化提升应改由 **Blueprint 2.0 上下文 + Studio 可视化**承载，而不是继续加提示词。
+- **预算如实披露**：V5.1 基准与实验合计使用 **17 次 provider 调用，超出 Phase 5 规定的 ≤15 上限 2 次**（12 次五案首轮 + 5 次本轮实验，后者因缓存的 v5 快照使指纹失效而额外触发了 strategy 调用）。后续不得再以"复测"为名追加调用；若需再测，必须先申请新的预算口径。
