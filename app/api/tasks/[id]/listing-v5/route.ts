@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { isSandboxTaskId, getSandboxTask } from "@/lib/server/demoSandbox";
 import { markDemoAiProviderCallStarted, requireAuthenticated, reserveDemoAiCalls, settleDemoAiCalls } from "@/lib/server/demoGuard";
@@ -407,6 +407,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // Deterministic code validates facts; it never rewrites marketing copy to
       // make a draft pass. A draft that is still not PASS after the single
       // bounded AI repair pass takes the honest fail-closed fallback path.
+        // V5.1 Safe Recovery (last resort, at most once): repair could not reach
+        // PASS, so one bounded AI pass re-organises the sales expression of the
+        // same Confirmed Facts before the pipeline falls back to the deterministic
+        // template. Facts, Validator and repair semantics are untouched, and the
+        // recovered draft must pass the same validation below.
+        if (validation.status !== "PASS" && useProvider) {
+          const recovered = await recoverListingV5Draft(
+            { context, strategy: strategyResult.strategy, blueprint: buildListingV5ConversionBlueprint(context, strategyResult.strategy), failedDraft: draft, validation },
+            { useProvider, onProviderCallStart },
+          );
+          recoveryTrace = recovered?.trace ?? idleStageTrace();
+          recoveryReason = recovered?.attempted ? null : (recovered?.trace?.failureReason ?? "none");
+          provider = { ...provider, recoveryAttempted: recovered?.attempted === true };
+          if (recovered?.succeeded && recovered.draft) {
+            draft = recovered.draft;
+            validation = validateListingV5Draft(context, strategyResult.strategy, draft);
+            recoveryValidation = validation;
+          }
+        }
       if (validation.status !== "PASS") {
         draft = buildListingV5FallbackDraft(context, strategyResult.strategy);
         provider = { ...provider, fallbackUsed: true };

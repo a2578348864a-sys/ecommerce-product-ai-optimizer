@@ -1,4 +1,4 @@
-﻿import { NextRequest } from "next/server";
+import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
@@ -571,5 +571,69 @@ describe("Listing V5 route", () => {
     // The repair really was applied before the fallback, and that stays visible.
     expect(mocks.repairListingV5Draft).toHaveBeenCalledTimes(1);
     expect(snapshot.repairApplied).toBe(true);
+  });
+
+  it("runs the safe recovery pass once when repair cannot reach PASS, then falls back when recovery also fails", async () => {
+    state.useProvider = true;
+    state.context = context("fp-recovery-fallback");
+    const repairable = {
+      ...passValidation,
+      status: "REPAIRABLE" as const,
+      claims: { ...passValidation.claims, unsupportedClaims: ["an unsupported claim"] },
+      repair: { allowed: true, reason: "only one bounded repair", targets: ["description"] },
+    };
+    const repairedDraft = { ...draft, description: { text: "A repaired description that still fails.", factIds: ["fact-1"] } };
+    const fallbackDraft = { ...draft, title: { text: "Safe Fallback Title", factIds: ["fact-1"] } };
+    // writer draft repairable -> post-repair repairable -> recovered draft still
+    // repairable -> the fallback draft is the one that finally validates.
+    mocks.validateListingV5Draft
+      .mockReturnValueOnce(repairable)
+      .mockReturnValueOnce(repairable)
+      .mockReturnValueOnce(repairable)
+      .mockReturnValue(passValidation);
+    mocks.repairListingV5Draft.mockResolvedValue({ draft: repairedDraft, attempted: true, succeeded: true, appliedPaths: ["description"] });
+    mocks.recoverListingV5Draft.mockResolvedValue({ draft: { ...draft, title: { text: "Recovered Title", factIds: ["fact-1"] } }, attempted: true, succeeded: true });
+    mocks.buildListingV5FallbackDraft.mockReturnValue(fallbackDraft);
+
+    const response = await POST(request("POST", "task-1", { action: "generate", confirmRealAi: true }), { params: Promise.resolve({ id: "task-1" }) });
+    const body = await json(response);
+    expect(response.status).toBe(200);
+    const snapshot = body.data.snapshot;
+    // Recovery ran exactly once, its draft was re-validated, and because that
+    // validation still failed the honest fallback shipped.
+    expect(mocks.recoverListingV5Draft).toHaveBeenCalledTimes(1);
+    expect(mocks.buildListingV5FallbackDraft).toHaveBeenCalledTimes(1);
+    expect(snapshot.listing.title.text).toBe("Safe Fallback Title");
+    expect(snapshot.provider.recoveryAttempted).toBe(true);
+    expect(snapshot.provider.fallbackUsed).toBe(true);
+    expect(snapshot.validation.status).toBe("PASS");
+  });
+
+  it("publishes the recovered draft when the recovery pass validates", async () => {
+    state.useProvider = true;
+    state.context = context("fp-recovery-pass");
+    const repairable = {
+      ...passValidation,
+      status: "REPAIRABLE" as const,
+      claims: { ...passValidation.claims, unsupportedClaims: ["an unsupported claim"] },
+      repair: { allowed: true, reason: "only one bounded repair", targets: ["description"] },
+    };
+    mocks.validateListingV5Draft
+      .mockReturnValueOnce(repairable)
+      .mockReturnValueOnce(repairable)
+      .mockReturnValue(passValidation);
+    mocks.repairListingV5Draft.mockResolvedValue({ draft, attempted: true, succeeded: true, appliedPaths: ["description"] });
+    mocks.recoverListingV5Draft.mockResolvedValue({ draft: { ...draft, title: { text: "Recovered Title", factIds: ["fact-1"] } }, attempted: true, succeeded: true });
+
+    const response = await POST(request("POST", "task-1", { action: "generate", confirmRealAi: true }), { params: Promise.resolve({ id: "task-1" }) });
+    const body = await json(response);
+    expect(response.status).toBe(200);
+    const snapshot = body.data.snapshot;
+    expect(mocks.recoverListingV5Draft).toHaveBeenCalledTimes(1);
+    expect(mocks.buildListingV5FallbackDraft).not.toHaveBeenCalled();
+    expect(snapshot.listing.title.text).toBe("Recovered Title");
+    expect(snapshot.provider.recoveryAttempted).toBe(true);
+    expect(snapshot.provider.fallbackUsed).toBe(false);
+    expect(snapshot.validation.status).toBe("PASS");
   });
 });

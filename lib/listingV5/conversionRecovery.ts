@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Listing V5.1 — Safe Recovery (last resort).
  *
  * Repair fixes errors inside a draft the Validator rejected. Recovery is the
@@ -132,6 +132,12 @@ export async function recoverListingV5Draft(
     thinkingMode: "disabled",
     onProviderCallStart: options.onProviderCallStart,
   });
+  if (!response || (response as { ok?: boolean }).ok !== true) {
+    // Fail closed on a missing or failed provider response: no draft, and the
+    // caller keeps its honest fallback path.
+    const typed = response as { providerCallStarted?: boolean; diagnostics?: unknown } | undefined;
+    return { draft: null, attempted: typed?.providerCallStarted === true, succeeded: false, diagnostics: typed?.diagnostics, trace: buildStageTrace({ attempted: true, success: false, failureReason: "provider_request_failed" }) };
+  }
   if (!response.ok) {
     return { draft: null, attempted: response.providerCallStarted === true, succeeded: false, diagnostics: response.diagnostics, trace: traceProviderStage({ useProvider: true, response, normalized: false }) };
   }
