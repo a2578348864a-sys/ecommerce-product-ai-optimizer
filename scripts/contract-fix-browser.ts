@@ -21,15 +21,21 @@ import {
   createProductResearchVerification,
   buildProductResearchHash,
 } from "@/lib/productResearchRecord";
+import {
+  getSmokeOutputDir,
+  getProjectRoot,
+  getChromeExecutablePath,
+  getRealPngSource,
+} from "./utils/localPaths";
 
-const WORKTREE = resolve(process.cwd());
-const SMOKE_PARENT = "C:\\Users\\a2578\\Desktop\\qingxuan-smoke";
+const WORKTREE = getProjectRoot();
+const SMOKE_PARENT = getSmokeOutputDir();
 const HOST = "127.0.0.1";
 const PORTS = [3170, 3171] as const;
 const CDP_PORT = 24870;
-const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
-// 任务指定的现有历史真实 PNG（1,742,759 字节，生产台灯任务资产）——复用，不重新生成
-const REAL_PNG_SOURCE = "D:/Workspace/projects/project-001-跨境电商AI工具/电商工具/data/ai-image-drafts/owner/cmsiopk1v000btfoc9y6zu1s5/7b7dc697-f74e-4420-94ec-342d74d8ffba.png";
+const CHROME = getChromeExecutablePath();
+// 任务指定的现有历史真实 PNG（1,742,759 字节，生产台灯任务资产）——通过环境变量注入
+const REAL_PNG_SOURCE = getRealPngSource();
 
 function assert(condition: unknown, code: string): asserts condition {
   if (!condition) throw new Error(code);
@@ -339,8 +345,11 @@ async function main() {
   try {
     mkdirSync(runtimeRoot);
     mkdirSync(downloadRoot);
-    // 真实 PNG 前置校验
-    assert(existsSync(REAL_PNG_SOURCE), "smoke_real_png_missing");
+    // 真实 PNG 前置校验（未提供外部素材时优雅跳过）
+    if (!REAL_PNG_SOURCE || !existsSync(REAL_PNG_SOURCE)) {
+      console.log("SKIPPED: REAL_PNG_SOURCE not provided or missing, skipping smoke run.");
+      return;
+    }
     const realPngBytes = readFileSync(REAL_PNG_SOURCE);
     assert(realPngBytes.length > 0, "smoke_real_png_empty");
     assert(realPngBytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])), "smoke_real_png_magic");

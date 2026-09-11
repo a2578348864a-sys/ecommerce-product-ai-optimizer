@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -32,7 +32,8 @@ import { buildListingPlan } from "@/lib/listingHandoff/listingPlan";
 import { generateListingDraftFromHandoff } from "@/lib/listingHandoff/listingGenerationService";
 import { buildImageInputFromCreativeHandoff } from "@/lib/imageHandoff/imageGenerationInput";
 
-const REAL_XLSX = "C:/Users/a2578/Downloads/NEW(Sports-&-Outdoors(Current))-10-US-20260807.xlsx";
+const REAL_XLSX = process.env.TEST_REAL_XLSX_PATH || "";
+const hasRealXlsx = Boolean(REAL_XLSX && existsSync(REAL_XLSX));
 const YETI_ASIN = "B0GZRLKJT8";
 const NOW = "2026-08-11T12:00:00.000Z";
 const DEMO = "demo_real_xlsx";
@@ -46,7 +47,7 @@ function seedTask(taskId: string, resultJson: string) {
   writeFileSync(storePath, JSON.stringify({ version: 1, tasks: [{ id: taskId, demoAccessId: DEMO, type: "workflow", title: "T", decisionStatus: "continue", platform: "amazon", productUrl: null, materialText: "m", source: "demo", score: 1, level: "low", oneLineSummary: "o", resultJson, productLifecycle: "i", createdAt: NOW, updatedAt: NOW }], candidates: [] }), "utf8");
 }
 
-describe("真实 SellerSprite XLSX ProductBatch 主链事实补全闭环验收", () => {
+describe.skipIf(!hasRealXlsx)("真实 SellerSprite XLSX ProductBatch 主链事实补全闭环验收", () => {
   it("1. 真实文件导入 → YETI batch/item 落库（含 extraRaw）", async () => {
     const demoAccessId = createDemoAccess({ label: "real-xlsx-closure" }).record.id;
     const store = createDemoProductBatchStore(demoAccessId);

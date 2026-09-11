@@ -23,13 +23,19 @@ import {
   createProductResearchVerification,
   buildProductResearchHash,
 } from "@/lib/productResearchRecord";
+import {
+  getSmokeOutputDir,
+  getProjectRoot,
+  getEnvFilePath,
+  getChromeExecutablePath,
+} from "./utils/localPaths";
 
-const WORKTREE = resolve(process.cwd());
-const SMOKE_PARENT = "C:\\Users\\a2578\\Desktop\\qingxuan-smoke";
+const WORKTREE = getProjectRoot();
+const SMOKE_PARENT = getSmokeOutputDir();
 const HOST = "127.0.0.1";
 const PORTS = [3146, 3147] as const;
 const CDP_PORT = 24820;
-const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
+const CHROME = getChromeExecutablePath();
 
 const nodeRequestEvidence = {
   requestCount: 0,
@@ -503,7 +509,7 @@ async function main() {
       // 真实 Image Provider 配置（生产 .env.local 读取；仅内存；不输出）
       ...(() => {
         const fs2 = require("node:fs");
-        const envFile = "D:/Workspace/projects/project-001-跨境电商AI工具/电商工具/.env.local";
+        const envFile = getEnvFilePath();
         if (!fs2.existsSync(envFile)) return {};
         const content = fs2.readFileSync(envFile, "utf8");
         const out: Record<string, string> = {};

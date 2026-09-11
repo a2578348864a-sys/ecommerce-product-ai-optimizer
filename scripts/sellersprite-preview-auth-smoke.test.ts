@@ -49,7 +49,7 @@ describe("SellerSprite Preview acceptance driver credential flow", () => {
     expect(source).toContain("--real-file");
     expect(source).toContain("--real-sha256");
     expect(source).not.toContain("Search(powder-sunscreen-for-face)-10-US-20260730.xlsx");
-    expect(source).not.toContain("C:\\Users\\a2578\\Downloads");
+    expect(source).not.toMatch(/[\\/]Users[\\/][^\\/]+[\\/]Downloads/i);
   });
 
   it("reuses the existing driver for converted-task navigation and cross-identity denial", () => {

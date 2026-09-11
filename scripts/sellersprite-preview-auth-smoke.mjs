@@ -4,6 +4,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import {
   buildSellerSpritePreviewAcceptanceEvidence,
@@ -22,7 +23,7 @@ const WORKTREE = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const HOST = "127.0.0.1";
 const PORT = 3115;
 const CDP_PORT = 24801;
-const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
+const CHROME = process.env.CHROME_BIN || (process.platform === "win32" ? "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" : "google-chrome");
 
 const wait = (milliseconds) => new Promise((resolveWait) => setTimeout(resolveWait, milliseconds));
 
@@ -629,7 +630,8 @@ function appendSyntheticVisitor(storePath, password) {
 async function main() {
   const acceptanceArgs = parseAcceptanceArguments(process.argv.slice(2));
   const startedAt = new Date().toISOString().replaceAll(/[-:.TZ]/g, "");
-  const runtimeRoot = `C:\\Users\\a2578\\Desktop\\qingxuan-smoke\\seller-preview-3115-${startedAt}-response-evidence`;
+  const smokeParent = process.env.SMOKE_OUTPUT_DIR || join(tmpdir(), "qingxuan-smoke");
+  const runtimeRoot = join(smokeParent, `seller-preview-3115-${startedAt}-response-evidence`);
   let smoke; let chrome; let client;
   let ownerPassword; let visitorAPassword; let visitorBPassword;
   let phase = "preflight";

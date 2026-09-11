@@ -33,13 +33,18 @@ import {
   createWorkflowRunProof,
 } from "@/lib/server/workflowRunProof";
 import { buildSmokeProviderEvidence } from "./product-research-pr1-smoke-evidence";
+import {
+  getSmokeOutputDir,
+  getProjectRoot,
+  getChromeExecutablePath,
+} from "./utils/localPaths";
 
-const WORKTREE = resolve(process.cwd());
-const SMOKE_PARENT = "C:\\Users\\a2578\\Desktop\\qingxuan-smoke";
+const WORKTREE = getProjectRoot();
+const SMOKE_PARENT = getSmokeOutputDir();
 const HOST = "127.0.0.1";
 const PORTS = [3128, 3129] as const;
 const CDP_PORT = 24813;
-const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
+const CHROME = getChromeExecutablePath();
 const nodeRequestEvidence = {
   requestCount: 0,
   externalHttpRequestCount: 0,

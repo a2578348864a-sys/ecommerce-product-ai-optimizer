@@ -34,15 +34,21 @@ import {
   createProductResearchVerification,
   buildProductResearchHash,
 } from "@/lib/productResearchRecord";
+import {
+  getSmokeOutputDir,
+  getProjectRoot,
+  getChromeExecutablePath,
+  getRealPngSource,
+} from "./utils/localPaths";
 
-const WORKTREE = resolve(process.cwd());
-const SMOKE_PARENT = "C:\\Users\\a2578\\Desktop\\qingxuan-smoke";
+const WORKTREE = getProjectRoot();
+const SMOKE_PARENT = getSmokeOutputDir();
 const HOST = "127.0.0.1";
 const PORTS = [3160, 3161] as const;
 const CDP_PORT = 24840;
-const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
+const CHROME = getChromeExecutablePath();
 // 复用历史真实生成 PNG（非付费 Provider 调用；真实 1536x1024 图片）
-const REAL_PNG_SOURCE = "C:/Users/a2578/Desktop/qingxuan-smoke/v2-fi-real-smoke-20260805182812/image-assets/owner/v2fi-real-owner-task/03b362e9-3a4d-4e63-8b79-0c2caa32b08c.png";
+const REAL_PNG_SOURCE = getRealPngSource();
 
 const nodeRequestEvidence = {
   requestCount: 0,
@@ -418,8 +424,11 @@ async function main() {
   try {
     mkdirSync(runtimeRoot);
     mkdirSync(downloadRoot);
-    // ── 真实 PNG 前置校验（优先级1：复用已有真实资产，零 Provider 调用）──
-    assert(existsSync(REAL_PNG_SOURCE), "smoke_real_png_missing");
+    // ── 真实 PNG 前置校验（未配置外部资源时优雅跳过）──
+    if (!REAL_PNG_SOURCE || !existsSync(REAL_PNG_SOURCE)) {
+      console.log("SKIPPED: REAL_PNG_SOURCE not provided or missing, skipping smoke run.");
+      return;
+    }
     const realPngBytes = readFileSync(REAL_PNG_SOURCE);
     assert(realPngBytes.length > 0, "smoke_real_png_empty");
     // 轻量 PNG 校验（尺寸 + 魔数），等价于存储层 validateAiImageBytes 的关键断言

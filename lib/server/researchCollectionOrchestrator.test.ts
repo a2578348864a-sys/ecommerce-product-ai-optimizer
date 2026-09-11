@@ -246,9 +246,9 @@ describe("researchCollectionOrchestrator", () => {
     });
 
     it("脱敏文件路径（Windows 与 Unix filepath）", () => {
-      const msg = "Failed to run C:\\Users\\a2578\\.local\\bin\\browser-use.exe and /home/user/app/script.py";
+      const msg = "Failed to run C:\\Users\\developer\\.local\\bin\\browser-use.exe and /home/user/app/script.py";
       const sanitized = sanitizeErrorMessage(new Error(msg));
-      expect(sanitized).not.toContain("C:\\Users\\a2578\\.local\\bin\\browser-use.exe");
+      expect(sanitized).not.toContain("C:\\Users\\developer\\.local\\bin\\browser-use.exe");
       expect(sanitized).not.toContain("/home/user/app/script.py");
       expect(sanitized).toContain("[filepath]");
     });

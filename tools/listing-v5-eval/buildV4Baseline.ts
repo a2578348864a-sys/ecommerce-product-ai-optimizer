@@ -99,9 +99,10 @@ type BaselineEntry = {
 };
 
 async function main(): Promise<void> {
-  loadEnvPath(join("D:\\Workspace\\projects\\project-001-跨境电商AI工具\\电商工具", ".env.local"));
+  const projectRoot = process.env.PROJECT_ROOT || process.cwd();
+  loadEnvPath(join(projectRoot, ".env.local"));
   if (!process.env.DATABASE_URL) {
-    process.env.DATABASE_URL = "file:D:/Workspace/projects/project-001-跨境电商AI工具/电商工具/prisma/dev.db";
+    process.env.DATABASE_URL = "file:" + join(projectRoot, "prisma/dev.db");
   }
 
   const { prisma } = nodeRequire("@/lib/server/db") as typeof import("@/lib/server/db");

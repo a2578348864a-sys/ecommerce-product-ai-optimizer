@@ -20,13 +20,18 @@ import {
   createProductResearchVerification,
   buildProductResearchHash,
 } from "@/lib/productResearchRecord";
+import {
+  getSmokeOutputDir,
+  getProjectRoot,
+  getChromeExecutablePath,
+} from "./utils/localPaths";
 
-const WORKTREE = resolve(process.cwd());
-const SMOKE_PARENT = "C:\\Users\\a2578\\Desktop\\qingxuan-smoke";
+const WORKTREE = getProjectRoot();
+const SMOKE_PARENT = getSmokeOutputDir();
 const HOST = "127.0.0.1";
 const PORTS = [3180, 3181] as const;
 const CDP_PORT = 24880;
-const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
+const CHROME = getChromeExecutablePath();
 
 function assert(condition: unknown, code: string): asserts condition {
   if (!condition) throw new Error(code);

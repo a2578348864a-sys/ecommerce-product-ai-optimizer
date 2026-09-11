@@ -25,12 +25,18 @@ import {
   buildProductResearchHash,
 } from "@/lib/productResearchRecord";
 import { buildConfirmableCandidates } from "@/lib/productCreativeHandoffConfirmation";
+import {
+  getSmokeOutputDir,
+  getProjectRoot,
+  getEnvFilePath,
+  getChromeExecutablePath,
+} from "./utils/localPaths";
 
-const WORKTREE = resolve(process.cwd());
-const SMOKE_PARENT = "C:\\Users\\a2578\\Desktop\\qingxuan-smoke";
+const WORKTREE = getProjectRoot();
+const SMOKE_PARENT = getSmokeOutputDir();
 const HOST = "127.0.0.1";
 const PORTS = [3144, 3145] as const;
-const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
+const CHROME = getChromeExecutablePath();
 
 const PROVIDER_DOMAINS = new Set(["api.deepseek.com", "api.65535.space", "api.openai.com"]);
 
@@ -223,16 +229,16 @@ function isOwnedProcessRunning(pid: number) {
 }
 
 /** 从生产 .env.local 读取 Provider 配置（仅内存传递；绝不输出 Key 值） */
-function readProviderEnv(): Record<string, string> {
-  const envFile = "D:/Workspace/projects/project-001-跨境电商AI工具/电商工具/.env.local";
-  assert(existsSync(envFile), "smoke_provider_env_missing");
+function readProviderEnv(): Record<string, string> | null {
+  const envFile = getEnvFilePath();
+  if (!existsSync(envFile)) return null;
   const content = readFileSync(envFile, "utf8");
   const out: Record<string, string> = {};
   for (const key of ["AI_PROVIDER", "AI_BASE_URL", "AI_MODEL", "AI_TIMEOUT_MS", "DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL", "DEEPSEEK_MODEL", "OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_MODEL", "OPENAI_IMAGE_GENERATION_ENABLED", "OPENAI_IMAGE_VISITOR_ENABLED", "OPENAI_IMAGE_BASE_URL", "OPENAI_IMAGE_MODEL", "OPENAI_IMAGE_RESULT_HOSTS", "OPENAI_IMAGE_TIMEOUT_MS"]) {
     const m = content.match(new RegExp(`^${key}=(.*)$`, "m"));
     if (m) out[key] = m[1].trim();
   }
-  assert(out.DEEPSEEK_API_KEY || out.OPENAI_API_KEY, "smoke_provider_key_missing");
+  if (!out.DEEPSEEK_API_KEY && !out.OPENAI_API_KEY) return null;
   return out;
 }
 
@@ -312,6 +318,10 @@ async function main() {
     });
 
     const providerEnv = readProviderEnv();
+    if (!providerEnv) {
+      console.log("SKIPPED: provider env or key missing, skipping real smoke");
+      return;
+    }
     // 外部网络监控：通过 runtime env 白名单放行 Provider 域名（无代理全局放行；HTTP 由 Provider client 直接调用）
     const sanitizedEnv: Record<string, string | undefined> = {};
     for (const key of ["APPDATA", "COMSPEC", "LOCALAPPDATA", "NUMBER_OF_PROCESSORS", "OS", "PATH", "PATHEXT", "SYSTEMDRIVE", "SYSTEMROOT", "TEMP", "TMP", "USERPROFILE", "WINDIR"]) {

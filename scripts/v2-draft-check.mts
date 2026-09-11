@@ -1,15 +1,22 @@
 import { spawn } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readFileSync } from "node:fs";
+import { getChromeExecutablePath, getEnvFilePath } from "./utils/localPaths";
+
 const BASE = "http://127.0.0.1:3102";
 const TASK_ID = "cmshfa7z70005t7f0b57kpn4f";
-const CHROME = "C:/Program Files/Google/Chrome/Application/chrome.exe";
-const ENV_FILE = "C:/Users/a2578/Documents/Qingxuan-Cutover-Backup/v2-final-acceptance-20260806/env.isolation.local";
-const PW = readFileSync(ENV_FILE, "utf8").split("\n").find((l) => l.startsWith("ACCESS_PASSWORD="))!.split("=").slice(1).join("=").trim();
+const CHROME = getChromeExecutablePath();
+const ENV_FILE = getEnvFilePath();
+const PW = (existsSync(ENV_FILE)
+  ? readFileSync(ENV_FILE, "utf8").split("\n").find((l) => l.startsWith("ACCESS_PASSWORD="))?.split("=").slice(1).join("=").trim()
+  : "") || process.env.ACCESS_PASSWORD || "";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function main() {
+  if (!PW) {
+    console.log("SKIPPED: ACCESS_PASSWORD or valid ENV_FILE not found, skipping v2-draft-check.");
+    return;
+  }
   const login = await (await fetch(`${BASE}/api/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ password: PW }) })).json();
   const token = login.accessToken;
   const profile = mkdtempSync(join(tmpdir(), "v2-draft-"));

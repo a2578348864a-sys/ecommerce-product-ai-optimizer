@@ -63,9 +63,13 @@ function argValue(flag: string): string | null {
 const outFile = resolve(argValue("--out") ?? join("tools", "listing-v5-eval", "out", "persisted-cases.txt"));
 
 async function main(): Promise<void> {
+  const projectRoot = process.env.PROJECT_ROOT || process.cwd();
   const envArg = argValue("--env");
   if (envArg) for (const file of envArg.split(";").filter(Boolean)) loadEnvPath(file);
-  else loadEnvPath(join("D:\\Workspace\\projects\\project-001-跨境电商AI工具\\电商工具", ".env.local"));
+  else loadEnvPath(join(projectRoot, ".env.local"));
+  if (!process.env.DATABASE_URL) {
+    process.env.DATABASE_URL = "file:" + join(projectRoot, "prisma/dev.db");
+  }
 
   const { prisma } = nodeRequire("@/lib/server/db") as typeof import("@/lib/server/db");
 
