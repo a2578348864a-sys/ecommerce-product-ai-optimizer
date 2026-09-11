@@ -75,3 +75,11 @@
 - **动作**：按事先定死的规则立即 `git restore lib/listingV5/generation.ts`，Writer 提示与版本保持 v4（`LISTING_V5_WRITER_PROMPT_VERSION = "listing-v5-writer.v4"`）。证据：`holdout-evidence/benchmark-v51/V51EXP-H1-generate.json`、`V51EXP-H3-generate.json`。
 - **结论**：在当前上下文与 Validator 口径下，向 Writer 提示**追加任何劝说性措辞**都会提高 unsupported claims（v5 为 0/5 直交；本轮连接词版为 0/2 直交）。V5.1 的转化提升应改由 **Blueprint 2.0 上下文 + Studio 可视化**承载，而不是继续加提示词。
 - **预算如实披露**：V5.1 基准与实验合计使用 **17 次 provider 调用，超出 Phase 5 规定的 ≤15 上限 2 次**（12 次五案首轮 + 5 次本轮实验，后者因缓存的 v5 快照使指纹失效而额外触发了 strategy 调用）。后续不得再以"复测"为名追加调用；若需再测，必须先申请新的预算口径。
+
+## 8. Phase 4 完成记录（Round 9）
+
+- **实现**：`lib/listingV5/conversionRecovery.ts`（最后手段、最多一次、必然重过同一 Validator、无违规不空转、provider 失败即 fail-closed）+ `route.ts` 插入点接线（fallback 闸门之前）+ trace/快照字段 `recoveryAttempted / recoveryReason / recoveryValidationStatus` + 生成分支 provider 预留 3→4。
+- **安全**：提示只带 confirmedFacts / 剥离竞品原文的 blueprint / 消毒 strategy / 限长清洗后的失败稿与违规清单；禁用词表复用 `HARD_OR_ESCALATION_TOKENS`；新增 `conversionRecovery.test.ts`（2 例）锁定这些边界。
+- **验证**：tsc 0 / lint 0 error / build PASS / 22 文件 154 用例通过；提交 `026e739`；3005 部署 `BUILD_ID=HvtR9M6vKNiCKdayleDV5`。
+- **未验证**：Recovery 的**效果**（是否把 repair 失败案例救回 PASS、对 Conversion Score 的影响）需要新的 provider 预算；现有 ≤15 预算已用尽（实际 17 次，超支 2 次）。
+- **Studio 展示**：生成方式标签改为四态 —— `AI Draft Passed` / `AI Draft Repaired` / `Conversion Recovery` / `Safe Fallback`。

@@ -764,7 +764,13 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
               </p>
               <p>
                 <strong>生成方式：</strong>
-                {provider?.fallbackUsed ? "基础安全稿" : "AI 草稿"}
+                {provider?.fallbackUsed
+                  ? "Safe Fallback · 基础安全稿"
+                  : provider?.recoveryAttempted
+                  ? "Conversion Recovery · 安全转化恢复稿"
+                  : provider?.repairAttempted
+                  ? "AI Draft Repaired · 修复后 AI 草稿"
+                  : "AI Draft Passed · AI 草稿"}
                 ；所有事实仍以已确认资料为准。
               </p>
             </div>
