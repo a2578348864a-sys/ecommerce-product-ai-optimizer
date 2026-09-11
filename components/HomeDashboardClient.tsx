@@ -1146,7 +1146,7 @@ function LocalWorkspace({ runtime }: { runtime: HomeRuntime }) {
               <div className="grid min-w-0 gap-4 xl:grid-cols-3">
                 <LocalProductSection
                   title="需要我处理"
-                  description="等你的决定，研究才能进入下一步。"
+                  description="等你决定才能继续：待确认研究资料或研究尚未开始的商品都在这里，它们不属于「研究中」。"
                   items={needsAction}
                   loading={loading}
                   unavailable={unavailable}
@@ -1155,16 +1155,16 @@ function LocalWorkspace({ runtime }: { runtime: HomeRuntime }) {
                 />
                 <LocalProductSection
                   title="研究中"
-                  description="已经开始研究，资料仍在整理或补充。"
+                  description="研究已开始但尚未正式收口；需要你确认的商品会出现在「需要我处理」，不在这里。"
                   items={researching}
                   loading={loading}
                   unavailable={unavailable}
                   testId="local-status-researching"
-                  emptyHint="当前没有正在研究的商品。"
+                  emptyHint="当前没有未收口的研究；等待你确认的商品见「需要我处理」。"
                 />
                 <LocalProductSection
                   title="已完成"
-                  description="研究已正式收口（researchCompletion=completed）。"
+                  description="研究已正式收口并保存到研究记录（researchCompletion=completed）。"
                   items={completed}
                   loading={loading}
                   unavailable={unavailable}
