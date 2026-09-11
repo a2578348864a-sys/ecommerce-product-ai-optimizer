@@ -1,89 +1,73 @@
-# FINAL_RELEASE_REPORT_V51 — Listing V5.1 Conversion Recovery（**未完成**）
-
-> 状态声明：本报告是 V5.1 的**阶段性结项记录**，不是完成交付。V5.1 的代码改动已回滚，仓库行为与已发布的 `73d4a2d` 完全一致。**未输出 `PROJECT_COMPLETE = YES`**（原因见 §7）。
+# FINAL_RELEASE_REPORT_V51 — Listing V5.1（Listing Intelligence Layer）
 
 - **仓库**：`D:\Workspace\projects\project-001-listing-v5` · 分支 `feat/listing-v5-rebuild`
-- **当前 HEAD / 远端**：`73d4a2d`（LOCAL == REMOTE）· worktree CLEAN
-- **本机部署**：3005 运行 `73d4a2d` 构建（`BUILD_ID=iRMqwvgJwH-6NY7Y_wNho`，health ok，`/listing-studio` 200）
+- **本报告对应 SHA**：`b170348`（LOCAL == REMOTE）· worktree CLEAN
+- **本机部署**：3005 · `BUILD_ID=21-47DE6bnSsTSt4peu66` · `/api/health` ok · `/listing-studio` 200
+- **判定**：**PROJECT_COMPLETE = NO**（QUALITY 未达标，见 §4）
 
 ---
 
-## 1. 目标（V5.1）
+## 1. 目标
 
-解决 V5 最大业务问题：**Validator 安全通过 ≠ 高转化 Listing**。当 AI 初稿被拒且 repair 无法救回时，不直接降级模板，而是在 fallback 之前插入一次"安全转化恢复生成"（Conversion Recovery）：
+把"安全生成系统"升级为"安全 + 转化决策系统"：让 Writer 在**首次生成**就写出接近高转化 Amazon Listing 的文案，而不是失败后退回模板。方向是 Listing Intelligence Layer：Blueprint 2.0（为什么买）+ Writer 决策顺序 + Studio 可视化，Recovery 只做最后手段、不扩大为主链路。
+
+## 2. 已交付（全部经测试与部署验证）
+
+| 阶段 | 内容 | 证据 |
+|---|---|---|
+| Phase 2 | **Conversion Blueprint 2.0**：`purchaseTriggers[]`（trigger/factBacked/factIds）、`objectionHandling[]`（objection/resolution/factIds）、`benefitPriority[]`（benefit/priority/factIds）、`decisionSequence[]`，全部由已确认事实确定性派生 | `lib/listingV5/conversionBlueprint.ts`、`conversionIntelligence.test.ts`（factIds 合法性、无支撑顾虑不得生成 resolution、决策序列契约） |
+| Phase 6（部分） | **Writer 输入隔离**：测试实证竞品原文曾随 `blueprint.competitorGaps.competitorSignal` 进入提示；已改为只传可比维度 + 我方 factIds，并断言 sourcing 标记永不出现、VOC/竞品文本不得进入 confirmedFacts | `lib/listingV5/writerInputIsolation.test.ts`、`generation.ts` sanitizeBlueprintForPrompt |
+| Phase 7 | **Studio 只读 Conversion Strategy**：购买触发（含"有事实支撑/无事实支撑·仅作表达框架"标记）、购买疑虑处理、利益优先级、决策顺序；快照投影逐字段白名单 | `ListingStudioV5Client.tsx`、`route.ts` safeSnapshot |
+| Phase 9 | `tsc` 0 error；`lint` 0 error / 7 既有 warning；`build` PASS；`lib/listingV5` + route + Studio 测试 **20 文件 / 150 用例通过** | 本轮实跑 |
+| Phase 8 | 真实 Chrome（CDP）验收：Studio 打开、质量评分面板、**Conversion Strategy 面板存在**、刷新保持、移动端 390×844 **横向溢出 0px**、**console error 0**、自动化标签页全部关闭 | `D:\Workspace\holdout-evidence\ux-audit\v51-01-conversion-strategy.png`、`v51-02-mobile.png`、audit JSON |
+| Phase 11 | 逐文件 staging（禁用 `git add .`）、secret scan 命中 0、提交 `5489b8c` / `5a53604` / `b170348` 并 push，**LOCAL == REMOTE**、worktree CLEAN | `git log`、`git status` |
+| Phase 12 | 3005 重建重部署，WorkDir 指向本工作树，`BUILD_ID` 已更新、health/listing-studio 均通过 | 上述部署行 |
+
+## 3. Benchmark 实测（Phase 5，冻结 5 案池，12 次 provider 调用 ≤15）
+
+| 例 | 类型 | 首验 | repair | fallback |
+|---|---|---|---|---|
+| V51-H1 | 普通消费品（Zinnia 种子） | REPAIRABLE(unsupported 3) | 跑过仍不过 | 是 |
+| V51-H2 | 高规格（40" 气球） | BLOCK(6) | 不可修 | 是 |
+| V51-H3 | 强竞争（TERRO 蚂蚁药） | BLOCK(8) | 不可修 | 是 |
+| V51-H4 | 功能型（银箔窗帘 2 件装） | BLOCK(6) + 描述句数超限 | 不可修 | 是 |
+| V51-H5 | 易违规（PartyWoo 黑气球） | REPAIRABLE | 跑过仍不过 | 是 |
 
 ```
-Writer → Validator → Repair → Validator → Recovery（最多一次）→ Validator → Fallback
+AI_DIRECT_PASS = 0/5 = 0%      (目标 ≥80%)  → FAIL
+FALLBACK       = 5/5 = 100%    (目标 ≤20%)  → FAIL
+AVERAGE_SCORE  = 未计算（全为 fallback 模板稿，评分无意义）→ FAIL
 ```
 
----
+**根因（只分析，未动评分器与规则）**：Writer v5.1 的"决策顺序 + 封闭劝说词表 + 只为 factBacked 顾虑作答"措辞把模型推向主张式表达，unsupported claims 由 v4 的 1 条升到 3/6/8 条，3 例直接越过 `MAX_REPAIRABLE_CLAIMS=4` 变成不可修 BLOCK。同一批上下文在 v4 下是 2/3 AI 直交、平均 81.3。
 
-## 2. 审计结论（Phase 1，四个只读子代理）
+**最小修复**：Writer 提示**回滚到 v4**（`5a53604`），Blueprint 2.0 保留为附加上下文；基准证据留在 `D:\Workspace\holdout-evidence\benchmark-v51\`（含 5 案 generate JSON 与冻结池记录），作为失败留档。
 
-- **A 业务转化（`conversion-gap-v51.md` 已产出）**：fallback 只有一条闸门（非 PASS 即换模板），失败后不存在"重写说法"的阶段；repair 只改 ≤3 个被点名字段且首轮 BLOCK 时根本不跑（`MAX_REPAIRABLE_CLAIMS=4`，H3 有 5 条）。模板稿由拼装器生成：主语是"购物者/listing"，标题=产品名+事实拼接，缺"需求确认 / 方案对比 / 风险消除 / 行动"四段决策链。**Repair 删错，Recovery 换说法**（事实值一个不动）。
-- **B 架构（最小插入点）**：插入点在 `route.ts` repair 复位校验之后、fallback 闸门之前；守卫 `useProvider && action !== "analyze_strategy" && (repairAttempted || status === "BLOCK")`；Recovery 复用 Writer 的 `normalize`（factIds 白名单 + banned 清洗）；`plannedCalls` 生成分支 3→4；trace 复用既有失败枚举、version 保持 v1；快照 `provider` 增加 `recoveryAttempted` 并且投影必须逐字段白名单化；**既有缺陷**：CAS 冲突分支未清理 `ACTIVE_V5_JOBS`（锁泄漏，Recovery 会放大窗口）。
-- **C 安全（硬约束）**：Recovery 提示只能收 confirmedFacts + 已消毒 blueprint + failedDraft 文本 + 拒绝清单 + 消毒 strategy；**必须剥离 `competitorGaps[].competitorSignal` 原文**（否则模型可复述竞品措辞，而 competitorOverlap 只查 12 词连续重合）；词表必须复用 `HARD_OR_ESCALATION_TOKENS`（不得截断）；`PROMPT_CONTROL_TEXT` 三处漂移应抽共享常量；输出必须过 `banned` + factIds 白名单；Recovery 稿必须重走同一 Validator，非 PASS 必须 fallback。
-- **D 测试与浏览器（真实 CDP）**：旅程真点击通过（研究记录 → Studio → 生成 → 重新分析 → 离开 → 返回 → 刷新），**console error 全 0**，移动端 390×844 `overflow_x = 0`，刷新后内容一致（2097 字符）。发现体验问题：**P1** `/tasks` 首次进入提示"请先输入访问密码"而首页无密码入口（死路，复现 1 次后自愈）；**P1** 首页无任何可操作入口；**P2** 研究记录"查看 Listing 与图片"只做页内锚点；**P2** "重新生成"无完成反馈且结果不变；**P2** 侧栏 Listing Studio 丢 `taskId` 必落空状态；**P3** Studio 页面标题与首页相同、移动端导航需横滑。
-
----
-
-## 3. 已实现但**已回滚**的改动（代码不再存在）
-
-| 文件 | 内容 |
-|---|---|
-| `lib/listingV5/conversionRecovery.ts`（新增） | Recovery 模块：角色提示（Amazon conversion copy recovery specialist）、只读 confirmedFacts/blueprint/failedDraft/拒绝清单、剥离 `competitorSignal`、全量禁用词表、`PROMPT_CONTROL_TEXT` 清洗、复用 Writer 的 normalize、`useProvider` 关闭时不计费、无违规证据时拒绝空转 |
-| `lib/listingV5/trace.ts` | 增 `recoveryAttempted/recoveryReason/recoveryValidationStatus` + `stages.recovery` |
-| `app/api/tasks/[id]/listing-v5/route.ts` | 在 fallback 闸门之前插入一次 Recovery + 重新校验；`plannedCalls` 生成分支 +1 |
-| `lib/listingV5/generation.ts` | 导出 `sanitizeStrategyForCopy` / `normalizeListingV5ProviderDraft` 供 Recovery 复用 |
-
-**回滚原因**：这些改动当时仍处于半接线状态（trace/route 的声明与 builder 调用未同步，`tsc` 报错），而 V5.1 后半程（5 案冻结池、≤15 次 provider 基准、Recovery 安全回归、浏览器验收、部署）在本轮执行预算内**无法保质完成**。把一个半接线的生成链路提交进发布分支，风险高于收益。
-
-回滚方式（已执行）：`git restore` 上述 3 个改动文件 + 删除 `conversionRecovery.ts`；复核 `tsc --noEmit` **0 error**、`lib/listingV5` + route 定向测试 **18 文件 / 144 用例通过**、worktree **CLEAN**、HEAD 与远端均为 `73d4a2d`。
-
----
-
-## 4. Benchmark 状态
-
-- **V5（已发布，`73d4a2d`）**：5 案中 3 案完成真实 provider 基准，**平均 Conversion Score 81.3/100**（门槛 75，PASS），AI 直交 2/3，fallback 1/3。
-- **V5.1**：**未运行**。Recovery 层未合入，因此"AI 直交 ≥80% / fallback ≤20% / 平均 ≥85"三项无法测量，也无法凭猜测填写。任何在此前提下给出的数字都会是伪造结果。
-
----
-
-## 5. 当前可交付状态（未回滚的部分）
-
-| 维度 | 状态 |
-|---|---|
-| ENGINEERING | PASS（`tsc` 0 error、`lint` 0 error、`build` PASS、定向 144 用例通过） |
-| PRODUCT_FLOW | PASS（真实浏览器旅程通过、console 0 error、状态保持、移动端无横向溢出） |
-| SECURITY | PASS（V5 发布时的 F1/F2 修复与回归测试仍在；Recovery 的 6 项安全约束已形成书面契约） |
-| QUALITY | 维持 V5 实测值（81.3 / 门槛 75，PASS）；V5.1 的 Recovery 提升**未验证** |
-| GIT | PASS（`73d4a2d` == origin，clean） |
-| DEPLOY | PASS（3005 运行 `73d4a2d`，health ok，`/listing-studio` 200） |
-
----
-
-## 6. 下一步（按依赖顺序，均为最小改动）
-
-1. 完成接线：`trace.ts` 三处同步（类型/输入/builder body）、`route.ts` 局部变量声明与 builder 调用、`types.ts` `provider.recoveryAttempted`、`safeSnapshot` 逐字段白名单（含 `safeStageTrace/safeTrace` 放行新字段）。
-2. 顺手修既有缺陷：CAS 冲突分支补 `ACTIVE_V5_JOBS.delete(jobKey)`。
-3. 安全回归（≥6 条，见 §2-C）：禁用词、无外部源、`competitorSignal` 剥离、注入清洗、"Recovery 失败必 fallback"、"PASS 必须真实"。
-4. 重建 V5.1 测试池（≥5 真实商品，覆盖普通/高参数/强竞争/功能型/易违规），冻结后跑 ≤15 次 provider，记录初次 Writer / Repair / Recovery / 最终 Validator / fallback / Conversion Score。
-5. 浏览器验收（复用本轮 CDP 脚本）+ 部署 3005 + 逐文件 stage 提交。
-6. 处理 §2-D 的 P1 体验问题（`/tasks` 首屏死路、首页无可操作入口）。
-
----
-
-## 7. 最终判定
+## 4. 阶段判定
 
 ```
-ENGINEERING   = PASS
-PRODUCT_FLOW  = PASS
-SECURITY      = PASS
-QUALITY       = PASS (V5 实测 81.3/100；V5.1 Recovery 未验证)
-GIT           = PASS
-DEPLOY        = PASS
+ENGINEERING  = PASS   （tsc/lint/build/tests 全绿）
+PRODUCT_FLOW = PASS   （浏览器真实旅程 + 策略面板 + 刷新保持 + 移动端 0 溢出 + console 0）
+SECURITY     = PASS   （事实链隔离、竞品原文不再进提示、sourcing 恒空、Validator 未放宽；
+                        Phase 6 的"不读 1688/MOQ" 显式断言与 Validator 唯一门断言仍待补）
+QUALITY      = FAIL   （AI 直交 0/5、fallback 100%，未达 80%/20%/85）
+GIT          = PASS   （b170348 == origin，clean，逐文件 stage）
+DEPLOY       = PASS   （3005 = 21-47DE6bnSsTSt4peu66，health/listing-studio OK）
 
-PROJECT_COMPLETE = NO      # V5.1 目标（Conversion Recovery + ≥85 基准）未达成
+PROJECT_COMPLETE = NO
 ```
 
-**未完成的部分是明确的、可复现的、且已写成上表**；仓库当前停留在已验收的 `73d4a2d`，不存在半成品代码、临时脚本或未跟踪文件。
+## 5. 已知限制
+
+1. **首次生成质量未达标**：v5.1 提示在当前证据下会提高 unsupported claims，已回滚；QUALITY 仍停留在 V5 的实测水平（81.3，阈值 75）。
+2. **provider 预算剩 3 次**（已用 12/15）。下一轮只能做单变量对照实验。
+3. **测试池复用而非重建**：5 案是前几轮冻结的真实任务（非 fixture、非 A/B/C/D），在 v4 下已测过一次；用作 V5.1 的对照有效，但不再是"全新无偏 holdout"。
+4. **输入资料缺口**：H2–H5 的 SellerSprite 关键词全为品牌词（`no_reliable_search_keyword`），kw/comp=0，Buyer Intent 与 Differentiation 结构性偏低——属资料层问题，不是 Writer 的锅。
+5. **Phase 4（Recovery 降级实现）未做**；Phase 6 两条显式断言、README 更新未做。
+6. Studio 的 Conversion Strategy 位于折叠 `<details>` 内，浏览器断言验证的是 DOM 存在性与持久性（截图为证），未做展开态截图。
+
+## 6. 回滚方式
+
+- 代码：`git revert b170348`（Studio 面板与隔离修复）或回到 `5a53604`（仅蓝图 2.0 + v4 提示）；每一步都是独立提交，无数据库迁移、无持久化格式破坏。
+- 行为：把 `lib/listingV5/types.ts` 的 `LISTING_V5_WRITER_PROMPT_VERSION` 保持为 `v4` 即维持已验证的生成质量；蓝图 2.0 是纯附加字段，不参与 Validator 判定。
+- 部署：`npm run build` 后 `schtasks /Run /TN "QingXuanAgent-Local-3005-V5"` 即回到上一构建；`/listing-studio-legacy` 回退路由保留未动。
