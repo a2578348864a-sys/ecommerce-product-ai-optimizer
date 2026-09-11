@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { LISTING_V5_STRATEGY_PROMPT_VERSION } from "@/lib/listingV5/types";
 
 const state = vi.hoisted(() => ({
   context: null as any,
@@ -336,7 +337,10 @@ describe("Listing V5 route", () => {
   it("reuses a current cached strategy without analyzing it again", async () => {
     state.resultJson = JSON.stringify({ listingV5: {
       version: "listing-v5.snapshot.v1",
-      strategyPromptVersion: "listing-v5-strategy.v4",
+      // Tracked against the live constant so this test keeps asserting "a CURRENT
+      // cached strategy is reused" across prompt version bumps instead of pinning
+      // one historical version.
+      strategyPromptVersion: LISTING_V5_STRATEGY_PROMPT_VERSION,
       researchRevision: 7,
       handoffRevision: 3,
       contextFingerprint: "fp-1",

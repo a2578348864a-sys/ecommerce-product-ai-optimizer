@@ -179,6 +179,25 @@ function safeSnapshot(snapshot: unknown, currentRevision: number, currentHandoff
     secondaryAngles: Array.isArray(snapshot.strategy.secondaryAngles) ? snapshot.strategy.secondaryAngles.slice(0, 4) : [],
     tone: Array.isArray(snapshot.strategy.tone) ? snapshot.strategy.tone.slice(0, 3) : [],
     avoidClaims: Array.isArray(snapshot.strategy.avoidClaims) ? snapshot.strategy.avoidClaims.slice(0, 8) : [],
+    // Evidence Binding projection: bounded, additive, and read-only. It reports
+    // which strategy conclusions cite a real research reference. It carries no
+    // Validator authority and never carries listing copy.
+    evidenceBindings: isRecord(snapshot.strategy.evidenceBindings) ? {
+      version: String(snapshot.strategy.evidenceBindings.version ?? ""),
+      source: String(snapshot.strategy.evidenceBindings.source ?? ""),
+      total: Number(snapshot.strategy.evidenceBindings.total ?? 0) || 0,
+      bound: Number(snapshot.strategy.evidenceBindings.bound ?? 0) || 0,
+      suggestions: Number(snapshot.strategy.evidenceBindings.suggestions ?? 0) || 0,
+      conclusions: Array.isArray(snapshot.strategy.evidenceBindings.conclusions)
+        ? snapshot.strategy.evidenceBindings.conclusions.filter(isRecord).slice(0, 12).map((item) => ({
+          field: String(item.field ?? ""),
+          text: String(item.text ?? "").slice(0, 160),
+          status: String(item.status ?? ""),
+          evidenceIds: Array.isArray(item.evidenceIds) ? item.evidenceIds.filter((value): value is string => typeof value === "string").slice(0, 4) : [],
+          unresolvedEvidenceIds: Array.isArray(item.unresolvedEvidenceIds) ? item.unresolvedEvidenceIds.filter((value): value is string => typeof value === "string").slice(0, 4) : [],
+        }))
+        : [],
+    } : undefined,
   } : null;
   const listing = isRecord(snapshot.listing) ? {
     title: isRecord(snapshot.listing.title) ? { text: String(snapshot.listing.title.text ?? "") } : null,
