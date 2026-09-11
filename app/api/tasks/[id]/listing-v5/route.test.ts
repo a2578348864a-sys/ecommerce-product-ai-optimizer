@@ -33,6 +33,7 @@ const mocks = vi.hoisted(() => ({
   buildListingV5FallbackDraft: vi.fn(),
   repairListingV5Draft: vi.fn(),
     recoverListingV5Draft: vi.fn(),
+    rewriteListingV5Draft: vi.fn(),
   validateListingV5Draft: vi.fn(),
   mutateTaskResultJson: vi.fn(),
   reserveDemoAiCalls: vi.fn(),
@@ -100,6 +101,9 @@ vi.mock("@/lib/listingV5/structuredRepair", () => ({
 }));
 vi.mock("@/lib/listingV5/conversionRecovery", () => ({
   recoverListingV5Draft: mocks.recoverListingV5Draft,
+}));
+vi.mock("@/lib/listingV5/conversionRewrite", () => ({
+  rewriteListingV5Draft: mocks.rewriteListingV5Draft,
 }));
 vi.mock("@/lib/listingV5/validation", () => ({
   validateListingV5Draft: mocks.validateListingV5Draft,
@@ -298,7 +302,7 @@ describe("Listing V5 route", () => {
     state.useProvider = true;
     const response = await POST(request("POST", "sandbox_task_1", { action: "generate", confirmRealAi: true }), { params: Promise.resolve({ id: "sandbox_task_1" }) });
     expect(response.status).toBe(200);
-    expect(state.reserveCalls).toEqual([4]); // 2 writer-path calls plus one bounded Safe Recovery slot
+    expect(state.reserveCalls).toEqual([5]); // strategy + writer + one repair + one Conversion Rewrite + the last-resort Safe Recovery slot
     expect(state.startedCalls).toBe(2);
     expect(state.settledCalls).toBe(1);
     expect(mocks.mutateTaskResultJson).toHaveBeenCalledTimes(1);
@@ -635,5 +639,119 @@ describe("Listing V5 route", () => {
     expect(snapshot.provider.recoveryAttempted).toBe(true);
     expect(snapshot.provider.fallbackUsed).toBe(false);
     expect(snapshot.validation.status).toBe("PASS");
+  });
+
+  it("rewrites a BLOCKed AI draft once and publishes it when the same Validator passes it", async () => {
+    state.useProvider = true;
+    state.context = context("fp-rewrite-pass");
+    const blocked = {
+      ...passValidation,
+      status: "BLOCK" as const,
+      claims: { ...passValidation.claims, allHaveEvidence: false, unsupportedClaims: ["a", "b", "c", "d", "e"] },
+      repair: { allowed: false, reason: "blocked", targets: [] },
+    };
+    const rewrittenDraft = { ...draft, title: { text: "Rewritten Organizer", factIds: ["fact-1"] } };
+    // 1st validation: the writer draft is BLOCKed. 2nd: the rewritten draft passes.
+    mocks.validateListingV5Draft.mockReturnValueOnce(blocked).mockReturnValue(passValidation);
+    mocks.rewriteListingV5Draft.mockResolvedValue({ draft: rewrittenDraft, attempted: true, succeeded: true });
+
+    const response = await POST(request("POST", "task-1", { action: "generate", confirmRealAi: true }), { params: Promise.resolve({ id: "task-1" }) });
+    const body = await json(response);
+    expect(response.status).toBe(200);
+
+    const snapshot = body.data.snapshot;
+    expect(mocks.rewriteListingV5Draft).toHaveBeenCalledTimes(1);
+    // BLOCK is not repairable and no deterministic rewrite may patch it into PASS.
+    expect(mocks.repairListingV5Draft).not.toHaveBeenCalled();
+    expect(mocks.buildListingV5FallbackDraft).not.toHaveBeenCalled();
+    expect(snapshot.listing.title.text).toBe("Rewritten Organizer");
+    expect(snapshot.provider.rewriteAttempted).toBe(true);
+    expect(snapshot.provider.fallbackUsed).toBe(false);
+    expect(snapshot.validation.status).toBe("PASS");
+  });
+
+  it("repairs the rewritten draft when the rewrite lands on REPAIRABLE, still within one repair", async () => {
+    state.useProvider = true;
+    state.context = context("fp-rewrite-repair-pass");
+    const blocked = {
+      ...passValidation,
+      status: "BLOCK" as const,
+      claims: { ...passValidation.claims, allHaveEvidence: false, unsupportedClaims: ["a", "b", "c", "d", "e"] },
+      repair: { allowed: false, reason: "blocked", targets: [] },
+    };
+    const repairable = {
+      ...passValidation,
+      status: "REPAIRABLE" as const,
+      claims: { ...passValidation.claims, unsupportedClaims: ["one leftover claim"] },
+      repair: { allowed: true, reason: "one bounded repair", targets: ["title"] },
+    };
+    const rewrittenDraft = { ...draft, title: { text: "Rewritten Organizer", factIds: ["fact-1"] } };
+    const repairedDraft = { ...draft, title: { text: "Repaired Rewritten Organizer", factIds: ["fact-1"] } };
+    // BLOCK -> rewrite -> REPAIRABLE -> repair -> PASS.
+    mocks.validateListingV5Draft.mockReturnValueOnce(blocked).mockReturnValueOnce(repairable).mockReturnValue(passValidation);
+    mocks.rewriteListingV5Draft.mockResolvedValue({ draft: rewrittenDraft, attempted: true, succeeded: true });
+    mocks.repairListingV5Draft.mockResolvedValue({ draft: repairedDraft, attempted: true, succeeded: true, appliedPaths: ["title"] });
+
+    const response = await POST(request("POST", "task-1", { action: "generate", confirmRealAi: true }), { params: Promise.resolve({ id: "task-1" }) });
+    const body = await json(response);
+    expect(response.status).toBe(200);
+
+    const snapshot = body.data.snapshot;
+    expect(mocks.rewriteListingV5Draft).toHaveBeenCalledTimes(1);
+    expect(mocks.repairListingV5Draft).toHaveBeenCalledTimes(1);
+    expect(mocks.buildListingV5FallbackDraft).not.toHaveBeenCalled();
+    expect(snapshot.listing.title.text).toBe("Repaired Rewritten Organizer");
+    expect(snapshot.provider.rewriteAttempted).toBe(true);
+    expect(snapshot.provider.repairAttempted).toBe(true);
+    expect(snapshot.provider.fallbackUsed).toBe(false);
+    expect(snapshot.validation.status).toBe("PASS");
+  });
+
+  it("falls back when the rewrite and the last-resort recovery both fail", async () => {
+    state.useProvider = true;
+    state.context = context("fp-rewrite-fallback");
+    const blocked = {
+      ...passValidation,
+      status: "BLOCK" as const,
+      claims: { ...passValidation.claims, allHaveEvidence: false, unsupportedClaims: ["a", "b", "c", "d", "e"] },
+      repair: { allowed: false, reason: "blocked", targets: [] },
+    };
+    const fallbackDraft = { ...draft, title: { text: "Safe Fallback Title", factIds: ["fact-1"] } };
+    // The AI draft never passes; only the deterministic fallback draft validates.
+    mocks.validateListingV5Draft.mockReturnValueOnce(blocked).mockReturnValue(passValidation);
+    mocks.rewriteListingV5Draft.mockResolvedValue({ draft: null, attempted: true, succeeded: false });
+    mocks.recoverListingV5Draft.mockResolvedValue({ draft: null, attempted: true, succeeded: false });
+    mocks.buildListingV5FallbackDraft.mockReturnValue(fallbackDraft);
+
+    const response = await POST(request("POST", "task-1", { action: "generate", confirmRealAi: true }), { params: Promise.resolve({ id: "task-1" }) });
+    const body = await json(response);
+    expect(response.status).toBe(200);
+
+    const snapshot = body.data.snapshot;
+    expect(mocks.rewriteListingV5Draft).toHaveBeenCalledTimes(1);
+    expect(mocks.recoverListingV5Draft).toHaveBeenCalledTimes(1);
+    expect(mocks.buildListingV5FallbackDraft).toHaveBeenCalledTimes(1);
+    expect(snapshot.listing.title.text).toBe("Safe Fallback Title");
+    expect(snapshot.provider.rewriteAttempted).toBe(true);
+    expect(snapshot.provider.recoveryAttempted).toBe(true);
+    expect(snapshot.provider.fallbackUsed).toBe(true);
+    expect(snapshot.validation.status).toBe("PASS");
+  });
+
+  it("never rewrites a writer-stage fallback draft: the deterministic path stays deterministic", async () => {
+    state.useProvider = true;
+    const fallbackDraft = { ...draft, title: { text: "Safe Fallback Title", factIds: ["fact-1"] } };
+    // The writer stage itself failed, so the pipeline is already on the honest
+    // deterministic path and a conversion rewrite would only blur that record.
+    mocks.generateListingV5Draft.mockResolvedValue({ draft: fallbackDraft, providerAttempted: true, providerSucceeded: false });
+    mocks.validateListingV5Draft.mockReturnValue(passValidation);
+
+    const response = await POST(request("POST", "task-1", { action: "generate", confirmRealAi: true }), { params: Promise.resolve({ id: "task-1" }) });
+    const body = await json(response);
+    expect(response.status).toBe(200);
+
+    const snapshot = body.data.snapshot;
+    expect(mocks.rewriteListingV5Draft).not.toHaveBeenCalled();
+    expect(snapshot.listing.title.text).toBe("Safe Fallback Title");
   });
 });

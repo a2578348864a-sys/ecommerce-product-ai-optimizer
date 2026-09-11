@@ -1,4 +1,4 @@
-﻿import type { AiCallDiagnostics, AiClientError } from "@/lib/server/aiClient";
+import type { AiCallDiagnostics, AiClientError } from "@/lib/server/aiClient";
 import type { ListingV5ValidationResult } from "./types";
 
 /**
@@ -19,7 +19,7 @@ import type { ListingV5ValidationResult } from "./types";
 
 export const LISTING_V5_TRACE_VERSION = "listing-v5.execution-trace.v1" as const;
 
-export type ListingV5StageName = "strategy" | "writer" | "repair";
+export type ListingV5StageName = "strategy" | "writer" | "repair" | "rewrite";
 
 export const LISTING_V5_STAGE_FAILURE_REASONS = [
   "none",
@@ -34,7 +34,10 @@ export const LISTING_V5_STAGE_FAILURE_REASONS = [
   "repair_target_missing",
   "repair_response_shape_invalid",
   "repair_apply_failed",
-    "recovery_target_missing",
+  "recovery_target_missing",
+  // V5.2 Conversion Rewrite: no reportable issue, missing facts, or a
+  // source/prohibited-claim conflict that a rewrite cannot fix.
+  "rewrite_target_missing",
 ] as const;
 
 export type ListingV5StageFailureReason = (typeof LISTING_V5_STAGE_FAILURE_REASONS)[number];
@@ -81,6 +84,10 @@ export type ListingV5ExecutionTrace = {
   recoveryAttempted: boolean;
   recoveryReason: string | null;
   recoveryValidationStatus: ListingV5ValidationStatus | null;
+  /** V5.2 Conversion Rewrite: the bounded whole-listing rewrite that runs before recovery. */
+  rewriteAttempted: boolean;
+  rewriteReason: string | null;
+  rewriteValidationStatus: ListingV5ValidationStatus | null;
   /** Validation of the draft the user finally receives (after repair / fallback). */
   finalValidationStatus: ListingV5ValidationStatus;
   fallbackUsed: boolean;
@@ -89,6 +96,7 @@ export type ListingV5ExecutionTrace = {
     strategy: ListingV5StageTrace;
     writer: ListingV5StageTrace;
     repair: ListingV5StageTrace;
+    rewrite: ListingV5StageTrace;
     recovery: ListingV5StageTrace;
   };
   generatedAt: string;
@@ -209,6 +217,10 @@ export function buildListingV5ExecutionTrace(input: {
   recoveryValidation?: ListingV5ValidationResult | null;
   recovery?: ListingV5StageTrace;
   recoveryReason?: string | null;
+  /** Validation of the rewritten draft, when the V5.2 conversion rewrite ran. */
+  rewriteValidation?: ListingV5ValidationResult | null;
+  rewrite?: ListingV5StageTrace;
+  rewriteReason?: string | null;
   fallbackUsed: boolean;
   fallbackReason: ListingV5FallbackReason;
   generatedAt?: string;
@@ -233,7 +245,10 @@ export function buildListingV5ExecutionTrace(input: {
     recoveryValidationStatus: input.recoveryValidation ? summarizeValidationTrace(input.recoveryValidation).status : null,
     fallbackUsed: input.fallbackUsed,
     fallbackReason: input.fallbackReason,
-    stages: { strategy: input.strategy, writer: input.writer, repair: input.repair, recovery: input.recovery ?? idleStageTrace() },
+    rewriteAttempted: input.rewrite?.attempted === true,
+    rewriteReason: input.rewriteReason ?? (input.rewrite ? input.rewrite.failureReason : null),
+    rewriteValidationStatus: input.rewriteValidation ? summarizeValidationTrace(input.rewriteValidation).status : null,
+    stages: { strategy: input.strategy, writer: input.writer, repair: input.repair, rewrite: input.rewrite ?? idleStageTrace(), recovery: input.recovery ?? idleStageTrace() },
     generatedAt: input.generatedAt ?? new Date().toISOString(),
   };
 }

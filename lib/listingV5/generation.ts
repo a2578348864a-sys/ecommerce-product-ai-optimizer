@@ -121,7 +121,7 @@ const WRITER_SYSTEM_PROMPT = [
  * the copy rules enforce. Only wording is touched; no fact, dimension or
  * factId is added, removed or re-pointed.
  */
-function sanitizeBlueprintForPrompt(blueprint: ListingV5ConversionBlueprint): ListingV5ConversionBlueprint {
+export function sanitizeBlueprintForPrompt(blueprint: ListingV5ConversionBlueprint): ListingV5ConversionBlueprint {
   const scrub = (value: string) => value.replace(banned, "").replace(strategyRiskWords, "").replace(/\s{2,}/g, " ").trim();
   return {
     ...blueprint,

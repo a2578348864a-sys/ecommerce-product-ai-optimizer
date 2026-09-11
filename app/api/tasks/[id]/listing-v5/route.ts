@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { isSandboxTaskId, getSandboxTask } from "@/lib/server/demoSandbox";
 import { markDemoAiProviderCallStarted, requireAuthenticated, reserveDemoAiCalls, settleDemoAiCalls } from "@/lib/server/demoGuard";
@@ -12,6 +12,7 @@ import { buildListingV5Context } from "@/lib/listingV5/context";
 import { buildListingV5ConversionBlueprint } from "@/lib/listingV5/conversionBlueprint";
 import { evaluateListingV5Quality } from "@/lib/listingV5/qualityEvaluation";
 import { recoverListingV5Draft } from "@/lib/listingV5/conversionRecovery";
+import { rewriteListingV5Draft } from "@/lib/listingV5/conversionRewrite";
 import { analyzeListingV5Strategy } from "@/lib/listingV5/strategy";
 import { generateListingV5Draft, buildListingV5FallbackDraft } from "@/lib/listingV5/generation";
 import { repairListingV5Draft } from "@/lib/listingV5/structuredRepair";
@@ -146,6 +147,9 @@ function safeTrace(value: unknown): ListingV5ExecutionTrace | null {
     recoveryAttempted: value.recoveryAttempted === true,
     recoveryReason: typeof value.recoveryReason === "string" ? value.recoveryReason.slice(0, 120) : null,
     recoveryValidationStatus: VALIDATION_STATUSES.has(String(value.recoveryValidationStatus)) ? (String(value.recoveryValidationStatus) as ListingV5ValidationStatus) : null,
+    rewriteAttempted: value.rewriteAttempted === true,
+    rewriteReason: typeof value.rewriteReason === "string" ? value.rewriteReason.slice(0, 120) : null,
+    rewriteValidationStatus: VALIDATION_STATUSES.has(String(value.rewriteValidationStatus)) ? (String(value.rewriteValidationStatus) as ListingV5ValidationStatus) : null,
     fallbackUsed: value.fallbackUsed === true,
     fallbackReason: (FALLBACK_REASONS.has(String(value.fallbackReason))
       ? String(value.fallbackReason)
@@ -154,6 +158,7 @@ function safeTrace(value: unknown): ListingV5ExecutionTrace | null {
       strategy: safeStageTrace(stages.strategy),
       writer: safeStageTrace(stages.writer),
       repair: safeStageTrace(stages.repair),
+      rewrite: safeStageTrace(stages.rewrite),
       recovery: safeStageTrace(stages.recovery),
     },
     generatedAt: typeof value.generatedAt === "string" ? value.generatedAt.slice(0, 40) : "",
@@ -269,7 +274,7 @@ function safeSnapshot(snapshot: unknown, currentRevision: number, currentHandoff
       }))
       : [],
   } : null;
-  return { version: snapshot.version, researchRevision: snapshot.researchRevision, handoffRevision: snapshot.handoffRevision, strategy, listing, validation, conversionBlueprint, qualityEvaluation, repairApplied: snapshot.repairApplied === true, provider: snapshot.provider ?? { strategyAttempted: false, writerAttempted: false, repairAttempted: false, fallbackUsed: true }, humanReviewRequired: true, trace: isListingV5TraceEnabled() ? safeTrace(snapshot.trace) : undefined, stale };
+  return { version: snapshot.version, researchRevision: snapshot.researchRevision, handoffRevision: snapshot.handoffRevision, strategy, listing, validation, conversionBlueprint, qualityEvaluation, repairApplied: snapshot.repairApplied === true, provider: isRecord(snapshot.provider) ? { strategyAttempted: snapshot.provider.strategyAttempted === true, writerAttempted: snapshot.provider.writerAttempted === true, repairAttempted: snapshot.provider.repairAttempted === true, recoveryAttempted: snapshot.provider.recoveryAttempted === true, rewriteAttempted: snapshot.provider.rewriteAttempted === true, fallbackUsed: snapshot.provider.fallbackUsed === true } : { strategyAttempted: false, writerAttempted: false, repairAttempted: false, recoveryAttempted: false, rewriteAttempted: false, fallbackUsed: true }, humanReviewRequired: true, trace: isListingV5TraceEnabled() ? safeTrace(snapshot.trace) : undefined, stale };
 }
 
 async function buildContext(taskId: string, ctx: AccessContext) {
@@ -344,7 +349,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (useProvider && body.confirmRealAi !== true) {
     return error(400, "real_ai_confirmation_required", "调用真实 AI 前需要再次确认。");
   }
-  const plannedCalls = action === "analyze_strategy" ? 1 : cachedStrategy ? 3 : 4;
+  // Worst-case provider calls for the V5.2 chain: strategy (only when there is no
+  // cached strategy) + writer + at most one bounded repair + at most one bounded
+  // Conversion Rewrite + the last-resort Safe Recovery slot. The reservation is
+  // what the quota guard enforces, so it has to cover the longest path the chain
+  // can actually take.
+  const plannedCalls = action === "analyze_strategy" ? 1 : cachedStrategy ? 4 : 5;
   let quota: { ok: true; reservation: null } | { ok: false; status: number; code: string; message: string };
   try {
     quota = useProvider ? (reserveDemoAiCalls(verified.ctx!, plannedCalls) as typeof quota) : { ok: true as const, reservation: null };
@@ -373,17 +383,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const strategyResult = cachedStrategy
       ? { strategy: cachedStrategy, providerAttempted: false, providerSucceeded: false, trace: buildStageTrace({ attempted: false, success: false, failureReason: "stage_not_run" }) }
       : await analyzeListingV5Strategy(context, { useProvider, onProviderCallStart });
-    let draft = null;
+    let draft: ListingV5WriterDraft | null = null;
     let validation: ListingV5ValidationResult | null = null;
     let firstValidation: ListingV5ValidationResult | null = null;
     let repairApplied = false;
     let fallbackReason: ListingV5FallbackReason = "none";
     let writerTrace: ListingV5StageTrace = idleStageTrace();
     let repairTrace: ListingV5StageTrace = idleStageTrace();
-    let provider = { strategyAttempted: strategyResult.providerAttempted, writerAttempted: false, repairAttempted: false, fallbackUsed: false, recoveryAttempted: false };
-      let recoveryTrace: ListingV5StageTrace = idleStageTrace();
-      let recoveryReason: string | null = null;
-      let recoveryValidation: ListingV5ValidationResult | null = null;
+    let provider = { strategyAttempted: strategyResult.providerAttempted, writerAttempted: false, repairAttempted: false, fallbackUsed: false, recoveryAttempted: false, rewriteAttempted: false };
+    let recoveryTrace: ListingV5StageTrace = idleStageTrace();
+    let recoveryReason: string | null = null;
+    let recoveryValidation: ListingV5ValidationResult | null = null;
+    let rewriteTrace: ListingV5StageTrace = idleStageTrace();
+    let rewriteReason: string | null = null;
+    let rewriteValidation: ListingV5ValidationResult | null = null;
+    // The chain spends at most one AI repair per generation (V5.2 chain contract
+    // `Repair <= 1`), whether the writer draft or the rewritten draft triggered it.
+    let repairUsed = false;
+    const runRepair = async (current: ListingV5ValidationResult, currentDraft: ListingV5WriterDraft): Promise<ListingV5ValidationResult> => {
+      const repaired = await repairListingV5Draft({ context, strategy: strategyResult.strategy, validation: current, draft: currentDraft, useProvider, onProviderCallStart });
+      repairTrace = repaired.trace ?? idleStageTrace();
+      provider = { ...provider, repairAttempted: repaired.attempted };
+      repairApplied = repairApplied || (repaired.succeeded && repaired.appliedPaths.length > 0);
+      draft = repaired.draft;
+      return validateListingV5Draft(context, strategyResult.strategy, repaired.draft);
+    };
     if (action !== "analyze_strategy") {
       const generated = await generateListingV5Draft(context, strategyResult.strategy, { useProvider, onProviderCallStart });
       // The writer stage returning a fallback draft is the only writer-side fallback.
@@ -392,40 +416,62 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       draft = generated.draft; provider = { ...provider, writerAttempted: generated.providerAttempted, fallbackUsed: !generated.providerSucceeded };
       validation = validateListingV5Draft(context, strategyResult.strategy, draft);
       firstValidation = validation;
+      // Step 1 - the writer draft was REPAIRABLE, so spend the single bounded AI
+      // repair pass. Repair returns its draft for re-validation even when it
+      // failed or only partly applied, so the AI draft stays in place here and
+      // this step is NOT a fallback by itself.
       if (validation.status === "REPAIRABLE") {
-        const repaired = await repairListingV5Draft({ context, strategy: strategyResult.strategy, validation, draft, useProvider, onProviderCallStart });
-        // Repair returns its draft for re-validation even when it failed or only
-        // partly applied, so the AI draft stays in place here and this step is
-        // NOT a fallback by itself. If the re-validation on the next line is
-        // still not PASS, the block below takes the honest fallback path.
-        repairTrace = repaired.trace ?? idleStageTrace();
-        provider = { ...provider, repairAttempted: repaired.attempted };
-        repairApplied = repaired.succeeded && repaired.appliedPaths.length > 0;
-        draft = repaired.draft;
-        validation = validateListingV5Draft(context, strategyResult.strategy, draft);
+        repairUsed = true;
+        validation = await runRepair(validation, draft);
       }
-      // Deterministic code validates facts; it never rewrites marketing copy to
-      // make a draft pass. A draft that is still not PASS after the single
-      // bounded AI repair pass takes the honest fail-closed fallback path.
-        // V5.1 Safe Recovery (last resort, at most once): repair could not reach
-        // PASS, so one bounded AI pass re-organises the sales expression of the
-        // same Confirmed Facts before the pipeline falls back to the deterministic
-        // template. Facts, Validator and repair semantics are untouched, and the
-        // recovered draft must pass the same validation below.
-        if (validation.status !== "PASS" && useProvider) {
-          const recovered = await recoverListingV5Draft(
-            { context, strategy: strategyResult.strategy, blueprint: buildListingV5ConversionBlueprint(context, strategyResult.strategy), failedDraft: draft, validation },
-            { useProvider, onProviderCallStart },
-          );
-          recoveryTrace = recovered?.trace ?? idleStageTrace();
-          recoveryReason = recovered?.attempted ? null : (recovered?.trace?.failureReason ?? "none");
-          provider = { ...provider, recoveryAttempted: recovered?.attempted === true };
-          if (recovered?.succeeded && recovered.draft) {
-            draft = recovered.draft;
-            validation = validateListingV5Draft(context, strategyResult.strategy, draft);
-            recoveryValidation = validation;
+      // Step 2 - V5.2 Conversion Rewrite (at most once). The draft is still not
+      // PASS, so one bounded AI pass rebuilds the whole listing from the same
+      // Confirmed Facts. The Validator, the repair semantics and the fact
+      // authority are untouched, the rewritten draft must pass the same
+      // validation below, and deterministic code never rewrites marketing copy to
+      // force a PASS. A writer-stage fallback draft is not a rewrite target: that
+      // already is the deterministic path and it stays on it.
+      if (validation.status !== "PASS" && useProvider && fallbackReason !== "writer_stage_failed") {
+        const rewritten = await rewriteListingV5Draft(
+          { context, strategy: strategyResult.strategy, blueprint: buildListingV5ConversionBlueprint(context, strategyResult.strategy), failedListing: draft, validation },
+          { useProvider, onProviderCallStart },
+        );
+        rewriteTrace = rewritten?.trace ?? idleStageTrace();
+        provider = { ...provider, rewriteAttempted: rewritten?.attempted === true };
+        rewriteReason = rewritten?.attempted && !rewritten?.succeeded ? (rewritten.trace?.failureReason ?? "none") : null;
+        if (rewritten?.succeeded && rewritten.draft) {
+          draft = rewritten.draft;
+          validation = validateListingV5Draft(context, strategyResult.strategy, draft);
+          rewriteValidation = validation;
+          // A rewrite normally lands on REPAIRABLE rather than PASS (the V5.2
+          // spike measured BLOCK(5) -> REPAIRABLE(4) and BLOCK(6) -> REPAIRABLE(3)),
+          // so the remaining repair budget is spent here - still at most one repair
+          // for the whole generation.
+          if (validation.status === "REPAIRABLE" && !repairUsed) {
+            repairUsed = true;
+            validation = await runRepair(validation, draft);
           }
         }
+      }
+      // Step 3 - V5.1 Safe Recovery, demoted to the last resort: every targeted
+      // pass failed, so one bounded AI pass re-organises the sales expression of
+      // the same Confirmed Facts before the pipeline falls back to the
+      // deterministic template. Facts, Validator and repair semantics are
+      // untouched, and the recovered draft must pass the same validation below.
+      if (validation.status !== "PASS" && useProvider) {
+        const recovered = await recoverListingV5Draft(
+          { context, strategy: strategyResult.strategy, blueprint: buildListingV5ConversionBlueprint(context, strategyResult.strategy), failedDraft: draft, validation },
+          { useProvider, onProviderCallStart },
+        );
+        recoveryTrace = recovered?.trace ?? idleStageTrace();
+        recoveryReason = recovered?.attempted ? null : (recovered?.trace?.failureReason ?? "none");
+        provider = { ...provider, recoveryAttempted: recovered?.attempted === true };
+        if (recovered?.succeeded && recovered.draft) {
+          draft = recovered.draft;
+          validation = validateListingV5Draft(context, strategyResult.strategy, draft);
+          recoveryValidation = validation;
+        }
+      }
       if (validation.status !== "PASS") {
         draft = buildListingV5FallbackDraft(context, strategyResult.strategy);
         provider = { ...provider, fallbackUsed: true };
@@ -461,6 +507,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       repair: repairTrace,
       validation: firstValidation ?? finalValidation,
       finalValidation,
+      recovery: recoveryTrace,
+      recoveryValidation,
+      recoveryReason,
+      rewrite: rewriteTrace,
+      rewriteValidation,
+      rewriteReason,
       fallbackUsed: fallbackReason !== "none",
       fallbackReason,
     });
