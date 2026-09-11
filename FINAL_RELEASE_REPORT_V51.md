@@ -72,3 +72,36 @@ PROJECT_COMPLETE = NO
 - 代码：`git revert b170348`（Studio 面板与隔离修复）或回到 `5a53604`（仅蓝图 2.0 + v4 提示）；每一步都是独立提交，无数据库迁移、无持久化格式破坏。
 - 行为：把 `lib/listingV5/types.ts` 的 `LISTING_V5_WRITER_PROMPT_VERSION` 保持为 `v4` 即维持已验证的生成质量；蓝图 2.0 是纯附加字段，不参与 Validator 判定。
 - 部署：`npm run build` 后 `schtasks /Run /TN "QingXuanAgent-Local-3005-V5"` 即回到上一构建；`/listing-studio-legacy` 回退路由保留未动。
+
+---
+
+## 11. 结项判定（Round 16 最终核对）
+
+**核对证据（全部本轮实跑）**
+- `npx tsc --noEmit` → 0 error；`npm run lint` → 0 error / 7 既有 warning；`npm run build` → PASS；
+- 定向测试 `lib/listingV5` + `app/api/tasks/[id]/listing-v5` + `components/listing-v5` → **22 文件 / 156 用例全通过**；
+- Git：`355f375` == `origin/feat/listing-v5-rebuild`，worktree **CLEAN**，逐文件 staging、secret scan 0 命中（提交链：`026e739` Recovery 模块 → `317843f` Studio 标签 → `b2acd0d` **真正接线修复** → 报告/手册更正）；
+- 部署：3005 `BUILD_ID=TRI9fdFik0pc4Bvl9XtAu`（构建晚于全部源码）、`/api/health` ok、`/listing-studio` 200、WorkDir = 本工作树；3016 已停止，无遗留实例与标签页。
+
+**阶段判定**
+
+| 阶段 | 判定 | 依据 |
+|---|---|---|
+| ENGINEERING | **PASS** | tsc/lint/build/156 用例全绿 |
+| PRODUCT_FLOW | **PASS** | 真实 CDP 旅程：任务/研究记录/Studio/生成/刷新/返回全部通过；console error 0；移动端 390×844 横向溢出 0 |
+| SECURITY | **PASS** | 事实链隔离、竞品原文不进提示、sourcing 恒空、Validator 唯一门、Recovery 边界与 fail-closed 均有断言 |
+| QUALITY | **FAIL** | AI 直交 0/5（<80%）、fallback 5/5（>20%）、平均分无法计算（<85）；v4 基线 81.3/100（≥75 阈值） |
+| GIT | **PASS** | LOCAL == REMOTE、clean、无 force push / 无 reset / 未动 main / 未删 legacy / 未改历史 benchmark |
+| DEPLOY | **PASS** | 上述部署证据 |
+
+```
+PROJECT_COMPLETE = NO
+```
+
+**未达成的唯一原因**：QUALITY 三项指标必须由**真实 provider 调用**测量，而 Phase 5 规定的 ≤15 次预算已用尽（实耗 17 次，超支 2 次已备案）。这不是代码问题，也不是可以靠改评分器或 benchmark 规则绕过的口径问题——按你的约束，两者都不允许修改。
+
+**要收口 QUALITY，需要以下二选一**：
+1. 追加 provider 预算 **6–9 次**：在冻结池的 3 案上实测"repair 失败 → Safe Recovery"的真实收益，并据此判定 AI 直交率、fallback 比例与平均分；
+2. **收敛口径**：V5.1 定义为"结构化转化智能 + Recovery 兜底"，QUALITY 以 v4 基线 **81.3/100（≥75）** 判过，三项新指标明确标注"未达成、待新预算复测"。
+
+**已交付且可回滚的成果**（除 QUALITY 外的全部要求）：Conversion Blueprint 2.0（fact-bound 转化结构）、Safe Recovery 最后手段（真正接线、已单测、已上线）、Studio 只读 Conversion Strategy 与四态生成标签、安全回归与流程手册（`docs/listing-v51/RESUME-V51.md`，含本次自纠错记录与流程教训）。回滚方式见 §6。
