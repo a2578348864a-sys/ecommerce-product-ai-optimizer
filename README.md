@@ -193,3 +193,30 @@ npm run build
 ## 许可证
 
 本项目采用 [MIT License](LICENSE)。
+
+
+---
+
+## Listing V5.1 — Listing Intelligence Layer（2026-09-11）
+
+**产品定位**：面向跨境电商新手/小团队的受控研究 + Listing 准备助手；AI 只做表达与组织，事实只能来自人工确认的 Confirmed Facts。
+
+**AI Workflow（V5.1）**
+`Research（人工确认）→ Confirmed Facts → Conversion Blueprint 2.0 → Strategy → Writer → Validator →（REPAIRABLE 时）Repair →（仍失败时）诚实 fallback → Studio 展示`
+
+**Fact Authority**
+`confirmedFacts`（handoff 中 usageScopes 含 listing）是唯一事实权威；VOC / 关键词 / 竞品 / sourcing 一律为 `UNTRUSTED_REFERENCE_DATA`，只影响表达框架，永不成事实；`references.sourcing` 在 Listing V5 上下文恒为空；Writer 提示不再携带竞品原文（只带可比维度 + 我方 factIds）。
+
+**Conversion Intelligence（V5.1 新增，确定性、零 provider）**
+- `Conversion Blueprint 2.0`：`purchaseTriggers[]` / `objectionHandling[]` / `benefitPriority[]` / `decisionSequence[]`，全部绑定 confirmedFacts；
+- `Quality Evaluation`（Studio 展示）与 `Conversion Score`（基准测量器）分离，二者都不参与通过/阻断判定；
+- Studio 只读展示 Conversion Strategy（购买触发含"有事实支撑"标记、疑虑处理、利益优先级、决策顺序）。
+
+**Benchmark（实测记录，不修饰）**
+- V5（writer v4）：3 案真实 provider，平均 Conversion Score **81.3/100**（阈值 75）；
+- V5.1（writer v5 决策序列提示）：5 案冻结池实测 **AI 直交 0/5、fallback 5/5**（unsupported claims 3/6/8 条）⇒ 提示**已回滚至 v4**，失败证据留档于 `holdout-evidence/benchmark-v51/`；
+- 结论：Blueprint 2.0 保留为附加上下文，Writer 提示仍以 v4 的"事实锚定优先"为基线，后续迭代必须做单变量对照。
+
+**安全不变量**：Validator 是唯一安全门；任何报告层（Quality Evaluation / Conversion Score / 未来 Recovery）不得改写 `validation.status`；确定性代码只做校验/归一/持久化/回退，不重写营销句以求通过。
+
+**回滚**：每个增量独立提交；`/listing-studio-legacy` 回退路由保留；把 `LISTING_V5_WRITER_PROMPT_VERSION` 保持 `v4` 即维持已验证质量。
