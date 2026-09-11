@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { isSandboxTaskId, getSandboxTask } from "@/lib/server/demoSandbox";
 import { markDemoAiProviderCallStarted, requireAuthenticated, reserveDemoAiCalls, settleDemoAiCalls } from "@/lib/server/demoGuard";
@@ -223,6 +223,29 @@ function safeSnapshot(snapshot: unknown, currentRevision: number, currentHandoff
       }))
       : [],
     disallowedTemptations: Array.isArray(snapshot.conversionBlueprint.disallowedTemptations) ? snapshot.conversionBlueprint.disallowedTemptations.filter((item): item is string => typeof item === "string").slice(0, 24) : [],
+    // V5.1 conversion strategy: bounded, read-only, fact-ids only (never reference text).
+    purchaseTriggers: Array.isArray(snapshot.conversionBlueprint.purchaseTriggers)
+      ? snapshot.conversionBlueprint.purchaseTriggers.filter(isRecord).slice(0, 6).map((item) => ({
+        trigger: String(item.trigger ?? ""),
+        factBacked: item.factBacked === true,
+        factIdCount: Array.isArray(item.factIds) ? item.factIds.length : 0,
+      }))
+      : [],
+    objectionHandling: Array.isArray(snapshot.conversionBlueprint.objectionHandling)
+      ? snapshot.conversionBlueprint.objectionHandling.filter(isRecord).slice(0, 6).map((item) => ({
+        objection: String(item.objection ?? ""),
+        resolution: String(item.resolution ?? ""),
+        factIdCount: Array.isArray(item.factIds) ? item.factIds.length : 0,
+      }))
+      : [],
+    benefitPriority: Array.isArray(snapshot.conversionBlueprint.benefitPriority)
+      ? snapshot.conversionBlueprint.benefitPriority.filter(isRecord).slice(0, 8).map((item) => ({
+        benefit: String(item.benefit ?? ""),
+        priority: typeof item.priority === "number" ? item.priority : 0,
+        factIdCount: Array.isArray(item.factIds) ? item.factIds.length : 0,
+      }))
+      : [],
+    decisionSequence: Array.isArray(snapshot.conversionBlueprint.decisionSequence) ? snapshot.conversionBlueprint.decisionSequence.filter((item): item is string => typeof item === "string").slice(0, 6) : [],
   } : null;
   const qualityEvaluation = isRecord(snapshot.qualityEvaluation) ? {
     version: String(snapshot.qualityEvaluation.version ?? ""),

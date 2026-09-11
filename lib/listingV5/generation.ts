@@ -133,7 +133,9 @@ function sanitizeBlueprintForPrompt(blueprint: ListingV5ConversionBlueprint): Li
     painPoints: blueprint.painPoints
       .map((pain) => ({ ...pain, pain: scrub(pain.pain) }))
       .filter((pain) => pain.pain.length > 0),
-    competitorGaps: blueprint.competitorGaps.map((gap) => ({ ...gap, competitorSignal: scrub(gap.competitorSignal) })),
+    // Competitor wording never reaches the prompt: only the comparable dimension
+    // and our own fact ids survive, so the model cannot echo a competitor phrase.
+    competitorGaps: blueprint.competitorGaps.map((gap) => ({ ...gap, competitorSignal: "" })),
   };
 }
 

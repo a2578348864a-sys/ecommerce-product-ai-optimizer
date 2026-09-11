@@ -865,6 +865,54 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
                 {snapshot.conversionBlueprint.proofPointCount} 条已确认事实；卖点顺序{" "}
                 {snapshot.conversionBlueprint.benefitOrder?.map((item: any) => item.role).join(" → ") || "默认顺序"}
               </p>
+              {snapshot.conversionBlueprint.purchaseTriggers?.length ? (
+                <div data-testid="listing-v5-conversion-strategy">
+                  <strong>购买触发（Conversion Strategy）：</strong>
+                  <ul className="mt-1 space-y-1">
+                    {snapshot.conversionBlueprint.purchaseTriggers.map((trigger: any, index: number) => (
+                      <li key={`${trigger.trigger}-${index}`} className="flex flex-wrap items-center gap-1.5">
+                        <span>{trigger.trigger}</span>
+                        <span
+                          className={
+                            trigger.factBacked
+                              ? "rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700"
+                              : "rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500"
+                          }
+                        >
+                          {trigger.factBacked ? `已确认事实 ${trigger.factIdCount}` : "无事实支撑 · 仅作表达框架"}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {snapshot.conversionBlueprint.objectionHandling?.length ? (
+                <div>
+                  <strong>购买疑虑处理：</strong>
+                  <ul className="mt-1 space-y-1">
+                    {snapshot.conversionBlueprint.objectionHandling.map((item: any, index: number) => (
+                      <li key={`${item.objection}-${index}`}>
+                        {item.objection} → {item.resolution}（事实 {item.factIdCount} 条）
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {snapshot.conversionBlueprint.benefitPriority?.length ? (
+                <p>
+                  <strong>利益优先级：</strong>
+                  {snapshot.conversionBlueprint.benefitPriority
+                    .slice(0, 5)
+                    .map((item: any) => `${item.priority}. ${item.benefit}`)
+                    .join("；")}
+                </p>
+              ) : null}
+              {snapshot.conversionBlueprint.decisionSequence?.length ? (
+                <p>
+                  <strong>决策顺序：</strong>
+                  {snapshot.conversionBlueprint.decisionSequence.join(" → ")}
+                </p>
+              ) : null}
               {snapshot.conversionBlueprint.disallowedTemptations?.length ? (
                 <p className="text-slate-500">
                   <strong>本商品无事实支撑的表述（禁止使用）：</strong>
