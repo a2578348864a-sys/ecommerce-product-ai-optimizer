@@ -281,20 +281,77 @@ function uncoveredAttributeAssertions(segment: string, segmentTokens: Set<string
   return offenders;
 }
 
-/** Hard/escalation tokens this segment introduces that no confirmed value covers. */
-function uncoveredHardTokens(segmentTokens: Set<string>, confirmedTokens: Set<string>): string[] {
+/**
+ * Enumeration vs absolute reading of a hard-vocabulary token.
+ *
+ * A hard word can be a count quantifier ("the pack holds four pieces in total") or an
+ * absolute claim modifier ("total coverage"). The token list alone cannot tell them
+ * apart, which is why benign quantity wording was reported as a hard claim.
+ *
+ * The reading is decided from the token's immediate context, so the rule is reusable
+ * for any vocabulary token instead of being an exception for one word:
+ *   enumeration <- "in <token>", "a <token> of", "<token> of", "<token>: 4", "<token> 4",
+ *                  "<token> pack size / pieces / count / quantity / weight / ..."
+ *   absolute    <- "<token> coverage / protection / control / satisfaction / ...": an
+ *                  absolute head noun always wins, so real claims keep being reported.
+ */
+const ABSOLUTE_HEAD_NOUNS = new Set([
+  "coverage", "protection", "control", "satisfaction", "experience", "quality", "performance",
+  "value", "package", "solution", "system", "confidence", "assurance", "peace", "comfort",
+  "safety", "security", "durability", "strength", "power", "support",
+]);
+const MEASURE_HEAD_NOUNS = new Set([
+  "piece", "pieces", "pc", "pcs", "count", "quantity", "qty", "pack", "packs",
+  "size", "sizes", "weight", "length", "width", "height", "dimensions", "capacity",
+  "item", "items", "unit", "units",
+]);
+
+/**
+ * The vocabulary words that also read as count quantifiers. Only these may be excused
+ * by a following measure noun, because a performance word followed by a measure noun is
+ * still a claim: "total pack size" is a count, "heavy weight" and "maximum capacity"
+ * assert performance and must stay hard. The preposition and number frames below are
+ * unambiguous for every token, so they are not restricted to this family.
+ */
+const QUANTITY_QUANTIFIER_TOKENS = new Set(["total", "complete", "fully", "always", "never", "only", "every", "all", "most", "best", "perfect"]);
+
+function isQuantityEnumerationContext(segment: string, token: string): boolean {
+  const match = new RegExp(`\\b${token}\\b`, "i").exec(segment);
+  if (!match || match.index === undefined) return false;
+  const before = segment.slice(0, match.index).toLowerCase();
+  const after = segment.slice(match.index + match[0].length).toLowerCase();
+  const nextWord = /^[^a-z0-9]*([a-z]+)/.exec(after)?.[1] ?? "";
+  const previousWord = /([a-z]+)[^a-z0-9]*$/.exec(before)?.[1] ?? "";
+  // An absolute head noun always wins: "total coverage" stays a hard claim.
+  if (ABSOLUTE_HEAD_NOUNS.has(nextWord)) return false;
+  // "in total", "a total of", "total of 4"
+  if (previousWord === "in" || previousWord === "of" || (previousWord === "a" && nextWord === "of")) return true;
+  if (nextWord === "of") return true;
+  // "Total: 4 Pcs", "total 4 Pcs"
+  if (/^\s*:?\s*\d/.test(after)) return true;
+  // "total pack size", "total pieces", "total count", "total quantity"
+  if (QUANTITY_QUANTIFIER_TOKENS.has(token) && MEASURE_HEAD_NOUNS.has(nextWord)) return true;
+  return false;
+}
+
+/**
+ * Hard/escalation tokens this segment introduces that no confirmed value covers.
+ * A token read as a count quantifier is not an absolute claim and is not reported.
+ */
+function uncoveredHardTokens(segment: string, segmentTokens: Set<string>, confirmedTokens: Set<string>): string[] {
   const offenders: string[] = [];
   for (const token of segmentTokens) {
     if (!HARD_OR_ESCALATION_TOKENS.has(token)) continue;
     if (confirmedTokens.has(token)) continue;
+    if (isQuantityEnumerationContext(segment, token)) continue;
     offenders.push(token);
   }
   return offenders;
 }
 
 /** True when the segment introduces a hard/escalation token this fact value does not cover. */
-function hasUncoveredHardToken(segmentTokens: Set<string>, valueSet: Set<string>): boolean {
-  return uncoveredHardTokens(segmentTokens, valueSet).length > 0;
+function hasUncoveredHardToken(segment: string, segmentTokens: Set<string>, valueSet: Set<string>): boolean {
+  return uncoveredHardTokens(segment, segmentTokens, valueSet).length > 0;
 }
 
 const MAX_OFFENDING_SPANS = 6;
@@ -337,7 +394,7 @@ function surfaceSpansForModelCodes(segment: string, tokens: readonly string[]): 
 function describeUnsupportedSegment(segment: string, allowedValues: readonly string[], modelCodes: readonly string[] = []): { issueCode: ListingV5IssueCode; offendingSpans: string[] } {
   const segmentTokens = new Set(normalizeTokens(segment));
   const allConfirmedTokens = new Set(allowedValues.flatMap((value) => contentTokens(value)));
-  const hard = uncoveredHardTokens(segmentTokens, allConfirmedTokens);
+  const hard = uncoveredHardTokens(segment, segmentTokens, allConfirmedTokens);
   const attributes = uncoveredAttributeAssertions(segment, segmentTokens, allConfirmedTokens, modelCodes);
   // Reverse detection: a model-shaped code the confirmed facts do not carry.
   const uncoveredModels = modelCodeTokensIn(segment).filter((token) => !modelCodes.includes(normalizeModelCode(token)));
@@ -383,7 +440,7 @@ function isAnchoredToConfirmedValue(segment: string, factValues: readonly string
     const containsValuePhrase = normalizedSegment.includes(valueTokens.join(" "));
     const hasAllValueTokens = valueTokens.every((token) => segmentTokens.has(token));
     if (!containsValuePhrase && !hasAllValueTokens) continue;
-    if (hasUncoveredHardToken(segmentTokens, allConfirmedTokens)) continue;
+    if (hasUncoveredHardToken(segment, segmentTokens, allConfirmedTokens)) continue;
     if (hasUncoveredAttributeAssertion(segment, segmentTokens, allConfirmedTokens, modelCodes)) continue;
     return true;
   }
