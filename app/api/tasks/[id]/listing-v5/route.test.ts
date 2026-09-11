@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => ({
   generateListingV5Draft: vi.fn(),
   buildListingV5FallbackDraft: vi.fn(),
   repairListingV5Draft: vi.fn(),
+    recoverListingV5Draft: vi.fn(),
   validateListingV5Draft: vi.fn(),
   mutateTaskResultJson: vi.fn(),
   reserveDemoAiCalls: vi.fn(),
@@ -96,6 +97,9 @@ vi.mock("@/lib/listingV5/generation", () => ({
 }));
 vi.mock("@/lib/listingV5/structuredRepair", () => ({
   repairListingV5Draft: mocks.repairListingV5Draft,
+}));
+vi.mock("@/lib/listingV5/conversionRecovery", () => ({
+  recoverListingV5Draft: mocks.recoverListingV5Draft,
 }));
 vi.mock("@/lib/listingV5/validation", () => ({
   validateListingV5Draft: mocks.validateListingV5Draft,
