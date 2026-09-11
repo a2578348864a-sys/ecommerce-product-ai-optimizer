@@ -64,7 +64,7 @@ Holdout：3 个全新真实商品案（SellerSprite 新导出，ASIN 与品牌�
 
 仓库内（可追溯、随代码提交）：
 
-- `FINAL_RELEASE_REPORT.md`、`FINAL_RELEASE_REPORT_V51.md`、`FINAL_RELEASE_REPORT_V52.md`（V5.1/V5.2 发布判定）
+- `docs/archive/releases/`（含 `FINAL_RELEASE_REPORT.md`、`FINAL_RELEASE_REPORT_V51.md`、`FINAL_RELEASE_REPORT_V52.md`、`FINAL_FREEZE.md` 发布判定与冻结基线）
 - `docs/listing-v5/`、`docs/listing-v51/`、`docs/listing-v52/`（V5.1/V5.2 冻结与缺口记录）
 - `docs/listing-v57/V57_STATE.md`（本文件）、`docs/listing-v57/RESEARCH_LOG.md`
 

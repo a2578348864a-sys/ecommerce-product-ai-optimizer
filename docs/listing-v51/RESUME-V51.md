@@ -7,13 +7,13 @@
 
 | 阶段 | 状态 | 交付物 |
 |---|---|---|
-| Phase 0/1 | ✅ | 基线冻结 + 四路只读审计（转化/架构/安全/Prompt），结论已并入 `FINAL_RELEASE_REPORT_V51.md` 与本文件 §3 |
+| Phase 0/1 | ✅ | 基线冻结 + 四路只读审计（转化/架构/安全/Prompt），结论已并入 `../archive/releases/FINAL_RELEASE_REPORT_V51.md` 与本文件 §3 |
 | Phase 2 | ✅ | Conversion Blueprint 2.0：`purchaseTriggers` / `objectionHandling` / `benefitPriority` / `decisionSequence`（全绑定 confirmedFacts） |
 | Phase 6 | ✅ | `safetyGates.test.ts`（Validator 唯一门 + sourcing 隔离）、`writerInputIsolation.test.ts`（竞品原文不进提示）、蓝图 factIds 断言 |
 | Phase 7 | ✅ | Studio 只读 Conversion Strategy 面板 + 快照逐字段投影 |
 | Phase 8 | ✅ | 真实 CDP 验收：面板存在、刷新保持、移动端 390×840 溢出 0、console error 0、标签页已清理 |
 | Phase 9/11/12 | ✅ | tsc 0 / lint 0 error / build PASS / 152 用例通过；逐文件 stage + push（LOCAL==REMOTE）；3005 已部署 |
-| Phase 10 | ✅（README + 报告已更新） | `README.md` V5.1 章节、`FINAL_RELEASE_REPORT_V51.md` |
+| Phase 10 | ✅（README + 报告已更新） | `README.md` V5.1 章节、`../archive/releases/FINAL_RELEASE_REPORT_V51.md` |
 
 ## 2. 未完成（下一步就是它）
 

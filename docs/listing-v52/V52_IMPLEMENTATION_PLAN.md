@@ -75,7 +75,7 @@ BLOCK → rewriteEligible?
 
 ## 7. 未执行部分（如实）
 
-本会话仅完成 Phase 1（本计划 + `V52_CHAIN_AUDIT.md`）。**Phase 2–10 全部未执行**：链路接入、trace/snapshot 收口、5 条集成测试、全新 Holdout 与 9 次真实验证、浏览器 CDP 验收、工程收口、提交、推送、3005 部署、`FINAL_RELEASE_REPORT_V52.md`。
+本会话仅完成 Phase 1（本计划 + `V52_CHAIN_AUDIT.md`）。**Phase 2–10 全部未执行**：链路接入、trace/snapshot 收口、5 条集成测试、全新 Holdout 与 9 次真实验证、浏览器 CDP 验收、工程收口、提交、推送、3005 部署、`../archive/releases/FINAL_RELEASE_REPORT_V52.md`。
 
 工作区现状：`M lib/listingV5/generation.ts`（1 行 export 改动）+ `?? lib/listingV5/conversionRewrite*.ts`（Spike，未接线）+ `?? docs/listing-v52/`（6 份文档）；**未 commit / 未 push / 未 merge**；3016 已停止，无临时进程与标签页。
 

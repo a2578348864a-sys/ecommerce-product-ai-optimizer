@@ -81,5 +81,5 @@ BLOCK →（二者汇合）→ Conversion Rewrite（≤1 次）→ Validator
 ## 5. 本阶段结论
 
 - Phase 1（只读）**完成**，产出本文件；
-- Phase 2–10（接入、测试、新 Holdout 真实验证、浏览器、收口、提交、部署、`FINAL_RELEASE_REPORT_V52.md`）**未执行**：本会话执行预算已耗尽，且 Phase 6 需要新的 provider 预算与 3 个全新 Holdout（不得用 H3/H4 作为最终成绩）。
+- Phase 2–10（接入、测试、新 Holdout 真实验证、浏览器、收口、提交、部署、`../archive/releases/FINAL_RELEASE_REPORT_V52.md`）**未执行**：本会话执行预算已耗尽，且 Phase 6 需要新的 provider 预算与 3 个全新 Holdout（不得用 H3/H4 作为最终成绩）。
 - 未产生任何源码改动：`git status` 仅剩 `M lib/listingV5/generation.ts`（v5.1 轮遗留的 1 行 export 改动）、`?? lib/listingV5/conversionRewrite*.ts`（Spike 产物）与 `?? docs/listing-v52/`；**未 commit / 未 push / 未 merge**。
