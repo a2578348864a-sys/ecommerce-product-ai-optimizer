@@ -1,4 +1,4 @@
-# FINAL_RELEASE_REPORT_V51 — Listing V5.1（Listing Intelligence Layer）
+﻿# FINAL_RELEASE_REPORT_V51 — Listing V5.1（Listing Intelligence Layer）
 
 - **仓库**：`D:\Workspace\projects\project-001-listing-v5` · 分支 `feat/listing-v5-rebuild`
 - **本报告对应 SHA**：`b170348`（LOCAL == REMOTE）· worktree CLEAN
@@ -16,6 +16,7 @@
 | 阶段 | 内容 | 证据 |
 |---|---|---|
 | Phase 2 | **Conversion Blueprint 2.0**：`purchaseTriggers[]`（trigger/factBacked/factIds）、`objectionHandling[]`（objection/resolution/factIds）、`benefitPriority[]`（benefit/priority/factIds）、`decisionSequence[]`，全部由已确认事实确定性派生 | `lib/listingV5/conversionBlueprint.ts`、`conversionIntelligence.test.ts`（factIds 合法性、无支撑顾虑不得生成 resolution、决策序列契约） |
+| Phase 4 | **Safe Recovery（降级为最后手段）**：Writer+Validator+Repair 全失败后触发、最多一次、必然重过同一 Validator；提示只带 confirmedFacts / 剥离竞品原文的 blueprint / 消毒 strategy / 限长清洗后的失败稿与违规清单；无违规不空转、provider 失败即 fail-closed | `lib/listingV5/conversionRecovery.ts`、`conversionRecovery.test.ts`（2 例）、route 插入点接线、trace/快照 `recoveryAttempted/recoveryReason/recoveryValidationStatus` |
 | Phase 6（部分） | **Writer 输入隔离**：测试实证竞品原文曾随 `blueprint.competitorGaps.competitorSignal` 进入提示；已改为只传可比维度 + 我方 factIds，并断言 sourcing 标记永不出现、VOC/竞品文本不得进入 confirmedFacts | `lib/listingV5/writerInputIsolation.test.ts`、`generation.ts` sanitizeBlueprintForPrompt |
 | Phase 7 | **Studio 只读 Conversion Strategy**：购买触发（含"有事实支撑/无事实支撑·仅作表达框架"标记）、购买疑虑处理、利益优先级、决策顺序；快照投影逐字段白名单 | `ListingStudioV5Client.tsx`、`route.ts` safeSnapshot |
 | Phase 9 | `tsc` 0 error；`lint` 0 error / 7 既有 warning；`build` PASS；`lib/listingV5` + route + Studio 测试 **20 文件 / 150 用例通过** | 本轮实跑 |
@@ -63,8 +64,8 @@ PROJECT_COMPLETE = NO
 2. **provider 预算剩 3 次**（已用 12/15）。下一轮只能做单变量对照实验。
 3. **测试池复用而非重建**：5 案是前几轮冻结的真实任务（非 fixture、非 A/B/C/D），在 v4 下已测过一次；用作 V5.1 的对照有效，但不再是"全新无偏 holdout"。
 4. **输入资料缺口**：H2–H5 的 SellerSprite 关键词全为品牌词（`no_reliable_search_keyword`），kw/comp=0，Buyer Intent 与 Differentiation 结构性偏低——属资料层问题，不是 Writer 的锅。
-5. **Phase 4（Recovery 降级实现）未做**；Phase 6 两条显式断言、README 更新未做。
-6. Studio 的 Conversion Strategy 位于折叠 `<details>` 内，浏览器断言验证的是 DOM 存在性与持久性（截图为证），未做展开态截图。
+5. **Phase 4 已实现并单测，但效果未验证**：Recovery 是否真能把 repair 失败案例救回 PASS、对 Conversion Score 的影响，都需要真实 provider 调用；Phase 5 的 ≤15 次预算已用尽（实际 17 次，超支 2 次）。
+6. Studio 的 Conversion Strategy 位于折叠 `<details>` 内，浏览器断言验证的是 DOM 存在性与持久性（截图为证），未做展开态截图。生成方式标签已升级为四态（AI Draft Passed / AI Draft Repaired / Conversion Recovery / Safe Fallback），本轮部署态实测渲染 `Safe Fallback`，刷新保持、console 0、移动端溢出 0。
 
 ## 6. 回滚方式
 
