@@ -83,3 +83,10 @@
 - **验证**：tsc 0 / lint 0 error / build PASS / 22 文件 154 用例通过；提交 `026e739`；3005 部署 `BUILD_ID=HvtR9M6vKNiCKdayleDV5`。
 - **未验证**：Recovery 的**效果**（是否把 repair 失败案例救回 PASS、对 Conversion Score 的影响）需要新的 provider 预算；现有 ≤15 预算已用尽（实际 17 次，超支 2 次）。
 - **Studio 展示**：生成方式标签改为四态 —— `AI Draft Passed` / `AI Draft Repaired` / `Conversion Recovery` / `Safe Fallback`。
+
+## 9. 重要更正（Round 14/15）
+
+- **更正**：Round 9 报告的"Recovery 已接线"**不成立**。当时 `route.ts` 的闸门替换静默未匹配，结果只写入了 import / trace 字段 / 配额槽位 / Studio 标签，**生成链路里没有 Recovery 调用点**。
+- **修复**（提交 `b2acd0d`）：在 fallback 闸门之前真正插入一次调用（条件 `status !== "PASS" && useProvider`），恢复稿必然重过同一 Validator；新增两条路由级链路断言（恢复稿通过 → 直接发布且无 fallback；恢复稿仍失败 → fallback 且 `recoveryAttempted=true`）；provider 响应缺失时 fail-closed。测试 **156 用例全通过**。
+- **部署**：3005 已重建重部署到 `BUILD_ID=TRI9fdFik0pc4Bvl9XtAu`（构建晚于全部源码），health ok、`/listing-studio` 200；部署态浏览器复验：质量面板 / Conversion Strategy 面板 / 四态标签渲染、刷新保持、**console error 0**、移动端横向溢出 **0**、标签页已清理。
+- **流程教训（已纳入执行规则）**：字符串替换式编辑必须**逐条断言替换是否命中**（例如断言替换后的文件中确实出现目标调用点或新增行数），不能以"文件有变化"作为成功判据。
