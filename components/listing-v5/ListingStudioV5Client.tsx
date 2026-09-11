@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import {
   Check,
   Copy,
@@ -13,6 +12,7 @@ import {
 } from "lucide-react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { copyPlainText } from "@/lib/client/copyPlainText";
+import { StandaloneListingStudio } from "@/components/listing-studio/StandaloneListingStudio";
 
 type V5Data = {
   context: {
@@ -166,22 +166,9 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
     }
   };
 
-  if (!taskId) {
-    return (
-      <div className="mt-4 w-full rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900">
-        <p className="font-semibold">请从研究任务进入 Listing Studio。</p>
-        <p className="mt-1 text-xs text-amber-800">
-          当前地址没有 taskId，无法确定要为哪个商品生成 Listing。
-        </p>
-        <Link
-          href="/tasks"
-          className="mt-3 inline-flex h-9 items-center justify-center rounded-lg border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-100"
-        >
-          返回研究记录
-        </Link>
-      </div>
-    );
-  }
+  // 入口模式分流（第十二轮）：无 taskId = 独立工具模式，不再阻断用户。
+  // 有 taskId 时才进入研究主链路（读取 research handoff / confirmed facts / strategy）。
+  if (!taskId) return <StandaloneListingStudio />;
 
   const snapshot = data?.snapshot;
   const strategy = snapshot?.strategy;
