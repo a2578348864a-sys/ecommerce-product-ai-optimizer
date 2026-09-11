@@ -130,13 +130,33 @@ describe("Listing Quality Evaluation（附加评分，不替代 Validator）", (
     expect(safety.score).toBeGreaterThanOrEqual(20);
   });
 
-  it("rewards keyword coverage only for terms the frozen context actually carries", () => {
+  it("rewards keyword coverage only for terms the shopper-visible copy actually carries", () => {
     const covered = evaluate();
     const uncovered = evaluate({
-      draft: { ...draft, title: { text: "A practical daily item", factIds: ["fact-material"] }, backendSearchTerms: [] },
+      draft: {
+        ...draft,
+        title: { text: "A practical daily item", factIds: ["fact-material"] },
+        description: { text: "A practical daily item for everyday routines.", factIds: ["fact-material"] },
+        backendSearchTerms: [],
+      },
     });
     const score = (result: typeof covered) => result.dimensions.find((dimension) => dimension.id === "keyword_relevance")!.score;
     expect(score(covered)).toBeGreaterThan(score(uncovered));
+  });
+
+  it("does not let backend search terms raise the shopper-visible keyword coverage", () => {
+    // Identical listing body; only the hidden search-terms field changes.
+    const withoutBackend = evaluate({ draft: { ...draft, backendSearchTerms: [] } });
+    const withBackend = evaluate({
+      draft: { ...draft, backendSearchTerms: ["travel mug", "insulated tumbler", "vacuum flask"] },
+    });
+    const keyword = (result: typeof withoutBackend) =>
+      result.dimensions.find((dimension) => dimension.id === "keyword_relevance")!;
+    // "travel mug" is an intent term that appears only in backendSearchTerms, so it
+    // must stay uncovered and must not move the score or the total.
+    expect(withBackend.total).toBe(withoutBackend.total);
+    expect(keyword(withBackend).score).toBe(keyword(withoutBackend).score);
+    expect(keyword(withBackend).evidence.join(" ")).toContain("travel mug");
   });
 
   it("grades consistently with the total score", () => {

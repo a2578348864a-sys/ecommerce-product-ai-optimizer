@@ -5,17 +5,196 @@ import type { ListingV5QualityEvaluation } from "./qualityEvaluation";
 export const LISTING_V5_CONTEXT_VERSION = "listing-v5.context.v1" as const;
 export const LISTING_V5_STRATEGY_VERSION = "listing-v5.strategy.v1" as const;
 export const LISTING_V5_WRITER_VERSION = "listing-v5.writer-draft.v1" as const;
-export const LISTING_V5_VALIDATION_VERSION = "listing-v5.validation.v4" as const;
-export const LISTING_V5_STRATEGY_PROMPT_VERSION = "listing-v5-strategy.v4" as const;
-/** v4 adds the Conversion Blueprint to the Writer input (conversion intelligence layer). */
-export const LISTING_V5_WRITER_PROMPT_VERSION = "listing-v5-writer.v4" as const;
+/**
+ * v5 exempts the content-free residual sets and the Writer's own authorised persuasion
+ * phrases from the copula attribute rule (`validation.ts`), keeping `level` / `standard` /
+ * `regular` and bare quantity wording on the reporting path. This changes verdicts, so the
+ * version must move: it is hashed into `contextFingerprint` (`context.ts:224`), which makes
+ * previously persisted Listing V5 snapshots stale.
+ */
+export const LISTING_V5_VALIDATION_VERSION = "listing-v5.validation.v5" as const;
+/** v5 requires an `evidenceIds` list per strategy conclusion (Evidence Binding). */
+export const LISTING_V5_STRATEGY_PROMPT_VERSION = "listing-v5-strategy.v5" as const;
+/**
+ * v4 adds the Conversion Blueprint to the Writer input (conversion intelligence layer).
+ * v5 aligns the Writer's banned vocabulary with the Validator's hard-token set: the M3a
+ * completion appends every hard token the historical prompt never listed (derived in
+ * claimVocabulary.ts from HARD_OR_ESCALATION_TOKENS, never hand-written). The prompt
+ * text changes, so `contextFingerprint` changes and previously persisted Listing V5
+ * snapshots become stale by design.
+ */
+export const LISTING_V5_WRITER_PROMPT_VERSION = "listing-v5-writer.v5" as const;
 export const LISTING_V5_REPAIR_PROMPT_VERSION = "listing-v5-repair.v3" as const;
 
 export type ListingV5Reference = {
   text: string;
+  /** The evidence source. This IS the `source` of the reference; no duplicate field. */
   sourceType: "VOC" | "keyword" | "competitor" | "sourcing";
   marker: "UNTRUSTED_REFERENCE_DATA";
   notProductFact: true;
+  /**
+   * Evidence Binding (additive, all optional so older snapshots and test
+   * literals keep working).
+   *
+   * `evidenceId` is the stable identity of the research reference this text came
+   * from. It is derived from the Evidence layer (never from an array index and
+   * never a constant), so a strategy conclusion that cites it can be traced back
+   * to a real observation. See `lib/listingV5/evidenceBinding.ts`.
+   */
+  evidenceId?: string;
+  /** Human-readable provenance (`ev:voc:...` / `ev:keyword:...` / `ev:competitor:...`). */
+  evidenceRef?: string;
+  /** Evidence strength straight from the Evidence layer, not re-derived here. */
+  strength?: ListingV5EvidenceStrength;
+  /** Observations behind the reference (VOC review count). */
+  count?: number;
+  /** The text was clipped by the context character budget. */
+  textTruncated?: boolean;
+};
+
+export type ListingV5EvidenceStrength = "isolated" | "weak" | "recurring" | "unknown";
+
+export const LISTING_V5_EVIDENCE_BINDING_VERSION = "listing-v5.evidence-binding.v1" as const;
+
+/**
+ * `evidence_bound`: the conclusion cites at least one id that resolves to a
+ * reference actually present in the frozen context.
+ * `ai_suggestion`: it cites none, or only ids that resolve to nothing. It stays
+ * available as framing but is never presented as backed by research.
+ */
+export type ListingV5EvidenceStatus = "evidence_bound" | "ai_suggestion";
+
+export type ListingV5BoundConclusion = {
+  field: string;
+  text: string;
+  status: ListingV5EvidenceStatus;
+  /** Resolved ids only. Always empty when status is `ai_suggestion`. */
+  evidenceIds: string[];
+  /** Ids the provider claimed that do not exist in the frozen context (audit trail). */
+  unresolvedEvidenceIds: string[];
+};
+
+export type ListingV5EvidenceBinding = {
+  version: typeof LISTING_V5_EVIDENCE_BINDING_VERSION;
+  source: "provider" | "deterministic";
+  bound: number;
+  suggestions: number;
+  total: number;
+  conclusions: ListingV5BoundConclusion[];
+};
+
+export const LISTING_V5_BENEFIT_PRIORITY_VERSION = "listing-v5.benefit-priority.v1" as const;
+
+/**
+ * Why a benefit sits where it does (Phase 1, additive).
+ *
+ * The four classes are deliberately evidence-shaped, not copy-shaped:
+ * - `strong_purchase_signal`: repeated VOC demand AND a keyword reference carrying
+ *   the same need, i.e. shoppers complain about it repeatedly and search for it.
+ * - `recurring_need`: repeated VOC demand (`strength: "recurring"`) on its own.
+ * - `competitor_gap`: a competitor observation covers a dimension this product can
+ *   answer with a Confirmed Fact, so the need is also a differentiation point.
+ * - `weak_signal`: none of the above. This is a strength label, NOT an evidence
+ *   label: `basis` says whether any reference backs the entry at all. An entry
+ *   with no reference is the `ai_suggestion` case of Evidence Binding.
+ */
+export type ListingV5BenefitSignal = "strong_purchase_signal" | "recurring_need" | "competitor_gap" | "weak_signal";
+
+/**
+ * One auditable ranking entry.
+ *
+ * `field` + `index` point AT the strategy list entry this explains instead of
+ * duplicating its text: conclusion text duplicated here would bypass
+ * `sanitizeStrategyForCopy()` on the way to the Writer prompt.
+ *
+ * `evidenceIds` are ids that resolved against the frozen context. An invented or
+ * unresolvable id is never reported here, exactly as in Evidence Binding.
+ */
+export type ListingV5BenefitPriority = {
+  field: "painPoints" | "purchaseMotivations" | "useCases";
+  /** 0-based position inside that list. The list is ordered by `score` desc. */
+  index: number;
+  /** 1-based position, for display. */
+  rank: number;
+  signal: ListingV5BenefitSignal;
+  /** Deterministic ordering score: strength + observation volume + signals. Higher ranks earlier. */
+  score: number;
+  strength: ListingV5EvidenceStrength;
+  count: number;
+  basis: "reference_backed" | "no_reference";
+  evidenceIds: string[];
+  /** One line, built from evidence metadata only: never reference wording. */
+  rationale: string;
+};
+
+export type ListingV5BenefitPriorityBasis = {
+  version: typeof LISTING_V5_BENEFIT_PRIORITY_VERSION;
+  entries: ListingV5BenefitPriority[];
+};
+
+export const LISTING_V5_BENEFIT_CANDIDATE_VERSION = "listing-v5.benefit-candidate.v1" as const;
+
+/**
+ * Where a benefit candidate came from. Both kinds are observed evidence; neither
+ * is ever a product statement.
+ */
+export type ListingV5BenefitCandidateKind =
+  /** An observed VOC theme. */
+  | "buyer_concern"
+  /** A VOC conflict: shoppers report opposing perceptions of the same attribute. */
+  | "buyer_conflict";
+
+/**
+ * Phase 2 — one benefit candidate derived from the research evidence.
+ *
+ * Phase 1 ranked a fixed vocabulary of four English need sentences. That left a
+ * hard ceiling: the vocabulary was fixed, and it was matched against VOC text
+ * that the VOC contract requires to be Simplified Chinese, so on real products
+ * most tasks produced nothing to rank at all.
+ *
+ * A candidate is derived from the evidence instead: an observed theme selects a
+ * language-independent concept, the concept carries the evidence identity, and
+ * the Phase 1 ranking decides the order.
+ *
+ * Hard rules:
+ * - `evidenceIds` is never empty: a candidate that cannot name the reference it
+ *   came from is not emitted at all. A fabricated or unresolvable id can never
+ *   appear here.
+ * - `framing` is reference-only English framing. It is a way of talking about
+ *   what shoppers said; it is never a Confirmed Fact, never carries a `factId`,
+ *   and never asserts a specification, certification or performance attribute.
+ * - Candidates never promote a strategy conclusion in `evidenceBindings`: the
+ *   deterministic template stays `ai_suggestion` even though its POSITION is
+ *   evidence-ranked.
+ */
+export type ListingV5BenefitCandidate = {
+  /** Stable: derived from the concept id and the first evidence id behind it. */
+  candidateId: string;
+  /** Language-independent concept key, e.g. `leak_resistance`. */
+  concept: string;
+  kind: ListingV5BenefitCandidateKind;
+  /** English, reference-only framing. Never a product fact and never copy. */
+  framing: string;
+  /** Resolved evidence ids only. Never empty. */
+  evidenceIds: string[];
+  strength: ListingV5EvidenceStrength;
+  count: number;
+  /** Deterministic Phase 1 ordering score: strength + volume + demand + gap. */
+  score: number;
+  marker: "UNTRUSTED_REFERENCE_DATA";
+  notProductFact: true;
+};
+
+export type ListingV5BenefitCandidateSet = {
+  version: typeof LISTING_V5_BENEFIT_CANDIDATE_VERSION;
+  /**
+   * `evidence` when at least one observed theme produced a candidate.
+   * `none` when the frozen context carries no citable theme — the strategy then
+   * falls back to the previous fixed-vocabulary behaviour rather than inventing
+   * a need, so an empty set means "nothing to cite", not "no research".
+   */
+  source: "evidence" | "none";
+  candidates: ListingV5BenefitCandidate[];
 };
 
 export type ListingV5Fact = {
@@ -62,6 +241,33 @@ export type ListingV5Strategy = {
   keywordIntent: { primary: string[]; secondary: string[]; backendOnly: string[] };
   bulletAngles: Array<{ role: ListingV5BulletRole; shopperValue: string }>;
   avoidClaims: string[];
+  /**
+   * Evidence Binding side-car (additive). Present when the strategy was produced
+   * with an evidence index available. It records, per conclusion, whether the
+   * claim can be traced to a real research reference. It never changes the
+   * conclusion text, never gates the Validator and never blocks generation:
+   * an unbound conclusion is LABELLED, not removed.
+   */
+  evidenceBindings?: ListingV5EvidenceBinding;
+  /**
+   * Phase 1 benefit ranking basis (additive, optional so older snapshots and test
+   * literals keep working). `painPoints` / `purchaseMotivations` / `useCases` are
+   * ordered by it, and every entry says why it sits where it does.
+   *
+   * It carries evidence CLASSIFICATION only. It never promotes a conclusion in
+   * `evidenceBindings`: a deterministic template stays `ai_suggestion` there even
+   * when the need behind it is evidence-ranked.
+   */
+  benefitPriorityBasis?: ListingV5BenefitPriorityBasis;
+  /**
+   * Phase 2 benefit candidates (additive, optional). The needs the strategy
+   * speaks to are derived from observed research themes instead of a fixed
+   * English vocabulary.
+   *
+   * Reference-only framing, bounded, and every candidate names the evidence it
+   * came from. It carries no `factId` and is never merged into Confirmed Facts.
+   */
+  benefitCandidates?: ListingV5BenefitCandidateSet;
 };
 
 export type ListingV5WriterBullet = {

@@ -1,6 +1,8 @@
-﻿import { callAiJson } from "@/lib/server/aiClient";
+import { callAiJson } from "@/lib/server/aiClient";
 import type { ListingV5Context, ListingV5Strategy, ListingV5WriterDraft, ListingV5BulletRole } from "./types";
 import { buildListingV5ConversionBlueprint, type ListingV5ConversionBlueprint } from "./conversionBlueprint";
+import { buildBenefitExpressions } from "./benefitExpression";
+import { writerVocabulary } from "./claimVocabulary";
 import { buildStageTrace, traceProviderStage, type ListingV5StageTrace } from "./trace";
 
 const ROLES: ListingV5BulletRole[] = ["core_outcome", "pain_relief", "use_scenario", "ease_of_use", "proof_or_fit"];
@@ -98,12 +100,21 @@ function normalize(value: unknown, context: ListingV5Context, strategy: ListingV
   return { version: "listing-v5.writer-draft.v1", title: { text: titleText, factIds: idList(rawTitle?.factIds) }, bullets, description: { text: descriptionText, factIds: idList(rawDescription?.factIds) }, backendSearchTerms: Array.isArray(raw.backendSearchTerms) ? raw.backendSearchTerms.filter((term): term is string => typeof term === "string").map((term) => clean(term, 80)).filter(Boolean).slice(0, 12) : [], humanReviewRequired: true };
 }
 
+// M2: the three Writer vocabulary tables now come from claimVocabulary.ts — the same
+// module the Validator and the claim-evidence resolver read. The composed prompt text
+// below is byte-identical to the previous hardcoded wording, so this moves the source
+// of truth without changing what the Writer is told.
+const writerVocab = writerVocabulary();
+const neverInventWording = writerVocab.neverInvent.join(", ");
+const bannedWording = writerVocab.bannedUnlessFactBacked.join(", ");
+const persuasionWording = writerVocab.persuasion.join(", ");
+
 const WRITER_SYSTEM_PROMPT = [
   "You are an Amazon US ecommerce copywriter producing persuasive, natural, shopper-focused, conversion-oriented listing copy.",
   "FACTUAL AUTHORITY: Confirmed Facts are the only factual authority. Every number, size, material, capacity, colour, pack count, certification, warranty, performance claim, duration, care instruction and safety statement must come from a Confirmed Fact. When a Confirmed Fact states a precise or high-risk detail, keep its wording: \"dishwasher-safe bottle and lid\" may become \"Dishwasher-safe bottle and lid help simplify cleanup after everyday use.\" but must never become a different hard fact.",
-  "NEVER INVENT: do not add adjectives or claims that no Confirmed Fact supports, including durable, long-lasting, heavy-duty, leakproof, spill-proof, waterproof, rustproof, BPA-free, food-safe, non-toxic, FDA approved, dishwasher safe, scratch resistant, stain resistant, odor resistant, 24-hour, all-day cold, and similar performance, certification or duration wording. An adjective is a claim: \"stainless steel\" must not become \"durable stainless steel\" unless a fact supports durable.",
-  "BANNED VOCABULARY: unless the exact wording already appears in a Confirmed Fact value, the copy must not contain any of: durable, durability, lasting, leakproof, spill-proof, waterproof, rustproof, certified, certification, FDA, approved, non-toxic, toxic, BPA, scratch, odor, resistant, guaranteed, unbreakable, shatterproof, tough, strongest, dishwasher, safe, cold, hot, warm, hour, hours, minute, minutes, overnight, freeze, boil, microwave, bacteria, mold, insulated, insulation, high, higher, highest, maximum, extreme, ultra, super, heavy, duty, professional, industrial, perfect, best, most, complete, total, fully, always, never, only, every, all. Use the confirmed value itself instead. For example write the confirmed care wording, never a paraphrase that adds a new performance word.",
-"PERSUASION VOCABULARY (closed list): easier, simpler, quicker, tidier, less guesswork, one less thing to think about, confidently compare, ready for, matches, avoids, saves a step. A reason to buy is communication, never a new specification: carry every persuasive sentence on the Confirmed Facts you cite, and do not reach outside this list for persuasive wording.",
+  `NEVER INVENT: do not add adjectives or claims that no Confirmed Fact supports, including ${neverInventWording}, and similar performance, certification or duration wording. An adjective is a claim: "stainless steel" must not become "durable stainless steel" unless a fact supports durable.`,
+  `BANNED VOCABULARY: unless the exact wording already appears in a Confirmed Fact value, the copy must not contain any of: ${bannedWording}. Use the confirmed value itself instead. For example write the confirmed care wording, never a paraphrase that adds a new performance word.`,
+`PERSUASION VOCABULARY (closed list): ${persuasionWording}. A reason to buy is communication, never a new specification: carry every persuasive sentence on the Confirmed Facts you cite, and do not reach outside this list for persuasive wording.`,
 "SELF-CHECK BEFORE RETURNING: read your own output and remove every adjective, performance word, duration, certification or care wording that does not appear in a Confirmed Fact value. Keep the shopper benefit, drop the unsupported word.",
   "BENEFITS ARE ALLOWED: connect confirmed facts to a shopper benefit, for example carrying loop -> makes it easier to take along, straw -> supports convenient sipping, 24 oz -> a practical size for everyday hydration routines, wide opening -> makes the opening easier to access. A benefit must never invent a new specification, certification, duration or absolute promise.",
   "STRATEGY IS FRAMING ONLY: Marketing Strategy decides audience framing, benefit emphasis, ordering, tone and scenario framing. Keyword Intent decides search wording. Neither is a product fact and neither may create new facts.",
@@ -150,10 +161,20 @@ export async function generateListingV5Draft(context: ListingV5Context, strategy
   // draft the Validator must reject.
   const safeStrategy = sanitizeStrategyForCopy(strategy);
   const blueprint = sanitizeBlueprintForPrompt(buildListingV5ConversionBlueprint(context, safeStrategy));
+  // Phase 4: the safe expression layer turns the evidence-backed candidates into
+  // fact-anchored framing the Writer may use, plus the wording it must not reach
+  // for. It is pure and provider-free, it anchors to Confirmed Facts only, and it
+  // cannot loosen what may be claimed: the Validator still decides the outcome
+  // unchanged, and the fallback draft is untouched.
+  const benefitExpressions = buildBenefitExpressions({
+    candidates: safeStrategy.benefitCandidates?.candidates,
+    confirmedFacts: context.confirmedFacts,
+    prohibitedClaims: context.prohibitedClaims,
+  });
   const response = await callAiJson<unknown>({
     messages: [
       { role: "system", content: WRITER_SYSTEM_PROMPT },
-      { role: "user", content: JSON.stringify({ confirmedFacts: context.confirmedFacts, strategy: safeStrategy, conversionBlueprint: blueprint, prohibitedClaims: context.prohibitedClaims, unknowns: context.unknowns, keywordIntent: safeStrategy.keywordIntent }) },
+      { role: "user", content: JSON.stringify({ confirmedFacts: context.confirmedFacts, strategy: safeStrategy, conversionBlueprint: blueprint, benefitExpressions, prohibitedClaims: context.prohibitedClaims, unknowns: context.unknowns, keywordIntent: safeStrategy.keywordIntent }) },
     ],
     temperature: 0.35,
     maxTokens: 8000,

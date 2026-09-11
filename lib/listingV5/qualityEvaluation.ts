@@ -14,6 +14,10 @@
  *   factual safety are separate signals.
  * - It is deterministic and provider-free, so it can run in CI and in the UI.
  * - It reads nothing from sourcing references.
+ * - It scores the shopper-visible copy only (title, bullets, description).
+ *   `backendSearchTerms` is a hidden search-index field and never counts towards
+ *   any "is it in the listing?" score, so padding the backend field cannot buy
+ *   keyword coverage.
  */
 import type { ListingV5ConversionBlueprint } from "./conversionBlueprint";
 import type { ListingV5Context, ListingV5Strategy, ListingV5ValidationResult, ListingV5WriterDraft } from "./types";
@@ -54,12 +58,19 @@ function normalize(value: string): string {
   return value.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-function draftText(draft: ListingV5WriterDraft): { title: string; bullets: string[]; description: string; backend: string; all: string } {
+/**
+ * Buyer-visible copy only: title, bullets and description.
+ *
+ * `backendSearchTerms` is a backend search-index field. Shoppers never see it,
+ * so it is deliberately NOT part of this corpus: a hidden search term must never
+ * be able to satisfy an "is it in the listing?" coverage check. Keyword coverage
+ * therefore measures the visible copy, which is the thing the shopper reads.
+ */
+function draftText(draft: ListingV5WriterDraft): { title: string; bullets: string[]; description: string; all: string } {
   const title = normalize(draft.title.text);
   const bullets = draft.bullets.map((bullet) => normalize(bullet.text));
   const description = normalize(draft.description.text);
-  const backend = normalize((draft.backendSearchTerms ?? []).join(" "));
-  return { title, bullets, description, backend, all: [title, ...bullets, description, backend].join(" \n ") };
+  return { title, bullets, description, all: [title, ...bullets, description].join(" \n ") };
 }
 
 function clamp(value: number, max: number): number {
@@ -112,7 +123,7 @@ function keywordDimension(context: ListingV5Context, strategy: ListingV5Strategy
   }
   const covered = terms.filter((term) => text.all.includes(term));
   let score = (covered.length / terms.length) * 20;
-  evidence.push(`${covered.length}/${terms.length} intent term(s) present in the listing`);
+  evidence.push(`${covered.length}/${terms.length} intent term(s) present in the shopper-visible copy`);
   if (validation.quality.keywordStuffing) {
     score = Math.min(score, 10);
     evidence.push("Validator flagged keyword stuffing");

@@ -2,7 +2,20 @@ import { verifyListingClaims } from "@/lib/listingHandoff/listingClaimEvidenceRe
 import type { ListingGenerationInput } from "@/lib/listingHandoff/listingGenerationInput";
 import { factAnchorValues } from "./context";
 import { LISTING_V5_VALIDATION_VERSION } from "./types";
-import { HARD_OR_ESCALATION_TOKENS as SHARED_HARD_OR_ESCALATION_TOKENS } from "./claimVocabulary";
+import {
+  ABSOLUTE_HEAD_NOUNS,
+  COPULA_ALLOWED_COMPLEMENTS,
+  COPULA_NON_COMPLEMENTS,
+  HARD_OR_ESCALATION_TOKENS as SHARED_HARD_OR_ESCALATION_TOKENS,
+  MEASUREMENT_PARTICIPLES,
+  MEASURE_HEAD_NOUNS,
+  QUANTITY_QUANTIFIER_TOKENS,
+  RELATIONAL_COMPLEMENTS,
+  RESIDUAL_FIELD_NOUNS,
+  RESIDUAL_QUALIFIERS,
+  STOPWORDS,
+  writerVocabulary,
+} from "./claimVocabulary";
 import type { ListingV5Context, ListingV5IssueCode, ListingV5Strategy, ListingV5UnsupportedDetail, ListingV5ValidationResult, ListingV5WriterDraft } from "./types";
 
 const words = (value: string) => value.toLowerCase().match(/[a-z0-9]+/g) ?? [];
@@ -159,8 +172,6 @@ const sentenceCount = (value: string) => segmentSentences(value).length;
 // allowance must NOT let an escalation through ("dishwasher-safe at high heat")
 // or an invented adjective that no confirmed fact supports ("durable steel").
 
-const STOPWORDS = new Set(["a", "an", "the", "of", "for", "to", "and", "in", "on", "with", "is", "are", "that", "this", "it", "its", "as", "at", "by", "or", "be", "from"]);
-
 /** Language that either asserts performance/certification or escalates an existing fact. */
 const HARD_OR_ESCALATION_TOKENS = SHARED_HARD_OR_ESCALATION_TOKENS;
 
@@ -198,26 +209,6 @@ const contentTokens = (value: string) => normalizeTokens(value).filter((token) =
 // asserted adjective, which rejected every anchored sentence containing
 // "is a" / "is the" (for example "... is a 24 oz bottle made for ...").
 const COPULA_WORDS = "is|are|looks?|feels?|seems?|has|have";
-const COPULA_ALLOWED_COMPLEMENTS = "made|designed|available|included|listed|shown|intended|suited|used|from";
-/**
- * Function words that cannot be the adjective a copula asserts. A noun
- * homograph such as "a clean look that fits" would otherwise be read as the
- * verb "look" asserting "that"; the same shape covers "a look of the kitchen".
- */
-const COPULA_NON_COMPLEMENTS = "that|which|who|whom|whose|of|for|in|on|at|and|or|but|with|to|as|by|near|over|under|into|onto|is|are|was|were|be|been|it|its|this|these|those|there";
-/**
- * Relational nouns describe placement or purpose, not a product attribute, so
- * "each have a place" is idiomatic rather than a claim. Performance nouns
- * ("has a waterproof coating") are unaffected, and are additionally caught by
- * the hard-token rule.
- */
-const RELATIONAL_COMPLEMENTS = new Set(["place", "places", "spot", "spots", "home", "role", "purpose", "use", "uses", "sense", "look", "looks", "feel", "way", "ways"]);
-/**
- * Measurement participles only restate the size or weight the sentence has
- * already anchored to a confirmed numeric value. This is a deliberately tiny
- * closed set, not a general past-participle allowance.
- */
-const MEASUREMENT_PARTICIPLES = new Set(["sized", "measured", "weighed"]);
 
 /** Copula directly followed by a non-article adjective. */
 const COPULA_BARE_ADJECTIVE = new RegExp(
@@ -229,6 +220,45 @@ const COPULA_ARTICLE_ADJECTIVE = new RegExp(
   `\\b(?:${COPULA_WORDS})\\s+(?:an?|the)\\s+(?!(?:${COPULA_ALLOWED_COMPLEMENTS})\\b)(?!(?:${COPULA_NON_COMPLEMENTS})\\b)([a-z][a-z-]*)`,
   "gi",
 );
+
+/**
+ * V5.9 candidate — words that sit in the resolver's content-free sets yet still
+ * assert a real attribute: "the surface is level", "the size is standard",
+ * "a regular fit". Excluding them from the copula exemption keeps those cases on
+ * the original `unsupported_attribute_assertion` path.
+ *
+ * A converged CANDIDATE, not a shipped rule change: persisting it needs its own
+ * holdout plus a `LISTING_V5_VALIDATION_VERSION` bump, and that bump also
+ * invalidates every persisted `contextFingerprint`.
+ */
+const COPULA_ATTRIBUTE_STRICT: ReadonlySet<string> = new Set(["level", "standard", "regular"]);
+
+/**
+ * The Writer prompt's closed PERSUASION list, matched at PHRASE level.
+ *
+ * Attribution over 40 real Writer drafts found that 57 of the 71 remaining
+ * `unsupported_attribute_assertion` findings were the Writer using wording that
+ * `WRITER_SYSTEM_PROMPT` explicitly authorises ("ready for", "one less thing to think
+ * about", "simpler") — reported only because the copula pattern captures the first word
+ * after the copula. `RELATIONAL_COMPLEMENTS` and the content-free residual sets are
+ * already exempted on the same reasoning.
+ *
+ * Exempting those WORDS individually would be unsafe: a bare "one" / "less" is a real
+ * quantity statement ("the organizer has one compartment"). The exemption therefore
+ * requires the COMPLETE authorised phrase to appear in the segment.
+ */
+const AUTHORIZED_PERSUASION_PHRASES: readonly string[] = writerVocabulary().persuasion.map((phrase) => phrase.toLowerCase());
+
+/**
+ * True only when `word` is used inside a complete authorised persuasion phrase present in
+ * this segment. Deliberately not a word-level test.
+ */
+function isAuthorizedPersuasionUse(word: string, segment: string): boolean {
+  const padded = ` ${segment.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim()} `;
+  return AUTHORIZED_PERSUASION_PHRASES.some(
+    (phrase) => phrase.split(" ").includes(word) && padded.includes(` ${phrase} `),
+  );
+}
 
 /**
  * True when a copula asserts an attribute that no confirmed value covers.
@@ -269,6 +299,18 @@ function uncoveredAttributeAssertions(segment: string, segmentTokens: Set<string
       const parts = normalizeTokens(word);
       if (parts.length > 1 && parts.every((token) => allConfirmedTokens.has(token))) continue;
       if (RELATIONAL_COMPLEMENTS.has(word)) continue;
+      // The claim resolver defines both sets as content-free grammar material
+      // (qualifiers with no factual content; field-metadata nouns that describe a
+      // field's role, not a product attribute), so a copula cannot assert anything
+      // factual through them. `RELATIONAL_COMPLEMENTS` is already exempted on the
+      // same reasoning. The tiny strict list keeps the exceptions that DO assert a
+      // real attribute on the original reporting path.
+      if (RESIDUAL_QUALIFIERS.has(word) && !COPULA_ATTRIBUTE_STRICT.has(word)) continue;
+      if (RESIDUAL_FIELD_NOUNS.has(word) && !COPULA_ATTRIBUTE_STRICT.has(word)) continue;
+      // The Writer is instructed to use the PERSUASION list; reading it back as an
+      // unsupported attribute assertion made the prompt and the Validator contradict each
+      // other. The whole phrase must be present, so a bare quantity word stays reported.
+      if (isAuthorizedPersuasionUse(word, segment)) continue;
       // A fragment of a confirmed model code ("bf" inside "BF140") is not an invented
       // adjective: the code itself is confirmed evidence. Same for the code's own
       // hyphenated parts, which the copula pattern truncates at the first digit.
@@ -295,25 +337,6 @@ function uncoveredAttributeAssertions(segment: string, segmentTokens: Set<string
  *   absolute    <- "<token> coverage / protection / control / satisfaction / ...": an
  *                  absolute head noun always wins, so real claims keep being reported.
  */
-const ABSOLUTE_HEAD_NOUNS = new Set([
-  "coverage", "protection", "control", "satisfaction", "experience", "quality", "performance",
-  "value", "package", "solution", "system", "confidence", "assurance", "peace", "comfort",
-  "safety", "security", "durability", "strength", "power", "support",
-]);
-const MEASURE_HEAD_NOUNS = new Set([
-  "piece", "pieces", "pc", "pcs", "count", "quantity", "qty", "pack", "packs",
-  "size", "sizes", "weight", "length", "width", "height", "dimensions", "capacity",
-  "item", "items", "unit", "units",
-]);
-
-/**
- * The vocabulary words that also read as count quantifiers. Only these may be excused
- * by a following measure noun, because a performance word followed by a measure noun is
- * still a claim: "total pack size" is a count, "heavy weight" and "maximum capacity"
- * assert performance and must stay hard. The preposition and number frames below are
- * unambiguous for every token, so they are not restricted to this family.
- */
-const QUANTITY_QUANTIFIER_TOKENS = new Set(["total", "complete", "fully", "always", "never", "only", "every", "all", "most", "best", "perfect"]);
 
 function isQuantityEnumerationContext(segment: string, token: string): boolean {
   const match = new RegExp(`\\b${token}\\b`, "i").exec(segment);

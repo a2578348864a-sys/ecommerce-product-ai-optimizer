@@ -236,3 +236,73 @@ describe("Listing V5 scans every sentence for uncovered hard claims", () => {
     expect(reportFor(OWALA_FACTS, "The carrying loop makes the bottle easier to take along.", ["feature-1"]).status).toBe("PASS");
   });
 });
+
+/**
+ * The Writer prompt hands the model a closed persuasion list and tells it to use that
+ * wording. Reading those phrases back as "uncovered attribute assertions" made the prompt
+ * and the Validator contradict each other: on 40 real Writer drafts that single conflict
+ * produced 57 of the 71 remaining attribute findings, dominated by "ready for".
+ *
+ * The exemption is PHRASE-level on purpose — a bare "one" / "less" is a real quantity
+ * statement, so exempting words would mask genuine assertions.
+ */
+describe("Listing V5 exempts authorised persuasion phrases, and only as phrases", () => {
+  function attributeSpans(text: string, factIds: string[] = ["material-1"]) {
+    const ctx = context(OWALA_FACTS);
+    const report = validateListingV5Draft(ctx, buildListingV5Strategy(ctx), probeDraft(text, factIds));
+    return (report.claims.unsupportedDetails ?? [])
+      .filter((detail) => detail.issueCode === "unsupported_attribute_assertion")
+      .flatMap((detail) => detail.offendingSpans);
+  }
+
+  it("does not report an authorised persuasion phrase used as instructed", () => {
+    for (const [text, word] of [
+      ["This water bottle is ready for everyday use.", "ready"],
+      ["Tidying the countertop is one less thing to think about.", "one"],
+      ["Keeping everyday spaces organised is simpler.", "simpler"],
+      ["There is less guesswork about what arrives.", "less"],
+    ] as const) {
+      expect(attributeSpans(text), text).not.toContain(word);
+    }
+  });
+
+  it("still reports the same words when they carry a real assertion", () => {
+    // No authorised phrase is present, so the copula assertion must stay reported.
+    expect(attributeSpans("The organizer has one compartment.")).toContain("one");
+    expect(attributeSpans("The organizer has less capacity than expected.")).toContain("less");
+  });
+
+  it("is a phrase test, not a word test: same word, opposite outcomes", () => {
+    expect(attributeSpans("Tidying up is one less thing to think about.")).not.toContain("one");
+    expect(attributeSpans("The organizer has one compartment.")).toContain("one");
+  });
+
+  it("keeps the deliberate strict exceptions on the reporting path", () => {
+    for (const [text, word] of [
+      ["The surface is level.", "level"],
+      ["The size is standard.", "standard"],
+      ["The fit is regular.", "regular"],
+    ] as const) {
+      expect(attributeSpans(text), text).toContain(word);
+    }
+  });
+
+  it("keeps genuine uncovered attribute adjectives reported", () => {
+    for (const [text, word] of [
+      ["The cap is ergonomic.", "ergonomic"],
+      ["The handle is comfortable.", "comfortable"],
+      ["The bottle is roomy.", "roomy"],
+      ["The surface is curved.", "curved"],
+    ] as const) {
+      expect(attributeSpans(text), text).toContain(word);
+    }
+  });
+
+  it("leaves hard-claim routing untouched", () => {
+    const ctx = context(OWALA_FACTS);
+    const report = validateListingV5Draft(ctx, buildListingV5Strategy(ctx), probeDraft("The lid is durable.", ["material-1"]));
+    const codes = (report.claims.unsupportedDetails ?? []).map((detail) => detail.issueCode);
+    expect(codes).toContain("unsupported_hard_claim");
+    expect(codes).not.toContain("unsupported_attribute_assertion");
+  });
+});

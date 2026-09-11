@@ -7,11 +7,12 @@ import {
   summarizeValidationTrace,
   traceProviderStage,
 } from "./trace";
+import { LISTING_V5_VALIDATION_VERSION } from "./types";
 import type { ListingV5ValidationResult } from "./types";
 
 function validation(overrides: Partial<ListingV5ValidationResult> = {}): ListingV5ValidationResult {
   return {
-    version: "listing-v5.validation.v4",
+    version: LISTING_V5_VALIDATION_VERSION,
     status: "PASS",
     title: { valid: true, issues: [] },
     bullets: [],
