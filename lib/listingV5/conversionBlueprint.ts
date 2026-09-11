@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Listing V5 — Conversion Intelligence Layer (Phase 2/3).
  *
  * Turns the material the pipeline already has (Confirmed Facts + Strategy +
@@ -56,6 +56,31 @@ export type ConversionBenefitOrderItem = {
   primaryFactId: string | null;
 };
 
+/**
+ * V5.1 — the "why people buy" half of the blueprint. Every entry still points at
+ * Confirmed Facts; nothing here can introduce a specification.
+ */
+export type ConversionPurchaseTrigger = {
+  trigger: string;
+  factBacked: boolean;
+  factIds: string[];
+};
+
+export type ConversionObjectionHandling = {
+  objection: string;
+  resolution: string;
+  factIds: string[];
+};
+
+export type ConversionBenefitPriority = {
+  benefit: string;
+  priority: number;
+  factIds: string[];
+};
+
+/** The order in which the copy should walk a shopper through the decision. */
+export const LISTING_V5_DECISION_SEQUENCE = ["use_scenario", "core_benefit", "proof", "risk_reduction"] as const;
+
 export type ListingV5ConversionBlueprint = {
   version: typeof LISTING_V5_CONVERSION_BLUEPRINT_VERSION;
   referenceOnly: true;
@@ -71,6 +96,11 @@ export type ListingV5ConversionBlueprint = {
   benefitOrder: ConversionBenefitOrderItem[];
   /** Words this product has no fact for; the Writer must not reach for them. */
   disallowedTemptations: string[];
+  /** V5.1 additions — all deterministic and bound to confirmed facts. */
+  purchaseTriggers: ConversionPurchaseTrigger[];
+  objectionHandling: ConversionObjectionHandling[];
+  benefitPriority: ConversionBenefitPriority[];
+  decisionSequence: string[];
 };
 
 const MAX_PAIN_POINTS = 6;
@@ -271,8 +301,73 @@ function benefitOrder(strategy: ListingV5Strategy, facts: readonly ListingV5Fact
   });
 }
 
-function conversionAngle(strategy: ListingV5Strategy, points: ConversionProofPoint[]): { angle: string; whyItConverts: string } {
-  const angle = clean(strategy.primaryAngle, 200) || "lead with the most verifiable product detail";
+/**
+ * Why a shopper buys: the strategy's motivations and the fact-backed VOC pains,
+ * each resolved against the confirmed facts that can honestly carry it. A
+ * motivation no fact supports is reported with factBacked=false and no ids, so
+ * the Writer can frame it but never claim it.
+ */
+function purchaseTriggers(context: ListingV5Context, strategy: ListingV5Strategy, pains: ConversionPainPoint[]): ConversionPurchaseTrigger[] {
+  const out: ConversionPurchaseTrigger[] = [];
+  const seen = new Set<string>();
+  const push = (trigger: string, factIds: string[]) => {
+    const key = trigger.toLowerCase();
+    if (!trigger || seen.has(key)) return;
+    seen.add(key);
+    out.push({ trigger, factBacked: factIds.length > 0, factIds: factIds.slice(0, 3) });
+  };
+  for (const pain of pains) push(stripControlText(pain.pain), pain.proofFactIds);
+  for (const motivation of list(strategy.purchaseMotivations)) {
+    const value = stripControlText(motivation);
+    if (!value) continue;
+    const fields = new Set<string>();
+    for (const rule of PAIN_RELIEF_FIELDS) {
+      if (rule.match.test(value)) for (const field of rule.fields) fields.add(field);
+    }
+    const factIds = list(context.confirmedFacts).filter((fact) => fields.has(fieldOf(fact))).map((fact) => fact.id);
+    push(value, factIds);
+  }
+  return out.slice(0, MAX_PAIN_POINTS);
+}
+
+/**
+ * Objection handling only exists where a confirmed fact can answer the worry.
+ * A worry no fact answers is deliberately absent: the copy must stay silent
+ * rather than invent reassurance.
+ */
+function objectionHandling(pains: ConversionPainPoint[], points: ConversionProofPoint[]): ConversionObjectionHandling[] {
+  const byId = new Map(points.map((point) => [point.factId, point]));
+  return pains
+    .filter((pain) => pain.factBacked && pain.proofFactIds.length > 0)
+    .slice(0, MAX_PAIN_POINTS)
+    .map((pain) => {
+      const first = byId.get(pain.proofFactIds[0]!);
+      const resolution = first
+        ? `answer it with the confirmed ${first.field.replace(/_/g, " ")} detail (${first.shopperBenefit})`
+        : "answer it with the confirmed detail already stated in the listing";
+      return { objection: pain.pain, resolution, factIds: pain.proofFactIds.slice(0, 3) };
+    });
+}
+
+/** Priority order for the benefits: the plan order first, then the remaining proof points. */
+function benefitPriority(order: ConversionBenefitOrderItem[], points: ConversionProofPoint[]): ConversionBenefitPriority[] {
+  const out: ConversionBenefitPriority[] = [];
+  const used = new Set<string>();
+  for (const item of order) {
+    if (!item.primaryFactId) continue;
+    const point = points.find((candidate) => candidate.factId === item.primaryFactId);
+    if (!point) continue;
+    used.add(point.factId);
+    out.push({ benefit: point.shopperBenefit, priority: out.length + 1, factIds: [point.factId] });
+  }
+  for (const point of points) {
+    if (used.has(point.factId)) continue;
+    out.push({ benefit: point.shopperBenefit, priority: out.length + 1, factIds: [point.factId] });
+  }
+  return out.slice(0, MAX_PROOF_POINTS);
+}
+
+function conversionAngle(strategy: ListingV5Strategy, points: ConversionProofPoint[]): { angle: string; whyItConverts: string } {  const angle = clean(strategy.primaryAngle, 200) || "lead with the most verifiable product detail";
   const strongest = points[0];
   const why = strongest
     ? `leads with a confirmed ${strongest.field.replace(/_/g, " ")} detail, so the promise is checkable on the page`
@@ -287,6 +382,8 @@ export function buildListingV5ConversionBlueprint(
 ): ListingV5ConversionBlueprint {
   const points = proofPoints(context);
   const intent = strategy.keywordIntent ?? { primary: [], secondary: [], backendOnly: [] };
+  const pains = painPoints(context, strategy);
+  const order = benefitOrder(strategy, list(context.confirmedFacts));
   return {
     version: LISTING_V5_CONVERSION_BLUEPRINT_VERSION,
     referenceOnly: true,
@@ -295,11 +392,15 @@ export function buildListingV5ConversionBlueprint(
       secondary: intent.secondary.slice(0, MAX_SECONDARY_INTENT).map((item) => clean(item, 120)).filter(Boolean),
       stage: intentStage(intent),
     },
-    painPoints: painPoints(context, strategy),
+    painPoints: pains,
     competitorGaps: competitorGaps(context),
     conversionAngle: conversionAngle(strategy, points),
     proofPoints: points,
-    benefitOrder: benefitOrder(strategy, list(context.confirmedFacts)),
+    benefitOrder: order,
     disallowedTemptations: disallowedTemptations(context),
+    purchaseTriggers: purchaseTriggers(context, strategy, pains),
+    objectionHandling: objectionHandling(pains, points),
+    benefitPriority: benefitPriority(order, points),
+    decisionSequence: [...LISTING_V5_DECISION_SEQUENCE],
   };
 }

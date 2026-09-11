@@ -1,4 +1,4 @@
-import type { ListingV5ExecutionTrace } from "./trace";
+﻿import type { ListingV5ExecutionTrace } from "./trace";
 import type { ListingV5ConversionBlueprint } from "./conversionBlueprint";
 import type { ListingV5QualityEvaluation } from "./qualityEvaluation";
 
@@ -7,8 +7,8 @@ export const LISTING_V5_STRATEGY_VERSION = "listing-v5.strategy.v1" as const;
 export const LISTING_V5_WRITER_VERSION = "listing-v5.writer-draft.v1" as const;
 export const LISTING_V5_VALIDATION_VERSION = "listing-v5.validation.v3" as const;
 export const LISTING_V5_STRATEGY_PROMPT_VERSION = "listing-v5-strategy.v4" as const;
-/** v4 adds the Conversion Blueprint to the Writer input (conversion intelligence layer). */
-export const LISTING_V5_WRITER_PROMPT_VERSION = "listing-v5-writer.v4" as const;
+/** v5 adds the V5.1 decision sequence and Conversion Blueprint 2.0 (purchaseTriggers / objectionHandling / benefitPriority). */
+export const LISTING_V5_WRITER_PROMPT_VERSION = "listing-v5-writer.v5" as const;
 export const LISTING_V5_REPAIR_PROMPT_VERSION = "listing-v5-repair.v3" as const;
 
 export type ListingV5Reference = {
