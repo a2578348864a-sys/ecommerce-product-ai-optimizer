@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { buildCrossBorderAnalysisPrompt } from "@/lib/cross-border/prompts";
 import { callAiJson, getSafeAiClientErrorMessage } from "@/lib/server/aiClient";
 import { requireAuthenticated, ensureDemoAiQuota, consumeDemoAiCalls, type DemoAccessSnapshot } from "@/lib/server/demoGuard";
+import { isRealAiListingEnabled } from "@/lib/server/realAiListingGate";
 import type {
   AiAnalysisResult,
   CrossBorderProductInput,
@@ -313,6 +314,18 @@ export async function POST(request: NextRequest) {
   const parsed = parseAnalysisRequest(rawBody);
   if (!parsed.value) {
     return jsonResponse({ ok: false, error: parsed.error || { code: "invalid_body", message: "请求参数不正确。" } }, 400);
+  }
+
+  // Global AI switch. This route calls the Provider directly, so it must pass the
+  // same server gate the Studio routes use instead of relying on the deployment
+  // keeping the key absent. Checked after auth/validation so request-contract
+  // errors keep their existing status codes, and before the demo quota so a
+  // disabled deployment never reserves a call.
+  if (!isRealAiListingEnabled()) {
+    return jsonResponse({
+      ok: false,
+      error: { code: "real_ai_disabled", message: "真实 AI 服务暂未开启，本次没有消耗额度。" },
+    }, 403);
   }
 
   if (accessCtx.mode === "demo") {

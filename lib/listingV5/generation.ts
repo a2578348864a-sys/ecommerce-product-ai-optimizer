@@ -4,6 +4,7 @@ import { buildListingV5ConversionBlueprint, type ListingV5ConversionBlueprint } 
 import { buildBenefitExpressions } from "./benefitExpression";
 import { writerVocabulary } from "./claimVocabulary";
 import { buildStageTrace, traceProviderStage, type ListingV5StageTrace } from "./trace";
+import { filterListingV5BackendSearchTerms } from "./backendTermSafety";
 
 const ROLES: ListingV5BulletRole[] = ["core_outcome", "pain_relief", "use_scenario", "ease_of_use", "proof_or_fit"];
 const banned = /\b(best|premium|perfect|guaranteed|waterproof|rustproof|no\.\s*1|#1|100%|BPA[- ]?free)\b/gi;
@@ -75,7 +76,11 @@ function fallback(context: ListingV5Context, strategy: ListingV5Strategy): Listi
   const title = clean([product, ...titleFacts].filter(Boolean).join(" "), 180) || product;
   const descriptionFacts = facts.slice(0, 2).map((fact) => fact.value).join(" and ");
   const description = clean(`${product} brings together ${descriptionFacts || "confirmed product details"} for shoppers comparing practical options. It fits ${strategy.useCases[0] || "everyday routines"} where clear product information helps guide a purchase.`, 1200);
-  return { version: "listing-v5.writer-draft.v1", title: { text: title, factIds: facts.slice(0, 3).map((fact) => fact.id) }, bullets: selected, description: { text: description, factIds: facts.slice(0, 2).map((fact) => fact.id) }, backendSearchTerms: strategy.keywordIntent.backendOnly.slice(0, 8), humanReviewRequired: true };
+  // backendOnly terms come from keyword reference data, not from confirmed facts.
+  // They must pass the same hard-claim boundary the rewrite path applies before
+  // they can reach the shipped field, otherwise the one field no Validator rule
+  // inspects becomes a way around the copy rules.
+  return filterListingV5BackendSearchTerms({ version: "listing-v5.writer-draft.v1", title: { text: title, factIds: facts.slice(0, 3).map((fact) => fact.id) }, bullets: selected, description: { text: description, factIds: facts.slice(0, 2).map((fact) => fact.id) }, backendSearchTerms: strategy.keywordIntent.backendOnly.slice(0, 8), humanReviewRequired: true });
 }
 
 function normalize(value: unknown, context: ListingV5Context, strategy: ListingV5Strategy): ListingV5WriterDraft | null {
@@ -97,7 +102,7 @@ function normalize(value: unknown, context: ListingV5Context, strategy: ListingV
     return text && ids.length > 0 && role ? [{ text, factIds: ids, strategyRole: role }] : [];
   });
   if (bullets.length < 3) return null;
-  return { version: "listing-v5.writer-draft.v1", title: { text: titleText, factIds: idList(rawTitle?.factIds) }, bullets, description: { text: descriptionText, factIds: idList(rawDescription?.factIds) }, backendSearchTerms: Array.isArray(raw.backendSearchTerms) ? raw.backendSearchTerms.filter((term): term is string => typeof term === "string").map((term) => clean(term, 80)).filter(Boolean).slice(0, 12) : [], humanReviewRequired: true };
+  return filterListingV5BackendSearchTerms({ version: "listing-v5.writer-draft.v1", title: { text: titleText, factIds: idList(rawTitle?.factIds) }, bullets, description: { text: descriptionText, factIds: idList(rawDescription?.factIds) }, backendSearchTerms: Array.isArray(raw.backendSearchTerms) ? raw.backendSearchTerms.filter((term): term is string => typeof term === "string").map((term) => clean(term, 80)).filter(Boolean).slice(0, 12) : [], humanReviewRequired: true });
 }
 
 // M2: the three Writer vocabulary tables now come from claimVocabulary.ts — the same

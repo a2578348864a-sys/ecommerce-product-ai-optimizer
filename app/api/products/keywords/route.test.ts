@@ -1,5 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+/**
+ * `/api/products/keywords` 全局 AI 开关回归。
+ *
+ * 2026-09 最终审计：该路由与 listing-copy / ai-analysis 一样直接调用 Provider，
+ * 却没有任何服务端 AI 开关检查，因此 `OPENAI_LISTING_ENABLED=false` 时仍会真调。
+ * 本测试锁定：关闭时不发请求、不消耗额度；开启时原行为不变；请求契约不变。
+ */
+
 const CORRECT_PASSWORD = "ci-test-password";
 
 const mockCallAiJson = vi.fn();
@@ -24,6 +32,17 @@ async function readJson(response: Response) {
   return { status: cloned.status, body: await cloned.json() };
 }
 
+function requestBody(product: Record<string, unknown> = {}) {
+  return {
+    product: {
+      name: "桌面手机支架",
+      description: "普通支架",
+      targetPlatform: "amazon",
+      ...product,
+    },
+  };
+}
+
 beforeEach(async () => {
   vi.resetModules();
   vi.clearAllMocks();
@@ -36,46 +55,11 @@ beforeEach(async () => {
   POST = mod.POST;
 });
 
-describe("POST /api/products/listing-copy", () => {
-  it("listing copy 不输出无依据认证承诺，但保留人工复核提醒", async () => {
-    mockCallAiJson.mockResolvedValueOnce({
-      ok: true,
-      data: {
-        title: "FDA approved CE certified kids toothbrush FDA 认证",
-        bulletPoints: ["CPC certified and 100% safe", "RoHS certified battery", "儿童安全认证，FCC认证齐全"],
-        description: "This product is CPSIA compliant and non-toxic guaranteed. 通过 CPC 认证，符合 ASTM 标准。",
-        shortDescription: "Food grade guaranteed. 食品级保证。",
-        keywords: ["kids toothbrush"],
-        longTailKeywords: ["safe kids toothbrush"],
-        faq: [{ question: "Is it certified?", answer: "Yes, ASTM certified. 已认证。" }],
-        packingList: ["CE marked toothbrush", "CPSIA认证文件"],
-        afterSales: "Risk-free service.",
-        notes: ["Manual review reminder"],
-      },
-    });
-
-    const response = await POST(createRequest({
-      product: {
-        name: "儿童电动牙刷",
-        description: "儿童用品，带电池，口腔接触。",
-        targetPlatform: "amazon",
-      },
-    }));
-    const { body } = await readJson(response);
-    const text = JSON.stringify(body);
-
-    expect(body.ok).toBe(true);
-    expect(text).not.toMatch(/FDA approved|CE certified|CPC certified|RoHS certified|CPSIA compliant|ASTM certified|100% safe|non-toxic guaranteed|Food grade guaranteed|Risk-free/i);
-    expect(text).not.toMatch(/FDA\s*认证|FCC\s*认证|CPC\s*认证|ASTM\s*标准|CPSIA\s*认证|已认证|食品级保证|儿童安全认证/);
-    expect(text).toMatch(/supplier verification|Manual review|人工复核|索取|未验证前/i);
-  });
-
+describe("POST /api/products/keywords", () => {
   it("全局 AI 开关关闭时：403 real_ai_disabled，不调用 Provider、不消耗额度", async () => {
     vi.stubEnv("OPENAI_LISTING_ENABLED", "false");
 
-    const response = await POST(createRequest({
-      product: { name: "儿童电动牙刷", targetPlatform: "amazon" },
-    }));
+    const response = await POST(createRequest(requestBody()));
     const { status, body } = await readJson(response);
 
     expect(status).toBe(403);
@@ -92,7 +76,30 @@ describe("POST /api/products/listing-copy", () => {
     const { status, body } = await readJson(response);
 
     expect(status).toBe(400);
-    expect(body.error.code).toBe("invalid_product");
     expect(mockCallAiJson).not.toHaveBeenCalled();
+    expect(body.ok).toBe(false);
+  });
+
+  it("开关开启时原功能保持：Provider 被调用并返回成功", async () => {
+    mockCallAiJson.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        coreKeywords: ["desk phone stand"],
+        longTailKeywords: ["adjustable desk phone stand"],
+        searchTerms: ["phone holder"],
+        titleKeywords: ["desk stand"],
+        sellingPointKeywords: ["adjustable angle"],
+        riskWords: [],
+        negativeKeywords: [],
+        platformNotes: "关键词结果需人工复核。",
+      },
+    });
+
+    const response = await POST(createRequest(requestBody()));
+    const { status, body } = await readJson(response);
+
+    expect(status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(mockCallAiJson).toHaveBeenCalledTimes(1);
   });
 });

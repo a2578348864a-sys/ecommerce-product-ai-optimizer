@@ -27,6 +27,7 @@ import type { ListingV5ConversionBlueprint } from "./conversionBlueprint";
 import { normalizeListingV5ProviderDraft, sanitizeBlueprintForPrompt, sanitizeStrategyForCopy } from "./generation";
 import { buildStageTrace, traceProviderStage, type ListingV5StageTrace } from "./trace";
 import { HARD_OR_ESCALATION_TOKENS } from "./claimVocabulary";
+import { filterListingV5BackendSearchTerms } from "./backendTermSafety";
 import type { ListingV5Context, ListingV5Strategy, ListingV5ValidationResult, ListingV5WriterDraft } from "./types";
 
 export const LISTING_V5_REWRITE_PROMPT_VERSION = "listing-v5-rewrite.v1" as const;
@@ -72,15 +73,9 @@ function promptSafeBlueprint(blueprint: ListingV5ConversionBlueprint): ListingV5
 /**
  * backendSearchTerms is the one field no Validator rule inspects, and it ships
  * straight to the client, so the rewrite must not be able to smuggle a hard claim
- * out through the keyword list.
+ * out through the keyword list. The rule is shared with the Writer and fallback
+ * paths in ./backendTermSafety so no producer can bypass it.
  */
-function filterBackendSearchTerms(draft: ListingV5WriterDraft): ListingV5WriterDraft {
-  const terms = (draft.backendSearchTerms ?? []).filter((term) => {
-    const tokens = term.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
-    return tokens.every((token) => !HARD_OR_ESCALATION_TOKENS.has(token));
-  });
-  return { ...draft, backendSearchTerms: terms.slice(0, 12) };
-}
 
 function failedListingSegments(listing: ListingV5WriterDraft | null): string[] {
   if (!listing) return [];
@@ -183,6 +178,6 @@ export async function rewriteListingV5Draft(
   }
   const draft = normalizeListingV5ProviderDraft(mapKeywordsField(response.data), input.context, sanitizeStrategyForCopy(input.strategy));
   return draft
-    ? { draft: filterBackendSearchTerms(draft), attempted: true, succeeded: true, diagnostics: response.diagnostics, trace: traceProviderStage({ useProvider: true, response, normalized: true }) }
+    ? { draft: filterListingV5BackendSearchTerms(draft), attempted: true, succeeded: true, diagnostics: response.diagnostics, trace: traceProviderStage({ useProvider: true, response, normalized: true }) }
     : { draft: null, attempted: true, succeeded: false, diagnostics: response.diagnostics, trace: traceProviderStage({ useProvider: true, response, normalized: false }) };
 }

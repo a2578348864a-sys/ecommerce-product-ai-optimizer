@@ -40,6 +40,9 @@ beforeEach(async () => {
   vi.clearAllMocks();
   vi.unstubAllEnvs();
   vi.stubEnv("ACCESS_PASSWORD", CORRECT_PASSWORD);
+  // The global AI switch is a separate gate from auth: this route calls the
+  // Provider directly, so these cases run with it explicitly enabled.
+  vi.stubEnv("OPENAI_LISTING_ENABLED", "true");
   const mod = await import("./route");
   POST = mod.POST;
 });
@@ -133,5 +136,17 @@ describe("POST /api/products/ai-analysis", () => {
     expect(body.ok).toBe(true);
     expect(text).not.toMatch(/FDA\s*认证|FCC\s*认证|CPC\/ASTM\/CPSIA\s*标准|已认证|100%\s*安全|绝对安全|无毒保证|食品级保证/);
     expect(text).toMatch(/人工复核|索取|合规文件|测试报告|未验证前/);
+  });
+
+  it("全局 AI 开关关闭时：403 real_ai_disabled，不调用 Provider、不消耗额度", async () => {
+    vi.stubEnv("OPENAI_LISTING_ENABLED", "false");
+
+    const response = await POST(createRequest(requestBody({ name: "桌面手机支架" })));
+    const { status, body } = await readJson(response);
+
+    expect(status).toBe(403);
+    expect(body.ok).toBe(false);
+    expect(body.error.code).toBe("real_ai_disabled");
+    expect(mockCallAiJson).not.toHaveBeenCalled();
   });
 });

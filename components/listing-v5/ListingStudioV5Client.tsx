@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { copyPlainText } from "@/lib/client/copyPlainText";
+import { deriveListingV5SafetyDisplay } from "@/lib/client/listingV5SafetyDisplay";
 import { StandaloneListingStudio } from "@/components/listing-studio/StandaloneListingStudio";
 
 type V5Data = {
@@ -77,6 +78,10 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
   const [data, setData] = useState<V5Data | null>(null);
   const [pendingAction, setPendingAction] = useState<null | "analyze_strategy" | "generate">(null);
   const [error, setError] = useState("");
+  // The server's gate/route error code (no_confirmed_facts / legacy_not_supported /
+  // handoff_required ...). The free-text message alone collapses several very
+  // different refusals into one sentence, so the code is kept for the status panel.
+  const [errorCode, setErrorCode] = useState("");
   const [notice, setNotice] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -89,6 +94,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
   const load = useCallback(async () => {
     if (!taskId) return;
     setError("");
+    setErrorCode("");
     try {
       const response = await fetch(
         `/api/tasks/${encodeURIComponent(taskId)}/listing-v5`,
@@ -97,12 +103,15 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
       const json = await response.json().catch(() => null);
       if (!response.ok || !json?.ok) {
         setError(json?.error?.message || "无法读取 Listing V5。");
+        setErrorCode(typeof json?.error?.code === "string" ? json.error.code : "");
         return;
       }
+      setErrorCode("");
       setData(json.data);
       setRealAiEnabled(json.data?.realAiEnabled === true);
     } catch {
       setError("网络异常，无法读取 Listing V5。请重试。");
+      setErrorCode("");
     }
   }, [taskId]);
 
@@ -135,6 +144,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
       const json = await response.json().catch(() => null);
       if (!response.ok || !json?.ok) {
         setError(json?.error?.message || "操作失败，请刷新后重试。");
+        setErrorCode(typeof json?.error?.code === "string" ? json.error.code : "");
         return;
       }
       await load();
@@ -176,6 +186,16 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
   const validation = snapshot?.validation;
   const provider = snapshot?.provider;
   const trace = snapshot?.trace;
+  // Single source of truth for every safety-status surface on this page. The green
+  // "passed" badge used to be driven by `listing` alone, so BLOCK / REPAIRABLE /
+  // stale / gate-refused states all rendered as a pass.
+  const safety = deriveListingV5SafetyDisplay({
+    hasListing: Boolean(listing),
+    validationStatus: validation?.status,
+    stale: snapshot?.stale === true,
+    errorCode,
+    provider: provider ?? null,
+  });
   // The model name is only known after a provider call; it is displayed read-only.
   const aiModelLabel: string | null = trace?.stages?.writer?.model ?? trace?.stages?.strategy?.model ?? null;
   const traceStages: Array<[string, any]> = trace
@@ -242,6 +262,25 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
           <span className="truncate">03 生成草稿</span>
         </div>
       </div>
+
+      {/* 状态提示条：过期 / 需复核 / 未通过 时把后端真实结论放在最显眼处 */}
+      {safety.tone === "stale" || safety.tone === "blocked" || safety.tone === "review" ? (
+        <div
+          data-testid="listing-v5-safety-notice"
+          data-safety-tone={safety.tone}
+          className={`flex w-full min-w-0 items-start gap-2 rounded-2xl border p-4 text-sm ${
+            safety.tone === "blocked"
+              ? "border-rose-200 bg-rose-50 text-rose-900"
+              : "border-amber-200 bg-amber-50 text-amber-900"
+          }`}
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div className="min-w-0">
+            <p className="font-semibold">{safety.badge}</p>
+            <p className="mt-1 text-xs leading-5">{safety.detail}</p>
+          </div>
+        </div>
+      ) : null}
 
       {/* 模块 1：已确认事实与研究资料摘要 */}
       <section className="w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
@@ -436,10 +475,26 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {listing ? (
-              <span className="flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
-                <Check className="h-3 w-3 text-emerald-600" />
-                安全检查通过
+            {listing || errorCode ? (
+              <span
+                data-testid="listing-v5-safety-badge"
+                data-safety-tone={safety.tone}
+                className={`flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
+                  safety.tone === "pass"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : safety.tone === "blocked"
+                    ? "border-rose-200 bg-rose-50 text-rose-700"
+                    : safety.tone === "unverified"
+                    ? "border-slate-200 bg-slate-50 text-slate-600"
+                    : "border-amber-200 bg-amber-50 text-amber-700"
+                }`}
+              >
+                {safety.tone === "pass" ? (
+                  <Check className="h-3 w-3 text-emerald-600" />
+                ) : (
+                  <AlertTriangle className="h-3 w-3" />
+                )}
+                {safety.badge}
               </span>
             ) : null}
             {provider ? (
@@ -729,31 +784,49 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
               事实安全与人工复核
             </h2>
           </div>
-          <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
-            已校验
+          <span
+            data-testid="listing-v5-section-status"
+            data-safety-tone={safety.tone}
+            className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${
+              safety.tone === "pass"
+                ? "bg-emerald-100 text-emerald-800"
+                : safety.tone === "blocked"
+                ? "bg-rose-100 text-rose-800"
+                : safety.tone === "unverified"
+                ? "bg-slate-100 text-slate-700"
+                : "bg-amber-100 text-amber-800"
+            }`}
+          >
+            {safety.badge}
           </span>
         </div>
 
-        <div className="mt-3 grid gap-2 text-xs font-medium text-slate-700 sm:grid-cols-3">
-          <div className="flex items-center gap-1.5 rounded-lg border border-emerald-200/60 bg-white/80 px-3 py-2 text-emerald-800">
-            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-100 text-[10px] text-emerald-700 font-bold">
-              ✓
-            </span>
-            <span>仅使用已确认事实</span>
+        {listing ? (
+          <div className="mt-3 grid gap-2 text-xs font-medium text-slate-700 sm:grid-cols-3">
+            <div className="flex items-center gap-1.5 rounded-lg border border-emerald-200/60 bg-white/80 px-3 py-2 text-emerald-800">
+              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-100 text-[10px] text-emerald-700 font-bold">
+                ✓
+              </span>
+              <span>仅使用已确认事实</span>
+            </div>
+            <div className="flex items-center gap-1.5 rounded-lg border border-emerald-200/60 bg-white/80 px-3 py-2 text-emerald-800">
+              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-100 text-[10px] text-emerald-700 font-bold">
+                ✓
+              </span>
+              <span>Claim / Runtime / Copy 校验</span>
+            </div>
+            <div className="flex items-center gap-1.5 rounded-lg border border-amber-200/60 bg-white/80 px-3 py-2 text-amber-800">
+              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-amber-100 text-[10px] text-amber-700 font-bold">
+                !
+              </span>
+              <span>需要人工复核后发布</span>
+            </div>
           </div>
-          <div className="flex items-center gap-1.5 rounded-lg border border-emerald-200/60 bg-white/80 px-3 py-2 text-emerald-800">
-            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-100 text-[10px] text-emerald-700 font-bold">
-              ✓
-            </span>
-            <span>Claim / Runtime / Copy 校验</span>
-          </div>
-          <div className="flex items-center gap-1.5 rounded-lg border border-amber-200/60 bg-white/80 px-3 py-2 text-amber-800">
-            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-amber-100 text-[10px] text-amber-700 font-bold">
-              !
-            </span>
-            <span>需要人工复核后发布</span>
-          </div>
-        </div>
+        ) : (
+          <p className="mt-3 text-xs text-slate-600">
+            还没有草稿，因此没有任何校验结论。生成后这里会显示本次的事实与校验依据。
+          </p>
+        )}
 
         {validation ? (
           <details className="group mt-3 rounded-xl border border-emerald-200/60 bg-white/80 p-3 text-xs text-slate-700">
@@ -764,11 +837,11 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
             <div className="mt-2.5 space-y-1.5 border-t border-slate-100 pt-2 text-slate-600">
               <p>
                 <strong>校验状态：</strong>
-                {validation.status === "PASS"
-                  ? "校验通过"
-                  : validation.status === "REPAIRABLE"
-                  ? "已自动修复，仍需人工复核"
-                  : "需要人工处理"}
+                {safety.badge}（Validator 状态：{validation?.status || "未提供"}）
+              </p>
+              <p data-testid="listing-v5-safety-detail">
+                <strong>状态说明：</strong>
+                {safety.detail}
               </p>
               <p>
                 <strong>人工复核提示：</strong>
