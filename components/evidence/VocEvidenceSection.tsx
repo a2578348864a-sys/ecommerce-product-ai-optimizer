@@ -635,7 +635,7 @@ export function VocEvidenceSection({
 
   // 服务端 Pending Preview 水合（Hydration）：用户从待确认入口进入或刷新页面时恢复
   useEffect(() => {
-    if (!evidence && pendingPreview) {
+    if (pendingPreview) {
       if (userDismissedPreviewRef.current !== pendingPreview.previewId) {
         setCollectPreview(pendingPreview);
         const selected = new Set<number>();
@@ -648,7 +648,7 @@ export function VocEvidenceSection({
         setCollectOpen(true);
       }
     }
-  }, [evidence, pendingPreview]);
+  }, [pendingPreview]);
 
   // Package C：ASIN 预填——角色=当前商品且任务有 ASIN 时，填入并跟随任务 ASIN 更新
   useEffect(() => {
@@ -865,6 +865,7 @@ export function VocEvidenceSection({
         if (!item.duplicate) initial.add(index);
       });
       setCollectSelected(initial);
+      onChanged();
     } catch {
       setError("采集失败（浏览器会话异常），请重试。");
     } finally {
@@ -951,9 +952,11 @@ export function VocEvidenceSection({
   const stats = evidence?.dataset.stats;
   const reviewsMap = reviewsById();
   const importLineCount = importText.split("\n").map((line) => line.trim()).filter(Boolean).length;
-  const canImport = importText.trim().length > 0 && importAsin.trim().length > 0 && !busy;
+  const activeImportAsin = (importRole === "current_candidate" ? (taskAsin ?? "") : importAsin).trim();
+  const canImport = importText.trim().length > 0 && activeImportAsin.length > 0 && !busy;
   const canAnalyze = (evidence?.dataset.reviews.length ?? 0) > 0 && !analyzing && !busy;
-  const canCollect = collectAsin.trim().length > 0 && !collecting && !busy && !analyzing;
+  const activeCollectAsin = (collectRole === "current_candidate" ? (taskAsin ?? "") : collectAsin).trim();
+  const canCollect = activeCollectAsin.length > 0 && !collecting && !busy && !analyzing;
   // 单边样本提示（低星集合伪装完整 VOC）
   const negativeBiased = stats !== undefined && stats.totalReviews > 0 && stats.positiveCount === 0 && stats.negativeCount > 0;
   const positiveBiased = stats !== undefined && stats.totalReviews > 0 && stats.negativeCount === 0 && stats.positiveCount > 0;

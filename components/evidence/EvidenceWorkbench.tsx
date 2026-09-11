@@ -8,7 +8,7 @@
  * 数据来源严格按 docs/v3/changes/phase-2/evidence-read-model.md；
  * 缺失一律显示 unknown/「未收集」，禁止 AI 填空、禁止编造。
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
@@ -687,6 +687,21 @@ export function EvidenceWorkbench({
   const [browserTaskAsin, setBrowserTaskAsin] = useState<string | null>(null);
   const [browserCapability, setBrowserCapability] = useState<AcquisitionCapabilityView | null>(null);
 
+  const resultAsin = useMemo(() => {
+    if (!isRecord(result)) return null;
+    const sourceMeta = isRecord(result.sourceMeta) ? result.sourceMeta : null;
+    const batch = sourceMeta && isRecord(sourceMeta.productBatchSnapshot) ? sourceMeta.productBatchSnapshot : null;
+    if (typeof batch?.asin === "string" && batch.asin.trim()) return batch.asin.trim();
+    const cac = isRecord(result.candidateAnalysisContext) ? result.candidateAnalysisContext : null;
+    if (typeof cac?.asin === "string" && cac.asin.trim()) return cac.asin.trim();
+    const cacFacts = cac && isRecord(cac.facts) ? cac.facts : null;
+    if (typeof cacFacts?.asin === "string" && cacFacts.asin.trim()) return cacFacts.asin.trim();
+    const product = isRecord(result.product) ? result.product : null;
+    if (typeof product?.asin === "string" && product.asin.trim()) return product.asin.trim();
+    return null;
+  }, [result]);
+  const effectiveTaskAsin = browserTaskAsin ?? resultAsin;
+
   const [vocEvidence, setVocEvidence] = useState<VocEvidenceView | null>(null);
   const [vocAnalysis, setVocAnalysis] = useState<VocAnalysisView | null>(null);
   const [vocStorageVersion, setVocStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
@@ -715,7 +730,7 @@ export function EvidenceWorkbench({
         signal: AbortSignal.timeout(60_000),
       });
       const json = await res.json() as
-        | { ok: true; data: { evidence: unknown; analysis: unknown; storageVersion: { resultJsonHash: string; updatedAt: string }; capability?: unknown; pendingPreview?: unknown } }
+        | { ok: true; data: { evidence: unknown; analysis: unknown; storageVersion: { resultJsonHash: string; updatedAt: string }; capability?: unknown; pendingPreview?: unknown; taskAsin?: string | null } }
         | { ok: false };
       if (res.ok && json.ok) {
         setVocEvidence(parseVocEvidenceView(json.data.evidence));
@@ -723,6 +738,9 @@ export function EvidenceWorkbench({
         setVocStorageVersion(json.data.storageVersion);
         setVocCapability(parseAcquisitionCapability(json.data.capability));
         setVocPendingPreview(parseVocCollectPreviewView(json.data.pendingPreview));
+        if (json.data.taskAsin) {
+          setBrowserTaskAsin((prev) => prev ?? json.data.taskAsin ?? null);
+        }
         clearSectionError("voc");
       } else {
         setSectionError("voc", "买家评论读取失败，请稍后重试。");
@@ -1299,7 +1317,7 @@ export function EvidenceWorkbench({
           />
           <VocEvidenceSection
             taskId={taskId}
-            taskAsin={browserTaskAsin}
+            taskAsin={effectiveTaskAsin}
             evidence={vocEvidence}
             analysis={vocAnalysis}
             storageVersion={vocStorageVersion}
