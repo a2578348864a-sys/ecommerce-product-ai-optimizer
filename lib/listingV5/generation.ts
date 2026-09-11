@@ -7,7 +7,7 @@ const ROLES: ListingV5BulletRole[] = ["core_outcome", "pain_relief", "use_scenar
 const banned = /\b(best|premium|perfect|guaranteed|waterproof|rustproof|no\.\s*1|#1|100%|BPA[- ]?free)\b/gi;
 const strategyRiskWords = /\b(best|premium|perfect|guaranteed|waterproof|rustproof|durable|durability|leakproof|leak[- ]?resistant|spillproof|spill[- ]?proof|portable|insulated|insulation|heavy[- ]?duty|break[- ]?resistant|unbreakable|shatterproof)\b/gi;
 const clean = (value: unknown, max = 600) => typeof value === "string" ? value.replace(banned, "").replace(/\s+/g, " ").trim().slice(0, max) : "";
-function sanitizeStrategyForCopy(strategy: ListingV5Strategy): ListingV5Strategy {
+export function sanitizeStrategyForCopy(strategy: ListingV5Strategy): ListingV5Strategy {
   const scrub = (value: string) => value.replace(strategyRiskWords, "").replace(/\s{2,}/g, " ").trim();
   return {
     ...strategy,
@@ -168,3 +168,8 @@ export async function generateListingV5Draft(context: ListingV5Context, strategy
 }
 
 export function buildListingV5FallbackDraft(context: ListingV5Context, strategy: ListingV5Strategy) { return fallback(context, strategy); }
+
+/** Shared writer-shape normaliser for the Writer and the Safe Recovery pass. */
+export function normalizeListingV5ProviderDraft(value: unknown, context: ListingV5Context, strategy: ListingV5Strategy): ListingV5WriterDraft | null {
+  return normalize(value, context, strategy);
+}

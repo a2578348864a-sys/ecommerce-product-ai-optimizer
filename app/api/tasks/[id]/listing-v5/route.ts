@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { isSandboxTaskId, getSandboxTask } from "@/lib/server/demoSandbox";
 import { markDemoAiProviderCallStarted, requireAuthenticated, reserveDemoAiCalls, settleDemoAiCalls } from "@/lib/server/demoGuard";
@@ -11,6 +11,7 @@ import { prisma } from "@/lib/server/db";
 import { buildListingV5Context } from "@/lib/listingV5/context";
 import { buildListingV5ConversionBlueprint } from "@/lib/listingV5/conversionBlueprint";
 import { evaluateListingV5Quality } from "@/lib/listingV5/qualityEvaluation";
+import { recoverListingV5Draft } from "@/lib/listingV5/conversionRecovery";
 import { analyzeListingV5Strategy } from "@/lib/listingV5/strategy";
 import { generateListingV5Draft, buildListingV5FallbackDraft } from "@/lib/listingV5/generation";
 import { repairListingV5Draft } from "@/lib/listingV5/structuredRepair";
@@ -142,6 +143,9 @@ function safeTrace(value: unknown): ListingV5ExecutionTrace | null {
     validationBlockReasons: Array.isArray(value.validationBlockReasons)
       ? value.validationBlockReasons.filter((item): item is string => typeof item === "string").map((item) => item.slice(0, 120)).slice(0, 12)
       : [],
+    recoveryAttempted: value.recoveryAttempted === true,
+    recoveryReason: typeof value.recoveryReason === "string" ? value.recoveryReason.slice(0, 120) : null,
+    recoveryValidationStatus: VALIDATION_STATUSES.has(String(value.recoveryValidationStatus)) ? (String(value.recoveryValidationStatus) as ListingV5ValidationStatus) : null,
     fallbackUsed: value.fallbackUsed === true,
     fallbackReason: (FALLBACK_REASONS.has(String(value.fallbackReason))
       ? String(value.fallbackReason)
@@ -150,6 +154,7 @@ function safeTrace(value: unknown): ListingV5ExecutionTrace | null {
       strategy: safeStageTrace(stages.strategy),
       writer: safeStageTrace(stages.writer),
       repair: safeStageTrace(stages.repair),
+      recovery: safeStageTrace(stages.recovery),
     },
     generatedAt: typeof value.generatedAt === "string" ? value.generatedAt.slice(0, 40) : "",
   };
@@ -339,7 +344,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (useProvider && body.confirmRealAi !== true) {
     return error(400, "real_ai_confirmation_required", "调用真实 AI 前需要再次确认。");
   }
-  const plannedCalls = action === "analyze_strategy" ? 1 : cachedStrategy ? 2 : 3;
+  const plannedCalls = action === "analyze_strategy" ? 1 : cachedStrategy ? 3 : 4;
   let quota: { ok: true; reservation: null } | { ok: false; status: number; code: string; message: string };
   try {
     quota = useProvider ? (reserveDemoAiCalls(verified.ctx!, plannedCalls) as typeof quota) : { ok: true as const, reservation: null };
@@ -375,7 +380,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     let fallbackReason: ListingV5FallbackReason = "none";
     let writerTrace: ListingV5StageTrace = idleStageTrace();
     let repairTrace: ListingV5StageTrace = idleStageTrace();
-    let provider = { strategyAttempted: strategyResult.providerAttempted, writerAttempted: false, repairAttempted: false, fallbackUsed: false };
+    let provider = { strategyAttempted: strategyResult.providerAttempted, writerAttempted: false, repairAttempted: false, fallbackUsed: false, recoveryAttempted: false };
+      let recoveryTrace: ListingV5StageTrace = idleStageTrace();
+      let recoveryReason: string | null = null;
+      let recoveryValidation: ListingV5ValidationResult | null = null;
     if (action !== "analyze_strategy") {
       const generated = await generateListingV5Draft(context, strategyResult.strategy, { useProvider, onProviderCallStart });
       // The writer stage returning a fallback draft is the only writer-side fallback.

@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+﻿import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
@@ -294,7 +294,7 @@ describe("Listing V5 route", () => {
     state.useProvider = true;
     const response = await POST(request("POST", "sandbox_task_1", { action: "generate", confirmRealAi: true }), { params: Promise.resolve({ id: "sandbox_task_1" }) });
     expect(response.status).toBe(200);
-    expect(state.reserveCalls).toEqual([3]);
+    expect(state.reserveCalls).toEqual([4]); // 2 writer-path calls plus one bounded Safe Recovery slot
     expect(state.startedCalls).toBe(2);
     expect(state.settledCalls).toBe(1);
     expect(mocks.mutateTaskResultJson).toHaveBeenCalledTimes(1);

@@ -1,4 +1,4 @@
-import type { AiCallDiagnostics, AiClientError } from "@/lib/server/aiClient";
+﻿import type { AiCallDiagnostics, AiClientError } from "@/lib/server/aiClient";
 import type { ListingV5ValidationResult } from "./types";
 
 /**
@@ -34,6 +34,7 @@ export const LISTING_V5_STAGE_FAILURE_REASONS = [
   "repair_target_missing",
   "repair_response_shape_invalid",
   "repair_apply_failed",
+    "recovery_target_missing",
 ] as const;
 
 export type ListingV5StageFailureReason = (typeof LISTING_V5_STAGE_FAILURE_REASONS)[number];
@@ -76,6 +77,10 @@ export type ListingV5ExecutionTrace = {
   repairFailureReason: ListingV5StageFailureReason;
   validationStatus: ListingV5ValidationStatus;
   validationBlockReasons: string[];
+  /** V5.1 Safe Recovery: did the last-resort AI rewrite run, and what came out of it. */
+  recoveryAttempted: boolean;
+  recoveryReason: string | null;
+  recoveryValidationStatus: ListingV5ValidationStatus | null;
   /** Validation of the draft the user finally receives (after repair / fallback). */
   finalValidationStatus: ListingV5ValidationStatus;
   fallbackUsed: boolean;
@@ -84,6 +89,7 @@ export type ListingV5ExecutionTrace = {
     strategy: ListingV5StageTrace;
     writer: ListingV5StageTrace;
     repair: ListingV5StageTrace;
+    recovery: ListingV5StageTrace;
   };
   generatedAt: string;
 };
@@ -199,6 +205,10 @@ export function buildListingV5ExecutionTrace(input: {
   validation: ListingV5ValidationResult | null;
   /** Last validation pass, run on the draft the user finally receives. */
   finalValidation?: ListingV5ValidationResult | null;
+  /** Validation of the recovered draft, when the recovery pass ran. */
+  recoveryValidation?: ListingV5ValidationResult | null;
+  recovery?: ListingV5StageTrace;
+  recoveryReason?: string | null;
   fallbackUsed: boolean;
   fallbackReason: ListingV5FallbackReason;
   generatedAt?: string;
@@ -218,9 +228,12 @@ export function buildListingV5ExecutionTrace(input: {
     validationStatus: validationSummary.status,
     validationBlockReasons: validationSummary.blockReasons,
     finalValidationStatus: summarizeValidationTrace(input.finalValidation ?? input.validation).status,
+    recoveryAttempted: input.recovery?.attempted === true,
+    recoveryReason: input.recoveryReason ?? (input.recovery ? input.recovery.failureReason : null),
+    recoveryValidationStatus: input.recoveryValidation ? summarizeValidationTrace(input.recoveryValidation).status : null,
     fallbackUsed: input.fallbackUsed,
     fallbackReason: input.fallbackReason,
-    stages: { strategy: input.strategy, writer: input.writer, repair: input.repair },
+    stages: { strategy: input.strategy, writer: input.writer, repair: input.repair, recovery: input.recovery ?? idleStageTrace() },
     generatedAt: input.generatedAt ?? new Date().toISOString(),
   };
 }
