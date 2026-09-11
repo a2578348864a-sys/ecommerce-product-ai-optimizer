@@ -188,6 +188,13 @@ describe("EvidenceWorkbench 研究生命周期只读桥接", () => {
     expect(wbSource).toContain("lifecycleSnapshot.blockers");
   });
 
+  it("stale 快照（完成研究后证据变化）不得再显示「研究已完成」", () => {
+    // 第十二轮：同一 Snapshot 在详情页顶部 / 工作台卡片 / workbench 必须同一语义。
+    expect(researchLifecyclePhaseLabel("completed", true)).toBe("研究资料需重新确认");
+    expect(researchLifecyclePhaseLabel("completed", false)).toBe("研究已完成");
+    expect(wbSource).toContain("researchLifecyclePhaseLabel(lifecycleSnapshot.phase, lifecycleSnapshot.stale)");
+  });
+
   it("生命周期桥接不迁移资料行、事实候选或来源细节", () => {
     const snapshotSection = wbSource.slice(wbSource.indexOf("lifecycleSnapshot"), wbSource.indexOf("lifecycleSnapshot") + 3000);
     expect(snapshotSection).not.toContain("materialRows");

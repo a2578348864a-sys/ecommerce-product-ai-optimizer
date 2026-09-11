@@ -555,8 +555,15 @@ export type EvidenceTabKey = "market" | "buyers" | "sourcing" | "cost-risk";
 /**
  * 生命周期快照的展示标签。快照由上层只读计算，本组件只负责把 phase 翻译成用户语言，
  * 不在这里重新判断研究生命周期，也不把资料数量当作正式状态。
+ *
+ * 第十二轮：stale（完成研究后证据已变化）优先——此时旧结论尚未对应当前资料，
+ * 不能再对用户显示「研究已完成」，文案与商品详情页顶部状态、工作台卡片保持一致。
  */
-export function researchLifecyclePhaseLabel(phase: ResearchLifecycleSnapshot["phase"]): string {
+export function researchLifecyclePhaseLabel(
+  phase: ResearchLifecycleSnapshot["phase"],
+  stale = false,
+): string {
+  if (stale) return "研究资料需重新确认";
   const labels: Record<ResearchLifecycleSnapshot["phase"], string> = {
     created: "尚未开始",
     collecting: "正在采集研究资料",
@@ -998,7 +1005,7 @@ export function EvidenceWorkbench({
           <div>
             <dt className="text-xs text-slate-500">研究主状态</dt>
             <dd className="mt-0.5 font-semibold text-slate-900" data-testid="research-lifecycle-phase">
-              {lifecycleSnapshot ? researchLifecyclePhaseLabel(lifecycleSnapshot.phase) : "资料状态待整理"}
+              {lifecycleSnapshot ? researchLifecyclePhaseLabel(lifecycleSnapshot.phase, lifecycleSnapshot.stale) : "资料状态待整理"}
             </dd>
             {lifecycleSnapshot?.stale ? (
               <p className="mt-1 text-xs text-amber-700" data-testid="research-lifecycle-stale">研究资料已变化，请重新确认。</p>
