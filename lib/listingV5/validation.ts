@@ -1,4 +1,4 @@
-﻿import { verifyListingClaims } from "@/lib/listingHandoff/listingClaimEvidenceResolver";
+import { verifyListingClaims } from "@/lib/listingHandoff/listingClaimEvidenceResolver";
 import type { ListingGenerationInput } from "@/lib/listingHandoff/listingGenerationInput";
 import { factAnchorValues } from "./context";
 import { LISTING_V5_VALIDATION_VERSION } from "./types";
@@ -16,6 +16,108 @@ const overlap = (candidate: string, reference: string) => {
   }
   return null;
 };
+
+// ── Model / series codes ────────────────────────────────────────────
+// A confirmed series/model value (BF140, GT035, YYJ-Lineshading-1305) is evidence for
+// that exact token. The copula detector below captures only the leading letters of such
+// a token ("BF140" becomes "bf") and then read that fragment as an invented adjective,
+// which is why a confirmed model code was reported as an unsupported attribute.
+// The same detector runs in reverse: a code-shaped token that no confirmed value covers
+// is reported as unsupported_model_code instead of passing silently.
+//
+// Two deliberate narrowings, both production-safety driven:
+//  - evidence comes ONLY from a fact whose canonical field is `series_or_model`;
+//    "any confirmed value that looks like a code" was removed because it let unrelated
+//    facts (a colour, a feature list) vouch for a code.
+//  - a token counts as code-shaped only when it is a short uppercase alphanumeric
+//    cluster (BF140, GT035) or a hyphenated multi-part code (YYJ-Lineshading-1305).
+//    Ordinary listing text is excluded: ASINs, digit-leading sizes (16.4ft, 2XL, 3D),
+//    single-letter prefixes (A100), common abbreviations (SKU123, ABC123, PRO5) and a
+//    plain capitalised word plus a digit (Black2, Plastic5).
+
+const MODEL_CODE_PATTERN = /(?:^|[^A-Za-z0-9-])([A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)*)/g;
+const ASIN_TOKEN = /^B0[A-Z0-9]{8}$/i;
+
+/**
+ * Leading letter runs that make a token ordinary listing text rather than a code:
+ * common abbreviations and the colour / material / size words that routinely sit next
+ * to a number.
+ */
+const NON_MODEL_PREFIXES = new Set([
+  "a", "sku", "abc", "pro", "ref", "item", "code", "model", "size", "pack", "set", "count", "pcs", "pc", "upc", "ean",
+  "color", "colour", "black", "white", "red", "blue", "green", "yellow", "orange", "pink", "purple", "brown", "grey", "gray",
+  "wood", "wooden", "metal", "glass", "steel", "plastic", "fabric", "paper", "latex", "rubber", "ceramic", "resin", "acrylic",
+  "small", "medium", "large", "led", "watt", "volt",
+]);
+
+function isModelCodeToken(token: string): boolean {
+  if (token.length < 4) return false;
+  if (!/^[A-Za-z]/.test(token)) return false;
+  if (!/[0-9]/.test(token)) return false;
+  if (ASIN_TOKEN.test(token)) return false;
+  const leading = /^([A-Za-z]+)/.exec(token)?.[1] ?? "";
+  // A single leading letter is a size or a section label, never a code ("A100").
+  if (leading.length < 2) return false;
+  if (NON_MODEL_PREFIXES.has(leading.toLowerCase())) return false;
+  // A plain capitalised English word plus a digit is ordinary text ("Black2", "Plastic5").
+  if (/^[A-Z][a-z]+$/.test(leading)) return false;
+  return true;
+}
+
+function modelCodeTokensIn(text: string): string[] {
+  const found: string[] = [];
+  for (const match of text.matchAll(MODEL_CODE_PATTERN)) {
+    const token = match[1] ?? "";
+    if (isModelCodeToken(token) && !found.includes(token)) found.push(token);
+  }
+  return found;
+}
+
+/** Case, hyphen and spacing insensitive form used for every code comparison. */
+function normalizeModelCode(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+/**
+ * Confirmed model evidence. ONLY a fact whose canonical field is `series_or_model`
+ * counts: a value that merely looks like a code but is filed under another canonical
+ * field is not model evidence. (The earlier "any code-looking confirmed value" fallback
+ * was removed - it let unrelated facts vouch for a code.)
+ */
+function confirmedModelCodes(context: ListingV5Context): string[] {
+  const codes = new Set<string>();
+  for (const fact of context.confirmedFacts) {
+    if (fact.canonicalField !== "series_or_model") continue;
+    const value = typeof fact.value === "string" ? fact.value : "";
+    if (value.trim()) codes.add(normalizeModelCode(value));
+    for (const token of modelCodeTokensIn(value)) codes.add(normalizeModelCode(token));
+  }
+  return [...codes].filter(Boolean);
+}
+
+/**
+ * The one promotion clause this change has to guard: telling the shopper to verify the
+ * exact variant. It promises an outcome rather than restating a fact, so a confirmed
+ * model code must not make the sentence around it anchorable.
+ *
+ * Deliberately narrow. A broader promotion guard (it would also catch "so you can", 
+ * "made for", "helps you") was evaluated during the V5.6.x spikes and is NOT adopted
+ * here: it changes verdicts this change was not authorised to change. It remains a
+ * separate proposal.
+ */
+const EXACT_VARIANT_PROMOTION_PATTERNS: RegExp[] = [
+  /\b(?:check|checks|checking|confirm|confirms|confirming|verify|verifies|verifying)\s+the\s+exact\s+variant\b/i,
+];
+
+function unbackedPromotionClauses(segment: string): string[] {
+  const found: string[] = [];
+  for (const pattern of EXACT_VARIANT_PROMOTION_PATTERNS) {
+    const match = segment.match(pattern);
+    const phrase = (match?.[0] ?? "").toLowerCase();
+    if (phrase && !found.includes(phrase)) found.push(phrase);
+  }
+  return found;
+}
 
 // ── Sentence counting ───────────────────────────────────────────────
 // A naive split on [.!?] counted "YETI Rambler Jr. 12 oz ..." as two sentences,
@@ -137,8 +239,8 @@ const COPULA_ARTICLE_ADJECTIVE = new RegExp(
  * confirmed numeric value. Everything else still counts, which keeps
  * "Steel is red", "is lightweight" and "is durable" rejected.
  */
-function hasUncoveredAttributeAssertion(segment: string, segmentTokens: Set<string>, allConfirmedTokens: Set<string>): boolean {
-  return uncoveredAttributeAssertions(segment, segmentTokens, allConfirmedTokens).length > 0;
+function hasUncoveredAttributeAssertion(segment: string, segmentTokens: Set<string>, allConfirmedTokens: Set<string>, modelCodes: readonly string[] = []): boolean {
+  return uncoveredAttributeAssertions(segment, segmentTokens, allConfirmedTokens, modelCodes).length > 0;
 }
 
 /**
@@ -153,7 +255,7 @@ function hasUncoveredAttributeAssertion(segment: string, segmentTokens: Set<stri
  * Deterministic and bounded: it is the same detector as the boolean verdict,
  * reading only the segment and the confirmed fact tokens.
  */
-function uncoveredAttributeAssertions(segment: string, segmentTokens: Set<string>, allConfirmedTokens: Set<string>): string[] {
+function uncoveredAttributeAssertions(segment: string, segmentTokens: Set<string>, allConfirmedTokens: Set<string>, modelCodes: readonly string[] = []): string[] {
   const hasConfirmedNumber = [...segmentTokens].some((token) => /^\d+$/.test(token) && allConfirmedTokens.has(token));
   const offenders: string[] = [];
   for (const pattern of [COPULA_BARE_ADJECTIVE, COPULA_ARTICLE_ADJECTIVE]) {
@@ -167,6 +269,11 @@ function uncoveredAttributeAssertions(segment: string, segmentTokens: Set<string
       const parts = normalizeTokens(word);
       if (parts.length > 1 && parts.every((token) => allConfirmedTokens.has(token))) continue;
       if (RELATIONAL_COMPLEMENTS.has(word)) continue;
+      // A fragment of a confirmed model code ("bf" inside "BF140") is not an invented
+      // adjective: the code itself is confirmed evidence. Same for the code's own
+      // hyphenated parts, which the copula pattern truncates at the first digit.
+      const codeWord = normalizeModelCode(word);
+      if (codeWord.length >= 2 && modelCodes.some((code) => code === codeWord || code.startsWith(codeWord))) continue;
       if (hasConfirmedNumber && MEASUREMENT_PARTICIPLES.has(word)) continue;
       offenders.push(word);
     }
@@ -211,21 +318,40 @@ function surfaceSpansForOffenders(segment: string, offenders: Set<string>): stri
   return spans;
 }
 
+function surfaceSpansForModelCodes(segment: string, tokens: readonly string[]): string[] {
+  const spans: string[] = [];
+  for (const word of segment.match(/[A-Za-z0-9][A-Za-z0-9'\u2019-]*/g) ?? []) {
+    if (spans.length >= MAX_OFFENDING_SPANS) break;
+    if (!tokens.some((token) => normalizeModelCode(token) === normalizeModelCode(word))) continue;
+    if (!spans.includes(word)) spans.push(word.slice(0, MAX_OFFENDING_SPAN_LENGTH));
+  }
+  return spans;
+}
+
 /**
  * Bounded violation evidence for one failing sentence: which code fired and
  * which surface words carried it. Falls back to an empty span list when the
  * failure is not attributable to a specific word, so the repair step still
  * learns that the sentence (not a word) is the problem.
  */
-function describeUnsupportedSegment(segment: string, allowedValues: readonly string[]): { issueCode: ListingV5IssueCode; offendingSpans: string[] } {
+function describeUnsupportedSegment(segment: string, allowedValues: readonly string[], modelCodes: readonly string[] = []): { issueCode: ListingV5IssueCode; offendingSpans: string[] } {
   const segmentTokens = new Set(normalizeTokens(segment));
   const allConfirmedTokens = new Set(allowedValues.flatMap((value) => contentTokens(value)));
   const hard = uncoveredHardTokens(segmentTokens, allConfirmedTokens);
-  const attributes = uncoveredAttributeAssertions(segment, segmentTokens, allConfirmedTokens);
+  const attributes = uncoveredAttributeAssertions(segment, segmentTokens, allConfirmedTokens, modelCodes);
+  // Reverse detection: a model-shaped code the confirmed facts do not carry.
+  const uncoveredModels = modelCodeTokensIn(segment).filter((token) => !modelCodes.includes(normalizeModelCode(token)));
   const offenders = new Set([...hard, ...attributes]);
+  const issueCode: ListingV5IssueCode = hard.length > 0
+    ? "unsupported_hard_claim"
+    : uncoveredModels.length > 0
+      ? "unsupported_model_code"
+      : attributes.length > 0 ? "unsupported_attribute_assertion" : "unsupported_claim";
   return {
-    issueCode: hard.length > 0 ? "unsupported_hard_claim" : attributes.length > 0 ? "unsupported_attribute_assertion" : "unsupported_claim",
-    offendingSpans: surfaceSpansForOffenders(segment, offenders),
+    issueCode,
+    offendingSpans: issueCode === "unsupported_model_code"
+      ? surfaceSpansForModelCodes(segment, uncoveredModels)
+      : surfaceSpansForOffenders(segment, offenders),
   };
 }
 
@@ -238,10 +364,18 @@ function describeUnsupportedSegment(segment: string, allowedValues: readonly str
  * "dishwasher-safe bottle and lid" while still rejecting "durable stainless
  * steel" and "dishwasher-safe at high heat".
  */
-function isAnchoredToConfirmedValue(segment: string, factValues: readonly string[]): boolean {
+function isAnchoredToConfirmedValue(segment: string, factValues: readonly string[], modelCodes: readonly string[] = []): boolean {
   const segmentTokens = new Set(normalizeTokens(segment));
   const normalizedSegment = normalizeTokens(segment).join(" ");
   const allConfirmedTokens = new Set(factValues.flatMap((value) => contentTokens(value)));
+  // A confirmed model code legalises the code, never the sentence around it. When the
+  // segment states such a code AND tells the shopper to verify the exact variant, the
+  // code must not make the sentence anchorable - otherwise supporting a model code
+  // would silently excuse the rest of its sentence. Note this can also keep a sentence
+  // the resolver reported but anchoring previously excused; that is the intended
+  // direction (strictness), never a release.
+  const hasCoveredModelCode = modelCodeTokensIn(segment).some((token) => modelCodes.includes(normalizeModelCode(token)));
+  if (hasCoveredModelCode && unbackedPromotionClauses(segment).length > 0) return false;
   for (const value of factValues) {
     const valueTokens = contentTokens(value);
     if (valueTokens.length === 0) continue;
@@ -250,7 +384,7 @@ function isAnchoredToConfirmedValue(segment: string, factValues: readonly string
     const hasAllValueTokens = valueTokens.every((token) => segmentTokens.has(token));
     if (!containsValuePhrase && !hasAllValueTokens) continue;
     if (hasUncoveredHardToken(segmentTokens, allConfirmedTokens)) continue;
-    if (hasUncoveredAttributeAssertion(segment, segmentTokens, allConfirmedTokens)) continue;
+    if (hasUncoveredAttributeAssertion(segment, segmentTokens, allConfirmedTokens, modelCodes)) continue;
     return true;
   }
   return false;
@@ -376,12 +510,15 @@ export function validateListingV5Draft(context: ListingV5Context, strategy: List
   // certification and prohibited reasons are never softened.
   // A fact anchor cannot vouch for every additional assertion in its sentence.
   const allowedValues = context.confirmedFacts.flatMap((fact) => factAnchorValues(fact)).filter(Boolean);
+  // Confirmed series/model codes: evidence for their own exact token, and the only
+  // thing that may keep a model-shaped code from being reported as unsupported.
+  const modelCodes = confirmedModelCodes(context);
   const unsupportedDetails: ListingV5UnsupportedDetail[] = evidence.unsupportedClaims
     .filter((item) => item.reason !== "unclassified_factual_claim"
-      || !isAnchoredToConfirmedValue(item.text, allowedValues))
+      || !isAnchoredToConfirmedValue(item.text, allowedValues, modelCodes))
     .slice(0, MAX_UNSUPPORTED_DETAILS)
     .map((item) => {
-      const violation = describeUnsupportedSegment(item.text, allowedValues);
+      const violation = describeUnsupportedSegment(item.text, allowedValues, modelCodes);
       return { text: item.text, reason: item.reason, field: locateDraftField(draft, item.text), ...violation };
     });
   // The upstream Claim Evidence resolver only reports a sentence when its own
@@ -404,7 +541,7 @@ export function validateListingV5Draft(context: ListingV5Context, strategy: List
       const key = normalize(segment);
       if (!key || alreadyFlagged.has(key)) continue;
       alreadyFlagged.add(key);
-      const violation = describeUnsupportedSegment(segment, allowedValues);
+      const violation = describeUnsupportedSegment(segment, allowedValues, modelCodes);
       // "unsupported_claim" means no offending word was identified, so the
       // sentence stays with the resolver-derived set only.
       if (violation.issueCode === "unsupported_claim") continue;

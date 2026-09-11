@@ -1,11 +1,11 @@
-﻿import type { ListingV5ExecutionTrace } from "./trace";
+import type { ListingV5ExecutionTrace } from "./trace";
 import type { ListingV5ConversionBlueprint } from "./conversionBlueprint";
 import type { ListingV5QualityEvaluation } from "./qualityEvaluation";
 
 export const LISTING_V5_CONTEXT_VERSION = "listing-v5.context.v1" as const;
 export const LISTING_V5_STRATEGY_VERSION = "listing-v5.strategy.v1" as const;
 export const LISTING_V5_WRITER_VERSION = "listing-v5.writer-draft.v1" as const;
-export const LISTING_V5_VALIDATION_VERSION = "listing-v5.validation.v3" as const;
+export const LISTING_V5_VALIDATION_VERSION = "listing-v5.validation.v4" as const;
 export const LISTING_V5_STRATEGY_PROMPT_VERSION = "listing-v5-strategy.v4" as const;
 /** v4 adds the Conversion Blueprint to the Writer input (conversion intelligence layer). */
 export const LISTING_V5_WRITER_PROMPT_VERSION = "listing-v5-writer.v4" as const;
@@ -97,6 +97,8 @@ export type ListingV5UnsupportedDetail = {
 export type ListingV5IssueCode =
   | "unsupported_hard_claim"
   | "unsupported_attribute_assertion"
+  /** A model-shaped code in the copy that no confirmed series/model value covers. */
+  | "unsupported_model_code"
   | "unsupported_claim";
 
 export type ListingV5ValidationResult = {
