@@ -123,14 +123,14 @@ describe("Writer v5.1 prompt contract", () => {
     return { system, user };
   }
 
-  it("asks for the five-step decision sequence in order and still bans unsupported claims", async () => {
+  it("hands the Writer the blueprint 2.0 fields while keeping fact authority in the prompt", async () => {
     callAiJson.mockResolvedValueOnce({
       ok: true,
       providerCallStarted: true,
       data: {
         title: { text: "Liquid ant bait stations for kitchens", factIds: ["fact-type"] },
         bullets: [
-          { text: "For kitchens, 12 bait stations cover the spots you already watch, so you place them once and check them later.", factIds: ["fact-qty"], strategyRole: "core_outcome" },
+          { text: "For kitchens, 12 bait stations cover the spots you already watch.", factIds: ["fact-qty"], strategyRole: "core_outcome" },
           { text: "Replace every 3 months keeps the routine easy to remember.", factIds: ["fact-care"], strategyRole: "pain_relief" },
           { text: "Liquid ant bait suits indoor use where ants follow the same path.", factIds: ["fact-type"], strategyRole: "use_scenario" },
         ],
@@ -142,24 +142,16 @@ describe("Writer v5.1 prompt contract", () => {
     const result = await generateListingV5Draft(fixture(), buildListingV5Strategy(fixture()), { useProvider: true });
     expect(result.providerSucceeded).toBe(true);
     const { system, user } = promptsOf();
-    const scenario = system.indexOf("concrete shopper scenario");
-    const proof = system.indexOf("a Confirmed Fact that proves it");
-    const doubt = system.indexOf("buying doubt");
-    const keywords = system.indexOf("search wording woven in naturally");
-    expect(scenario).toBeGreaterThan(-1);
-    expect(proof).toBeGreaterThan(scenario);
-    expect(doubt).toBeGreaterThan(proof);
-    expect(keywords).toBeGreaterThan(doubt);
-    expect(system).toContain("disallowedTemptations");
-    expect(system).toContain("factBacked is false");
     expect(system).toContain("Confirmed Facts are the only factual authority");
+    expect(system).toContain("CONVERSION BLUEPRINT");
+    expect(system).toContain("disallowedTemptations");
+    expect(system).toContain("factIds must be ids of Confirmed Facts");
     const payload = JSON.parse(user) as { conversionBlueprint?: Record<string, unknown> };
     const blueprint = payload.conversionBlueprint ?? {};
     for (const field of ["purchaseTriggers", "objectionHandling", "benefitPriority", "decisionSequence"]) {
       expect(Array.isArray(blueprint[field])).toBe(true);
     }
   });
-
   it("keeps hard-claim wording out of the prompt body", async () => {
     callAiJson.mockResolvedValueOnce({ ok: true, providerCallStarted: true, data: {} });
     await generateListingV5Draft(fixture(), buildListingV5Strategy(fixture()), { useProvider: true });
