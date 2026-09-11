@@ -1,12 +1,14 @@
 node_modules
-.next
+.next*
 tsconfig.tsbuildinfo
 out
+dist/
 .vercel
-.env
-.env.local
-.env*.local
-.env.*.local
+# Env files: only the committed *.example files are tracked. The catch-all also
+# covers .env.staging / .env.backup / .env.bak / .envrc, which the old
+# enumerated list silently let through.
+.env*
+!.env.example
 .local/
 .playwright-mcp/
 # Local Playwright CLI session state and release staging
@@ -15,6 +17,9 @@ out
 release/
 # Test temp artifacts
 .tmp/
+# Root-level local scratch directories (e.g. tmp-v58-m1/): kept on disk on
+# purpose, never committed. Root-anchored so nested source dirs are unaffected.
+/tmp-*/
 # Local smoke / audit / debug output
 output/
 # Browser profiles and private local states
@@ -38,6 +43,10 @@ prisma/dev.db
 prisma/dev.db-journal
 prisma/*.db
 prisma/*.db-journal
+# SQLite WAL sidecar files: created while the local server runs and they can
+# carry real rows. `prisma/*.db` does not match a `-wal` suffix.
+prisma/*.db-wal
+prisma/*.db-shm
 # Local dated DB snapshots (e.g. dev.db.empty-tasks.20260806); pattern requires a
 # dot suffix so the live prisma/dev.db is never masked.
 prisma/dev.db.*
@@ -103,7 +112,9 @@ archives/
 # Local debug artifacts
 scratch/
 temp/
-debug/
+# Root-level only: a bare `debug/` also swallowed newly added files in the
+# tracked source directory app/v4/runs/[runId]/debug/.
+/debug/
 *.tmp.ts
 *.tmp.js
 
