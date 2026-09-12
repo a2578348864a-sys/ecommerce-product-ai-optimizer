@@ -37,8 +37,12 @@ export const LISTING_V5_STRATEGY_PROMPT_VERSION = "listing-v5-strategy.v6" as co
  * v6 states the benefit boundary the Validator already enforced (a benefit is the plain
  * meaning of the fact, never a physical outcome or an unstated size adjective) and stops
  * the Writer from copying a strategy phrase that promises an outcome.
+ * v7 turns the strategy from context into an executed contract (buyerIntent / painPoints /
+ * primaryAngle / keywordIntent), requires every bullet to carry fact + benefit + scenario,
+ * bans the placeholder sentences the deterministic fallback uses, puts the purchase reason
+ * before the product name, and distributes keyword intent across the visible copy.
  */
-export const LISTING_V5_WRITER_PROMPT_VERSION = "listing-v5-writer.v6" as const;
+export const LISTING_V5_WRITER_PROMPT_VERSION = "listing-v5-writer.v7" as const;
 export const LISTING_V5_REPAIR_PROMPT_VERSION = "listing-v5-repair.v3" as const;
 
 export type ListingV5Reference = {

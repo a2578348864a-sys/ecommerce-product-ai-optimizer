@@ -131,6 +131,107 @@ describe("Listing V5 prompt contracts", () => {
     expect(prompt).toMatch(/instead of a word such as compact/i);
   });
 
+  /**
+   * v7 quality contract: the strategy stops being context and becomes an executed
+   * contract, every bullet carries fact + benefit + scenario, the placeholder
+   * sentences the deterministic fallback uses are banned from AI copy, the purchase
+   * reason leads instead of the product name, and keyword intent is distributed
+   * across the shopper-visible copy.
+   */
+  it("requires the Writer to execute buyerIntent, painPoints, primaryAngle and keywordIntent", async () => {
+    await generateListingV5Draft(context, strategy, { useProvider: true });
+    const prompt = systemPromptOf(0);
+    expect(prompt).toMatch(/STRATEGY EXECUTION \(required, not optional\)/i);
+    expect(prompt).toMatch(/bullet 1 leads with conversionAngle \/ strategy\.primaryAngle/i);
+    expect(prompt).toMatch(/at least two bullets relieve a painPoint whose factBacked is true/i);
+    expect(prompt).toMatch(/bullet n carries benefitOrder\[n-1\]\.role/i);
+    expect(prompt).toMatch(/the title carries conversionBlueprint\.buyerIntent\.primary and keywordIntent\.primary/i);
+    expect(prompt).toMatch(/targetAudience and useCases framing supplied in `strategy`/i);
+  });
+
+  it("requires every bullet to carry a fact, a benefit and a usage scenario", async () => {
+    await generateListingV5Draft(context, strategy, { useProvider: true });
+    const prompt = systemPromptOf(0);
+    expect(prompt).toMatch(/EVERY BULLET = FACT \+ BENEFIT \+ SCENARIO \(all three, in every bullet\)/i);
+    expect(prompt).toMatch(/restate at least one Confirmed Fact value/i);
+    expect(prompt).toMatch(/place it in one concrete use moment/i);
+    expect(prompt).toMatch(/The moment is what the shopper is DOING/i);
+    // Measured: "for a desk where space is limited" was flagged by the Validator as an
+    // unsupported attribute ("limited"), so the scenario contract names that failure.
+    expect(prompt).toMatch(/never "for a desk where space is limited" or "for a small desk"/i);
+    expect(prompt).toMatch(/an adjective about the place is a product claim with no Confirmed Fact behind it/i);
+    expect(prompt).toMatch(/Take the moment from strategy\.useCases or the blueprint's use_scenario material/i);
+    expect(prompt).toMatch(/Vary the moment between bullets/i);
+  });
+
+  it("bans the low-conversion placeholder sentences", async () => {
+    await generateListingV5Draft(context, strategy, { useProvider: true });
+    const prompt = systemPromptOf(0);
+    expect(prompt).toMatch(/BANNED TEMPLATE SENTENCES/i);
+    for (const placeholder of [
+      "helps shoppers understand the product at a glance",
+      "shoppers can compare a clear product detail",
+      "brings ... into a simple product choice",
+      "a clear ... detail helps shoppers decide",
+      "allows users to ...",
+      "helping shoppers ...",
+      "gives shoppers a clear detail to compare",
+    ]) {
+      expect(prompt).toContain(placeholder);
+    }
+    expect(prompt).toMatch(/If a sentence could be pasted onto any other listing unchanged, delete it/i);
+  });
+
+  it("leads with the purchase reason instead of the product name", async () => {
+    await generateListingV5Draft(context, strategy, { useProvider: true });
+    const prompt = systemPromptOf(0);
+    expect(prompt).toMatch(/PURCHASE REASONS FIRST/i);
+    expect(prompt).toMatch(/lead each bullet and the description with the reason to buy/i);
+    expect(prompt).toMatch(/Do not open a bullet with the product name/i);
+    expect(prompt).toMatch(/do not repeat the full product name inside bullets/i);
+  });
+
+  it("distributes keyword intent across the visible copy without stuffing", async () => {
+    await generateListingV5Draft(context, strategy, { useProvider: true });
+    const prompt = systemPromptOf(0);
+    expect(prompt).toMatch(/KEYWORD PLACEMENT \(natural, never stuffed\)/i);
+    expect(prompt).toMatch(/the title carries keywordIntent\.primary/i);
+    expect(prompt).toMatch(/spread the keywordIntent\.secondary terms and the keyword candidates supplied in the references/i);
+    expect(prompt).toMatch(/Cover at least four supplied terms in total beyond the title/i);
+    expect(prompt).toMatch(/a term never appears more than twice in the whole listing/i);
+  });
+
+  it("forbids one bullet skeleton across the whole listing", async () => {
+    await generateListingV5Draft(context, strategy, { useProvider: true });
+    const prompt = systemPromptOf(0);
+    expect(prompt).toMatch(/VARY THE OPENING/i);
+    expect(prompt).toMatch(/never use a label-style opener followed by a colon/i);
+    expect(prompt).toMatch(/Mix a direct benefit sentence, a question the shopper asks/i);
+    expect(prompt).toMatch(/Five bullets that share one skeleton read as a template/i);
+  });
+
+  /**
+   * Measured on the v7 samples: the Validator's copula rule reads "you are still
+   * reading" / "you are not reaching" / "when you are arranging" as an unsupported
+   * attribute ("still", "not", "arranging"), and "works with the cable you already
+   * own" as an unsupported compatibility claim. Naming those constructions keeps the
+   * prompt inside the rule instead of asking the rule to relax.
+   */
+  it("keeps the copy inside the sentence shapes the copy rules accept", async () => {
+    await generateListingV5Draft(context, strategy, { useProvider: true });
+    const prompt = systemPromptOf(0);
+    expect(prompt).toMatch(/SAFE SENTENCE SHAPES/i);
+    expect(prompt).toMatch(/never "while you are still reading", "so you are not reaching for a switch" or "when you are arranging a home office"/i);
+    expect(prompt).toMatch(/never that the lamp "works with" or is "compatible with" a cable or device/i);
+  });
+
+  it("bounds the bullet length so the copy stays scannable", async () => {
+    await generateListingV5Draft(context, strategy, { useProvider: true });
+    const prompt = systemPromptOf(0);
+    expect(prompt).toMatch(/ONE SENTENCE PER BULLET, 12 to 30 words/i);
+    expect(prompt).toMatch(/Never chain two sentences/i);
+  });
+
   it("sends the same confirmed facts and strategy to the writer as the request payload", async () => {
     await generateListingV5Draft(context, strategy, { useProvider: true });
     const payload = JSON.parse(userPayloadOf(0)) as Record<string, unknown>;
