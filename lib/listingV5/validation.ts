@@ -525,12 +525,34 @@ function hasKeywordStuffing(strategy: ListingV5Strategy, draft: ListingV5WriterD
 
 /**
  * A claim that sits in one text field and can be fixed by rewriting that field
- * (an invented adjective such as "durable") stays repairable. Anything that
- * touches certification, absolute promises, conflicting facts, unknown fact
- * ids, prohibited wording or competitor copy stays blocking.
+ * stays repairable. Anything that touches certification, absolute promises,
+ * conflicting facts, unknown fact ids, prohibited wording or competitor copy
+ * stays blocking.
+ *
+ * 2026-09-12 (measured on the real Case-D chain): the single-sentence, single-field
+ * families below used to BLOCK, so a draft whose only defect was one benefit clause was
+ * discarded outright and the deterministic fallback shipped instead — every strategy-
+ * derived sentence in that draft was lost with it. Both observed failures were exactly
+ * one sentence in one field: a confirmed fact expressed as an outcome ("A weighted base
+ * helps the lamp stay in place…" → `unsupported_dimension_claim`) and a confirmed power
+ * source expressed as compatibility ("USB-C powered, so it works with the cable already
+ * on hand" → `unsupported_compatibility_claim`). They now get the same bounded repair
+ * chance the "invented adjective" family always had.
+ *
+ * The exit gate is unchanged: a repaired draft is re-validated with these same rules,
+ * and a draft that still fails falls back exactly as before. Certification, absolute
+ * promises, conflicting facts, unknown fact ids, AI-reference facts and prohibited
+ * wording remain blocking, because those are not a one-sentence wording problem.
  */
+const LOCALLY_REPAIRABLE_REASONS: ReadonlySet<string> = new Set([
+  "unclassified_factual_claim",
+  "unsupported_numeric_claim",
+  "unsupported_dimension_claim",
+  "unsupported_compatibility_claim",
+]);
+
 function isLocallyRepairableClaim(item: { text: string; reason: string }): boolean {
-  return item.reason === "unclassified_factual_claim";
+  return LOCALLY_REPAIRABLE_REASONS.has(item.reason);
 }
 
 function locateDraftField(draft: ListingV5WriterDraft, segment: string): string {

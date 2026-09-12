@@ -11,8 +11,13 @@ export const LISTING_V5_WRITER_VERSION = "listing-v5.writer-draft.v1" as const;
  * `regular` and bare quantity wording on the reporting path. This changes verdicts, so the
  * version must move: it is hashed into `contextFingerprint` (`context.ts:224`), which makes
  * previously persisted Listing V5 snapshots stale.
+ * v6 makes the single-sentence, single-field claim families (numeric / dimension /
+ * compatibility) locally repairable instead of blocking, so one benefit clause no longer
+ * discards a whole AI draft for the deterministic fallback. The exit gate is unchanged:
+ * certification, absolute promises, conflicts, unknown fact ids, AI-reference facts and
+ * prohibited wording stay blocking, and a repaired draft is re-validated before it ships.
  */
-export const LISTING_V5_VALIDATION_VERSION = "listing-v5.validation.v5" as const;
+export const LISTING_V5_VALIDATION_VERSION = "listing-v5.validation.v6" as const;
 /**
  * v5 requires an `evidenceIds` list per strategy conclusion (Evidence Binding).
  * v6 adds the FRAMING VOCABULARY rule: strategy framing must be expressible with the
