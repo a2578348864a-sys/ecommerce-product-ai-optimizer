@@ -119,7 +119,15 @@ describe("Safe Recovery boundaries", () => {
     const recovered = await run(failingValidation());
     expect(recovered.attempted).toBe(true);
     expect(recovered.succeeded).toBe(true);
-    const payload = (callAiJson.mock.calls[0]?.[0] as { messages: Array<{ role: string; content: string }> }).messages.map((message) => message.content).join("\n");
+    const messages = (callAiJson.mock.calls[0]?.[0] as { messages: Array<{ role: string; content: string }> }).messages;
+    const payload = messages.map((message) => message.content).join("\n");
+    const userPayload = JSON.parse(messages.find((message) => message.role === "user")?.content ?? "{}") as { approvedBenefits?: Array<{ factIds?: string[]; text?: string }>; strategy?: Record<string, unknown> };
+    expect(userPayload.approvedBenefits?.length).toBeGreaterThan(0);
+    expect(userPayload.approvedBenefits?.every((item) => (item.factIds ?? []).length > 0)).toBe(true);
+    expect(userPayload.strategy?.referenceOnly).toBe(true);
+    expect(userPayload.strategy).not.toHaveProperty("purchaseMotivations");
+    expect(userPayload.strategy).not.toHaveProperty("painPoints");
+    expect(userPayload.strategy).not.toHaveProperty("bulletAngles");
     expect(payload).not.toContain(MARKERS.competitor);
     expect(payload).not.toContain(MARKERS.sourcing);
     // The prompt is allowed to *forbid* supplier data; no sourcing value may ride along.
@@ -153,5 +161,31 @@ describe("Safe Recovery boundaries", () => {
     const unusable = await run(failingValidation());
     expect(unusable.succeeded).toBe(false);
     expect(unusable.draft).toBeNull();
+  });
+
+  it("does not consume shopper benefits from a legacy Blueprint", async () => {
+    callAiJson.mockResolvedValueOnce({
+      ok: true,
+      providerCallStarted: true,
+      data: {
+        title: { text: "Steel fixture for daily use", factIds: ["fact-material"] },
+        bullets: [
+          { text: "Steel body for daily handling.", factIds: ["fact-material"], strategyRole: "core_outcome" },
+          { text: "Steel suits repeated use in a workshop.", factIds: ["fact-material"], strategyRole: "use_scenario" },
+          { text: "The steel surface keeps the routine simple.", factIds: ["fact-material"], strategyRole: "pain_relief" },
+        ],
+        description: { text: "A steel fixture for daily use. It suits repeated handling.", factIds: ["fact-material"] },
+        backendSearchTerms: [],
+        humanReviewRequired: true,
+      },
+    });
+    const ctx = fixture();
+    const strategy = buildListingV5Strategy(ctx);
+    const legacyBlueprint = { ...buildListingV5ConversionBlueprint(ctx, strategy), version: "listing-v5.conversion-blueprint.v1" } as never;
+    await recoverListingV5Draft({ context: ctx, strategy, blueprint: legacyBlueprint, failedDraft: draft, validation: failingValidation() }, { useProvider: true });
+    const messages = (callAiJson.mock.calls[0]?.[0] as { messages: Array<{ role: string; content: string }> }).messages;
+    const payload = JSON.parse(messages.find((message) => message.role === "user")?.content ?? "{}") as { conversionBlueprint?: unknown; approvedBenefits?: unknown };
+    expect(payload.conversionBlueprint).toBeNull();
+    expect(payload.approvedBenefits).toEqual([]);
   });
 });

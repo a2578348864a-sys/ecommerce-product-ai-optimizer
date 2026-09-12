@@ -37,6 +37,8 @@ import { HARD_OR_ESCALATION_TOKENS } from "./claimVocabulary";
  */
 
 export const LISTING_V5_BENEFIT_EXPRESSION_VERSION = "listing-v5.benefit-expression.v1" as const;
+/** Only this Blueprint contract may activate executable Benefit projection. */
+export const LISTING_V5_SUPPORTED_BLUEPRINT_VERSION = "listing-v5.conversion-blueprint.v2" as const;
 
 /** Why a tempting wording must not be used. */
 export type ListingV5BlockedReason =
@@ -50,6 +52,16 @@ export type ListingV5BlockedReason =
 export type ListingV5BlockedExpression = {
   text: string;
   reason: ListingV5BlockedReason;
+};
+
+/** A conservative, fact-only shopper explanation admitted to the Writer. */
+export type ListingV5ApprovedFactBenefit = {
+  id: string;
+  text: string;
+  factIds: string[];
+  kind: "semantic_benefit";
+  source: "confirmed_fact";
+  referenceOnly: true;
 };
 
 export type ListingV5BenefitExpression = {
@@ -86,11 +98,16 @@ const CONCEPT_FACT_FIELDS: Record<string, readonly string[]> = {
   sipping: ["operation", "functional_feature", "included_components"],
   portability: ["weight", "dimensions", "operation", "included_components"],
   leak_resistance: ["construction", "material", "care", "certification_or_standard"],
-  durability: ["material", "construction", "certification_or_standard"],
+  // Material alone describes what a product is made from; it does not prove
+  // durability. Require an explicit construction or standard fact instead.
+  durability: ["construction", "certification_or_standard"],
   size_fit: ["dimensions", "capacity", "compatibility"],
-  capacity: ["capacity", "quantity_or_pack_size", "dimensions"],
+  // A pack count tells shoppers how many pieces arrive; it does not prove size,
+  // volume or coverage. Keep quantity out of capacity framing.
+  capacity: ["capacity", "dimensions"],
   ease_of_cleaning: ["care", "material", "construction"],
-  ease_of_setup: ["operation", "included_components", "compatibility"],
+  // A component list cannot prove no assembly, no installation or readiness.
+  ease_of_setup: ["operation"],
   appearance: ["color_or_variant", "material", "product_type"],
   color_accuracy: ["color_or_variant", "series_or_model"],
   value_for_money: ["quantity_or_pack_size", "included_components", "material"],
@@ -107,7 +124,7 @@ const CONCEPT_CLAUSE: Record<string, string> = {
   sipping: "simpler to use",
   portability: "easier to take along",
   leak_resistance: "confidently compare the details",
-  durability: "ready for regular use",
+  durability: "gives a construction detail to compare",
   size_fit: "matches the space",
   capacity: "less guesswork",
   ease_of_cleaning: "tidier to keep up",
@@ -130,12 +147,12 @@ const CONCEPT_RISKY_WORDING: Record<string, readonly string[]> = {
   portability: ["ultra-light", "lightweight"],
   leak_resistance: ["leakproof", "spillproof", "waterproof", "leak", "spill", "sealed"],
   durability: ["durable", "durability", "lasting", "tough", "unbreakable", "heavy-duty", "sturdy"],
-  size_fit: ["perfect fit", "universal fit"],
+  size_fit: ["perfect fit", "universal fit", "sized for", "fits", "coverage", "covers"],
   capacity: ["maximum", "large"],
   ease_of_cleaning: ["dishwasher", "stain", "odor"],
-  ease_of_setup: ["tool-free", "instant"],
-  appearance: ["premium", "perfect"],
-  color_accuracy: ["exact match"],
+  ease_of_setup: ["tool-free", "instant", "no setup", "no installation", "ready to use", "ready to place"],
+  appearance: ["premium", "perfect", "matches every room", "fits every room"],
+  color_accuracy: ["exact match", "matches every room", "fits every room"],
   value_for_money: ["cheap", "best value"],
   gift_readiness: ["perfect gift"],
 };
@@ -173,6 +190,101 @@ function fieldsOf(fact: ListingV5Fact): string {
 /** Wording the product's own Confirmed Facts already state verbatim. */
 function factCorpus(facts: readonly ListingV5Fact[]): string {
   return facts.map((fact) => `${fact.canonicalField} ${fact.value}`).join(" ").toLowerCase();
+}
+
+/**
+ * The only fact-to-benefit vocabulary admitted by the contract. These clauses
+ * describe what a shopper can compare or understand from the confirmed value;
+ * they do not assert performance, fit, setup, coverage or compatibility.
+ */
+const FACT_BENEFIT_BY_FIELD: Record<string, string> = {
+  // These phrases are deliberately neutral. They are executable Writer
+  // vocabulary, not explanations of the contract itself. Internal terms such
+  // as "confirmed", "compare", and "gives shoppers" must stay out of the
+  // serialized Provider projection.
+  brand: "names the maker",
+  product_type: "names the item type",
+  material: "states the material",
+  construction: "states the construction detail",
+  capacity: "states the capacity",
+  dimensions: "states the measured size",
+  weight: "states the listed weight",
+  color_or_variant: "states the visual variant",
+  quantity_or_pack_size: "states the pack quantity",
+  included_components: "lists what is included",
+  functional_feature: "states the feature",
+  compatibility: "states the compatibility detail",
+  operation: "states the operation detail",
+  care: "states the care detail",
+  series_or_model: "identifies the model or series",
+  certification_or_standard: "states the listed standard",
+};
+
+function factBenefitClause(field: string): string {
+  return FACT_BENEFIT_BY_FIELD[field] ?? "states the product detail";
+}
+
+/**
+ * Build one approved semantic benefit directly from a Confirmed Fact. This is
+ * intentionally separate from reference-derived concepts: no strategy text is
+ * copied and no product capability is inferred from a field value.
+ */
+export function buildApprovedFactBenefit(fact: ListingV5Fact): ListingV5ApprovedFactBenefit {
+  const factId = text(fact.id, 120);
+  const value = text(fact.value, 160) || "the product detail";
+  const field = fieldsOf(fact);
+  const benefit = {
+    id: `fact-benefit:${factId}`,
+    text: `${value} — ${factBenefitClause(field)}`,
+    factIds: factId ? [factId] : [],
+    kind: "semantic_benefit",
+    source: "confirmed_fact",
+    referenceOnly: true,
+  } as ListingV5ApprovedFactBenefit;
+
+  // Keep the full contract available to the in-memory Validator and Blueprint
+  // adapters, while ensuring the Writer only receives executable projection
+  // fields. JSON.stringify invokes toJSON before enumerating the object, so
+  // internal metadata (source, kind, referenceOnly) and contract prose cannot
+  // leak into the Provider payload.
+  Object.defineProperty(benefit, "toJSON", {
+    enumerable: false,
+    value: () => ({ id: benefit.id, text: benefit.text, factIds: benefit.factIds }),
+  });
+  return benefit;
+}
+
+/** Stable id used when a Blueprint points at an approved fact benefit. */
+export function approvedFactBenefitId(factId: string): string {
+  return `fact-benefit:${text(factId, 120)}`;
+}
+
+/** Runtime guard used by every Provider-facing path before consuming a Blueprint. */
+export function isSupportedListingV5Blueprint(value: unknown): boolean {
+  return Boolean(value && typeof value === "object" && (value as { version?: unknown }).version === LISTING_V5_SUPPORTED_BLUEPRINT_VERSION);
+}
+
+/**
+ * One shared Provider payload projection. It deliberately starts from
+ * Confirmed Facts rather than Strategy or Blueprint shopper text. A legacy or
+ * malformed Blueprint receives no executable Benefits, so its old shopperValue
+ * cannot be trusted by Recovery or Rewrite.
+ */
+export function buildApprovedBenefitsForPrompt(
+  confirmedFacts: readonly ListingV5Fact[] | undefined,
+  blueprint: unknown,
+): ListingV5ApprovedFactBenefit[] {
+  if (!isSupportedListingV5Blueprint(blueprint) || !Array.isArray(confirmedFacts)) return [];
+  const seen = new Set<string>();
+  return confirmedFacts
+    .filter((fact): fact is ListingV5Fact => {
+      if (!fact || typeof fact !== "object") return false;
+      const id = text(fact?.id, 120);
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    })
+    .map(buildApprovedFactBenefit);
 }
 
 export type BenefitExpressionInput = {
@@ -214,7 +326,11 @@ export function buildBenefitExpressions(input: BenefitExpressionInput): ListingV
 
     const safeExpressions = carryingFacts
       .slice(0, MAX_EXPRESSIONS_PER_CONCEPT)
-      .map((fact) => `${text(fact.value, 160)} — ${clause}`);
+      .map((fact) => {
+        // Keep the candidate concept's approved connective clause only when it
+        // is itself conservative; the fact field still remains the authority.
+        return `${text(fact.value, 160)} — ${clause}`;
+      });
 
     const blockedExpressions: ListingV5BlockedExpression[] = [];
     for (const wording of CONCEPT_RISKY_WORDING[concept] ?? []) {

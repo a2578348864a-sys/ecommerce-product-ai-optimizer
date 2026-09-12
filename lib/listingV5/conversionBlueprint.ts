@@ -19,8 +19,9 @@
  */
 import type { ListingV5BulletRole, ListingV5Context, ListingV5Fact, ListingV5Strategy } from "./types";
 import { HARD_OR_ESCALATION_TOKENS } from "./claimVocabulary";
+import { approvedFactBenefitId, buildApprovedFactBenefit } from "./benefitExpression";
 
-export const LISTING_V5_CONVERSION_BLUEPRINT_VERSION = "listing-v5.conversion-blueprint.v1" as const;
+export const LISTING_V5_CONVERSION_BLUEPRINT_VERSION = "listing-v5.conversion-blueprint.v2" as const;
 
 export type ConversionPainPoint = {
   /** Shopper pain, taken from VOC reference data or the strategy (framing only). */
@@ -54,6 +55,8 @@ export type ConversionBenefitOrderItem = {
   role: ListingV5BulletRole;
   shopperValue: string;
   primaryFactId: string | null;
+  /** Points only at a Benefit admitted from the primary Confirmed Fact. */
+  benefitExpressionId: string | null;
 };
 
 /**
@@ -78,12 +81,29 @@ export type ConversionBenefitPriority = {
   factIds: string[];
 };
 
+/** One shopper-facing bullet job. `evidenceId` is a pointer to a confirmed
+ * fact id; it never creates or promotes a fact. */
+export type ConversionBulletPlanItem = {
+  role: ListingV5BulletRole;
+  shopperQuestion: string;
+  shopperValue: string;
+  /** Every planned bullet is anchored to one existing Confirmed Fact. */
+  evidenceId: string;
+  /** The shopper value must resolve to this approved fact Benefit. */
+  benefitExpressionId: string;
+};
+
 /** The order in which the copy should walk a shopper through the decision. */
 export const LISTING_V5_DECISION_SEQUENCE = ["use_scenario", "core_benefit", "proof", "risk_reduction"] as const;
 
 export type ListingV5ConversionBlueprint = {
   version: typeof LISTING_V5_CONVERSION_BLUEPRINT_VERSION;
   referenceOnly: true;
+  /** Explicit conversion brief consumed by the Writer. */
+  targetBuyer: string;
+  primaryPurchaseReason: string;
+  positioningAngle: string;
+  bulletPlan: ConversionBulletPlanItem[];
   buyerIntent: {
     primary: string;
     secondary: string[];
@@ -109,24 +129,12 @@ const MAX_COMPETITOR_GAPS = 4;
 const MAX_SECONDARY_INTENT = 5;
 const MAX_GAP_SIGNAL_CHARS = 140;
 
-/** Shopper-benefit framing per canonical fact field. Framing only — no new facts. */
-const BENEFIT_BY_FIELD: Record<string, string> = {
-  brand: "brand recognition helps shoppers decide quickly",
-  product_type: "clear product type keeps the listing comparable in search",
-  material: "material clarity answers the most common comparison question",
-  construction: "construction detail explains how it is built",
-  capacity: "capacity sets the right expectation before purchase",
-  dimensions: "measurements remove fit guesswork",
-  weight: "weight sets handling expectations",
-  color_or_variant: "colour and variant match the planned look",
-  quantity_or_pack_size: "pack size tells shoppers how much arrives",
-  included_components: "knowing what is included means it can be used right away",
-  functional_feature: "capability detail shows what the product does",
-  compatibility: "compatibility detail prevents a wrong purchase",
-  operation: "operation detail shows how easy it is to use",
-  care: "care instructions set maintenance expectations",
-  series_or_model: "model reference helps shoppers verify the exact variant",
-  certification_or_standard: "stated standard is the evidence shoppers look for",
+const SHOPPER_QUESTION_BY_ROLE: Record<ListingV5BulletRole, string> = {
+  core_outcome: "Why is this worth choosing?",
+  pain_relief: "What everyday concern can this detail address?",
+  use_scenario: "When would this fit a real use moment?",
+  ease_of_use: "How can this make the routine easier?",
+  proof_or_fit: "What should I compare before buying?",
 };
 
 /**
@@ -189,10 +197,6 @@ function clean(value: string, max = 200): string {
 
 function fieldOf(fact: ListingV5Fact): string {
   return fact.canonicalField.toLowerCase();
-}
-
-function benefitFor(field: string): string {
-  return BENEFIT_BY_FIELD[field] ?? "confirmed detail shoppers can compare";
 }
 
 /** Reference text is untrusted and must never be able to steer the model. */
@@ -277,7 +281,7 @@ function proofPoints(context: ListingV5Context): ConversionProofPoint[] {
     factId: fact.id,
     field: fact.canonicalField,
     value: fact.value,
-    shopperBenefit: benefitFor(fieldOf(fact)),
+    shopperBenefit: buildApprovedFactBenefit(fact).text,
   }));
 }
 
@@ -297,8 +301,31 @@ function benefitOrder(strategy: ListingV5Strategy, facts: readonly ListingV5Fact
     let fact = pick(preferred.flatMap((field) => facts.filter((candidate) => fieldOf(candidate) === field)));
     if (!fact) fact = pick(facts);
     if (fact) used.add(fact.id);
-    return { role: angle.role, shopperValue: clean(angle.shopperValue, 160) || "shopper value", primaryFactId: fact ? fact.id : null };
+    const approved = fact ? buildApprovedFactBenefit(fact) : null;
+    return {
+      role: angle.role,
+      // Strategy still selects role and ordering, but its free-form shopper
+      // value is reference material and cannot enter the Writer as a Benefit.
+      shopperValue: approved?.text ?? "",
+      primaryFactId: fact ? fact.id : null,
+      benefitExpressionId: fact ? approvedFactBenefitId(fact.id) : null,
+    };
   });
+}
+
+function bulletPlan(strategy: ListingV5Strategy, order: ConversionBenefitOrderItem[], facts: readonly ListingV5Fact[]): ConversionBulletPlanItem[] {
+  const factById = new Map(facts.map((fact) => [fact.id, fact]));
+  return order.slice(0, 5).map((item) => {
+    const fact = item.primaryFactId ? factById.get(item.primaryFactId) : undefined;
+    if (!fact) return null;
+    return {
+      role: item.role,
+      shopperQuestion: SHOPPER_QUESTION_BY_ROLE[item.role],
+      shopperValue: item.shopperValue,
+      evidenceId: fact.id,
+      benefitExpressionId: approvedFactBenefitId(fact.id),
+    };
+  }).filter((item): item is ConversionBulletPlanItem => item !== null);
 }
 
 /**
@@ -375,6 +402,19 @@ function conversionAngle(strategy: ListingV5Strategy, points: ConversionProofPoi
   return { angle, whyItConverts: why };
 }
 
+/** Normalize provider-shaped conclusion values without allowing arrays or
+ * objects to leak into the Writer contract. Strategy binding accepts both
+ * legacy strings and structured conclusions, so blueprint fields must remain
+ * deterministic plain text. */
+function firstText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    const item = value.find((candidate): candidate is string => typeof candidate === "string");
+    return item ?? "";
+  }
+  return "";
+}
+
 /** Pure, bounded, deterministic. Same context + strategy always yields the same blueprint. */
 export function buildListingV5ConversionBlueprint(
   context: ListingV5Context,
@@ -384,9 +424,16 @@ export function buildListingV5ConversionBlueprint(
   const intent = strategy.keywordIntent ?? { primary: [], secondary: [], backendOnly: [] };
   const pains = painPoints(context, strategy);
   const order = benefitOrder(strategy, list(context.confirmedFacts));
+  const targetBuyer = clean(firstText(strategy.targetAudience[0]) || firstText(intent.primary) || context.productIdentity, 160);
+  const primaryPurchaseReason = clean(order.find((item) => item.shopperValue)?.shopperValue || "a clear, evidence-backed reason to choose it", 180);
+  const positioningAngle = clean(strategy.primaryAngle || "lead with the clearest confirmed product value", 200);
   return {
     version: LISTING_V5_CONVERSION_BLUEPRINT_VERSION,
     referenceOnly: true,
+    targetBuyer,
+    primaryPurchaseReason,
+    positioningAngle,
+    bulletPlan: bulletPlan(strategy, order, list(context.confirmedFacts)),
     buyerIntent: {
       primary: stripControlText(intent.primary[0] ?? context.productIdentity).slice(0, 160) || stripControlText(context.productIdentity).slice(0, 160),
       secondary: intent.secondary.slice(0, MAX_SECONDARY_INTENT).map((item) => clean(item, 120)).filter(Boolean),

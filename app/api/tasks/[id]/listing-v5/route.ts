@@ -10,6 +10,7 @@ import { mutateTaskResultJson, TaskResultJsonMutationError } from "@/lib/server/
 import { prisma } from "@/lib/server/db";
 import { buildListingV5Context } from "@/lib/listingV5/context";
 import { buildListingV5ConversionBlueprint } from "@/lib/listingV5/conversionBlueprint";
+import { buildApprovedBenefitsForPrompt } from "@/lib/listingV5/benefitExpression";
 import { evaluateListingV5Quality } from "@/lib/listingV5/qualityEvaluation";
 import { recoverListingV5Draft } from "@/lib/listingV5/conversionRecovery";
 import { rewriteListingV5Draft } from "@/lib/listingV5/conversionRewrite";
@@ -234,6 +235,17 @@ function safeSnapshot(snapshot: unknown, currentRevision: number, currentHandoff
   const conversionBlueprint = isRecord(snapshot.conversionBlueprint) ? {
     version: String(snapshot.conversionBlueprint.version ?? ""),
     referenceOnly: true,
+    targetBuyer: String(snapshot.conversionBlueprint.targetBuyer ?? ""),
+    primaryPurchaseReason: String(snapshot.conversionBlueprint.primaryPurchaseReason ?? ""),
+    positioningAngle: String(snapshot.conversionBlueprint.positioningAngle ?? ""),
+    bulletPlan: Array.isArray(snapshot.conversionBlueprint.bulletPlan)
+      ? snapshot.conversionBlueprint.bulletPlan.filter(isRecord).slice(0, 5).map((item) => ({
+        role: String(item.role ?? ""),
+        shopperQuestion: String(item.shopperQuestion ?? ""),
+        shopperValue: String(item.shopperValue ?? ""),
+        hasEvidenceId: typeof item.evidenceId === "string" && item.evidenceId.length > 0,
+      }))
+      : [],
     buyerIntent: isRecord(snapshot.conversionBlueprint.buyerIntent) ? {
       primary: String(snapshot.conversionBlueprint.buyerIntent.primary ?? ""),
       secondary: Array.isArray(snapshot.conversionBlueprint.buyerIntent.secondary) ? snapshot.conversionBlueprint.buyerIntent.secondary.filter((item): item is string => typeof item === "string").slice(0, 5) : [],
@@ -416,6 +428,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const strategyResult = cachedStrategy
       ? { strategy: cachedStrategy, providerAttempted: false, providerSucceeded: false, trace: buildStageTrace({ attempted: false, success: false, failureReason: "stage_not_run" }) }
       : await analyzeListingV5Strategy(context, { useProvider, onProviderCallStart });
+    // Keep the formal route on the same approved-benefit contract as the
+    // Writer. The projection is derived from this generation's Confirmed Facts
+    // and v2 Blueprint; it never adds facts and only gives the unchanged
+    // Validator the semantic benefit vocabulary already admitted to the prompt.
+    const approvedBenefits = buildApprovedBenefitsForPrompt(
+      context.confirmedFacts,
+      buildListingV5ConversionBlueprint(context, strategyResult.strategy),
+    );
     let draft: ListingV5WriterDraft | null = null;
     let validation: ListingV5ValidationResult | null = null;
     let firstValidation: ListingV5ValidationResult | null = null;
@@ -439,7 +459,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       provider = { ...provider, repairAttempted: repaired.attempted };
       repairApplied = repairApplied || (repaired.succeeded && repaired.appliedPaths.length > 0);
       draft = repaired.draft;
-      return validateListingV5Draft(context, strategyResult.strategy, repaired.draft);
+      return validateListingV5Draft(context, strategyResult.strategy, repaired.draft, approvedBenefits);
     };
     if (action !== "analyze_strategy") {
       const generated = await generateListingV5Draft(context, strategyResult.strategy, { useProvider, onProviderCallStart });
@@ -447,7 +467,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       fallbackReason = generated.providerSucceeded ? "none" : "writer_stage_failed";
       writerTrace = generated.trace ?? idleStageTrace();
       draft = generated.draft; provider = { ...provider, writerAttempted: generated.providerAttempted, fallbackUsed: !generated.providerSucceeded };
-      validation = validateListingV5Draft(context, strategyResult.strategy, draft);
+      validation = validateListingV5Draft(context, strategyResult.strategy, draft, approvedBenefits);
       firstValidation = validation;
       // Step 1 - the writer draft was REPAIRABLE, so spend the single bounded AI
       // repair pass. Repair returns its draft for re-validation even when it
@@ -474,7 +494,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         rewriteReason = rewritten?.attempted && !rewritten?.succeeded ? (rewritten.trace?.failureReason ?? "none") : null;
         if (rewritten?.succeeded && rewritten.draft) {
           draft = rewritten.draft;
-          validation = validateListingV5Draft(context, strategyResult.strategy, draft);
+          validation = validateListingV5Draft(context, strategyResult.strategy, draft, approvedBenefits);
           rewriteValidation = validation;
           // A rewrite normally lands on REPAIRABLE rather than PASS (the V5.2
           // spike measured BLOCK(5) -> REPAIRABLE(4) and BLOCK(6) -> REPAIRABLE(3)),
@@ -501,7 +521,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         provider = { ...provider, recoveryAttempted: recovered?.attempted === true };
         if (recovered?.succeeded && recovered.draft) {
           draft = recovered.draft;
-          validation = validateListingV5Draft(context, strategyResult.strategy, draft);
+          validation = validateListingV5Draft(context, strategyResult.strategy, draft, approvedBenefits);
           recoveryValidation = validation;
         }
       }
@@ -509,7 +529,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         draft = buildListingV5FallbackDraft(context, strategyResult.strategy);
         provider = { ...provider, fallbackUsed: true };
         fallbackReason = "validation_blocked";
-        validation = validateListingV5Draft(context, strategyResult.strategy, draft);
+        validation = validateListingV5Draft(context, strategyResult.strategy, draft, approvedBenefits);
       }
     }
     // `analyze_strategy` refreshes the strategy only: it must not discard a

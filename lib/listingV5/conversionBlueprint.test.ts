@@ -114,6 +114,25 @@ describe("Conversion Blueprint（确定性转化智能层）", () => {
     expect(blueprint.benefitOrder.length).toBeGreaterThanOrEqual(3);
     const assigned = blueprint.benefitOrder.map((item) => item.primaryFactId).filter(Boolean);
     expect(new Set(assigned).size).toBe(assigned.length);
+    expect(blueprint.benefitOrder.filter((item) => item.primaryFactId).every((item) => item.benefitExpressionId?.startsWith("fact-benefit:"))).toBe(true);
+    expect(blueprint.bulletPlan.every((item) => item.benefitExpressionId === `fact-benefit:${item.evidenceId}`)).toBe(true);
+  });
+
+  it("does not pass strategy shopperValue into the Writer as an unapproved benefit", () => {
+    const context = fixture();
+    const strategy = buildListingV5Strategy(context);
+    strategy.bulletAngles = strategy.bulletAngles.map((angle) => ({
+      ...angle,
+      shopperValue: "simple placement with no setup or installation; sized for every room",
+    }));
+    const blueprint = buildListingV5ConversionBlueprint(context, strategy);
+    const values = [
+      ...blueprint.benefitOrder.map((item) => item.shopperValue),
+      ...blueprint.bulletPlan.map((item) => item.shopperValue),
+      ...blueprint.proofPoints.map((item) => item.shopperBenefit),
+    ].join(" ");
+    expect(values).not.toMatch(/no setup|no installation|sized for every room/i);
+    expect(blueprint.bulletPlan.every((item) => item.evidenceId && item.benefitExpressionId)).toBe(true);
   });
 
   it("stays reference-only: sourcing text and prompt-control text never reach the blueprint", () => {

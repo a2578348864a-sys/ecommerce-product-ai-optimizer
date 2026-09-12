@@ -111,6 +111,39 @@ describe("Conversion Blueprint 2.0", () => {
     expect(blueprint.decisionSequence[0]).toBe("use_scenario");
     expect(blueprint.decisionSequence[blueprint.decisionSequence.length - 1]).toBe("risk_reduction");
   });
+
+  it("exposes one conversion brief and fact pointer per planned bullet", () => {
+    const context = fixture();
+    const blueprint = buildListingV5ConversionBlueprint(context, buildListingV5Strategy(context));
+    expect(blueprint.targetBuyer).toBeTruthy();
+    expect(blueprint.primaryPurchaseReason).toBeTruthy();
+    expect(blueprint.positioningAngle).toBeTruthy();
+    expect(blueprint.bulletPlan.length).toBeGreaterThanOrEqual(3);
+    const allowed = new Set(context.confirmedFacts.map((fact) => fact.id));
+    for (const item of blueprint.bulletPlan) {
+      expect(item.role).toBeTruthy();
+      expect(item.shopperQuestion).toBeTruthy();
+      expect(item.shopperValue).toBeTruthy();
+      expect(item.evidenceId).toBeTruthy();
+      expect(allowed.has(item.evidenceId)).toBe(true);
+    }
+  });
+
+  it("changes the conversion brief with strategy direction while keeping fact anchors stable", () => {
+    const context = fixture();
+    const baseStrategy = buildListingV5Strategy(context);
+    const changedStrategy = {
+      ...baseStrategy,
+      targetAudience: ["commuters who need a grab-and-go drink routine"],
+      purchaseMotivations: ["make an everyday carry easier to choose"],
+      primaryAngle: "lead with the carry-and-sip routine",
+    };
+    const base = buildListingV5ConversionBlueprint(context, baseStrategy);
+    const changed = buildListingV5ConversionBlueprint(context, changedStrategy);
+    expect(changed.targetBuyer).not.toBe(base.targetBuyer);
+    expect(changed.positioningAngle).not.toBe(base.positioningAngle);
+    expect(changed.bulletPlan.map((item) => item.evidenceId)).toEqual(base.bulletPlan.map((item) => item.evidenceId));
+  });
 });
 
 describe("Writer v5.1 prompt contract", () => {
@@ -148,7 +181,11 @@ describe("Writer v5.1 prompt contract", () => {
     expect(system).toContain("factIds must be ids of Confirmed Facts");
     const payload = JSON.parse(user) as { conversionBlueprint?: Record<string, unknown> };
     const blueprint = payload.conversionBlueprint ?? {};
-    for (const field of ["purchaseTriggers", "objectionHandling", "benefitPriority", "decisionSequence"]) {
+    for (const field of ["targetBuyer", "primaryPurchaseReason", "positioningAngle", "bulletPlan", "purchaseTriggers", "objectionHandling", "benefitPriority", "decisionSequence"]) {
+      if (["targetBuyer", "primaryPurchaseReason", "positioningAngle"].includes(field)) {
+        expect(typeof blueprint[field]).toBe("string");
+        continue;
+      }
       expect(Array.isArray(blueprint[field])).toBe(true);
     }
   });

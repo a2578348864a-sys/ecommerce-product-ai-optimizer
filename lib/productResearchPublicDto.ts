@@ -253,6 +253,17 @@ const listingPackSpec = objectOf({
   }),
 });
 
+// Listing V5 is persisted in the task result independently of the legacy
+// listing-pack shapes.  The detail projection only needs a bounded existence
+// signal for the research summary; keep the full V5 copy, strategy and trace
+// out of this generic task endpoint.
+const listingV5Spec = objectOf({
+  version: scalar,
+  listing: objectOf({
+    title: objectOf({ text: scalar }),
+  }),
+});
+
 /**
  * 创作交接最小安全投影（detail 作用域）。
  * 仅暴露用于"进度摘要"与"步骤高亮"的存在性信号，白名单字段：
@@ -520,6 +531,7 @@ const DETAIL_FIELDS: Readonly<Record<string, ProjectionSpec>> = {
   agentOutputSnapshot: agentOutputSnapshotSpec,
   listingPackSnapshot: listingPackSpec,
   aiListingPackSnapshot: aiListingPackSpec,
+  listingV5: listingV5Spec,
   aiImageDraftSnapshot: aiImageDraftSpec,
   imageStudioSelection: objectOf({
     version: scalar,

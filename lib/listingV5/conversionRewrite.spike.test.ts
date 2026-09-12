@@ -145,7 +145,15 @@ describe("Conversion Rewrite spike", () => {
     expect(validation.claims.unsupportedClaims).toEqual([]);
     expect(validation.claims.prohibitedClaims).toEqual([]);
     expect(validation.claims.competitorOverlap).toEqual([]);
-    const prompt = (callAiJson.mock.calls[0]?.[0] as { messages: Array<{ content: string }> }).messages.map((message) => message.content).join("\n");
+    const messages = (callAiJson.mock.calls[0]?.[0] as { messages: Array<{ role?: string; content: string }> }).messages;
+    const prompt = messages.map((message) => message.content).join("\n");
+    const userPayload = JSON.parse(messages.find((message) => message.role === "user")?.content ?? "{}") as { approvedBenefits?: Array<{ factIds?: string[]; text?: string }>; strategy?: Record<string, unknown> };
+    expect(userPayload.approvedBenefits?.length).toBeGreaterThan(0);
+    expect(userPayload.approvedBenefits?.every((item) => (item.factIds ?? []).length > 0)).toBe(true);
+    expect(userPayload.strategy?.referenceOnly).toBe(true);
+    expect(userPayload.strategy).not.toHaveProperty("purchaseMotivations");
+    expect(userPayload.strategy).not.toHaveProperty("painPoints");
+    expect(userPayload.strategy).not.toHaveProperty("bulletAngles");
     expect(prompt).not.toContain(MARKERS.competitor);
     expect(prompt).not.toContain(MARKERS.sourcing);
     // V5.2 whitelist: only the issue *category* reaches the model. The Validator's
@@ -188,5 +196,17 @@ describe("Conversion Rewrite spike", () => {
     const unusable = await run();
     expect(unusable.succeeded).toBe(false);
     expect(unusable.draft).toBeNull();
+  });
+
+  it("does not consume shopper benefits from a legacy Blueprint", async () => {
+    callAiJson.mockResolvedValueOnce({ ok: false, providerCallStarted: true, diagnostics: { reason: "provider_request_failed" } });
+    const ctx = context();
+    const strategy = buildListingV5Strategy(ctx);
+    const legacyBlueprint = { ...buildListingV5ConversionBlueprint(ctx, strategy), version: "listing-v5.conversion-blueprint.v1" } as never;
+    await rewriteListingV5Draft({ context: ctx, strategy, blueprint: legacyBlueprint, failedListing, validation: blockedValidation() }, { useProvider: true });
+    const messages = (callAiJson.mock.calls[0]?.[0] as { messages: Array<{ role?: string; content: string }> }).messages;
+    const payload = JSON.parse(messages.find((message) => message.role === "user")?.content ?? "{}") as { conversionBlueprint?: unknown; approvedBenefits?: unknown };
+    expect(payload.conversionBlueprint).toBeNull();
+    expect(payload.approvedBenefits).toEqual([]);
   });
 });

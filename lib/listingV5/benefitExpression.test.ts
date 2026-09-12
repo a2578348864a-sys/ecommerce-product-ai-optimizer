@@ -22,7 +22,7 @@ import { describe, expect, it, vi } from "vitest";
 const { callAiJson } = vi.hoisted(() => ({ callAiJson: vi.fn() }));
 vi.mock("@/lib/server/aiClient", () => ({ callAiJson }));
 
-import { buildBenefitExpressions, hasUsableExpression } from "./benefitExpression";
+import { buildApprovedBenefitsForPrompt, buildApprovedFactBenefit, buildBenefitExpressions, hasUsableExpression, LISTING_V5_SUPPORTED_BLUEPRINT_VERSION } from "./benefitExpression";
 import { buildListingV5Context } from "./context";
 import { buildListingV5Strategy } from "./strategy";
 import { generateListingV5Draft } from "./generation";
@@ -84,15 +84,15 @@ describe("Phase 4 — candidates become safe, fact-anchored expressions", () => 
   it("turns an evidence-backed candidate into a safe expression anchored to a fact", () => {
     const ctx = context();
     const set = buildBenefitExpressions({
-      candidates: [candidate("durability")],
+      candidates: [candidate("color_accuracy")],
       confirmedFacts: factsOf(ctx),
       prohibitedClaims: ctx.prohibitedClaims,
     });
     const [entry] = set.expressions;
     expect(set.source).toBe("candidates");
-    expect(entry?.concept).toBe("durability");
-    expect(entry?.safeExpressions).toEqual(["stainless steel — ready for regular use"]);
-    expect(entry?.factIds).toEqual(["fact-material"]);
+    expect(entry?.concept).toBe("color_accuracy");
+    expect(entry?.safeExpressions).toEqual(["Denim — matches the chosen colour"]);
+    expect(entry?.factIds).toEqual(["fact-color"]);
     // Traceability: the candidate's evidence ids travel through untouched.
     expect(entry?.evidenceIds).toEqual(["voc:theme:theme-1"]);
     expect(hasUsableExpression(set)).toBe(true);
@@ -107,7 +107,8 @@ describe("Phase 4 — candidates become safe, fact-anchored expressions", () => 
     });
     expect(set.expressions.map((entry) => entry.concept)).toEqual(["durability", "size_fit", "value_for_money"]);
     expect(set.expressions.map((entry) => entry.evidenceIds[0])).toEqual(["voc:theme:a", "voc:theme:b", "voc:theme:c"]);
-    expect(set.expressions.every((entry) => entry.safeExpressions.length > 0)).toBe(true);
+    expect(set.expressions.find((entry) => entry.concept === "durability")?.safeExpressions).toEqual([]);
+    expect(set.expressions.filter((entry) => entry.concept !== "durability").every((entry) => entry.safeExpressions.length > 0)).toBe(true);
   });
 });
 
@@ -174,12 +175,12 @@ describe("Phase 4 — the layer cannot introduce a hard claim", () => {
     const ctx = context();
     const strategy = buildListingV5Strategy(ctx);
     const set = buildBenefitExpressions({
-      candidates: [candidate("durability")],
+      candidates: [candidate("color_accuracy")],
       confirmedFacts: factsOf(ctx),
       prohibitedClaims: ctx.prohibitedClaims,
     });
     const safe = set.expressions[0]!.safeExpressions[0]!;
-    expect(safe).toBe("stainless steel — ready for regular use");
+    expect(safe).toBe("Denim — matches the chosen colour");
 
     const draftWith = (bulletText: string, factId: string) => ({
       version: "listing-v5.writer-draft.v1" as const,
@@ -190,7 +191,7 @@ describe("Phase 4 — the layer cannot introduce a hard claim", () => {
       humanReviewRequired: true as const,
     });
 
-    const safeReport = validateListingV5Draft(ctx, strategy, draftWith(safe, "fact-material"));
+    const safeReport = validateListingV5Draft(ctx, strategy, draftWith(safe, "fact-color"));
     expect(safeReport.claims.unsupportedClaims).not.toContain(safe);
     expect(safeReport.status).not.toBe("BLOCK");
 
@@ -252,7 +253,7 @@ describe("Phase 4 — the expressions reach the Writer", () => {
       benefitCandidates: {
         version: LISTING_V5_BENEFIT_CANDIDATE_VERSION,
         source: "evidence" as const,
-        candidates: [candidate("durability")],
+        candidates: [candidate("color_accuracy")],
       },
     };
     callAiJson.mockReset();
@@ -264,10 +265,13 @@ describe("Phase 4 — the expressions reach the Writer", () => {
     expect(callAiJson).toHaveBeenCalledTimes(1);
     const payload = JSON.parse(
       (callAiJson.mock.calls[0]?.[0] as { messages: Array<{ content: string }> }).messages[1]!.content,
-    ) as { benefitExpressions?: { expressions?: Array<{ safeExpressions?: string[]; blockedExpressions?: Array<{ text: string }> }> } };
+    ) as { approvedBenefits?: Array<{ factIds?: string[]; text?: string }>; benefitExpressions?: { expressions?: Array<{ safeExpressions?: string[]; blockedExpressions?: Array<{ text: string }> }> } };
+    expect(payload.approvedBenefits?.length).toBeGreaterThan(0);
+    expect(payload.approvedBenefits?.every((item) => (item.factIds ?? []).length > 0)).toBe(true);
+    expect(payload.approvedBenefits?.some((item) => item.text?.includes("no setup"))).toBe(false);
     const sent = payload.benefitExpressions?.expressions?.[0];
-    expect(sent?.safeExpressions).toEqual(["stainless steel — ready for regular use"]);
-    expect(sent?.blockedExpressions?.map((item) => item.text)).toContain("durable");
+    expect(sent?.safeExpressions).toEqual(["Denim — matches the chosen colour"]);
+    expect(sent?.blockedExpressions?.map((item) => item.text)).toContain("exact match");
   });
 });
 
@@ -289,5 +293,83 @@ describe("Phase 4 — purity", () => {  it("is deterministic and never mutates i
       prohibitedClaims: [],
     });
     expect(JSON.stringify(set)).not.toMatch(/[\u4e00-\u9fff]/);
+  });
+});
+
+describe("Benefit Contract — field boundaries", () => {
+  it("does not let included components imply no setup or installation", () => {
+    const facts = [{
+      id: "fact-components",
+      canonicalField: "included_components",
+      label: "Included components",
+      value: "1 Ghost decoration, 3 Wooden book decorations",
+      sourceRefs: [],
+    }] as ListingV5Fact[];
+    const [entry] = buildBenefitExpressions({
+      candidates: [candidate("ease_of_setup")],
+      confirmedFacts: facts,
+      prohibitedClaims: [],
+    }).expressions;
+    expect(entry?.safeExpressions).toEqual([]);
+    expect(entry?.blockedExpressions.map((item) => item.text)).toEqual(expect.arrayContaining(["no setup", "no installation", "ready to place"]));
+  });
+
+  it("blocks durable when the only material fact is wood", () => {
+    const facts = [{ id: "fact-wood", canonicalField: "material", label: "Material", value: "Wood", sourceRefs: [] }] as ListingV5Fact[];
+    const [entry] = buildBenefitExpressions({
+      candidates: [candidate("durability")],
+      confirmedFacts: facts,
+      prohibitedClaims: [],
+    }).expressions;
+    expect(entry?.safeExpressions).toEqual([]);
+    expect(entry?.blockedExpressions.find((item) => item.text === "durable")?.reason).toBe("hard_claim_token");
+  });
+
+  it("blocks compatibility-style colour promises such as matching every room", () => {
+    const facts = [{ id: "fact-colour", canonicalField: "color_or_variant", label: "Colour", value: "multicolor", sourceRefs: [] }] as ListingV5Fact[];
+    const [entry] = buildBenefitExpressions({
+      candidates: [candidate("color_accuracy")],
+      confirmedFacts: facts,
+      prohibitedClaims: [],
+    }).expressions;
+    expect(entry?.blockedExpressions.map((item) => item.text)).toContain("matches every room");
+  });
+
+  it("admits a conservative included-components benefit", () => {
+    const benefit = buildApprovedFactBenefit({
+      id: "fact-components",
+      canonicalField: "included_components",
+      label: "Included components",
+      value: "1 Ghost decoration, 3 Wooden book decorations",
+      sourceRefs: [],
+    });
+    expect(benefit.referenceOnly).toBe(true);
+    expect(benefit.factIds).toEqual(["fact-components"]);
+    expect(benefit.text).toContain("lists what is included");
+    expect(benefit.text).not.toMatch(/no setup|no installation|ready to use|ready to place/i);
+    expect(JSON.stringify(benefit)).not.toMatch(/confirmed|explains|gives shoppers|compare|referenceOnly/i);
+    expect(JSON.parse(JSON.stringify(benefit))).toEqual({
+      id: "fact-benefit:fact-components",
+      text: "1 Ghost decoration, 3 Wooden book decorations — lists what is included",
+      factIds: ["fact-components"],
+    });
+  });
+
+  it("projects only confirmed-fact benefits for the supported Blueprint version", () => {
+    const facts = [{ id: "fact-qty", canonicalField: "quantity_or_pack_size", label: "Quantity", value: "4 pieces", sourceRefs: [] }] as ListingV5Fact[];
+    const approved = buildApprovedBenefitsForPrompt(facts, { version: LISTING_V5_SUPPORTED_BLUEPRINT_VERSION });
+    expect(approved).toHaveLength(1);
+    expect(approved[0]?.factIds).toEqual(["fact-qty"]);
+    expect(approved[0]?.text).toContain("states the pack quantity");
+    expect(JSON.stringify(approved)).not.toMatch(/no setup|no installation|ready to place|coverage/i);
+    expect(JSON.stringify(approved)).not.toMatch(/confirmed|explains|gives shoppers|compare|referenceOnly/i);
+    expect(buildApprovedBenefitsForPrompt(facts, { version: "listing-v5.conversion-blueprint.v1" })).toEqual([]);
+  });
+
+  it("does not let quantity facts enter size or coverage concepts", () => {
+    const facts = [{ id: "fact-qty", canonicalField: "quantity_or_pack_size", label: "Quantity", value: "4 pieces", sourceRefs: [] }] as ListingV5Fact[];
+    const [entry] = buildBenefitExpressions({ candidates: [candidate("capacity")], confirmedFacts: facts, prohibitedClaims: [] }).expressions;
+    expect(entry?.safeExpressions).toEqual([]);
+    expect(entry?.blockedExpressions.some((item) => item.reason === "no_supporting_fact")).toBe(true);
   });
 });

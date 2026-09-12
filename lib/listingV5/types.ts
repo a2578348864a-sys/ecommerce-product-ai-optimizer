@@ -41,8 +41,12 @@ export const LISTING_V5_STRATEGY_PROMPT_VERSION = "listing-v5-strategy.v6" as co
  * primaryAngle / keywordIntent), requires every bullet to carry fact + benefit + scenario,
  * bans the placeholder sentences the deterministic fallback uses, puts the purchase reason
  * before the product name, and distributes keyword intent across the visible copy.
+ * v8 exposes the conversion brief explicitly (targetBuyer / primaryPurchaseReason /
+ * positioningAngle / bulletPlan) so the Writer can execute one stable shopper-value plan.
+ * v9 makes rating, review count and customer-feedback observations display-only social proof;
+ * they cannot be converted into recommendation, trust, ranking or product-quality language.
  */
-export const LISTING_V5_WRITER_PROMPT_VERSION = "listing-v5-writer.v7" as const;
+export const LISTING_V5_WRITER_PROMPT_VERSION = "listing-v5-writer.v9" as const;
 export const LISTING_V5_REPAIR_PROMPT_VERSION = "listing-v5-repair.v3" as const;
 
 export type ListingV5Reference = {

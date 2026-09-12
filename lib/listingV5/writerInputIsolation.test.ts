@@ -11,7 +11,7 @@ vi.mock("@/lib/server/aiClient", () => ({ callAiJson }));
 
 import { buildListingV5Context } from "./context";
 import { buildListingV5Strategy } from "./strategy";
-import { generateListingV5Draft } from "./generation";
+import { generateListingV5Draft, projectStrategyReferenceForProvider } from "./generation";
 
 const MARKERS = {
   voc: "SHOPPERWORDFROMREVIEWS",
@@ -61,6 +61,20 @@ function context() {
 describe("Writer input isolation (V5.1)", () => {
   beforeEach(() => callAiJson.mockReset());
 
+  it("projects Strategy as reference-only and removes free-text benefit fields", () => {
+    const strategy = buildListingV5Strategy(context());
+    const reference = projectStrategyReferenceForProvider(strategy);
+    expect(reference.referenceOnly).toBe(true);
+    expect(reference.targetAudience).toEqual(strategy.targetAudience);
+    expect(reference.primaryAngle).toBe(strategy.primaryAngle);
+    expect(reference.useCases).toEqual(strategy.useCases);
+    expect(reference.tone).toEqual(strategy.tone);
+    expect(reference.bulletRoles).toEqual(strategy.bulletAngles.map(({ role }) => ({ role })));
+    for (const field of ["purchaseMotivations", "painPoints", "bulletAngles", "benefitCandidates", "evidenceBindings", "benefitPriorityBasis"]) {
+      expect(reference).not.toHaveProperty(field);
+    }
+  });
+
   it("sends no VOC, keyword, competitor or sourcing text to the Writer", async () => {
     callAiJson.mockResolvedValueOnce({
       ok: true,
@@ -89,5 +103,22 @@ describe("Writer input isolation (V5.1)", () => {
     expect(JSON.stringify(facts ?? [])).not.toContain(MARKERS.competitor);
     expect(payload).not.toMatch(/1688|supplier|moq/i);
     expect(payload).toContain("fact-material");
+  });
+
+  it("sends the same reference projection rather than executable Strategy benefits", async () => {
+    callAiJson.mockResolvedValueOnce({ ok: false, providerCallStarted: true, error: { code: "provider_error", message: "stub" } });
+    const strategy = buildListingV5Strategy(context());
+    const params = await generateListingV5Draft(context(), strategy, { useProvider: true });
+    expect(params.providerAttempted).toBe(true);
+    const payload = JSON.parse((callAiJson.mock.calls[0]?.[0] as { messages: Array<{ role: string; content: string }> }).messages.find((message) => message.role === "user")?.content ?? "{}") as { strategy?: Record<string, unknown>; approvedBenefits?: unknown };
+    expect(payload.strategy?.referenceOnly).toBe(true);
+    expect(payload.strategy).toHaveProperty("targetAudience");
+    expect(payload.strategy).toHaveProperty("primaryAngle");
+    expect(payload.strategy).toHaveProperty("tone");
+    expect(payload.strategy).not.toHaveProperty("purchaseMotivations");
+    expect(payload.strategy).not.toHaveProperty("painPoints");
+    expect(payload.strategy).not.toHaveProperty("bulletAngles");
+    expect(payload.strategy).not.toHaveProperty("benefitCandidates");
+    expect(payload.approvedBenefits).toBeDefined();
   });
 });

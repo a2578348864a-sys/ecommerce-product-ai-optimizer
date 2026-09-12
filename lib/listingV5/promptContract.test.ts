@@ -93,6 +93,65 @@ describe("Listing V5 prompt contracts", () => {
     expect(prompt).toMatch(/dishwasher-safe bottle and lid/i);
   });
 
+  it("keeps rating, review count and customer feedback as display-only social proof", async () => {
+    await generateListingV5Draft(context, strategy, { useProvider: true });
+    const prompt = systemPromptOf(0);
+    expect(prompt).toMatch(/SOCIAL PROOF BOUNDARY/i);
+    expect(prompt).toMatch(/confirmed rating and review count are display-only information/i);
+    expect(prompt).toMatch(/state the exact rating and exact review count/i);
+    expect(prompt).toMatch(/customer-feedback observation as an attributed reference/i);
+    expect(prompt).toMatch(/never turn social proof into a product-quality judgment, trust signal, ranking, recommendation/i);
+    expect(prompt).toMatch(/Social proof is not an approved benefit and cannot license a product claim/i);
+    for (const phrase of [
+      "straightforward pick",
+      "great choice",
+      "smart choice",
+      "trusted option",
+      "customer favorite",
+      "recommended choice",
+    ]) {
+      expect(prompt).toContain(phrase);
+    }
+    expect(prompt).toMatch(/Rated 4\.7 from 48,559 reviews/i);
+  });
+
+  it("keeps social proof display-only and blocks readiness wording from included components", async () => {
+    await generateListingV5Draft(context, strategy, { useProvider: true });
+    const prompt = systemPromptOf(0);
+
+    // A rating may be shown only as an exact, standalone display sentence; it
+    // cannot be attached to a feature or turned into a benefit or recommendation.
+    expect(prompt).toMatch(/SOCIAL PROOF OUTPUT FORM \(strict\)/i);
+    expect(prompt).toMatch(/one standalone display-only sentence/i);
+    expect(prompt).toMatch(/4\.7 rating from 48,559 reviews/i);
+    expect(prompt).toMatch(/Do not write "it is rated \.{3}"/i);
+    expect(prompt).toMatch(/Never place social proof in approvedBenefits, shopperValue, pain relief, or scenario framing/i);
+    for (const phrase of ["trusted", "recommended", "great choice"]) {
+      expect(prompt).toContain(phrase);
+    }
+
+    // Included components can support a packing action, but may not be
+    // inflated into a product readiness state that the facts do not state.
+    expect(prompt).toMatch(/READY-WORDING BOUNDARY \(strict\)/i);
+    for (const phrase of ["ready to grab", "ready to use", "ready for school", "ready for lunch"]) {
+      expect(prompt).toContain(phrase);
+    }
+    expect(prompt).toMatch(/unless that exact state is a Confirmed Fact/i);
+  });
+
+  it("does not infer usage state or result from an included component and lunch scenario", async () => {
+    await generateListingV5Draft(context, strategy, { useProvider: true });
+    const prompt = systemPromptOf(0);
+    expect(prompt).toMatch(/COMPONENT ACTION BOUNDARY \(strict\)/i);
+    expect(prompt).toMatch(/describe pack contents and the shopper's packing action only/i);
+    for (const phrase of ["opened at lunch", "when opened", "during use", "after opening", "eating", "has a spoon"]) {
+      expect(prompt).toContain(phrase);
+    }
+    expect(prompt).toMatch(/A confirmed usage scenario may frame when the shopper packs or carries the product/i);
+    expect(prompt).toMatch(/The set includes a food jar with unfolding spoon/i);
+    expect(prompt).toMatch(/cannot turn an included component into a claim about what happens when the product is opened or used/i);
+  });
+
   /**
    * Measured on the real Case-D chain (2026-09-12, deepseek-v4-flash): the provider
    * strategy phrased a bullet angle as an outcome ("designed for small desks where the

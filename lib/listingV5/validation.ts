@@ -1,6 +1,7 @@
 import { verifyListingClaims } from "@/lib/listingHandoff/listingClaimEvidenceResolver";
 import type { ListingGenerationInput } from "@/lib/listingHandoff/listingGenerationInput";
 import { factAnchorValues } from "./context";
+import { buildApprovedFactBenefit, type ListingV5ApprovedFactBenefit } from "./benefitExpression";
 import { LISTING_V5_VALIDATION_VERSION } from "./types";
 import {
   ABSOLUTE_HEAD_NOUNS,
@@ -121,6 +122,83 @@ function confirmedModelCodes(context: ListingV5Context): string[] {
 const EXACT_VARIANT_PROMOTION_PATTERNS: RegExp[] = [
   /\b(?:check|checks|checking|confirm|confirms|confirming|verify|verifies|verifying)\s+the\s+exact\s+variant\b/i,
 ];
+
+/**
+ * A benefit is allowed to clear the resolver's generic unsupported-claim
+ * finding only when it is the exact deterministic clause emitted by the
+ * approved fact-benefit contract. These words are deliberately only grammar
+ * words; the field-specific nouns (material, compare, variant, pieces, set)
+ * remain required below.
+ */
+const APPROVED_BENEFIT_GRAMMAR = new Set([
+  "a", "an", "the", "for", "to", "of", "and", "in", "on", "with", "from", "by", "as", "into", "onto",
+  "you", "your", "shoppers", "shopper", "users", "user", "it", "this", "that", "these", "those",
+  "can", "may", "will", "must", "should", "would", "could", "do", "does", "did", "be", "been", "being",
+  "gives", "give", "shows", "show", "clarifies", "clarify", "sets", "set", "states", "state", "explains", "explain",
+  "helps", "help", "means", "makes", "make", "lets", "let", "allows", "allow", "knowing",
+]);
+
+const APPROVED_BENEFIT_DENIALS: readonly RegExp[] = [
+  /\bno\s+(?:setup|installation)\b/i,
+  /\bready\s+to\s+place\b/i,
+  /\bfits?\s+every\s+room\b/i,
+  /\bcovers?\s+(?:a\s+)?large\s+area\b/i,
+];
+
+function canonicalApprovedBenefits(
+  context: ListingV5Context,
+  supplied: readonly ListingV5ApprovedFactBenefit[] | undefined,
+): ListingV5ApprovedFactBenefit[] {
+  const canonicalById = new Map(context.confirmedFacts.map((fact) => [fact.id, buildApprovedFactBenefit(fact)] as const));
+  const candidates = supplied === undefined ? [...canonicalById.values()] : supplied;
+  return candidates.filter((candidate) => {
+    if (!candidate || candidate.referenceOnly !== true || candidate.source !== "confirmed_fact" || candidate.kind !== "semantic_benefit") return false;
+    if (!Array.isArray(candidate.factIds) || candidate.factIds.length !== 1) return false;
+    const canonical = canonicalById.get(candidate.factIds[0]!);
+    return canonical !== undefined
+      && candidate.id === canonical.id
+      && normalize(candidate.text) === normalize(canonical.text);
+  });
+}
+
+function approvedBenefitClauseTokens(benefit: ListingV5ApprovedFactBenefit): string[] {
+  const clause = benefit.text.split(" — ").slice(1).join(" — ");
+  return words(clause).filter((token) => !APPROVED_BENEFIT_GRAMMAR.has(token));
+}
+
+/**
+ * Returns true only for a sentence that contains a canonical confirmed value
+ * and the corresponding approved semantic clause. Hard claims, uncovered
+ * attributes, unknown model codes and explicit overreach phrases always keep
+ * the sentence in the normal failure path.
+ */
+function isApprovedBenefitSegment(
+  segment: string,
+  context: ListingV5Context,
+  approvedBenefits: readonly ListingV5ApprovedFactBenefit[],
+  allowedValues: readonly string[],
+  modelCodes: readonly string[],
+): boolean {
+  if (APPROVED_BENEFIT_DENIALS.some((pattern) => pattern.test(segment))) return false;
+  const segmentTokens = new Set(normalizeTokens(segment));
+  const allConfirmedTokens = new Set(allowedValues.flatMap((value) => contentTokens(value)));
+  if (uncoveredHardTokens(segment, segmentTokens, allConfirmedTokens).length > 0) return false;
+  if (uncoveredAttributeAssertions(segment, segmentTokens, allConfirmedTokens, modelCodes).length > 0) return false;
+  // The model-code detector may split a hyphenated value differently from the
+  // fact token set. The approved benefit still has to carry that exact model
+  // fact; use the benefit's own value as the authority for this check.
+  const segmentModels = modelCodeTokensIn(segment);
+
+  return approvedBenefits.some((benefit) => {
+    const fact = context.confirmedFacts.find((candidate) => candidate.id === benefit.factIds[0]);
+    if (!fact) return false;
+    if (segmentModels.length > 0 && segmentModels.some((token) => normalizeModelCode(token) !== normalizeModelCode(fact.value))) return false;
+    const factValues = factAnchorValues(fact).flatMap((value) => contentTokens(value));
+    if (factValues.length === 0 || !factValues.every((token) => segmentTokens.has(token))) return false;
+    const clauseTokens = approvedBenefitClauseTokens(benefit);
+    return clauseTokens.length > 0 && clauseTokens.every((token) => segmentTokens.has(token));
+  });
+}
 
 function unbackedPromotionClauses(segment: string): string[] {
   const found: string[] = [];
@@ -570,7 +648,12 @@ const MAX_REPAIR_TARGETS = 3;
 /** Bound on the reported violation evidence, resolver-derived and scanned alike. */
 const MAX_UNSUPPORTED_DETAILS = 10;
 
-export function validateListingV5Draft(context: ListingV5Context, strategy: ListingV5Strategy, draft: ListingV5WriterDraft): ListingV5ValidationResult {
+export function validateListingV5Draft(
+  context: ListingV5Context,
+  strategy: ListingV5Strategy,
+  draft: ListingV5WriterDraft,
+  approvedBenefits?: readonly ListingV5ApprovedFactBenefit[],
+): ListingV5ValidationResult {
   const allowed = new Set(context.confirmedFacts.map((fact) => fact.id));
   const titleIssues: string[] = [];
   if (!draft.title.text.trim()) titleIssues.push("title_empty");
@@ -615,9 +698,14 @@ export function validateListingV5Draft(context: ListingV5Context, strategy: List
   // Confirmed series/model codes: evidence for their own exact token, and the only
   // thing that may keep a model-shaped code from being reported as unsupported.
   const modelCodes = confirmedModelCodes(context);
+  // The default is derived from Confirmed Facts so existing callers remain
+  // safe. A supplied list is accepted only after canonical re-validation
+  // against the same fact-only contract; arbitrary semantic text is ignored.
+  const canonicalBenefits = canonicalApprovedBenefits(context, approvedBenefits);
   const unsupportedDetails: ListingV5UnsupportedDetail[] = evidence.unsupportedClaims
-    .filter((item) => item.reason !== "unclassified_factual_claim"
-      || !isAnchoredToConfirmedValue(item.text, allowedValues, modelCodes))
+    .filter((item) => !isApprovedBenefitSegment(item.text, context, canonicalBenefits, allowedValues, modelCodes)
+      && (item.reason !== "unclassified_factual_claim"
+        || !isAnchoredToConfirmedValue(item.text, allowedValues, modelCodes)))
     .slice(0, MAX_UNSUPPORTED_DETAILS)
     .map((item) => {
       const violation = describeUnsupportedSegment(item.text, allowedValues, modelCodes);
@@ -643,7 +731,25 @@ export function validateListingV5Draft(context: ListingV5Context, strategy: List
       const key = normalize(segment);
       if (!key || alreadyFlagged.has(key)) continue;
       alreadyFlagged.add(key);
+      if (isApprovedBenefitSegment(segment, context, canonicalBenefits, allowedValues, modelCodes)) continue;
       const violation = describeUnsupportedSegment(segment, allowedValues, modelCodes);
+      if (APPROVED_BENEFIT_DENIALS.some((pattern) => pattern.test(segment))) {
+        // Keep the richer hard/attribute classification whenever one exists;
+        // this branch only supplies a finding for phrases such as "no setup"
+        // that the generic detectors intentionally do not tokenize as claims.
+        if (violation.issueCode !== "unsupported_claim") {
+          scannedDetails.push({ text: segment, reason: "unclassified_factual_claim", field: entry.field, ...violation });
+          continue;
+        }
+        scannedDetails.push({
+          text: segment,
+          reason: "unclassified_factual_claim",
+          field: entry.field,
+          issueCode: "unsupported_claim",
+          offendingSpans: [],
+        });
+        continue;
+      }
       // "unsupported_claim" means no offending word was identified, so the
       // sentence stays with the resolver-derived set only.
       if (violation.issueCode === "unsupported_claim") continue;
