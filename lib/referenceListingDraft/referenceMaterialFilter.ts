@@ -18,6 +18,7 @@ import type {
   ExcludedMaterialItem,
   ReferenceDraftReadiness,
   ReferenceMaterialSourceKind,
+  ReferenceCreativeStats,
 } from "./referenceDraftContract";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -40,6 +41,11 @@ const ALLOWED_FIELDS = new Set<string>([
   "dimensions",
   "included_components",
   "capacity",
+  "material",
+  "weight",
+  "care",
+  "functional_feature",
+  "operation",
 ]);
 
 const FIELD_CHINESE_LABELS: Record<string, string> = {
@@ -59,6 +65,8 @@ const FIELD_CHINESE_LABELS: Record<string, string> = {
   category: "类目",
   weight: "重量",
   functional_feature: "功能特性",
+  care: "清洁保养",
+  operation: "操作方式",
 };
 
 /** 高风险声明模式校验（值级审查） */
@@ -110,12 +118,49 @@ export const SUBSTANTIVE_FIELDS = new Set<string>([
   "dimensions",
   "included_components",
   "capacity",
+  "material",
+  "weight",
+  "care",
+  "functional_feature",
+  "operation",
 ]);
 
 /**
- * 校验值是否包含高风险内容
+ * 校验值是否包含高风险内容。
+ * 对于已人工确认的事实（isConfirmed），若属于对应合法规格字段（如 material、care、functional_feature、operation、weight），
+ * 不将客观材料名或保养方法当作未核实声明拦截，但严格拦截绝对化吹嘘与医疗认证。
  */
-export function checkValueRisk(value: string): string | null {
+export function checkValueRisk(value: string, field = "", isConfirmed = false): string | null {
+  // 无论是否确认，空泛营销词与绝对化保证一律拦截
+  if (/(?:\b(?:premium|perfect|best|durable)\b)|(?:极佳|顶级|完美)/i.test(value)) {
+    return "包含空泛营销词，不作为客观规格";
+  }
+  if (/(?:\b(?:no-trace|never\s*fall|fall-off|permanent|lifetime|guarantee|warranty)\b)|(?:永不脱落|无痕|终身|保修)/i.test(value)) {
+    return "包含绝对化或未核实的品质保证声明";
+  }
+  if (/(?:\b(?:medical|fda|ce\s*cert)\b)|(?:医疗|认证)/i.test(value)) {
+    return "包含未核实的医疗/认证声明";
+  }
+
+  // 若为人工已确认事实，在自身语义字段中放行客观属性
+  if (isConfirmed) {
+    if (field === "material" && /(?:\b(?:304|316|stainless\s*steel|titanium|plastic|glass|silicone|ceramic|aluminum)\b)|(?:不锈钢|纯钛|塑料|玻璃|硅胶|陶瓷|铝)/i.test(value)) {
+      return null;
+    }
+    if (field === "care" && /(?:\b(?:dishwasher-safe|dishwasher\s*safe|hand\s*wash|heat-resistant)\b)|(?:可机洗|洗碗机|手洗|耐高温)/i.test(value)) {
+      return null;
+    }
+    if (field === "functional_feature" && /(?:\b(?:vacuum\s*insulated|insulated|leakproof|leak-proof|leak\s*resistant)\b)|(?:真空保温|保温|防漏)/i.test(value)) {
+      return null;
+    }
+    if (field === "operation" && /(?:\b(?:latch|button|push\s*button|twist|flip)\b)|(?:卡扣|按键|旋钮|翻盖)/i.test(value)) {
+      return null;
+    }
+    if (field === "weight") {
+      return null;
+    }
+  }
+
   for (const rule of HIGH_RISK_VALUE_RULES) {
     if (rule.pattern.test(value)) {
       return rule.reason;
@@ -216,6 +261,7 @@ export function filterReferenceMaterials(input: FilterReferenceMaterialsInput): 
       excludedCount: 0,
       adoptedMaterials: [],
       excludedMaterials: [],
+      referenceStats: { keywordCount: 0, vocCount: 0, competitorCount: 0, hasSourcing: false },
       sourceFingerprint: "",
     };
   }
@@ -234,6 +280,13 @@ export function filterReferenceMaterials(input: FilterReferenceMaterialsInput): 
 
   const adoptedMap = new Map<string, ReferenceMaterialItem>();
   const excludedMaterials: ExcludedMaterialItem[] = [];
+  const excludedKeys = new Set<string>();
+  const pushExcluded = (item: ExcludedMaterialItem) => {
+    const key = `${item.field}::${normalizeSpecValue(item.value)}::${item.reason.trim()}`;
+    if (excludedKeys.has(key)) return;
+    excludedKeys.add(key);
+    excludedMaterials.push(item);
+  };
   const conflictedFields = new Set<string>();
 
   // 辅助函数：尝试采纳或记录排除
@@ -250,7 +303,7 @@ export function filterReferenceMaterials(input: FilterReferenceMaterialsInput): 
 
     // 检查是否为市场观察字段
     if (MARKET_OBSERVATION_FIELDS.has(field)) {
-      excludedMaterials.push({
+      pushExcluded({
         field,
         label,
         value: val,
@@ -261,37 +314,29 @@ export function filterReferenceMaterials(input: FilterReferenceMaterialsInput): 
 
     // 检查字段白名单
     if (!ALLOWED_FIELDS.has(field)) {
-      // 常见排除字段的友好说明
       let reason = "字段不在参考初稿基础规格白名单内";
-      if (field === "material") {
-        reason = "材质字段未确认安全等级，暂不用于参考初稿";
-      } else if (field === "weight") {
-        reason = "重量/承重属性需专项核验，暂不用于参考初稿";
-      } else if (field === "functional_feature") {
-        reason = "功能特性需人工核实真实依据，暂不作为硬属性";
-      }
-      excludedMaterials.push({ field, label, value: val, reason });
+      pushExcluded({ field, label, value: val, reason });
       return;
     }
 
-    // 特殊：容量 capacity 只能是明确的液体容积 (fl oz / ml / L)，绝不能是重量 (lb/kg) 或仅写 oz
+    // 特殊：容量 capacity 容积单位（fl oz / fluid ounce / oz / 盎司 / ml / l / liter / qt / gallon）
     if (field === "capacity") {
-      const isExplicitLiquidVolume = /\b(\d+(?:\.\d+)?)\s*(?:fl\.?\s*oz\.?|fluid\s*ounces?|ml|milliliters?|l|liters?|gallons?|qt|quarts?)\b/i.test(val);
+      const isExplicitLiquidVolume = /\b(\d+(?:\.\d+)?)\s*(?:fl\.?\s*oz\.?|fluid\s*ounces?|oz\.?|ounces?|盎司|ml|milliliters?|l|liters?|gallons?|qt|quarts?)\b/i.test(val);
       if (!isExplicitLiquidVolume) {
-        excludedMaterials.push({
+        pushExcluded({
           field,
           label,
           value: val,
-          reason: "容量必须明确为液体容积单位（fl oz / ml / L），仅标注 oz 可能为重量盎司，暂不采用",
+          reason: "容量必须包含明确的容积规格数值与单位（如 10oz / 300ml），暂不采用",
         });
         return;
       }
     }
 
     // 检查值是否含高风险声明
-    const riskReason = checkValueRisk(val);
+    const riskReason = checkValueRisk(val, field, isConfirmed);
     if (riskReason) {
-      excludedMaterials.push({
+      pushExcluded({
         field,
         label,
         value: val,
@@ -325,7 +370,7 @@ export function filterReferenceMaterials(input: FilterReferenceMaterialsInput): 
       // 只要值不完全相同（如 4-Pack vs 14-Pack, 12 vs 312, Black vs Matte Black），一律视为冲突排除，不使用模糊 includes
       conflictedFields.add(field);
       adoptedMap.delete(field);
-      excludedMaterials.push({
+      pushExcluded({
         field,
         label,
         value: `${existing.value} vs ${val}`,
@@ -367,7 +412,7 @@ export function filterReferenceMaterials(input: FilterReferenceMaterialsInput): 
     let rejected = false;
     if (asin && snapAsin && snapAsin.toUpperCase() !== asin.toUpperCase()) {
       rejected = true;
-      excludedMaterials.push({
+      pushExcluded({
         field: "snapshot_asin_mismatch",
         label: "页面规格快照",
         value: snapAsin,
@@ -375,7 +420,7 @@ export function filterReferenceMaterials(input: FilterReferenceMaterialsInput): 
       });
     } else if (targetMarket && snapMarket && snapMarket !== targetMarket) {
       rejected = true;
-      excludedMaterials.push({
+      pushExcluded({
         field: "snapshot_market_mismatch",
         label: "页面规格快照",
         value: snapMarket,
@@ -421,7 +466,7 @@ export function filterReferenceMaterials(input: FilterReferenceMaterialsInput): 
     const rawKind = String(cand.sourceKind || "");
     const mappedKind = KNOWN_SOURCE_MAP[rawKind];
     if (!mappedKind) {
-      excludedMaterials.push({
+      pushExcluded({
         field: cand.field,
         label: FIELD_CHINESE_LABELS[cand.field] || cand.field,
         value: String(cand.value),
@@ -445,7 +490,7 @@ export function filterReferenceMaterials(input: FilterReferenceMaterialsInput): 
       mappedKind === "amazon_browser_evidence" &&
       (isFromRejectedSnapshotIndex || containsRejectedAsin || matchesRejectedFact)
     ) {
-      excludedMaterials.push({
+      pushExcluded({
         field: cand.field,
         label: FIELD_CHINESE_LABELS[cand.field] || cand.field,
         value: String(cand.value),
@@ -476,7 +521,7 @@ export function filterReferenceMaterials(input: FilterReferenceMaterialsInput): 
 
   // 记录未采纳的外部资料（1688、买家评论、竞品）
   if (result.sourcingEvidence || result.sourcingSnapshot || (result.agentOutputSnapshot && isRecord(result.agentOutputSnapshot) && result.agentOutputSnapshot.sourcingSnapshot)) {
-    excludedMaterials.push({
+    pushExcluded({
       field: "sourcing",
       label: "1688货源",
       value: "已有货源线索或报价记录",
@@ -484,7 +529,7 @@ export function filterReferenceMaterials(input: FilterReferenceMaterialsInput): 
     });
   }
   if (result.reviewEvidence || result.vocAnalysis || result.painPoints) {
-    excludedMaterials.push({
+    pushExcluded({
       field: "voc",
       label: "买家评论与痛点",
       value: "已有买家声音分析记录",
@@ -492,7 +537,7 @@ export function filterReferenceMaterials(input: FilterReferenceMaterialsInput): 
     });
   }
   if (result.competitorEvidence || result.competitors) {
-    excludedMaterials.push({
+    pushExcluded({
       field: "competitor",
       label: "竞品资料",
       value: "已有竞品 ASIN 资料",
@@ -501,6 +546,45 @@ export function filterReferenceMaterials(input: FilterReferenceMaterialsInput): 
   }
 
   const adoptedMaterials = Array.from(adoptedMap.values());
+
+  // 提取创作参考统计信息
+  let keywordCount = 0;
+  if (isRecord(result.keywordEvidence) && Array.isArray(result.keywordEvidence.rows)) {
+    keywordCount = result.keywordEvidence.rows.length;
+  } else if (Array.isArray(result.keywords)) {
+    keywordCount = result.keywords.length;
+  }
+
+  let vocCount = 0;
+  if (isRecord(result.reviewEvidence) && isRecord(result.reviewEvidence.dataset) && Array.isArray(result.reviewEvidence.dataset.reviews)) {
+    vocCount = result.reviewEvidence.dataset.reviews.length;
+  } else if (isRecord(result.vocAnalysis) && isRecord(result.vocAnalysis.datasetSnapshot) && typeof result.vocAnalysis.datasetSnapshot.totalReviews === "number") {
+    vocCount = result.vocAnalysis.datasetSnapshot.totalReviews;
+  } else if (isRecord(result.reviewEvidence) && Array.isArray(result.reviewEvidence.reviews)) {
+    vocCount = result.reviewEvidence.reviews.length;
+  } else if (Array.isArray(result.painPoints)) {
+    vocCount = result.painPoints.length;
+  }
+
+  let competitorCount = 0;
+  if (isRecord(result.competitorEvidence) && Array.isArray(result.competitorEvidence.asins)) {
+    competitorCount = result.competitorEvidence.asins.length;
+  } else if (Array.isArray(result.competitors)) {
+    competitorCount = result.competitors.length;
+  }
+
+  const hasSourcing = Boolean(
+    result.sourcingEvidence ||
+    result.sourcingSnapshot ||
+    (isRecord(result.agentOutputSnapshot) && result.agentOutputSnapshot.sourcingSnapshot)
+  );
+
+  const referenceStats: ReferenceCreativeStats = {
+    keywordCount,
+    vocCount,
+    competitorCount,
+    hasSourcing,
+  };
 
   // 计算指纹
   const fingerprintRaw = [
@@ -528,6 +612,7 @@ export function filterReferenceMaterials(input: FilterReferenceMaterialsInput): 
     excludedCount: excludedMaterials.length,
     adoptedMaterials,
     excludedMaterials,
+    referenceStats,
     sourceFingerprint,
   };
 }

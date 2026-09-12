@@ -1167,12 +1167,18 @@ async function handleSourcingSource(
           ACTIVE_SOURCING_JOBS.delete(taskId);
         }
       } else if (activeJob.status === "failed") {
-        return {
-          status: "failed",
-          hasEvidence: false,
-          message: activeJob.message || "1688 图搜未成功",
-          error: activeJob.error,
-        };
+        // 失败任务只应在只读检查时保留给用户查看；下一次统一编排必须
+        // 清除旧的失败占位，重新进入 acquireByImage，避免“重试”永远
+        // 返回同一条失败记录而没有真实发起新采集。
+        if (action === "inspect") {
+          return {
+            status: "failed",
+            hasEvidence: false,
+            message: activeJob.message || "1688 图搜未成功",
+            error: activeJob.error,
+          };
+        }
+        ACTIVE_SOURCING_JOBS.delete(taskId);
       }
     }
 

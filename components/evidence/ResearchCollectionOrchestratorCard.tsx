@@ -985,7 +985,7 @@ export function ResearchCollectionOrchestratorCard({
             type="button"
             data-testid="btn-orchestrate"
             onClick={handleOrchestrate}
-            disabled={isOrchestrating || isInspecting || retryingSource !== null}
+            disabled={isOrchestrating || retryingSource !== null}
             className="inline-flex h-9 w-full sm:w-auto items-center justify-center gap-1.5 rounded-xl bg-slate-900 px-4 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-slate-800 active:bg-slate-950 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
           >
             {isOrchestrating ? (
@@ -1177,7 +1177,7 @@ export function ResearchCollectionOrchestratorCard({
                         setRetryingSource("amazon");
                         void handleOrchestrate();
                       }}
-                      disabled={isOrchestrating || isInspecting || retryingSource !== null}
+                      disabled={isOrchestrating || retryingSource !== null}
                       className="inline-flex items-center justify-center gap-1 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 px-2.5 py-1.5 text-xs font-semibold shadow-sm transition-colors disabled:opacity-50"
                     >
                       <RotateCw className="h-3.5 w-3.5" />
@@ -1209,7 +1209,7 @@ export function ResearchCollectionOrchestratorCard({
                         void handleOrchestrate();
                       }
                     }}
-                    disabled={isOrchestrating || isInspecting || retryingSource !== null}
+                    disabled={isOrchestrating || retryingSource !== null}
                     className="inline-flex items-center justify-center gap-1 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 px-3 py-1.5 text-xs font-semibold shadow-sm transition-colors disabled:opacity-50"
                   >
                     <RotateCw className="h-3.5 w-3.5" />

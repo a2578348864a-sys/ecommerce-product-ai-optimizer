@@ -26,10 +26,10 @@ export default async function ListingStudioPage({ searchParams }: ListingStudioP
             <div className="studio-header-row">
               <div className="min-w-0">
                 <p className="text-xs font-bold uppercase tracking-[0.14em] text-emerald-700">
-                  AI Content Workspace
+                  AI 创作工作台
                 </p>
                 <div className="mt-0.5 flex flex-wrap items-center gap-3">
-                  <h1 className="text-2xl font-bold tracking-tight text-slate-900">Listing Studio</h1>
+                  <h1 className="text-2xl font-bold tracking-tight text-slate-900">文案工作台</h1>
                   <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-0.5 text-xs font-bold text-emerald-700">
                     {sourceLabel}
                   </span>

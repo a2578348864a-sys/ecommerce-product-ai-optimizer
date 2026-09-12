@@ -37,8 +37,8 @@ export function buildV4NavGroups(runtime: SidebarRuntime): ReadonlyArray<{
     { label: "研究记录", href: "/tasks", icon: History },
   ];
   const creativeItems: SidebarNavItem[] = [
-    { label: "Listing Studio", href: "/listing-studio", icon: FileText },
-    { label: "Image Studio", href: "/image-studio", icon: Images },
+    { label: "文案工作台", href: "/listing-studio", icon: FileText },
+    { label: "图片工作台", href: "/image-studio", icon: Images },
   ];
   if (runtime.mode === "public_showcase") {
     // 公网 HR 演示收口：侧栏只显示「首页」与「完整商品案例」（不出现密码锁/旧工作台入口）。
