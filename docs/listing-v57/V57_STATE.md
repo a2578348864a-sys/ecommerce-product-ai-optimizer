@@ -1,5 +1,9 @@
 # Listing V5.7 — 冻结状态
 
+> **版本提示（2026-09-12）**：本文件是 **V5.7（提交 `235e11b`）当时的冻结记录**，其中的版本号与指纹属于那次冻结。
+> 代码当前已到 **v6**：Validator `listing-v5.validation.v6`、Writer `listing-v5-writer.v6`、Strategy `listing-v5-strategy.v6`（Repair `listing-v5-repair.v3`）。
+> 最新冻结审计见 `docs/listing-v5/FINAL_FREEZE_V6.md`。历史记录不回溯改写。
+
 > 本文件是 Listing V5.7 的**交付冻结记录**：版本、可复现基线、已交付修复、已知限制与证据位置。
 > 面向需要核对"当前到底是什么版本、能不能复现"的读者。实验过程见同目录 `RESEARCH_LOG.md`。
 

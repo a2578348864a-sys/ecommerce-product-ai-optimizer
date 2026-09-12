@@ -269,10 +269,13 @@ npm run build
 
 ---
 
-## Listing V5.7 — 当前冻结状态（2026-09-11）
+## Listing V5.7 — 冻结里程碑（2026-09-11，历史记录）
+
+> **当前版本已前进到 v6（2026-09-12）**：Validator `listing-v5.validation.v6`、Writer prompt `listing-v5-writer.v6`、Strategy prompt `listing-v5-strategy.v6`（Repair 仍为 `listing-v5-repair.v3`）。
+> 最新冻结记录见 `docs/listing-v5/FINAL_FREEZE_V6.md`；本节保留 V5.7 当时的冻结事实，不改写。
 
 **冻结提交**：`235e11b`（其上为 `6f8d6a5`、`e017018`）；分支 `feat/listing-v5-rebuild`。
-**版本**：Validator `listing-v5.validation.v4`、Writer `listing-v5-writer.v4`、Strategy `listing-v5-strategy.v4`。
+**版本（V5.7 当时）**：Validator `listing-v5.validation.v4`、Writer `listing-v5-writer.v4`、Strategy `listing-v5-strategy.v4`。
 
 **生成链路（有界，不无限重试）**：
 `writer → validate →（REPAIRABLE）repair ≤1 → validate →（未 PASS）rewrite ≤1 → validate →（REPAIRABLE 且 repair 未用过）repair ≤1 → validate →（未 PASS）recovery ≤1 → validate → 确定性 fallback`

@@ -6,6 +6,7 @@
 - **本文件只做规划，不含任何代码改动。** 所有类型/接口/伪代码仅存在于本文件的 markdown 代码块中。本次交付仅新增本文件（`git status` 中本仓库唯一新增项为 `?? docs/listing-strategy-planner/`）。
 - **依据**：对下列真实文件的只读复核 —— `app/api/tasks/[id]/listing-v5/route.ts`、`lib/listingV5/{types,context,strategy,generation,trace,conversionBlueprint}.ts`、`lib/server/aiClient.ts`、`lib/creativeContextBuilder.ts`、`lib/server/taskResultJsonMutation.ts`、`vitest.config.ts`，以及 `lib/listingV5/*.test.ts`、`app/api/tasks/[id]/listing-v5/route*.test.ts` 的既有断言。
 - **未提交现状**：工作区存在他人未提交改动（`components/listing-studio/*`、`components/listing-v5/ListingStudioV5Client.tsx`、`docs/**` 归档移动等）。本计划不依赖、不触碰这些文件。
+- **版本提示（2026-09-12）**：本文件中「现状 `listing-v5-*.v4`」的记号是**规划时快照**。代码当前为 v6（Validator `listing-v5.validation.v6`、Writer `listing-v5-writer.v6`、Strategy `listing-v5-strategy.v6`）；本文档 §表格中的 `v4 → v5` 迁移列因此只作历史参考，落地前需按当前版本重新核对。最新冻结审计见 `docs/listing-v5/FINAL_FREEZE_V6.md`。
 
 ---
 
