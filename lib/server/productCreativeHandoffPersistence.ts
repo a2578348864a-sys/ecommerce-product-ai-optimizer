@@ -317,9 +317,11 @@ export async function createOrAppendCreativeHandoff(
       if (gate.ledgerInvalid) {
         throw new CreativeHandoffPersistenceError("idempotency_ledger_invalid", 500, "幂等账本合同结构异常，已阻止写入。");
       }
-      // 无人工确认事实（no_confirmed_facts）→ 由输入候选的 confirmedFacts 决定；
-      // 研究数据本身合法时允许走写入，Route 层已按选择过滤（无选择 → no_facts_selected）。
-      if (!gate.allowed && gate.reason !== "no_confirmed_facts") {
+      // 无创作交接确认（no_confirmed_facts / creative_confirmation_required）→
+      // 由输入候选或研究侧已确认事实决定；其它门禁状态仍 fail-closed。
+      if (!gate.allowed
+        && gate.reason !== "no_confirmed_facts"
+        && gate.reason !== "creative_confirmation_required") {
         throw new CreativeHandoffPersistenceError("research_gate_failed", 422, "当前研究状态不允许创建创作交接。");
       }
       if (!gate.candidate) {

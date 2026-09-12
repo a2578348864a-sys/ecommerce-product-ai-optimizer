@@ -184,6 +184,8 @@ function isApprovedBenefitSegment(
   const allConfirmedTokens = new Set(allowedValues.flatMap((value) => contentTokens(value)));
   if (uncoveredHardTokens(segment, segmentTokens, allConfirmedTokens).length > 0) return false;
   if (uncoveredAttributeAssertions(segment, segmentTokens, allConfirmedTokens, modelCodes).length > 0) return false;
+  if (uncoveredSemanticExtensions(segment, allConfirmedTokens).length > 0) return false;
+  if (uncoveredScopeExtensions(segment, context.confirmedFacts).length > 0) return false;
   // The model-code detector may split a hyphenated value differently from the
   // fact token set. The approved benefit still has to carry that exact model
   // fact; use the benefit's own value as the authority for this check.
@@ -487,24 +489,174 @@ function surfaceSpansForModelCodes(segment: string, tokens: readonly string[]): 
 }
 
 /**
+ * Unbacked semantic extensions that assert attributes/outcomes beyond confirmed facts:
+ * 1. Spatial container fit/crowding assertions ("without crowding space", "fits into a lunch box", "fits into a lunch bag")
+ * 2. Closure / security / locking guarantees ("keeps ... closed until you open", "keeps lid secure")
+ * 3. Structural durability / daily use strength ("solid construction", "supports daily use", "makes it durable")
+ * 4. Portability causality assertions ("makes it easier to carry")
+ * 5. Thermal retention performance claims ("supports temperature retention", "temperature assurance")
+ * 6. Audience / demographic exclusivity ("for girls", "for boys")
+ * 7. Component expansion ("bottle and lid" when "bottle" is not in confirmed facts)
+ */
+function uncoveredSemanticExtensions(segment: string, allConfirmedTokens: Set<string>): string[] {
+  const offenders: string[] = [];
+
+  // 1. Spatial fit / container crowding assertions without confirmed container compatibility
+  const crowdingMatch = /\b(?:without|avoids?)\s+crowding\b/i.exec(segment);
+  if (crowdingMatch) {
+    offenders.push(crowdingMatch[0]);
+  }
+  const containerFitMatch = /\b(?:fits?|slips?|slots?)\s+(?:easily\s+|neatly\s+|perfectlys?\s+)?(?:into|in)\s+(?:a\s+|an\s+|the\s+)?(?:lunch\s*box|lunch\s*bag|backpack|pocket|cup\s*holder|drawer)\b/i.exec(segment);
+  if (containerFitMatch) {
+    offenders.push(containerFitMatch[0]);
+  }
+  const sizeFitsMatch = /\b(?:size|dimensions?)\s+fits?\s+(?:into|in)\b/i.exec(segment);
+  if (sizeFitsMatch) {
+    offenders.push(sizeFitsMatch[0]);
+  }
+  const sizedForMatch = /\bsized\s+for\s+(?:a\s+|an\s+|the\s+)?(?:lunch\s*box|lunch\s*bag|backpack)\b/i.exec(segment);
+  if (sizedForMatch) {
+    offenders.push(sizedForMatch[0]);
+  }
+
+  // 2. Closure / security / locking guarantees
+  const closedUntilMatch = /\bkeeps?\s+(?:the\s+)?(?:lid|door|cover|cap)\s+closed\s+until\b/i.exec(segment);
+  if (closedUntilMatch) {
+    offenders.push(closedUntilMatch[0]);
+  }
+  const lidSecureMatch = /\bkeeps?\s+(?:the\s+)?(?:lid|door|cover|cap)\s+(?:secure|closed|tight|shut)\b/i.exec(segment);
+  if (lidSecureMatch) {
+    offenders.push(lidSecureMatch[0]);
+  }
+  const directLidSecure = /\blid\s+(?:is\s+)?secure\b/i.exec(segment);
+  if (directLidSecure && !allConfirmedTokens.has("secure")) {
+    offenders.push(directLidSecure[0]);
+  }
+
+  // 3. Structural strength / durability / daily use assertions
+  const solidBuildMatch = /\b(?:solid|dependable|rugged)\s+(?:construction|build)\b/i.exec(segment);
+  if (solidBuildMatch) {
+    offenders.push(solidBuildMatch[0]);
+  }
+  const supportsDailyUseMatch = /\b(?:supports?|withstands?|stands?\s+up\s+to)\s+(?:daily|heavy|everyday|rough)\s+(?:use|wear|handling)\b/i.exec(segment);
+  if (supportsDailyUseMatch) {
+    offenders.push(supportsDailyUseMatch[0]);
+  }
+  const makesDurableMatch = /\bmakes?\s+it\s+(?:durable|sturdy|tough|unbreakable)\b/i.exec(segment);
+  if (makesDurableMatch) {
+    offenders.push(makesDurableMatch[0]);
+  }
+  const builtToLastMatch = /\bbuilt\s+to\s+last\b/i.exec(segment);
+  if (builtToLastMatch) {
+    offenders.push(builtToLastMatch[0]);
+  }
+
+  // 4. Portability / ease-of-carry assertions
+  const easierCarryMatch = /\bmakes?\s+it\s+(?:easier|simpler|effortless)\s+to\s+carry\b/i.exec(segment);
+  if (easierCarryMatch) {
+    offenders.push(easierCarryMatch[0]);
+  }
+  const carryInBackpackMatch = /\beasier\s+to\s+carry\s+in\s+(?:a\s+)?(?:backpack|bag|pack)\b/i.exec(segment);
+  if (carryInBackpackMatch) {
+    offenders.push(carryInBackpackMatch[0]);
+  }
+
+  // 5. Thermal / temperature retention assertions
+  if (!allConfirmedTokens.has("retention")) {
+    const tempRetentionMatch = /\b(?:temperature|thermal|heat|cold)\s+retention\b/i.exec(segment);
+    if (tempRetentionMatch) {
+      offenders.push(tempRetentionMatch[0]);
+    }
+    const tempAssuranceMatch = /\btemperature\s+assurance\b/i.exec(segment);
+    if (tempAssuranceMatch) {
+      offenders.push(tempAssuranceMatch[0]);
+    }
+  }
+  const atTempPackedMatch = /\bkeeps?\s+(?:packed\s+)?(?:food|meals?|drinks?)\s+at\s+the\s+temperature\b/i.exec(segment);
+  if (atTempPackedMatch) {
+    offenders.push(atTempPackedMatch[0]);
+  }
+
+  // 6. Demographic / gender audience exclusivity assertions
+  if (!allConfirmedTokens.has("girls")) {
+    const forGirlsMatch = /\b(?:for|designed\s+for)\s+(?:a\s+lunch\s*box\s+for\s+)?girls\b/i.exec(segment);
+    if (forGirlsMatch) {
+      offenders.push(forGirlsMatch[0]);
+    }
+  }
+  if (!allConfirmedTokens.has("boys")) {
+    const forBoysMatch = /\b(?:for|designed\s+for)\s+(?:a\s+lunch\s*box\s+for\s+)?boys\b/i.exec(segment);
+    if (forBoysMatch) {
+      offenders.push(forBoysMatch[0]);
+    }
+  }
+
+  // 7. Component expansion
+  const bottleLidMatch = /\bbottle\s+and\s+lid\b/i.exec(segment);
+  if (bottleLidMatch && !allConfirmedTokens.has("bottle")) {
+    offenders.push(bottleLidMatch[0]);
+  }
+
+  return offenders;
+}
+
+/**
+ * Scope is part of a fact's meaning. A product-level value must not be
+ * expanded to named components, and a set-level measurement must not become
+ * an amount for every item. The checks inspect confirmed values rather than
+ * maintaining a phrase blacklist.
+ */
+function uncoveredScopeExtensions(
+  segment: string,
+  facts: readonly { canonicalField: string; value: string }[],
+): string[] {
+  const offenders: string[] = [];
+  const normalizedFacts = facts.map((fact) => ({ field: fact.canonicalField.toLowerCase(), value: fact.value.toLowerCase() }));
+
+  const componentPair = /\b(jar|bottle|lid|holder|organizer|cover|cap|spoon|piece|component)\s+and\s+(jar|bottle|lid|holder|organizer|cover|cap|spoon|piece|component)\b/i.exec(segment);
+  if (componentPair) {
+    const scopedFact = normalizedFacts.some((fact) =>
+      /(?:care|material|functional_feature|operation|dimensions|capacity|weight)/.test(fact.field)
+      && fact.value.includes(componentPair[1]!.toLowerCase())
+      && fact.value.includes(componentPair[2]!.toLowerCase()),
+    );
+    if (!scopedFact) offenders.push(componentPair[0]);
+  }
+
+  const quantifiedNumber = /\b(?:each|every|per\s+(?:unit|piece|holder|organizer|component))\b[^.?!]{0,80}\b\d+(?:\.\d+)?\s*(?:kg|g|lb|lbs?|oz|ounces?|cm|mm|in(?:ches)?|ft|pieces?|pcs?|count)\b/i.exec(segment);
+  if (quantifiedNumber) {
+    const explicitPerItem = normalizedFacts.some((fact) =>
+      /(?:quantity|pack|dimensions|capacity|weight)/.test(fact.field)
+      && /\b(?:each|every|per\s+(?:unit|piece|item|holder|organizer|component))\b/.test(fact.value),
+    );
+    if (!explicitPerItem) offenders.push(quantifiedNumber[0]);
+  }
+
+  return offenders;
+}
+
+/**
  * Bounded violation evidence for one failing sentence: which code fired and
  * which surface words carried it. Falls back to an empty span list when the
  * failure is not attributable to a specific word, so the repair step still
  * learns that the sentence (not a word) is the problem.
  */
-function describeUnsupportedSegment(segment: string, allowedValues: readonly string[], modelCodes: readonly string[] = []): { issueCode: ListingV5IssueCode; offendingSpans: string[] } {
+function describeUnsupportedSegment(segment: string, allowedValues: readonly string[], modelCodes: readonly string[] = [], factsForScope: readonly { canonicalField: string; value: string }[] = []): { issueCode: ListingV5IssueCode; offendingSpans: string[] } {
   const segmentTokens = new Set(normalizeTokens(segment));
   const allConfirmedTokens = new Set(allowedValues.flatMap((value) => contentTokens(value)));
   const hard = uncoveredHardTokens(segment, segmentTokens, allConfirmedTokens);
   const attributes = uncoveredAttributeAssertions(segment, segmentTokens, allConfirmedTokens, modelCodes);
+  const semantic = uncoveredSemanticExtensions(segment, allConfirmedTokens);
+  const scope = uncoveredScopeExtensions(segment, factsForScope);
+  const semanticTokens = semantic.flatMap((phrase) => normalizeTokens(phrase));
   // Reverse detection: a model-shaped code the confirmed facts do not carry.
   const uncoveredModels = modelCodeTokensIn(segment).filter((token) => !modelCodes.includes(normalizeModelCode(token)));
-  const offenders = new Set([...hard, ...attributes]);
+  const offenders = new Set([...hard, ...attributes, ...semantic, ...scope, ...semanticTokens]);
   const issueCode: ListingV5IssueCode = hard.length > 0
     ? "unsupported_hard_claim"
     : uncoveredModels.length > 0
       ? "unsupported_model_code"
-      : attributes.length > 0 ? "unsupported_attribute_assertion" : "unsupported_claim";
+      : (attributes.length > 0 || semantic.length > 0 || scope.length > 0) ? "unsupported_attribute_assertion" : "unsupported_claim";
   return {
     issueCode,
     offendingSpans: issueCode === "unsupported_model_code"
@@ -522,7 +674,12 @@ function describeUnsupportedSegment(segment: string, allowedValues: readonly str
  * "dishwasher-safe bottle and lid" while still rejecting "durable stainless
  * steel" and "dishwasher-safe at high heat".
  */
-function isAnchoredToConfirmedValue(segment: string, factValues: readonly string[], modelCodes: readonly string[] = []): boolean {
+function isAnchoredToConfirmedValue(
+  segment: string,
+  factValues: readonly string[],
+  modelCodes: readonly string[] = [],
+  factsForScope: readonly { canonicalField: string; value: string }[] = [],
+): boolean {
   const segmentTokens = new Set(normalizeTokens(segment));
   const normalizedSegment = normalizeTokens(segment).join(" ");
   const allConfirmedTokens = new Set(factValues.flatMap((value) => contentTokens(value)));
@@ -543,6 +700,8 @@ function isAnchoredToConfirmedValue(segment: string, factValues: readonly string
     if (!containsValuePhrase && !hasAllValueTokens) continue;
     if (hasUncoveredHardToken(segment, segmentTokens, allConfirmedTokens)) continue;
     if (hasUncoveredAttributeAssertion(segment, segmentTokens, allConfirmedTokens, modelCodes)) continue;
+    if (uncoveredSemanticExtensions(segment, allConfirmedTokens).length > 0) continue;
+    if (uncoveredScopeExtensions(segment, factsForScope).length > 0) continue;
     return true;
   }
   return false;
@@ -705,10 +864,10 @@ export function validateListingV5Draft(
   const unsupportedDetails: ListingV5UnsupportedDetail[] = evidence.unsupportedClaims
     .filter((item) => !isApprovedBenefitSegment(item.text, context, canonicalBenefits, allowedValues, modelCodes)
       && (item.reason !== "unclassified_factual_claim"
-        || !isAnchoredToConfirmedValue(item.text, allowedValues, modelCodes)))
+        || !isAnchoredToConfirmedValue(item.text, allowedValues, modelCodes, context.confirmedFacts)))
     .slice(0, MAX_UNSUPPORTED_DETAILS)
     .map((item) => {
-      const violation = describeUnsupportedSegment(item.text, allowedValues, modelCodes);
+      const violation = describeUnsupportedSegment(item.text, allowedValues, modelCodes, context.confirmedFacts);
       return { text: item.text, reason: item.reason, field: locateDraftField(draft, item.text), ...violation };
     });
   // The upstream Claim Evidence resolver only reports a sentence when its own
@@ -732,7 +891,7 @@ export function validateListingV5Draft(
       if (!key || alreadyFlagged.has(key)) continue;
       alreadyFlagged.add(key);
       if (isApprovedBenefitSegment(segment, context, canonicalBenefits, allowedValues, modelCodes)) continue;
-      const violation = describeUnsupportedSegment(segment, allowedValues, modelCodes);
+      const violation = describeUnsupportedSegment(segment, allowedValues, modelCodes, context.confirmedFacts);
       if (APPROVED_BENEFIT_DENIALS.some((pattern) => pattern.test(segment))) {
         // Keep the richer hard/attribute classification whenever one exists;
         // this branch only supplies a finding for phrases such as "no setup"

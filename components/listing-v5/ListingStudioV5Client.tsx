@@ -98,7 +98,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
   const [data, setData] = useState<V5Data | null>(null);
   const [pendingAction, setPendingAction] = useState<null | "analyze_strategy" | "generate">(null);
   const [error, setError] = useState("");
-  // The server's gate/route error code (no_confirmed_facts / legacy_not_supported /
+  // The server's gate/route error code (creative_confirmation_required / no_confirmed_facts / legacy_not_supported /
   // handoff_required ...). The free-text message alone collapses several very
   // different refusals into one sentence, so the code is kept for the status panel.
   const [errorCode, setErrorCode] = useState("");
@@ -213,7 +213,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
   // 研究已完成但尚无 creativeHandoff：这是"待创作侧人工确认"状态，是唯一能继续 Listing V5 的
   // 用户动作。复用与 Image Studio / 旧版 Studio 相同的确认链（服务端仍按 human_confirmed 写入，
   // 不伪造任何事实），确认成功后重新读取服务端状态即可继续生成。
-  const needsCreativeConfirmation = errorCode === "no_confirmed_facts";
+  const needsCreativeConfirmation = errorCode === "creative_confirmation_required";
   // Single source of truth for every safety-status surface on this page. The green
   // "passed" badge used to be driven by `listing` alone, so BLOCK / REPAIRABLE /
   // stale / gate-refused states all rendered as a pass.

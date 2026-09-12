@@ -49,13 +49,17 @@ describe("ListingStudioV5Client 安全检查状态接线", () => {
     expect(client).toContain("import Link from \"next/link\";");
   });
 
-  it("creativeHandoff 缺失（no_confirmed_facts）时挂载创作资料确认步骤，确认后重新读取状态", () => {
+  it("creativeHandoff 缺失（creative_confirmation_required）时挂载创作资料确认步骤，确认后重新读取状态", () => {
     // 复现既有确认链（同一组件 / 同一 human_confirmed 写入路径），不新写业务逻辑
     expect(client).toContain("import { TaskStudioPreparation } from \"@/components/studio/TaskStudioPreparation\";");
-    expect(client).toContain('const needsCreativeConfirmation = errorCode === "no_confirmed_facts";');
+    expect(client).toContain('const needsCreativeConfirmation = errorCode === "creative_confirmation_required";');
     expect(client).toContain('data-testid="listing-v5-creative-confirmation"');
     expect(client).toContain('<TaskStudioPreparation taskId={taskId} kind="listing" onCommitted={() => void load()}>');
     // 确认入口只在需要确认时出现，且不得自动创建/伪造事实
     expect(client).toContain("{needsCreativeConfirmation ? (");
+  });
+
+  it("真正没有商品事实时仍不挂载创作确认步骤", () => {
+    expect(client).not.toContain('const needsCreativeConfirmation = errorCode === "no_confirmed_facts";');
   });
 });
