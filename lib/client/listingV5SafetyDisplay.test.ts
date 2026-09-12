@@ -85,6 +85,9 @@ describe("deriveListingV5SafetyDisplay", () => {
     expect(display.tone).toBe("blocked");
     expect(display.safeToCallPassed).toBe(false);
     expect(display.detail).toContain("已确认事实");
+    // 该 reason 只可能在研究完成后出现：文案必须给出"完成创作资料确认"这一步，而不是说没有事实
+    expect(display.detail).toContain("创作资料");
+    expect(display.detail).not.toContain("还没有可用于 Listing 的已确认事实");
 
     const unknown = deriveListingV5SafetyDisplay({ hasListing: false, errorCode: "some_new_reason" });
     expect(unknown.safeToCallPassed).toBe(false);

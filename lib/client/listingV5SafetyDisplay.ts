@@ -46,7 +46,9 @@ export type ListingV5SafetyInput = {
  * 只有登记在这里的码才被视为"重试无意义"（isGateRefusalCode）。
  */
 const GATE_REASON_TEXT: Record<string, string> = {
-  no_confirmed_facts: "还没有可用于 Listing 的已确认事实。",
+  // 该 reason 只在研究记录、hash、creative_ready、completion、stale、researchMode 全部通过后
+  // 才可能出现（gate 阶梯第 4-9 级），所以这里可以如实说"研究已完成"。
+  no_confirmed_facts: "研究已完成，但创作资料还没有人工确认：请在下方的确认区核对已确认事实并继续。",
   legacy_not_supported: "该任务属于旧版研究流程，V5 不会为它生成 Listing。",
   handoff_required: "还没有可用的 Listing 交接版本。",
   research_stale_requires_reconfirmation: "研究依据已更新，需要重新确认后才能生成。",

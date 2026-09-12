@@ -14,6 +14,7 @@ import {
 import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { copyPlainText } from "@/lib/client/copyPlainText";
 import { deriveListingV5SafetyDisplay } from "@/lib/client/listingV5SafetyDisplay";
+import { TaskStudioPreparation } from "@/components/studio/TaskStudioPreparation";
 import { StandaloneListingStudio } from "@/components/listing-studio/StandaloneListingStudio";
 
 type V5Data = {
@@ -191,6 +192,10 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
   // research list instead of linking into a 404.
   const gateCtaHref = errorCode === "task_not_found" ? "/tasks" : `/tasks/${encodeURIComponent(taskId)}`;
   const gateCtaLabel = errorCode === "task_not_found" ? "返回研究记录 →" : "返回商品研究 / 任务详情 →";
+  // 研究已完成但尚无 creativeHandoff：这是"待创作侧人工确认"状态，是唯一能继续 Listing V5 的
+  // 用户动作。复用与 Image Studio / 旧版 Studio 相同的确认链（服务端仍按 human_confirmed 写入，
+  // 不伪造任何事实），确认成功后重新读取服务端状态即可继续生成。
+  const needsCreativeConfirmation = errorCode === "no_confirmed_facts";
   // Single source of truth for every safety-status surface on this page. The green
   // "passed" badge used to be driven by `listing` alone, so BLOCK / REPAIRABLE /
   // stale / gate-refused states all rendered as a pass.
@@ -293,6 +298,25 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
             ) : null}
           </div>
         </div>
+      ) : null}
+
+      {/* 创作资料人工确认：研究已完成、但还没有 creativeHandoff 时的下一步（不再是无路可走） */}
+      {needsCreativeConfirmation ? (
+        <section
+          data-testid="listing-v5-creative-confirmation"
+          className="w-full min-w-0 rounded-2xl border border-teal-200 bg-teal-50/40 p-4"
+        >
+          <h2 className="text-sm font-bold text-teal-900 sm:text-base">还差一步：完成创作资料人工确认</h2>
+          <p className="mt-1 text-xs leading-5 text-teal-900/80">
+            商品研究已完成。核对下方「当前已确认商品事实」并勾选人工确认后，Listing V5 即可继续生成。
+            本步骤只使用研究阶段已人工确认的事实，不会自动创建或伪造任何事实。
+          </p>
+          <div className="mt-3">
+            <TaskStudioPreparation taskId={taskId} kind="listing" onCommitted={() => void load()}>
+              {null}
+            </TaskStudioPreparation>
+          </div>
+        </section>
       ) : null}
 
       {/* 模块 1：已确认事实与研究资料摘要 */}
