@@ -111,6 +111,32 @@ describe("formal v2 task result", () => {
     expect(nonWorkflowCompleted.targetId).toBe("listing-and-images");
   });
 
+  it("recognizes a persisted Listing V5 draft in the research summary", () => {
+    const view = deriveFormalV2ResearchView({
+      id: "task-listing-v5",
+      createdAt: "2026-09-12T00:00:00.000Z",
+      updatedAt: "2026-09-12T00:00:00.000Z",
+      type: "workflow",
+      decisionStatus: "continue",
+      title: "Listing V5 task",
+      platform: "amazon",
+      productUrl: null,
+      materialText: "",
+      source: "opportunity",
+      score: 0,
+      level: "",
+      oneLineSummary: "",
+      productImage: null,
+      result: {
+        researchCompletion: { schema: "research-completion.v1", status: "completed" },
+        productResearchSummary: { schema: "product-research-record.v1", status: "creative_ready" },
+        listingV5: { version: "listing-v5.snapshot.v1", listing: { title: { text: "A generated title" } } },
+      },
+    });
+
+    expect(view.hasListingDraft).toBe(true);
+  });
+
   it("does not show AI-image verification reasons when no image draft exists", () => {
     expect(formalV2ImageCopy(false)).toEqual({
       headline: "商品图片尚未取得。",

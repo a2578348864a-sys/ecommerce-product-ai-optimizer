@@ -542,6 +542,24 @@ describe("product research browser DTO allowlist", () => {
     expect(projected).not.toHaveProperty("sourceMeta");
     expect(projected).not.toHaveProperty("productBatchSnapshot");
   });
+
+  it("projects only the Listing V5 existence signal into detail scope", () => {
+    const projected = projectTaskResultForBrowser({
+      listingV5: {
+        version: "listing-v5.snapshot.v1",
+        listing: { title: { text: "Generated title" }, bullets: [{ text: "private copy" }] },
+        strategy: { targetBuyer: "private strategy" },
+        trace: { providerResponse: "private trace" },
+      },
+    }, "detail") as Record<string, any>;
+    expect(projected.listingV5).toEqual({
+      version: "listing-v5.snapshot.v1",
+      listing: { title: { text: "Generated title" } },
+    });
+    expect(JSON.stringify(projected)).not.toContain("private strategy");
+    expect(JSON.stringify(projected)).not.toContain("private trace");
+  });
+
   it("round9: projects verified_product_batch facts allowlist into detail candidateAnalysisContext (no internal ids/hashes)", () => {
     const skeleton = {
       type: "workflow",

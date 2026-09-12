@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { buildFallbackListingPack, listingPackToMarkdown, type ListingPack } from "@/lib/listingPack";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
 
@@ -136,6 +137,22 @@ export function ListingPackCard({
 
   return (
     <section className="mt-4 rounded-2xl border border-indigo-200 bg-white p-4" data-testid="listing-pack">
+      {/* 旧链定位说明：本卡片属于早期规则草稿链，不经过 V5 的 Validator 与证据绑定。
+          能力保留（回滚可用），但不能被误认为当前正式产品入口。 */}
+      <div
+        data-testid="listing-pack-deprecated-notice"
+        className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs text-amber-900"
+      >
+        <span className="font-semibold">
+          旧版（V4）Listing 包 · 不经过 V5 校验与证据绑定，仅作历史对照
+        </span>
+        <Link
+          href={taskId ? `/listing-studio?taskId=${encodeURIComponent(taskId)}` : "/listing-studio"}
+          className="font-semibold underline underline-offset-2 hover:text-amber-950"
+        >
+          前往新版 Listing Studio →
+        </Link>
+      </div>
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-base font-bold text-indigo-900">AI Listing 包</h3>

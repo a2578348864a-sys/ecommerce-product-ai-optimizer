@@ -8,6 +8,7 @@ import {
   getResearchCompletion,
   getResearchStaleState,
   hasProductResearchRecordNamespace,
+  isModernResearchTaskShape,
   verifyProductResearchHash,
 } from "@/lib/productResearchRecord";
 
@@ -114,14 +115,9 @@ function hasResearchMaterial(result: Record<string, unknown>): boolean {
     || hasOwn(result, "researchVerification");
 }
 
-function isModernShape(result: Record<string, unknown>): boolean {
-  return hasOwn(result, "candidateToTask")
-    || hasOwn(result, "candidateAnalysisContext")
-    || hasOwn(result, "researchRecord")
-    || hasOwn(result, "researchVerification")
-    || hasOwn(result, "researchCompletion")
-    || hasOwn(result, "factCandidates");
-}
+// Modern-shape detection lives in lib/productResearchRecord so the lifecycle reader
+// and the creative/Listing gate share one predicate (they used to disagree: a task
+// with candidate markers but no research record yet read as "legacy" to the gate).
 
 function normalizeLegacyDecision(value: unknown): ResearchDecisionStatus {
   if (value === "rejected") return "abandoned";
@@ -207,7 +203,7 @@ export function getResearchLifecycleState(input: ResearchLifecycleReaderInput): 
     return invalidSnapshot(["research_result_invalid"], "not_started", "none");
   }
 
-  const modern = isModernShape(result);
+  const modern = isModernResearchTaskShape(result);
   const hasRecordField = hasOwn(result, "researchRecord");
   const record = getProductResearchRecord(result);
   const hasVersionedRecord = hasProductResearchRecordNamespace(result);

@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   buildPreparationFactOptions,
   buildPreparationPreferences,
@@ -7,6 +9,24 @@ import {
   visualReferenceSourceLabel,
 } from "@/components/studio/TaskStudioPreparation";
 import type { CreativeHandoffPreview } from "@/components/creative-handoff/types";
+
+describe("创作资料确认成功后的父级通知", () => {
+  const source = readFileSync(resolve(process.cwd(), "components/studio/TaskStudioPreparation.tsx"), "utf8");
+
+  it("submitPreparation 成功分支回调 onCommitted（否则父页面停在确认前的门禁状态）", () => {
+    const start = source.indexOf("async function submitPreparation");
+    expect(start).toBeGreaterThan(-1);
+    const body = source.slice(start, start + 1600);
+    expect(body).toContain("await api.refresh();");
+    expect(body).toContain("onCommitted?.();");
+  });
+
+  it("视觉批准路径同样回调（保持两条确认路径一致）", () => {
+    const start = source.indexOf("async function confirmVisualReference");
+    const body = source.slice(start, start + 1400);
+    expect(body).toContain("onCommitted?.();");
+  });
+});
 
 describe("visualReferenceSourceLabel", () => {
   it("candidate_fallback 产品化为「当前商品数据」，不暴露内部 tier", () => {

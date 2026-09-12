@@ -1640,7 +1640,12 @@ export function deriveFormalV2ResearchView(record: TaskCenterItem): FormalV2Rese
         nextHref: "#formal-v2-materials",
       },
     ],
-    hasListingDraft: isRecordValue(result.aiListingPackSnapshot) || isRecordValue(result.listingPackSnapshot) || isRecordValue(result.listing),
+    // Listing V5 persists its authoritative draft under result.listingV5.listing;
+    // expose that state in the research summary as well as the legacy fields.
+    hasListingDraft: isRecordValue(result.aiListingPackSnapshot)
+      || isRecordValue(result.listingPackSnapshot)
+      || isRecordValue(result.listing)
+      || (isRecordValue(result.listingV5) && isRecordValue((result.listingV5 as Record<string, unknown>).listing)),
     hasImageDraft: isRecordValue(result.aiImageDraftSnapshot)
         && Array.isArray((result.aiImageDraftSnapshot as Record<string, unknown>).items)
         && ((result.aiImageDraftSnapshot as Record<string, unknown>).items as unknown[]).length > 0,

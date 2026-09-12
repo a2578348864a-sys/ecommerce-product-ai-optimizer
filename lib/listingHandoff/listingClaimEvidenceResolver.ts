@@ -1,5 +1,13 @@
 import type { AiListingPackDraft } from "@/lib/aiListingDraft";
 import type { ListingGenerationInput } from "@/lib/listingHandoff/listingGenerationInput";
+import {
+  ASSERTIVE_IMPERATIVE_VERBS,
+  NEUTRAL_COPY_ALLOWLIST,
+  RESIDUAL_FIELD_NOUNS,
+  RESIDUAL_FUNCTION_WORDS,
+  RESIDUAL_PREDICATES,
+  RESIDUAL_QUALIFIERS,
+} from "@/lib/listingV5/claimVocabulary";
 
 /**
  * PR2-2 Claim Final-Fix: 结构化事实正向放行（conservative positive allow）。
@@ -173,40 +181,7 @@ function stripTrailingPunct(value: string): string {
   return value.replace(/[.,;:!?、]+$/g, "");
 }
 
-// ─── 冻结中性文案允许集（第九节 B）──────────────────────────
-
-const NEUTRAL_COPY_ALLOWLIST = Object.freeze([
-  "日常使用的实用选择",
-  "简洁实用的选择",
-  "清晰呈现产品特点",
-  "现代简约风格",
-  "简洁现代的设计",
-  "值得信赖的优质之选",
-  "轻松融入日常使用",
-  "适合日常使用的实用选择",
-  "实用之选",
-  "设计简约大方",
-  "一款实用的产品",
-  "适用于日常场景",
-  "为生活增添便利",
-  "简单好用的选择",
-  "满足日常需求",
-  "结构清晰",
-  "外观简洁",
-  "使用方便",
-  "便于携带",
-  "适合桌面",
-  "便于日常使用",
-  "易于使用",
-  "方便实用",
-  "适合各种场合",
-  "日常使用方便",
-  "for the target market",
-  "practical listing draft",
-  "listing draft",
-  "cross-border product",
-  "human review required",
-]);
+// 词表已收敛至 lib/listingV5/claimVocabulary.ts（M1/S2）──────────────────────────
 
 /* ─── 残余语法（Residual Grammar）───────────────────────────
  *
@@ -230,68 +205,6 @@ const NEUTRAL_COPY_ALLOWLIST = Object.freeze([
  * 不含连接谓语的残余不受 (a)(b) 影响，行为与既有判定一致。
  */
 
-/** 1. 功能词：限定词 / 代词 / 介词 / 连词 / 助动词 / 量词 / 单位字母 */
-const RESIDUAL_FUNCTION_WORDS = Object.freeze(new Set([
-  "the", "a", "an", "this", "that", "these", "those", "it", "its", "their", "there",
-  "of", "for", "with", "in", "on", "at", "to", "from", "by", "as", "into", "onto",
-  "through",
-  "within", "without", "per", "than", "over", "under", "between", "about", "around",
-  "up", "down", "out", "off", "back", "when", "while", "before", "after", "during",
-  "and", "or", "but", "nor", "also", "plus", "then", "if",
-  "not", "no", "all", "any", "each", "both", "more", "most", "only",
-  "can", "may", "will", "must", "should", "would", "could", "do", "does", "did",
-  "be", "been", "being",
-  "approx", "approximately", "about", "x", "w", "h", "l", "d", "oz", "g", "kg", "ml", "cm", "mm",
-]));
-
-/** 2. 字段元数据名词：描述「字段角色」，不描述商品属性 */
-const RESIDUAL_FIELD_NOUNS = Object.freeze(new Set([
-  "product", "products", "item", "items", "unit", "units", "brand", "category",
-  "type", "model", "series", "style", "design", "finish", "material", "color", "colour",
-  "weight", "size", "length", "width", "height", "depth", "dimension", "dimensions",
-  "capacity", "volume", "quantity", "count", "pack", "set", "piece", "pieces",
-  "part", "parts", "component", "components", "feature", "features",
-  "option", "options", "spec", "specs", "specification", "range", "level",
-  "care", "cleaning", "usage", "use", "operation", "compatibility", "construction",
-  "function", "functions", "price", "rating", "review", "reviews", "usd",
-  "standard", "version", "field", "value", "name",
-  // 消费者自然句字段语义名词（任务书窄授权：body/mechanism/control）
-  "body", "mechanism", "control",
-  // 中文字段词（与英文同义，仅供中文残余走同一判定）
-  "材质", "材料", "为", "是", "尺寸", "长度", "重量", "颜色", "品牌", "类目", "款",
-  "外壳", "设计", "价格", "参考价格", "评分", "评论数", "商品名", "参考", "产品",
-  "类别", "净重", "约", "商品类型", "类型", "系列", "型号", "容量", "数量", "包装",
-  "的", "与", "和", "及",
-  // 组合字段标签词：字段标签不是商品属性，剥离事实值后允许残留
-  "款式", "规格", "参数", "功能", "说明", "特点", "优点", "内容", "清单", "名称", "单位",
-]));
-
-/** 3. 无事实内容的限定修饰词 */
-const RESIDUAL_QUALIFIERS = Object.freeze(new Set([
-  "everyday", "daily", "practical", "easy", "easily", "simple", "simply", "general",
-  "regular", "normal", "common", "typical", "basic", "convenient", "gently",
-  "suitable", "available", "made", "built", "designed", "included", "including",
-  "together", "individually", "on-the-go", "every", "day", "times",
-]));
-
-/** 4. 中性连接谓语（受位置约束；见上） */
-const RESIDUAL_PREDICATES = Object.freeze(new Set([
-  "is", "are", "was", "were", "has", "have", "had",
-  "includes", "include", "contains", "contain",
-  "measures", "measure", "weighs", "weigh", "spans", "span",
-  "holds", "hold", "stores", "store", "carries", "carry", "accommodates", "accommodate",
-  "fits", "fit", "comes", "come", "features", "feature",
-  "provides", "provide", "offers", "offer", "supports", "support",
-  "works", "work", "expands", "expand", "collapses", "collapse",
-  "organizes", "organize", "separates", "separate", "divides", "divide",
-  "seals", "seal", "opens", "open", "closes", "close", "locks", "lock",
-  "uses",
-  "slides", "slide", "rotates", "rotate", "adjusts", "adjust",
-  "helps", "help", "allows", "allow", "prevents", "prevent",
-  "reduces", "reduce", "resists", "resist", "doubles", "double",
-  "sits", "sit", "stands", "stand", "hangs", "hang", "rests", "rest",
-]));
-
 /**
  * 残余分词：ASCII 按词切；中文按「字段词」整体切（长词优先），
  * 未命中的单字仍作为独立 token 保留（因此无法借字段词蒙混）。
@@ -308,17 +221,6 @@ const RESIDUAL_TOKEN_PATTERN = new RegExp(
 function residualTokens(text: string): string[] {
   return String(text).toLocaleLowerCase().match(RESIDUAL_TOKEN_PATTERN) ?? [];
 }
-
-/**
- * 祈使护理动词：出现在无事实锚点的段中，即构成「未证实的护理/用法声明」，
- * 不能走"纯文案中性表达"通道（假绿：无锚点句借中性通道过关）。
- */
-const ASSERTIVE_IMPERATIVE_VERBS = Object.freeze(new Set([
-  "rinse", "rinsed", "wipe", "wiped", "wash", "washed", "dry", "dried",
-  "soak", "scrub", "place", "store", "insert", "fill", "empty", "press",
-  "pull", "push", "turn", "remove", "avoid", "follow", "check", "separate",
-  "handle", "clean", "cleaned",
-]));
 
 /**
  * 残余语法判定：残余必须全部由无事实内容的语法材料构成，

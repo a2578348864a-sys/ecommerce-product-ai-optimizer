@@ -12,6 +12,7 @@ import {
   type ProductProjectGroup,
 } from "@/lib/researchLifecycle";
 import { deriveResearchHistoryStatus } from "@/lib/taskResearchHistoryPresentation";
+import type { ResearchLifecycleSnapshot } from "@/lib/server/researchLifecycleReader";
 
 function researchCompletion(status: "completed" | "abandoned") {
   return { schema: "research-completion.v1", status };
@@ -119,6 +120,74 @@ describe("Bug 3：needs_action / researching / completed 三组重定义", () =>
     const group = groupOf(baseInput({ result }));
     expect(group).toBe("researching");
     expect(isActiveResearch(input)).toBe(true);
+  });
+});
+
+describe("第十二轮：工作台卡片状态 = 服务端 Reader 快照（同一 Snapshot 同一语义）", () => {
+  function snapshot(overrides: Partial<ResearchLifecycleSnapshot>): ResearchLifecycleSnapshot {
+    return {
+      phase: "created",
+      collectionStatus: "not_started",
+      confirmationStatus: "none",
+      decisionStatus: "none",
+      completionStatus: "not_completed",
+      creativeReadiness: "not_ready",
+      stale: false,
+      blockers: [],
+      nextAction: "",
+      contractMode: "modern",
+      ...overrides,
+    };
+  }
+
+  function view(input: Partial<ResearchLifecycleSnapshot>) {
+    return deriveProductProjectGroup({
+      aiRunStatus: undefined,
+      decisionStatus: "pending" as never,
+      result: null,
+      oneLineSummary: "",
+      lifecycle: snapshot(input),
+    });
+  }
+
+  it("待确认事实 / 资料缺失 / 人工决定未完成 → 需要我处理，且标签与详情页同语义", () => {
+    expect(view({ phase: "awaiting_confirmation", confirmationStatus: "pending" }))
+      .toMatchObject({ group: "needs_action", statusLabel: "待确认事实" });
+    expect(view({ phase: "created" }))
+      .toMatchObject({ group: "needs_action", statusLabel: "待补充研究资料" });
+    expect(view({ phase: "awaiting_decision", decisionStatus: "needs_information" }))
+      .toMatchObject({ group: "needs_action", statusLabel: "待人工决定" });
+    expect(view({ phase: "ready_to_complete", decisionStatus: "creative_ready" }))
+      .toMatchObject({ group: "needs_action", statusLabel: "待完成研究" });
+    expect(view({ phase: "blocked", collectionStatus: "failed" }))
+      .toMatchObject({ group: "needs_action", statusLabel: "研究受阻" });
+  });
+
+  it("自动采集与分析进行中 → 研究中", () => {
+    expect(view({ phase: "collecting", collectionStatus: "running" }))
+      .toMatchObject({ group: "researching", statusLabel: "资料采集中" });
+  });
+
+  it("真正 researchCompletion=completed → 已完成", () => {
+    expect(view({ phase: "completed", completionStatus: "completed", decisionStatus: "creative_ready" }))
+      .toMatchObject({ group: "completed", statusLabel: "研究已完成" });
+  });
+
+  it("completed 但 stale（研究资料需重新确认）→ 需要我处理，不得显示研究已完成", () => {
+    const result = view({ phase: "completed", completionStatus: "completed", stale: true, blockers: ["research_stale_requires_reconfirmation"] });
+    expect(result.group).toBe("needs_action");
+    expect(result.statusLabel).toBe("研究资料需重新确认");
+    expect(result.statusLabel).not.toContain("研究已完成");
+  });
+
+  it("abandoned 既不入 completed 也不入 researching", () => {
+    expect(view({ phase: "abandoned", completionStatus: "abandoned" }))
+      .toMatchObject({ group: "needs_action", statusLabel: "已放弃" });
+  });
+
+  it("无快照时保持原有本地推导（旧调用/离线不回归）", () => {
+    const result = { keywordEvidence: { rows: [] } };
+    expect(groupOf(baseInput({ result, aiRunStatus: "not_started" }))).toBe("researching");
   });
 });
 

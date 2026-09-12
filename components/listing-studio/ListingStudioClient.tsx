@@ -205,7 +205,11 @@ export function ListingStudioClient({ taskId = "" }: { taskId?: string }) {
   );
 }
 
-function ManualListingStudioClient({ onProgressChange }: {
+/**
+ * 独立工具的输入与生成面板（无 Task 依赖）。
+ * 第十二轮：本组件由 standalone 入口组件复用导出，自身实现与生成规则未改动。
+ */
+export function ManualListingStudioClient({ onProgressChange }: {
   onProgressChange: (state: { briefReady: boolean; isGenerating: boolean; hasResult: boolean }) => void;
 }) {
   const [productName, setProductName] = useState("");
