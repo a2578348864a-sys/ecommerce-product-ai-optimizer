@@ -37,6 +37,23 @@ function listTask(input: Partial<LocalTaskItem> & Pick<LocalTaskItem, "id" | "up
     productProjectKey: input.productProjectKey ?? `ppk_task_${input.id}`,
     aiRunStatus: input.aiRunStatus,
     runUpdatedAt: input.runUpdatedAt,
+    researchLifecycle: input.researchLifecycle ?? null,
+  };
+}
+
+function lifecycleSnapshot(overrides: Partial<NonNullable<LocalTaskItem["researchLifecycle"]>>): NonNullable<LocalTaskItem["researchLifecycle"]> {
+  return {
+    phase: "created",
+    collectionStatus: "not_started",
+    confirmationStatus: "none",
+    decisionStatus: "none",
+    completionStatus: "not_completed",
+    creativeReadiness: "not_ready",
+    stale: false,
+    blockers: [],
+    nextAction: "",
+    contractMode: "modern",
+    ...overrides,
   };
 }
 
@@ -204,6 +221,35 @@ describe("home dashboard C-end local workbench", () => {
   });
 
 
+
+  it("第十二轮：卡片 badge 直接消费服务端 Reader 快照，与商品详情页状态同一语义", () => {
+    const projects = buildLocalProductProjects([
+      // 待确认事实（Acacia 型）→ 需要我处理
+      listTask({ id: "awaiting-confirmation", updatedAt: "2026-09-11T08:00:00.000Z", researchLifecycle: lifecycleSnapshot({ phase: "awaiting_confirmation", collectionStatus: "partial", confirmationStatus: "pending", blockers: ["pending_confirmation"] }) }),
+      // 资料缺失（Lodge 型）→ 需要我处理
+      listTask({ id: "created", updatedAt: "2026-09-11T07:00:00.000Z", researchLifecycle: lifecycleSnapshot({ phase: "created" }) }),
+      // 人工决定未保存（HydroJug 型）→ 需要我处理
+      listTask({ id: "awaiting-decision", updatedAt: "2026-09-11T06:00:00.000Z", researchLifecycle: lifecycleSnapshot({ phase: "awaiting_decision", collectionStatus: "partial", confirmationStatus: "confirmed", blockers: ["decision_not_saved"] }) }),
+      // 自动采集中 → 研究中
+      listTask({ id: "collecting", updatedAt: "2026-09-11T05:00:00.000Z", researchLifecycle: lifecycleSnapshot({ phase: "collecting", collectionStatus: "running" }) }),
+      // 真正收口 → 已完成
+      listTask({ id: "completed", updatedAt: "2026-09-11T04:00:00.000Z", decisionStatus: "continue", researchLifecycle: lifecycleSnapshot({ phase: "completed", completionStatus: "completed", collectionStatus: "ready", confirmationStatus: "confirmed", decisionStatus: "creative_ready" }) }),
+      // 收口后资料变化（Pooh Bear 型）→ 需要我处理，且不得显示「研究已完成」
+      listTask({ id: "completed-stale", updatedAt: "2026-09-11T03:00:00.000Z", decisionStatus: "continue", aiRunStatus: "research_stale", researchLifecycle: lifecycleSnapshot({ phase: "completed", completionStatus: "completed", stale: true, blockers: ["research_stale_requires_reconfirmation"] }) }),
+    ]);
+    const byId = new Map(projects.map((project) => [project.task.id, project]));
+
+    expect(byId.get("awaiting-confirmation")!).toMatchObject({ group: "needs_action", statusLabel: "待确认事实", nextLabel: "确认待确认事实" });
+    expect(byId.get("created")!).toMatchObject({ group: "needs_action", statusLabel: "待补充研究资料", nextLabel: "补充研究资料" });
+    expect(byId.get("awaiting-decision")!).toMatchObject({ group: "needs_action", statusLabel: "待人工决定", nextLabel: "查看并决定" });
+    expect(byId.get("collecting")!).toMatchObject({ group: "researching", statusLabel: "资料采集中", nextLabel: "查看研究进度" });
+    expect(byId.get("completed")!).toMatchObject({ group: "completed", statusLabel: "研究已完成", nextLabel: "查看研究结果" });
+    expect(byId.get("completed-stale")!).toMatchObject({ group: "needs_action", statusLabel: "研究资料需重新确认", nextLabel: "重新确认研究资料" });
+    // 需要我处理栏不得出现「研究已完成」标签
+    for (const id of ["awaiting-confirmation", "created", "awaiting-decision", "completed-stale"]) {
+      expect(byId.get(id)!.statusLabel).not.toContain("研究已完成");
+    }
+  });
 
   it("同一商品多任务：项目状态以最新研究尝试（runUpdatedAt）为准，不因较新 task.updatedAt 隐藏运行中/等待中的当前研究", () => {
     const runA = listProjection({ productName: "同款商品", researchRecord: savedResearchRecord() });

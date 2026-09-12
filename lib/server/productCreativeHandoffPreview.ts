@@ -37,6 +37,7 @@ import {
   getProductResearchVerification,
   getResearchCompletion,
   getResearchStaleState,
+  isModernResearchTaskShape,
   verifyProductResearchHash,
   hasProductResearchRecordNamespace,
 } from "@/lib/productResearchRecord";
@@ -442,6 +443,13 @@ export async function checkCreativeHandoffGate(
     : undefined;
 
   if (!hasProductResearchRecordNamespace(resultJson)) {
+    // A task that carries modern-flow markers but has not written its research contract
+    // yet is "research not completed", never a legacy record: the candidate → task flow
+    // writes those markers long before research completion, so calling this state
+    // legacy told users their own unfinished task was an unsupported old record.
+    if (isModernResearchTaskShape(resultJson)) {
+      return { allowed: false, reason: "research_not_completed", taskAccessible: accessible };
+    }
     // R4/R6：同一 actor 的旧版任务 → 业务状态 legacy_not_supported（不伪装"不存在"）
     return { allowed: false, reason: "legacy_not_supported", taskAccessible: accessible };
   }

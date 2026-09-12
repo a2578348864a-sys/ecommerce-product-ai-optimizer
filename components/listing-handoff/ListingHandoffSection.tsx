@@ -1266,18 +1266,6 @@ export function ListingHandoffSection({
 
             {/* 4 大核心成果 */}
             {!draft?.listingUnqualified ? renderDraftBody() : null}
-
-            {/* 质量评分简要摘要卡 */}
-            {qualityReport ? (
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3" data-testid="listing-quality-compact-summary">
-                <span className="text-xs font-medium text-slate-700">
-                  质量评分 <strong className="font-bold text-slate-900">{qualityReport.overallScore}/100</strong> · {qualityReport.overallScore >= 70 ? "建议人工复核" : "需重点复核"}
-                </span>
-                <a href="#listing-review-details" className="text-xs font-semibold text-teal-700 hover:underline">
-                  查看质量详情 ↓
-                </a>
-              </div>
-            ) : null}
           </div>
 
           {/* 生成与审核详情（默认折叠） */}

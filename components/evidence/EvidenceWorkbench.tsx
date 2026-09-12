@@ -8,7 +8,7 @@
  * 数据来源严格按 docs/v3/changes/phase-2/evidence-read-model.md；
  * 缺失一律显示 unknown/「未收集」，禁止 AI 填空、禁止编造。
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
@@ -555,8 +555,15 @@ export type EvidenceTabKey = "market" | "buyers" | "sourcing" | "cost-risk";
 /**
  * 生命周期快照的展示标签。快照由上层只读计算，本组件只负责把 phase 翻译成用户语言，
  * 不在这里重新判断研究生命周期，也不把资料数量当作正式状态。
+ *
+ * 第十二轮：stale（完成研究后证据已变化）优先——此时旧结论尚未对应当前资料，
+ * 不能再对用户显示「研究已完成」，文案与商品详情页顶部状态、工作台卡片保持一致。
  */
-export function researchLifecyclePhaseLabel(phase: ResearchLifecycleSnapshot["phase"]): string {
+export function researchLifecyclePhaseLabel(
+  phase: ResearchLifecycleSnapshot["phase"],
+  stale = false,
+): string {
+  if (stale) return "研究资料需重新确认";
   const labels: Record<ResearchLifecycleSnapshot["phase"], string> = {
     created: "尚未开始",
     collecting: "正在采集研究资料",
@@ -680,6 +687,21 @@ export function EvidenceWorkbench({
   const [browserTaskAsin, setBrowserTaskAsin] = useState<string | null>(null);
   const [browserCapability, setBrowserCapability] = useState<AcquisitionCapabilityView | null>(null);
 
+  const resultAsin = useMemo(() => {
+    if (!isRecord(result)) return null;
+    const sourceMeta = isRecord(result.sourceMeta) ? result.sourceMeta : null;
+    const batch = sourceMeta && isRecord(sourceMeta.productBatchSnapshot) ? sourceMeta.productBatchSnapshot : null;
+    if (typeof batch?.asin === "string" && batch.asin.trim()) return batch.asin.trim();
+    const cac = isRecord(result.candidateAnalysisContext) ? result.candidateAnalysisContext : null;
+    if (typeof cac?.asin === "string" && cac.asin.trim()) return cac.asin.trim();
+    const cacFacts = cac && isRecord(cac.facts) ? cac.facts : null;
+    if (typeof cacFacts?.asin === "string" && cacFacts.asin.trim()) return cacFacts.asin.trim();
+    const product = isRecord(result.product) ? result.product : null;
+    if (typeof product?.asin === "string" && product.asin.trim()) return product.asin.trim();
+    return null;
+  }, [result]);
+  const effectiveTaskAsin = browserTaskAsin ?? resultAsin;
+
   const [vocEvidence, setVocEvidence] = useState<VocEvidenceView | null>(null);
   const [vocAnalysis, setVocAnalysis] = useState<VocAnalysisView | null>(null);
   const [vocStorageVersion, setVocStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
@@ -708,7 +730,7 @@ export function EvidenceWorkbench({
         signal: AbortSignal.timeout(60_000),
       });
       const json = await res.json() as
-        | { ok: true; data: { evidence: unknown; analysis: unknown; storageVersion: { resultJsonHash: string; updatedAt: string }; capability?: unknown; pendingPreview?: unknown } }
+        | { ok: true; data: { evidence: unknown; analysis: unknown; storageVersion: { resultJsonHash: string; updatedAt: string }; capability?: unknown; pendingPreview?: unknown; taskAsin?: string | null } }
         | { ok: false };
       if (res.ok && json.ok) {
         setVocEvidence(parseVocEvidenceView(json.data.evidence));
@@ -716,6 +738,9 @@ export function EvidenceWorkbench({
         setVocStorageVersion(json.data.storageVersion);
         setVocCapability(parseAcquisitionCapability(json.data.capability));
         setVocPendingPreview(parseVocCollectPreviewView(json.data.pendingPreview));
+        if (json.data.taskAsin) {
+          setBrowserTaskAsin((prev) => prev ?? json.data.taskAsin ?? null);
+        }
         clearSectionError("voc");
       } else {
         setSectionError("voc", "买家评论读取失败，请稍后重试。");
@@ -998,7 +1023,7 @@ export function EvidenceWorkbench({
           <div>
             <dt className="text-xs text-slate-500">研究主状态</dt>
             <dd className="mt-0.5 font-semibold text-slate-900" data-testid="research-lifecycle-phase">
-              {lifecycleSnapshot ? researchLifecyclePhaseLabel(lifecycleSnapshot.phase) : "资料状态待整理"}
+              {lifecycleSnapshot ? researchLifecyclePhaseLabel(lifecycleSnapshot.phase, lifecycleSnapshot.stale) : "资料状态待整理"}
             </dd>
             {lifecycleSnapshot?.stale ? (
               <p className="mt-1 text-xs text-amber-700" data-testid="research-lifecycle-stale">研究资料已变化，请重新确认。</p>
@@ -1292,7 +1317,7 @@ export function EvidenceWorkbench({
           />
           <VocEvidenceSection
             taskId={taskId}
-            taskAsin={browserTaskAsin}
+            taskAsin={effectiveTaskAsin}
             evidence={vocEvidence}
             analysis={vocAnalysis}
             storageVersion={vocStorageVersion}

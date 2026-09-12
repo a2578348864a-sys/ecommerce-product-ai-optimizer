@@ -719,6 +719,9 @@ export function TaskStudioPreparation({
       setConfirmed(false);
       if (kind === "image") sceneDraft.clear();
       await api.refresh();
+      // 确认成功后必须通知父级：Listing Studio / Image Studio 的下游状态（门禁、生成按钮）
+      // 依赖父级重新读取服务端状态；缺少这一步时父页面会停在确认前的门禁提示上。
+      onCommitted?.();
     } catch (error) {
       setNotice(error instanceof HandoffApiRequestError
         ? friendlyError(error.error)

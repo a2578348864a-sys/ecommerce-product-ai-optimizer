@@ -139,18 +139,40 @@ function currentProductLabel(productName: string) {
   }
   return productName;
 }
+/**
+ * Listing Studio is task-scoped: opening it without a taskId renders an empty
+ * page with no usable action, so the sidebar must carry the task the user is
+ * already looking at (from /tasks/<id> or from the current ?taskId=).
+ */
+export function withTaskContext(href: string, taskId: string | null): string {
+  if (!taskId || href !== "/listing-studio") return href;
+  return `${href}?taskId=${encodeURIComponent(taskId)}`;
+}
+
+export function useCurrentTaskId(pathname: string): string | null {
+  const [taskId, setTaskId] = useState<string | null>(null);
+  useEffect(() => {
+    const fromPath = pathname.match(/^\/tasks\/([^/?#]+)/)?.[1] ?? null;
+    const fromQuery = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("taskId") : null;
+    setTaskId(fromPath ?? fromQuery);
+  }, [pathname]);
+  return taskId;
+}
+
 function NavLink({
   item,
   pathname,
   search,
   compact = false,
   hasActiveDetail = null,
+  taskId = null,
 }: {
   item: SidebarNavItem;
   pathname: string;
   search?: string;
   compact?: boolean;
   hasActiveDetail?: boolean | null;
+  taskId?: string | null;
 }) {
   const Icon = item.icon;
   const active = item.href === "/research"
@@ -161,7 +183,7 @@ function NavLink({
 
   return (
     <Link
-      href={item.href}
+      href={withTaskContext(item.href, taskId)}
       aria-current={active ? "page" : undefined}
       className={
         (compact
@@ -192,6 +214,7 @@ export function WorkspaceSidebar() {
   }, [pathname]);
   const search = fromResearch ? "from=research" : "";
   const hasActiveDetail = useTaskDetailResearchHighlight(pathname);
+  const currentTaskId = useCurrentTaskId(pathname);
   const [sharedProduct] = useSharedProduct();
   // V4.1：runtime-mode 服务端权威（模式 + V4 Graph flag）；SSR 初始 unknown → 保守（不泄露 Live 入口）
   const [runtime, setRuntime] = useState<SidebarRuntime>({ mode: null, v4Graph: false });
@@ -251,7 +274,7 @@ export function WorkspaceSidebar() {
                 <section key={group.label} className={index > 0 ? "mt-3 border-t border-slate-100/80 pt-2.5" : ""}>
                   <p className="px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{group.label}</p>
                   {group.items.map((item) => (
-                    <NavLink key={item.href} item={item} pathname={pathname} search={search} hasActiveDetail={hasActiveDetail} />
+                    <NavLink key={item.href} item={item} pathname={pathname} search={search} hasActiveDetail={hasActiveDetail} taskId={currentTaskId} />
                   ))}
                 </section>
               ))}
@@ -295,6 +318,7 @@ export function WorkspaceMobileNav() {
   }, []);
   const items = buildV4NavGroups(runtime).flatMap((group) => group.items);
   const researchHighlight = useTaskDetailResearchHighlight(pathname);
+  const currentTaskId = useCurrentTaskId(pathname);
 
   return (
     <nav className="no-scrollbar mt-4 flex gap-2 overflow-x-auto pb-1 lg:hidden" aria-label="工作台移动导航">
@@ -308,7 +332,7 @@ export function WorkspaceMobileNav() {
         return (
           <Link
             key={item.href}
-            href={item.href}
+            href={withTaskContext(item.href, currentTaskId)}
             aria-current={active ? "page" : undefined}
             className={
               "inline-flex h-11 shrink-0 items-center gap-2 rounded-full border px-3 text-sm font-semibold transition " +
