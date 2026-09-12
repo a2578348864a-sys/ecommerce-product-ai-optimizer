@@ -16,6 +16,16 @@ import { copyPlainText } from "@/lib/client/copyPlainText";
 import { deriveListingV5SafetyDisplay } from "@/lib/client/listingV5SafetyDisplay";
 import { TaskStudioPreparation } from "@/components/studio/TaskStudioPreparation";
 import { StandaloneListingStudio } from "@/components/listing-studio/StandaloneListingStudio";
+import {
+  localizeTargetAudience,
+  localizePurchaseMotivation,
+  localizePrimaryAngle,
+  localizeTone,
+  localizeUseCase,
+  localizeAvoidClaim,
+  localizeStrategyList,
+  localizeBenefitRole,
+} from "@/lib/client/strategyDisplayLocalization";
 
 type V5Data = {
   context: {
@@ -437,7 +447,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
                   目标买家
                 </span>
                 <p className="mt-1 text-xs font-medium text-slate-800 leading-relaxed">
-                  {strategy.targetAudience?.join("、") || "通用消费者"}
+                  {localizeStrategyList(strategy.targetAudience, localizeTargetAudience) || "追求日常实用与可靠品质的消费者"}
                 </p>
               </div>
               <div className="flex flex-col justify-between rounded-xl border border-slate-200/70 bg-slate-50/60 p-3">
@@ -445,7 +455,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
                   核心需求 / 痛点
                 </span>
                 <p className="mt-1 text-xs font-medium text-slate-800 leading-relaxed">
-                  {strategy.purchaseMotivations?.join("、") || "按已确认资料表达"}
+                  {localizeStrategyList(strategy.purchaseMotivations, localizePurchaseMotivation) || "按已确认资料表达"}
                 </p>
               </div>
               <div className="flex flex-col justify-between rounded-xl border border-slate-200/70 bg-slate-50/60 p-3">
@@ -453,7 +463,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
                   主表达角度
                 </span>
                 <p className="mt-1 text-xs font-medium text-slate-800 leading-relaxed">
-                  {strategy.primaryAngle || "事实优先"}
+                  {localizePrimaryAngle(strategy.primaryAngle) || "事实优先"}
                 </p>
               </div>
               <div className="flex flex-col justify-between rounded-xl border border-slate-200/70 bg-slate-50/60 p-3">
@@ -461,7 +471,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
                   文案语气
                 </span>
                 <p className="mt-1 text-xs font-medium text-slate-800 leading-relaxed">
-                  {strategy.tone?.join("、") || "清晰、专业"}
+                  {localizeStrategyList(strategy.tone, localizeTone) || "清晰、专业"}
                 </p>
               </div>
               <div className="flex flex-col justify-between rounded-xl border border-slate-200/70 bg-slate-50/60 p-3">
@@ -469,7 +479,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
                   使用场景
                 </span>
                 <p className="mt-1 text-xs font-medium text-slate-800 leading-relaxed">
-                  {strategy.useCases?.join("、") || "日常使用"}
+                  {localizeStrategyList(strategy.useCases, localizeUseCase) || "日常高频使用"}
                 </p>
               </div>
               <div className="flex flex-col justify-between rounded-xl border border-slate-200/70 bg-slate-50/60 p-3">
@@ -477,7 +487,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
                   避免表达
                 </span>
                 <p className="mt-1 text-xs font-medium text-slate-800 leading-relaxed">
-                  {strategy.avoidClaims?.join("、") || "避免夸大或未经核实声明"}
+                  {localizeStrategyList(strategy.avoidClaims, localizeAvoidClaim) || "避免夸大或未经核实声明"}
                 </p>
               </div>
             </div>
@@ -614,11 +624,11 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
                   <span className="font-semibold text-slate-800">
                     本次采用策略:
                   </span>
-                  <span>{strategy.primaryAngle || "事实优先"}</span>
+                  <span>{localizePrimaryAngle(strategy.primaryAngle) || "事实优先"}</span>
                   <span className="text-slate-400">·</span>
-                  <span>主打 {strategy.targetAudience?.[0] || "目标人群"}</span>
+                  <span>主打 {localizeTargetAudience(strategy.targetAudience?.[0]) || "目标人群"}</span>
                   <span className="text-slate-400">·</span>
-                  <span>语气 {strategy.tone?.[0] || "专业"}</span>
+                  <span>语气 {localizeTone(strategy.tone?.[0]) || "专业"}</span>
                 </div>
                 <span className="rounded border border-emerald-200 bg-emerald-100/70 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
                   ✓ 已应用到本次 Listing
@@ -967,11 +977,21 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
               <p>
                 <strong>买家意图：</strong>
                 {snapshot.conversionBlueprint.buyerIntent?.primary || "按关键词意图"}
-                {snapshot.conversionBlueprint.buyerIntent?.stage ? `（${snapshot.conversionBlueprint.buyerIntent.stage}）` : ""}
+                {snapshot.conversionBlueprint.buyerIntent?.stage
+                  ? `（${
+                      snapshot.conversionBlueprint.buyerIntent.stage === "purchase_ready"
+                        ? "购买决断期"
+                        : snapshot.conversionBlueprint.buyerIntent.stage === "consideration"
+                        ? "比对考量期"
+                        : snapshot.conversionBlueprint.buyerIntent.stage === "awareness"
+                        ? "认知了解期"
+                        : snapshot.conversionBlueprint.buyerIntent.stage
+                    }）`
+                  : ""}
               </p>
               <p>
                 <strong>转化角度：</strong>
-                {snapshot.conversionBlueprint.conversionAngle?.angle || "事实优先"}
+                {localizePrimaryAngle(snapshot.conversionBlueprint.conversionAngle?.angle) || "事实优先"}
               </p>
               <div>
                 <strong>买家痛点：</strong>
@@ -1005,11 +1025,13 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
               <p>
                 <strong>证据点：</strong>
                 {snapshot.conversionBlueprint.proofPointCount} 条已确认事实；卖点顺序{" "}
-                {snapshot.conversionBlueprint.benefitOrder?.map((item: any) => item.role).join(" → ") || "默认顺序"}
+                {snapshot.conversionBlueprint.benefitOrder
+                  ?.map((item: any) => localizeBenefitRole(item.role))
+                  .join(" → ") || "默认顺序"}
               </p>
               {snapshot.conversionBlueprint.purchaseTriggers?.length ? (
                 <div data-testid="listing-v5-conversion-strategy">
-                  <strong>购买触发（Conversion Strategy）：</strong>
+                  <strong>购买触发（转化策略）：</strong>
                   <ul className="mt-1 space-y-1">
                     {snapshot.conversionBlueprint.purchaseTriggers.map((trigger: any, index: number) => (
                       <li key={`${trigger.trigger}-${index}`} className="flex flex-wrap items-center gap-1.5">
@@ -1052,7 +1074,16 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
               {snapshot.conversionBlueprint.decisionSequence?.length ? (
                 <p>
                   <strong>决策顺序：</strong>
-                  {snapshot.conversionBlueprint.decisionSequence.join(" → ")}
+                  {snapshot.conversionBlueprint.decisionSequence
+                    .map((seq: string) =>
+                      ({
+                        use_scenario: "使用场景",
+                        core_benefit: "核心价值",
+                        proof: "规格佐证",
+                        risk_reduction: "消除疑虑",
+                      }[seq] ?? seq)
+                    )
+                    .join(" → ")}
                 </p>
               ) : null}
               {snapshot.conversionBlueprint.disallowedTemptations?.length ? (
@@ -1192,7 +1223,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
             </div>
             <div className="rounded-lg border border-slate-200/70 bg-white p-2">
               <dt className="text-[11px] font-semibold text-slate-400">
-                Safe Fallback
+                安全回退模式
               </dt>
               <dd
                 className="mt-0.5 font-medium text-slate-800"

@@ -1,6 +1,14 @@
 "use client";
 
 import type { CopyStrategyV1 } from "@/lib/listingHandoff/copyStrategy/types";
+import {
+  localizeTargetAudience,
+  localizePurchaseMotivation,
+  localizePrimaryAngle,
+  localizeTone,
+  localizeUseCase,
+  localizeAvoidClaim,
+} from "@/lib/client/strategyDisplayLocalization";
 
 type ListingCopyStrategyCardProps = {
   strategy?: CopyStrategyV1 | null;
@@ -39,18 +47,23 @@ export function ListingCopyStrategyCard({
   applied = false,
   summaryOnly = false,
 }: ListingCopyStrategyCardProps) {
-  const targetBuyer = textOf(strategyValue(strategy, "targetBuyer"));
-  const painPoint = firstValue(strategyValue(strategy, "buyerPainPoints"));
-  const mainAngle = textOf(strategyValue(strategy, "mainAngle"));
-  const tone = textOf(strategyValue(strategy, "copyTone"));
+  const targetBuyerRaw = textOf(strategyValue(strategy, "targetBuyer"));
+  const painPointRaw = firstValue(strategyValue(strategy, "buyerPainPoints"));
+  const mainAngleRaw = textOf(strategyValue(strategy, "mainAngle"));
+  const toneRaw = textOf(strategyValue(strategy, "copyTone"));
   const titleStrategy = textOf(strategyValue(strategy, "titleStrategy"));
-  const descriptionStrategy = textOf(strategyValue(strategy, "descriptionStrategy"));
+  const descriptionStrategyRaw = textOf(strategyValue(strategy, "descriptionStrategy"));
+  const targetBuyer = localizeTargetAudience(targetBuyerRaw);
+  const painPoint = localizePurchaseMotivation(painPointRaw);
+  const mainAngle = localizePrimaryAngle(mainAngleRaw);
+  const tone = localizeTone(toneRaw);
+  const descriptionStrategy = localizeUseCase(descriptionStrategyRaw);
   const bulletStrategies = Array.isArray(strategyValue(strategy, "bulletStrategies"))
     ? (strategyValue(strategy, "bulletStrategies") as Array<{ order?: number; structure?: string; purpose?: string }>)
         .filter((item) => item && typeof item === "object")
         .slice(0, 5)
     : [];
-  const avoidExpressions = valuesOf(strategyValue(strategy, "avoidExpressions"));
+  const avoidExpressions = valuesOf(strategyValue(strategy, "avoidExpressions")).map(localizeAvoidClaim);
   const hasStrategy = Boolean(targetBuyer || painPoint || mainAngle || tone || titleStrategy || descriptionStrategy || bulletStrategies.length);
 
   if (!hasStrategy) {
@@ -122,11 +135,11 @@ export function ListingCopyStrategyCard({
             <p className="mt-1 break-words leading-5 text-slate-600">{titleStrategy || "先说清品牌、品类和主要特点，保持可读"}</p>
           </div>
           <div className="min-w-0 rounded-lg border border-slate-100 bg-white p-2.5">
-            <p className="font-semibold text-slate-700">Description 策略</p>
+            <p className="font-semibold text-slate-700">商品描述策略</p>
             <p className="mt-1 break-words leading-5 text-slate-600">{descriptionStrategy || "产品是什么 → 对用户有什么帮助 → 合理使用场景"}</p>
           </div>
           <div className="min-w-0 rounded-lg border border-slate-100 bg-white p-2.5 md:col-span-2">
-            <p className="font-semibold text-slate-700">Bullet 表达结构</p>
+            <p className="font-semibold text-slate-700">五点描述表达结构</p>
             <ul className="mt-1 space-y-1 leading-5 text-slate-600">
               {bulletStrategies.length > 0
                 ? bulletStrategies.map((item, index) => <li key={`${item.order ?? index}-${item.purpose ?? index}`} className="break-words"><span className="font-semibold text-violet-900">Feature → Benefit → Scenario</span>{item.purpose ? ` · ${item.purpose}` : ""}</li>)

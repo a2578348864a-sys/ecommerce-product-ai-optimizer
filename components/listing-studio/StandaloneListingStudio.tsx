@@ -39,7 +39,7 @@ export function StandaloneListingStudio() {
         className="mb-3 inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-0.5 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold leading-5 text-slate-600"
         data-testid="listing-mode-standalone"
       >
-        <span className="whitespace-nowrap">独立工具（STANDALONE）</span>
+        <span className="whitespace-nowrap">独立工具</span>
         <span>资料由你提供，未经商品研究验证</span>
       </div>
       <section className="surface-card mb-3 p-4" data-testid="listing-studio-standalone-intro">
