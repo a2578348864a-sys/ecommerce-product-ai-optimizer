@@ -36,4 +36,16 @@ describe("ListingStudioV5Client 安全检查状态接线", () => {
     // 三格断言被 listing 条件包住：没有草稿时改为"暂无校验结论"说明
     expect(client).toContain("还没有草稿，因此没有任何校验结论");
   });
+
+  it("门禁拒绝时禁用生成类按钮，并提供返回商品研究入口", () => {
+    // 服务端已明确拒绝时，两个生成类按钮都必须禁用（重试不可能成功）
+    const disabledBindings = client.match(/disabled=\{busy \|\| safety\.gateBlocked\}/g) ?? [];
+    expect(disabledBindings).toHaveLength(2); // 重新分析策略 + 生成/重新生成 Listing
+    expect(client).toContain("safety.gateBlocked ?");
+    expect(client).toContain("返回商品研究 / 任务详情");
+    // 任务不存在时不能指向不存在的详情页（死链），退回研究记录列表
+    expect(client).toContain('errorCode === "task_not_found" ? "/tasks"');
+    expect(client).toContain("返回研究记录");
+    expect(client).toContain("import Link from \"next/link\";");
+  });
 });

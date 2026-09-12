@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveListingV5SafetyDisplay } from "./listingV5SafetyDisplay";
+import { deriveListingV5SafetyDisplay, isGateRefusalCode } from "./listingV5SafetyDisplay";
 
 /**
  * 审计回归：绿色「安全检查通过」必须由后端真实状态决定。
@@ -97,5 +97,42 @@ describe("deriveListingV5SafetyDisplay", () => {
     expect(
       deriveListingV5SafetyDisplay({ hasListing: true, validationStatus: "PASS", stale: true, errorCode: "handoff_required" }).detail,
     ).toContain("交接版本");
+  });
+
+  it("研究未完成的任务显示「先完成研究」而不是「旧版任务」", () => {
+    const display = deriveListingV5SafetyDisplay({ hasListing: false, errorCode: "research_not_completed" });
+    expect(display.tone).toBe("blocked");
+    expect(display.gateBlocked).toBe(true);
+    expect(display.safeToCallPassed).toBe(false);
+    expect(display.detail).toContain("完成研究");
+    expect(display.detail).not.toContain("旧版");
+  });
+
+  it("不存在的任务说明任务不存在，不回落到「旧版研究流程」", () => {
+    const display = deriveListingV5SafetyDisplay({ hasListing: false, errorCode: "task_not_found" });
+    expect(display.gateBlocked).toBe(true);
+    expect(display.detail).toContain("任务不存在");
+    expect(display.detail).not.toContain("旧版");
+  });
+
+  it("只有登记过的门禁拒绝码才锁定生成按钮（额度/网络类仍可重试）", () => {
+    expect(isGateRefusalCode("research_not_completed")).toBe(true);
+    expect(isGateRefusalCode("task_not_found")).toBe(true);
+    expect(isGateRefusalCode("legacy_not_supported")).toBe(true);
+    expect(isGateRefusalCode("quota_exceeded")).toBe(false);
+    expect(isGateRefusalCode("provider_error")).toBe(false);
+    expect(isGateRefusalCode("")).toBe(false);
+    expect(isGateRefusalCode(null)).toBe(false);
+    expect(deriveListingV5SafetyDisplay({ hasListing: false, errorCode: "quota_exceeded" }).gateBlocked).toBe(false);
+  });
+
+  it("非门禁路径一律不锁定生成按钮", () => {
+    const displays = [
+      deriveListingV5SafetyDisplay({ hasListing: true, validationStatus: "PASS", stale: false }),
+      deriveListingV5SafetyDisplay({ hasListing: true, validationStatus: "PASS", stale: true }),
+      deriveListingV5SafetyDisplay({ hasListing: true, validationStatus: "BLOCK", stale: false }),
+      deriveListingV5SafetyDisplay({ hasListing: false }),
+    ];
+    for (const display of displays) expect(display.gateBlocked).toBe(false);
   });
 });

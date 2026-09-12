@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
   Check,
@@ -186,6 +187,10 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
   const validation = snapshot?.validation;
   const provider = snapshot?.provider;
   const trace = snapshot?.trace;
+  // A not-found task has no detail page to return to, so that state goes back to the
+  // research list instead of linking into a 404.
+  const gateCtaHref = errorCode === "task_not_found" ? "/tasks" : `/tasks/${encodeURIComponent(taskId)}`;
+  const gateCtaLabel = errorCode === "task_not_found" ? "返回研究记录 →" : "返回商品研究 / 任务详情 →";
   // Single source of truth for every safety-status surface on this page. The green
   // "passed" badge used to be driven by `listing` alone, so BLOCK / REPAIRABLE /
   // stale / gate-refused states all rendered as a pass.
@@ -278,6 +283,14 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
           <div className="min-w-0">
             <p className="font-semibold">{safety.badge}</p>
             <p className="mt-1 text-xs leading-5">{safety.detail}</p>
+            {safety.gateBlocked ? (
+              <Link
+                href={gateCtaHref}
+                className="mt-2 inline-flex items-center rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-800 transition-colors hover:bg-slate-100"
+              >
+                {gateCtaLabel}
+              </Link>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -341,7 +354,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
           <button
             type="button"
             onClick={() => void run("analyze_strategy")}
-            disabled={busy}
+            disabled={busy || safety.gateBlocked}
             className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs transition-colors hover:bg-slate-50 disabled:opacity-50"
           >
             <RefreshCw
@@ -531,7 +544,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
             <button
               type="button"
               onClick={() => void run("generate")}
-              disabled={busy}
+              disabled={busy || safety.gateBlocked}
               className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs transition-colors hover:bg-slate-50 disabled:opacity-50"
             >
               <RefreshCw

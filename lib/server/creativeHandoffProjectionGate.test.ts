@@ -166,6 +166,72 @@ describe("Fix.3 Gate 投影接线", () => {
     expect(gate.allowed).toBe(false);
     expect(gate.reason).toBe("legacy_not_supported");
   });
+
+  it("28. modern 任务但尚无 researchRecord → research_not_completed（不是旧版任务）", async () => {
+    const storePath = join(tmpdir(), "fix3-gate-test", "sandbox.json");
+    const doc = JSON.parse(researchDoc("candidate-fix3"));
+    delete doc.researchRecord;
+    delete doc.researchVerification;
+    delete doc.researchCompletion;
+    const task = {
+      id: "demo-task-fix3c",
+      demoAccessId: DEMO,
+      type: "workflow",
+      title: "T",
+      decisionStatus: "pending",
+      platform: "amazon",
+      productUrl: null,
+      materialText: "m",
+      source: "demo",
+      score: 1,
+      level: "low",
+      oneLineSummary: "o",
+      resultJson: JSON.stringify(doc),
+      productLifecycle: "investigating",
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+    writeFileSync(storePath, JSON.stringify({ version: 1, tasks: [task], candidates: [] }), "utf8");
+
+    // 该任务带 candidateAnalysisContext（modern 标记）但没有研究合同：这是"研究未完成"，
+    // 不是旧版记录 —— 门禁必须报 research_not_completed。
+    const { gate } = await generateCreativeHandoffPreview("demo-task-fix3c", visitorContext());
+    expect(gate.allowed).toBe(false);
+    expect(gate.reason).toBe("research_not_completed");
+    expect(gate.reason).not.toBe("legacy_not_supported");
+  });
+
+  it("29. 真正旧版任务（无任何 modern 标记）仍返回 legacy_not_supported", async () => {
+    const storePath = join(tmpdir(), "fix3-gate-test", "sandbox.json");
+    const legacyDoc = {
+      type: "workflow",
+      title: "legacy task",
+      agentOutputSnapshot: { version: "agent-output-v1", listingSnapshot: { titleDraft: "L" } },
+    };
+    const task = {
+      id: "demo-task-fix3d",
+      demoAccessId: DEMO,
+      type: "workflow",
+      title: "T",
+      decisionStatus: "continue",
+      platform: "amazon",
+      productUrl: null,
+      materialText: "m",
+      source: "demo",
+      score: 1,
+      level: "low",
+      oneLineSummary: "o",
+      resultJson: JSON.stringify(legacyDoc),
+      productLifecycle: "investigating",
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+    writeFileSync(storePath, JSON.stringify({ version: 1, tasks: [task], candidates: [] }), "utf8");
+
+    const { gate } = await generateCreativeHandoffPreview("demo-task-fix3d", visitorContext());
+    expect(gate.allowed).toBe(false);
+    expect(gate.reason).toBe("legacy_not_supported");
+  });
 });
 
   it("27. listingCreationBriefRaw 窄投影：原样返回，不泄漏 resultJson", async () => {

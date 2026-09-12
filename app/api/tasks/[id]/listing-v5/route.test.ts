@@ -277,6 +277,38 @@ describe("Listing V5 route", () => {
     expect(mocks.checkCreativeHandoffGate).not.toHaveBeenCalled();
   });
 
+  it("answers 404 task_not_found when the gate cannot access the task, not legacy_not_supported", async () => {
+    state.gate = { allowed: false, reason: "legacy_not_supported", taskAccessible: false };
+    const response = await GET(request("GET", "missing-task"), { params: Promise.resolve({ id: "missing-task" }) });
+    expect(response.status).toBe(404);
+    expect(await json(response)).toEqual({ error: { code: "task_not_found", message: "任务不存在。" } });
+  });
+
+  it("answers 422 research_not_completed for an accessible task whose research is unfinished", async () => {
+    state.gate = { allowed: false, reason: "research_not_completed", taskAccessible: true };
+    const response = await GET(request("GET"), { params: Promise.resolve({ id: "task-1" }) });
+    expect(response.status).toBe(422);
+    expect((await json(response)).error.code).toBe("research_not_completed");
+  });
+
+  it("keeps a genuinely legacy task on the 422 legacy_not_supported path", async () => {
+    state.gate = { allowed: false, reason: "legacy_not_supported", taskAccessible: true };
+    const response = await GET(request("GET"), { params: Promise.resolve({ id: "task-1" }) });
+    expect(response.status).toBe(422);
+    expect((await json(response)).error.code).toBe("legacy_not_supported");
+  });
+
+  it("POST maps an inaccessible task to 404 as well and never mutates storage", async () => {
+    state.gate = { allowed: false, reason: "legacy_not_supported", taskAccessible: false };
+    const response = await POST(
+      request("POST", "missing-task", { action: "generate" }),
+      { params: Promise.resolve({ id: "missing-task" }) },
+    );
+    expect(response.status).toBe(404);
+    expect((await json(response)).error.code).toBe("task_not_found");
+    expect(mocks.mutateTaskResultJson).not.toHaveBeenCalled();
+  });
+
   it("requires explicit confirmation when real AI is enabled for a visitor", async () => {
     state.authResult = { ok: true, context: demoContext };
     state.useProvider = true;

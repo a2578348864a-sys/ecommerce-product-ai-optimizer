@@ -4,7 +4,7 @@ import { isSandboxTaskId, getSandboxTask } from "@/lib/server/demoSandbox";
 import { markDemoAiProviderCallStarted, requireAuthenticated, reserveDemoAiCalls, settleDemoAiCalls } from "@/lib/server/demoGuard";
 import { isRealAiListingEnabled, isRealAiVisitorListingEnabled } from "@/lib/server/realAiListingGate";
 import type { AccessContext } from "@/lib/server/accessPassword";
-import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPreview";
+import { checkCreativeHandoffGate, type CreativeHandoffGateResult } from "@/lib/server/productCreativeHandoffPreview";
 import { buildListingInputFromCreativeHandoff } from "@/lib/listingHandoff/listingGenerationInput";
 import { mutateTaskResultJson, TaskResultJsonMutationError } from "@/lib/server/taskResultJsonMutation";
 import { prisma } from "@/lib/server/db";
@@ -60,6 +60,20 @@ const NOT_VALIDATED_PLACEHOLDER: ListingV5ValidationResult = {
 
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
 function error(status: number, code: string, message: string) { return NextResponse.json({ error: { code, message } }, { status }); }
+
+/**
+ * Turn a gate refusal into a response the client can act on.
+ *
+ * The gate reports "task missing / not owned" and genuine business refusals with the
+ * same `legacy_not_supported` reason. Letting that reach the client for a task that
+ * simply does not exist told users their own task was an unsupported legacy record,
+ * so an inaccessible task answers 404 task_not_found instead — the same code and
+ * message the sibling routes already use (see the creative-handoff micro-gate).
+ */
+function gateRefusal(gate: CreativeHandoffGateResult) {
+  if (gate.taskAccessible === false) return error(404, "task_not_found", "任务不存在。");
+  return error(422, gate.reason, "当前研究资料还不能生成 Listing V5。请先完成研究与人工确认。");
+}
 
 function auth(req: NextRequest, taskId: string, body: Record<string, unknown>): { ctx: AccessContext | null; response: NextResponse | null } {
   const result = requireAuthenticated(req, body);
@@ -318,7 +332,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const verified = auth(req, id, {});
   if (verified.response) return verified.response;
   const { gate, context } = await buildContext(id, verified.ctx!);
-  if (!context) return error(422, gate.reason, "当前研究资料还不能生成 Listing V5。请先完成研究与人工确认。");
+  if (!context) return gateRefusal(gate);
   const result = await readResult(id, verified.ctx!);
   // `realAiEnabled` is server-authoritative so the client can disable (and
   // explain) the real-AI confirmation instead of letting the user tick a box
@@ -339,7 +353,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const action = body.action === "analyze_strategy" || body.action === "generate" ? body.action : null;
   if (!action) return error(400, "invalid_action", "只支持 analyze_strategy 或 generate。");
   const prepared = await buildContext(id, verified.ctx!);
-  if (!prepared.context) return error(422, prepared.gate.reason, "当前研究资料还不能生成 Listing V5。请先完成研究与人工确认。");
+  if (!prepared.context) return gateRefusal(prepared.gate);
   const context = prepared.context;
   const current = await readResult(id, verified.ctx!);
   const cached = isRecord(current?.listingV5) ? current.listingV5 : null;
