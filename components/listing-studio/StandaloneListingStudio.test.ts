@@ -25,7 +25,7 @@ describe("Listing Studio 入口：独立工具模式（无 taskId）", () => {
 
   it("renders the standalone tool entry instead of a blocking notice", () => {
     expect(html).toContain('data-testid="listing-studio-standalone-mode"');
-    expect(html).toContain("独立工具（STANDALONE）");
+    expect(html).toContain("独立工具");
     expect(html).toContain("独立 Listing 创作工具");
     expect(html).not.toContain("请从研究任务进入");
     expect(html).not.toContain("无法确定要为哪个商品生成 Listing");

@@ -13,7 +13,7 @@ describe("WorkspaceSidebar 导航矩阵（V4.1 C 端）", () => {
     expect(g[0].items).toEqual(["工作台:/"]);
     expect(g[1].label).toBe("商品研究");
     expect(g[1].items).toEqual(["发现商品:/opportunities", "待研究商品:/opportunity-candidates", "商品研究:/research", "研究记录:/tasks"]);
-    expect(g[2].items).toEqual(["Listing Studio:/listing-studio", "Image Studio:/image-studio"]);
+    expect(g[2].items).toEqual(["文案工作台:/listing-studio", "图片工作台:/image-studio"]);
     const all = g.flatMap((x) => x.items);
     expect(all.some((i) => i.includes("/v4/runs"))).toBe(false);
     expect(all.some((i) => i.includes("/replay"))).toBe(false);

@@ -40,6 +40,8 @@ export type ListingV5QualityEvaluation = {
   dimensions: ListingV5QualityDimension[];
   /** True when the shipped copy is the deterministic fallback draft, not AI copy. */
   deterministicFallback: boolean;
+  /** Hard copy-quality findings that require at most one bounded polish pass. */
+  hardFlags: string[];
   notes: string[];
 };
 
@@ -225,6 +227,44 @@ function gradeFor(total: number): ListingV5QualityEvaluation["grade"] {
   return "D";
 }
 
+/**
+ * Deterministic final-copy gate. These are presentation findings, not claim
+ * authority: the Validator remains the only safety decision maker. Keeping the
+ * findings here lets the route request one Rewrite polish without turning copy
+ * style into a second fact-safety system.
+ */
+export function detectListingV5HardCopyFlags(draft: ListingV5WriterDraft, validation: ListingV5ValidationResult): string[] {
+  const flags = new Set<string>();
+  const bullets = draft.bullets.map((bullet) => bullet.text.trim());
+  const all = [draft.title.text, ...bullets, draft.description.text].join(" ");
+  if (validation.quality.keywordStuffing) flags.add("keyword_stuffing");
+  if (/\b(?:lunch\s+box\s+kids\s+meals|thermos\s+routines|2\s+pcs\s+[A-Z][A-Za-z]+|measured\s+size\s+to\s+plan\s+around|clean,?\s+elevated\s+presence)\b/i.test(all)) flags.add("malformed_english");
+  const normalizedBullets = bullets.map(normalize);
+  if (new Set(normalizedBullets).size !== normalizedBullets.length) flags.add("repeated_sentence_or_benefit");
+  const phraseCounts = new Map<string, number>();
+  for (const text of bullets.map(normalize)) {
+    const tokens = text.split(" ").filter(Boolean);
+    for (let i = 0; i <= tokens.length - 4; i += 1) {
+      const phrase = tokens.slice(i, i + 4).join(" ");
+      phraseCounts.set(phrase, (phraseCounts.get(phrase) ?? 0) + 1);
+    }
+  }
+  const descriptionSentences = draft.description.text.split(/[.!?]+/).map((sentence) => normalize(sentence)).filter(Boolean);
+  const bulletSentences = bullets.flatMap((bullet) => bullet.split(/[.!?]+/).map((sentence) => normalize(sentence)).filter(Boolean));
+  if ([...phraseCounts.values()].some((count) => count > 1)
+    || descriptionSentences.some((sentence) => bulletSentences.some((bullet) => sentence === bullet && sentence.length >= 24))) {
+    flags.add("repeated_sentence_or_benefit");
+  }
+  for (const bullet of draft.bullets) {
+    const hook = /^\s*\[([^\]]+)\]\s*:/i.exec(bullet.text)?.[1]?.toLowerCase() ?? "";
+    const body = bullet.text.replace(/^\s*\[[^\]]+\]\s*:\s*/i, "");
+    if (hook.includes("care") && !/\b(?:care|wash|dishwasher|clean|cleanup)\b/i.test(body)) flags.add("hook_role_mismatch");
+    if (hook.includes("included") && !/\b(?:include|set|component|spoon|holder|pieces?|count)\b/i.test(body)) flags.add("hook_role_mismatch");
+  }
+  if (/\b(?:helps?\s+shoppers?\s+understand|clear\s+(?:product\s+)?detail\s+to\s+compare|confidently\s+compare|plan\s+around|one\s+less\s+thing\s+to\s+think\s+about|simple\s+product\s+choice|clean,?\s+elevated\s+presence)\b/i.test(all)) flags.add("meta_shopping_filler");
+  return [...flags];
+}
+
 export function evaluateListingV5Quality(input: ListingV5QualityEvaluationInput): ListingV5QualityEvaluation {
   const text = draftText(input.draft);
   const dimensions: ListingV5QualityDimension[] = [
@@ -235,10 +275,12 @@ export function evaluateListingV5Quality(input: ListingV5QualityEvaluationInput)
     conversionDimension(input.blueprint, input.strategy, input.draft, text, input.deterministicFallback),
   ];
   const total = dimensions.reduce((sum, dimension) => sum + dimension.score, 0);
+  const hardFlags = detectListingV5HardCopyFlags(input.draft, input.validation);
   const notes: string[] = [];
   if ((input.validation.claims?.unsupportedClaims ?? []).length > 0) notes.push("Validator reported unsupported claims; fix facts or wording, never the Validator.");
   if (input.deterministicFallback) notes.push("This listing shipped from the deterministic fallback path and is a quality regression signal, not a factual failure.");
   if (dimensions[3]?.evidence.some((line) => line.startsWith("no comparable competitor"))) notes.push("Differentiation could not be measured: no comparable competitor attribute in the research references.");
+  if (hardFlags.length > 0) notes.push(`Copy polish needed: ${hardFlags.join(", ")}`);
   return {
     version: LISTING_V5_QUALITY_EVALUATION_VERSION,
     total: clamp(total, 100),
@@ -246,6 +288,7 @@ export function evaluateListingV5Quality(input: ListingV5QualityEvaluationInput)
     grade: gradeFor(total),
     dimensions,
     deterministicFallback: input.deterministicFallback,
+    hardFlags,
     notes,
   };
 }

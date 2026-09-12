@@ -73,6 +73,9 @@ function error(status: number, code: string, message: string) { return NextRespo
  */
 function gateRefusal(gate: CreativeHandoffGateResult) {
   if (gate.taskAccessible === false) return error(404, "task_not_found", "任务不存在。");
+  if (gate.reason === "creative_confirmation_required") {
+    return error(422, gate.reason, "还差一步：确认创作资料。研究中已有可用于 Listing 的商品事实，请先确认创作资料后再生成文案。");
+  }
   return error(422, gate.reason, "当前研究资料还不能生成 Listing V5。请先完成研究与人工确认。");
 }
 
@@ -308,6 +311,9 @@ function safeSnapshot(snapshot: unknown, currentRevision: number, currentHandoff
     max: 100,
     grade: String(snapshot.qualityEvaluation.grade ?? "D"),
     deterministicFallback: snapshot.qualityEvaluation.deterministicFallback === true,
+    hardFlags: Array.isArray(snapshot.qualityEvaluation.hardFlags)
+      ? snapshot.qualityEvaluation.hardFlags.filter((flag): flag is string => typeof flag === "string").slice(0, 8)
+      : [],
     notes: Array.isArray(snapshot.qualityEvaluation.notes) ? snapshot.qualityEvaluation.notes.filter((item): item is string => typeof item === "string").slice(0, 4) : [],
     dimensions: Array.isArray(snapshot.qualityEvaluation.dimensions)
       ? snapshot.qualityEvaluation.dimensions.filter(isRecord).slice(0, 5).map((item) => ({
@@ -324,10 +330,8 @@ function safeSnapshot(snapshot: unknown, currentRevision: number, currentHandoff
 
 async function buildContext(taskId: string, ctx: AccessContext) {
   const gate = await checkCreativeHandoffGate(taskId, ctx);
-  const latestHandoff = gate.currentHandoff?.versions[gate.currentHandoff.versions.length - 1];
-  const hasListingConfirmedFact = Boolean(latestHandoff?.confirmedFacts.some((fact) => fact.usageScopes.includes("listing")));
-  const degradedGateWithPersistedFacts = gate.reason === "no_confirmed_facts" && hasListingConfirmedFact;
-  if ((!gate.allowed && !degradedGateWithPersistedFacts) || !gate.currentHandoff || !gate.candidate) return { gate, context: null };
+  if (!gate.allowed || !gate.currentHandoff || !gate.candidate) return { gate, context: null };
+  const latestHandoff = gate.currentHandoff.versions[gate.currentHandoff.versions.length - 1];
   const researchRevision = gate.candidate.sourceResearch.researchRevision;
   const built = buildListingInputFromCreativeHandoff(gate.currentHandoff, researchRevision, { creativeContext: gate.creativeContext ?? null });
   if (!built.ok) return { gate, context: null };
@@ -554,21 +558,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const carriedProvider = strategyOnly && carriedListing && carriedListingIsCurrent && isRecord(cached?.provider) ? (cached.provider as typeof provider) : null;
     const carriedRepairApplied = strategyOnly && carriedListing && carriedListingIsCurrent ? cached?.repairApplied === true : null;
     const finalValidation = validation ?? carriedValidation;
-    const trace = buildListingV5ExecutionTrace({
-      strategy: strategyResult.trace ?? idleStageTrace(),
-      writer: writerTrace,
-      repair: repairTrace,
-      validation: firstValidation ?? finalValidation,
-      finalValidation,
-      recovery: recoveryTrace,
-      recoveryValidation,
-      recoveryReason,
-      rewrite: rewriteTrace,
-      rewriteValidation,
-      rewriteReason,
-      fallbackUsed: fallbackReason !== "none",
-      fallbackReason,
-    });
     const snapshotListing = draft ?? carriedListing;
     const snapshotProvider = carriedProvider ?? provider;
     // Conversion intelligence layer (Phase 2/3/4): deterministic, provider-free,
@@ -584,6 +573,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         deterministicFallback: snapshotProvider.fallbackUsed,
       })
       : null;
+    const trace = buildListingV5ExecutionTrace({
+      strategy: strategyResult.trace ?? idleStageTrace(),
+      writer: writerTrace,
+      repair: repairTrace,
+      validation: firstValidation ?? finalValidation,
+      finalValidation,
+      recovery: recoveryTrace,
+      recoveryValidation,
+      recoveryReason,
+      rewrite: rewriteTrace,
+      rewriteValidation,
+      rewriteReason,
+      fallbackUsed: fallbackReason !== "none",
+      fallbackReason,
+    });
     const snapshot: ListingV5Snapshot = {
       version: "listing-v5.snapshot.v1", taskId: id, researchRevision: context.researchRevision, handoffRevision: context.handoffRevision, contextFingerprint: context.contextFingerprint,
       strategy: strategyResult.strategy, listing: snapshotListing, validation: finalValidation ?? NOT_VALIDATED_PLACEHOLDER,

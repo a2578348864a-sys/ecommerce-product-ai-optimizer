@@ -18,6 +18,7 @@ vi.hoisted(() => {
 import { generateCreativeHandoffPreview, checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPreview";
 import { createInitialProductResearchRecord, createProductResearchVerification, buildProductResearchHash, PRODUCT_RESEARCH_HASH_SCHEMA } from "@/lib/productResearchRecord";
 import { buildConfirmableCandidates } from "@/lib/productCreativeHandoffConfirmation";
+import { createProductCreativeHandoff } from "@/lib/productCreativeHandoff";
 
 const NOW = "2026-08-05T00:00:00.000Z";
 const DEMO = "demo-fix5";
@@ -50,6 +51,32 @@ function researchDoc(candidateId = "candidate-fix5") {
 function seedTask(taskId: string, resultJson: string) {
   const storePath = join(tmpdir(), "fix5-regression", "sandbox.json");
   writeFileSync(storePath, JSON.stringify({ version: 1, tasks: [{ id: taskId, demoAccessId: DEMO, type: "workflow", title: "T", decisionStatus: "continue", platform: "amazon", productUrl: null, materialText: "m", source: "demo", score: 1, level: "low", oneLineSummary: "o", resultJson, productLifecycle: "i", createdAt: NOW, updatedAt: NOW }], candidates: [] }), "utf8");
+}
+
+function withResearchConfirmed(resultJson: string, confirmed: unknown[]) {
+  const doc = JSON.parse(resultJson) as Record<string, unknown>;
+  doc.factCandidates = {
+    schema: "fact-candidates.v1",
+    version: 1,
+    confirmed,
+    updatedAt: NOW,
+  };
+  return JSON.stringify(doc);
+}
+
+function confirmedFact(overrides: Record<string, unknown> = {}) {
+  return {
+    candidateId: "seller_sprite_product_facts:brand",
+    field: "brand",
+    label: "品牌",
+    value: "Bella",
+    sourceKind: "seller_sprite_product_facts",
+    sourceRef: "seller_sprite.productFacts.brand",
+    humanConfirmationRequired: true,
+    confirmedAt: NOW,
+    confirmedBy: "visitor:fixture",
+    ...overrides,
+  };
 }
 
 describe("Fix.5 降级 Preview 回归", () => {
@@ -121,6 +148,60 @@ describe("Fix.5 降级 Preview 回归", () => {
       return `confirm:${createHash("sha256").update(canonical, "utf8").digest("hex").slice(0, 24)}`;
     });
     expect(preview!.confirmableFactCandidates!.map((c) => c.selectionId)).toEqual(expectedIds);
+  });
+
+  it("研究侧已有商品事实但没有创作交接时，返回 creative_confirmation_required", async () => {
+    seedTask("demo-task", withResearchConfirmed(researchDoc(), [confirmedFact()]));
+    const { gate, preview } = await generateCreativeHandoffPreview("demo-task", visitorContext());
+
+    expect(gate.allowed).toBe(false);
+    expect(gate.reason).toBe("creative_confirmation_required");
+    expect(gate.currentHandoff).toBeNull();
+    expect(gate.workbenchConfirmedFacts).toEqual([
+      { field: "brand", label: "品牌", value: "Bella", sourceKind: "seller_sprite_product_facts" },
+    ]);
+    expect(preview?.currentConfirmedFacts).toEqual(gate.workbenchConfirmedFacts);
+    expect(preview?.candidateFactOptions).toEqual([]);
+  });
+
+  it("只有市场观察事实时仍返回 no_confirmed_facts", async () => {
+    seedTask("demo-task", withResearchConfirmed(researchDoc(), [confirmedFact({
+      candidateId: "seller_sprite_product_facts:rating",
+      field: "rating",
+      label: "评分",
+      value: 4.7,
+      sourceRef: "seller_sprite.productFacts.rating",
+    })]));
+    const gate = await checkCreativeHandoffGate("demo-task", visitorContext());
+
+    expect(gate.allowed).toBe(false);
+    expect(gate.reason).toBe("no_confirmed_facts");
+    expect(gate.workbenchConfirmedFacts?.[0]?.field).toBe("rating");
+  });
+
+  it("确认创作交接后，研究事实桥接成为 active handoff 并解除该门禁", async () => {
+    const initial = withResearchConfirmed(researchDoc(), [confirmedFact()]);
+    seedTask("demo-task", initial);
+    const first = await generateCreativeHandoffPreview("demo-task", visitorContext());
+    expect(first.gate.reason).toBe("creative_confirmation_required");
+    const candidate = first.gate.candidate!;
+    const handoff = createProductCreativeHandoff({
+      handoffId: "11111111-1111-4111-8111-111111111111",
+      taskId: "demo-task",
+      candidateId: candidate.sourceResearch.candidateId,
+      createdAt: NOW,
+      createdBy: { mode: "visitor", subjectFingerprint: "0".repeat(16) },
+      candidate,
+    });
+    const doc = JSON.parse(initial) as Record<string, unknown>;
+    doc.creativeHandoff = handoff;
+    seedTask("demo-task", JSON.stringify(doc));
+
+    const after = await checkCreativeHandoffGate("demo-task", visitorContext());
+    expect(after.allowed).toBe(true);
+    expect(after.reason).toBe("eligible");
+    expect(after.currentHandoff?.controlState).toBe("active");
+    expect(after.currentHandoff?.versions[0]?.confirmedFacts.some((fact) => fact.field === "brand")).toBe(true);
   });
 });
 

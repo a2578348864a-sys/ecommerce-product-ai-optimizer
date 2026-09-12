@@ -20,9 +20,9 @@ export default async function ImageStudioPage({ searchParams }: ImageStudioPageP
           <header className={`${styles.header} workspace-header page-header`}>
             <div className={styles.headerRow}>
               <div className={styles.titleBlock}>
-                <p className={styles.headerEyebrow}>AI Visual Workspace</p>
+                <p className={styles.headerEyebrow}>AI 视觉工作台</p>
                 <div className={styles.titleMeta}>
-                  <h1>Image Studio</h1>
+                  <h1>图片工作台</h1>
                   <span className={styles.safeBadge}>{sourceLabel}</span>
                 </div>
                 <p className={styles.headerDescription}>

@@ -118,7 +118,7 @@ export function ImageStudioClient({ taskId = "" }: { taskId?: string }) {
       <div data-testid="image-studio-task-flow" className="studio-main-flow">
         {progressRail}
         <div className="mb-3 flex max-w-full flex-wrap items-center gap-x-2 gap-y-0.5 rounded-2xl border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold leading-5 text-indigo-700" data-testid="image-mode-task-linked">
-          <span className="whitespace-nowrap">来自研究记录（TASK-LINKED）</span>
+          <span className="whitespace-nowrap">来自研究记录</span>
           <span>商品身份 / 事实 / 参考图来自研究确认</span>
         </div>
         <TaskStudioPreparation taskId={taskId} kind="image" onReadyChange={handleTaskReady} onCommitted={handleHandoffCommitted}>
@@ -133,7 +133,7 @@ export function ImageStudioClient({ taskId = "" }: { taskId?: string }) {
     <div data-testid="image-studio-standalone-flow" className="studio-main-flow">
       {progressRail}
       <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600" data-testid="image-mode-standalone">
-        独立工具（STANDALONE）· 商品身份与参考图由你提供，未经商品研究验证
+        独立工具 · 商品身份与参考图由你提供，未经商品研究验证
       </div>
       <ManualImageStudioClient onProgressChange={handleManualProgress} />
     </div>
@@ -344,7 +344,7 @@ function ManualImageStudioClient({ onProgressChange }: {
       <form className={styles.inputPanel} onSubmit={handleGenerate}>
         <div className={styles.panelIntro}>
           <div>
-            <p className={styles.sectionEyebrow}>Production brief</p>
+            <p className={styles.sectionEyebrow}>图片需求简报</p>
             <h2>图片生产任务</h2>
             <p>把商品事实与画面策略整理成可选择、可复核的素材方案。</p>
           </div>
@@ -677,7 +677,7 @@ function ManualImageStudioClient({ onProgressChange }: {
                     setError("");
                   }}
                 />
-                <strong>{value === "mock" ? "Mock 预览" : "Real AI"}</strong>
+                <strong>{value === "mock" ? "Mock 本地预览" : "真实 AI"}</strong>
                 <span>
                   {value === "mock"
                     ? "本地确定性预览，不调用 Provider"
@@ -716,7 +716,7 @@ function ManualImageStudioClient({ onProgressChange }: {
             </>
           )}
         </button>
-        {!authenticated ? <p className={styles.authNotice}>请先登录后再使用 Image Studio。</p> : null}
+        {!authenticated ? <p className={styles.authNotice}>请先登录后再使用图片工作台。</p> : null}
       </form>
 
       <section
@@ -727,7 +727,7 @@ function ManualImageStudioClient({ onProgressChange }: {
       >
         <div className={styles.resultHeader}>
           <div>
-            <p className={styles.sectionEyebrow}>Selection board</p>
+            <p className={styles.sectionEyebrow}>精选候选图</p>
             <h2>图片工作区</h2>
             <p>比较方案、选择候选图，并完成发布前人工检查。</p>
           </div>
@@ -737,8 +737,8 @@ function ManualImageStudioClient({ onProgressChange }: {
                 {result.meta.mode === "mock"
                   ? "Mock · 未调用 AI"
                   : result.meta.duplicate
-                    ? "Real AI · 幂等重放"
-                    : "Real AI · 新结果"}
+                    ? "真实 AI · 幂等重放"
+                    : "真实 AI · 新结果"}
               </span>
             ) : null}
             <button

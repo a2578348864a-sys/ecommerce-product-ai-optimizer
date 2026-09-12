@@ -134,7 +134,7 @@ export function ImageResultWorkspace({
                   className={styles.previewImage}
                 />
                 <span className={styles.mockWaterline}>
-                  {isMock ? "LOCAL MOCK" : "REAL AI DRAFT"}
+                  {isMock ? "本地 MOCK" : "真实 AI 草稿"}
                 </span>
               </div>
               <figcaption className={styles.imageCaption}>
@@ -183,7 +183,7 @@ export function ImageResultWorkspace({
         <div className={styles.qualityHeader}>
           <span className={styles.qualityMark}><ShieldCheck aria-hidden="true" /></span>
           <div>
-            <p className={styles.sectionEyebrow}>Local review aid</p>
+            <p className={styles.sectionEyebrow}>本地质检辅助</p>
             <h3 id="image-quality-title">图片质量检查</h3>
             <p>本地辅助检查，不等于平台审核，也不替代对真实商品素材的人工核验。</p>
           </div>

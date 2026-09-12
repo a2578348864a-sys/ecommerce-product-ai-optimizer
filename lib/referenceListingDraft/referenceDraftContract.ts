@@ -40,6 +40,13 @@ export type ExcludedMaterialItem = {
   reason: string;
 };
 
+export type ReferenceCreativeStats = {
+  keywordCount: number;
+  vocCount: number;
+  competitorCount: number;
+  hasSourcing: boolean;
+};
+
 export type ReferenceDraftReadiness = {
   status: ReferenceDraftStatus;
   reason?: string;
@@ -50,6 +57,7 @@ export type ReferenceDraftReadiness = {
   excludedCount: number;
   adoptedMaterials: ReferenceMaterialItem[];
   excludedMaterials: ExcludedMaterialItem[];
+  referenceStats?: ReferenceCreativeStats;
   sourceFingerprint: string;
   accessSubject?: string;
 };

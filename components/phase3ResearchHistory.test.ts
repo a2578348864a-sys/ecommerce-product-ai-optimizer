@@ -34,7 +34,7 @@ describe("Phase 3 research history information architecture", () => {
     expect(detail).toContain("/image-studio?taskId=${encodeURIComponent(record.id)}");
     expect(detail).toContain("AI Listing 草稿已生成（未人工核实，暂不可发布）。");
     expect(detail).toContain("发布前需人工确认");
-    expect(detail).toContain("前往 Listing Studio 人工核对");
+    expect(detail).toContain("前往文案工作台确认资料");
     expect(detail).not.toContain("/prototype");
   });
 

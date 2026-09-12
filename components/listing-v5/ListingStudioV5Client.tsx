@@ -16,6 +16,16 @@ import { copyPlainText } from "@/lib/client/copyPlainText";
 import { deriveListingV5SafetyDisplay } from "@/lib/client/listingV5SafetyDisplay";
 import { TaskStudioPreparation } from "@/components/studio/TaskStudioPreparation";
 import { StandaloneListingStudio } from "@/components/listing-studio/StandaloneListingStudio";
+import {
+  localizeTargetAudience,
+  localizePurchaseMotivation,
+  localizePrimaryAngle,
+  localizeTone,
+  localizeUseCase,
+  localizeAvoidClaim,
+  localizeStrategyList,
+  localizeBenefitRole,
+} from "@/lib/client/strategyDisplayLocalization";
 
 type V5Data = {
   context: {
@@ -53,21 +63,29 @@ const TRACE_FALLBACK_LABELS: Record<string, string> = {
   validation_blocked: "Validator 阻断 AI 草稿 → 回退到安全稿",
 };
 
+const QUALITY_DIMENSION_LABELS: Record<string, string> = {
+  safety: "安全性",
+  keyword_relevance: "关键词相关性",
+  benefit_clarity: "卖点清晰度",
+  differentiation: "差异化",
+  conversion_strength: "购买说服力",
+};
+
 function traceConclusion(trace: any) {
   if (!trace) return "";
   const reason = (value: string) => TRACE_REASON_LABELS[value] ?? value;
   if (trace.strategySuccess && trace.writerSuccess && !trace.fallbackUsed) {
-    return "AI 调用成功（Strategy + Writer），未使用 fallback。";
+    return "AI 调用成功（策略分析 + 文案创作），未使用安全回退。";
   }
   if (trace.fallbackReason === "validation_blocked") {
-    return `AI 调用成功，但 Validator 阻断（${trace.validationStatus}）→ 使用安全回退。`;
+    return `AI 调用成功，但核验守卫阻断（${trace.validationStatus}）→ 使用安全回退。`;
   }
   if (!trace.writerSuccess && trace.writerAttempted) {
-    return `失败发生在 Writer 阶段：${reason(trace.writerFailureReason)} → 使用安全回退。`;
+    return `失败发生在文案创作阶段：${reason(trace.writerFailureReason)} → 使用安全回退。`;
   }
   if (!trace.strategySuccess && trace.strategyAttempted) {
-    return `失败发生在 Strategy 阶段：${reason(trace.strategyFailureReason)}${
-      trace.writerSuccess ? "（Writer 仍成功）" : " → 使用安全回退"
+    return `失败发生在策略分析阶段：${reason(trace.strategyFailureReason)}${
+      trace.writerSuccess ? "（文案仍成功）" : " → 使用安全回退"
     }。`;
   }
   if (!trace.strategyAttempted && !trace.writerAttempted) {
@@ -80,7 +98,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
   const [data, setData] = useState<V5Data | null>(null);
   const [pendingAction, setPendingAction] = useState<null | "analyze_strategy" | "generate">(null);
   const [error, setError] = useState("");
-  // The server's gate/route error code (no_confirmed_facts / legacy_not_supported /
+  // The server's gate/route error code (creative_confirmation_required / no_confirmed_facts / legacy_not_supported /
   // handoff_required ...). The free-text message alone collapses several very
   // different refusals into one sentence, so the code is kept for the status panel.
   const [errorCode, setErrorCode] = useState("");
@@ -195,7 +213,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
   // 研究已完成但尚无 creativeHandoff：这是"待创作侧人工确认"状态，是唯一能继续 Listing V5 的
   // 用户动作。复用与 Image Studio / 旧版 Studio 相同的确认链（服务端仍按 human_confirmed 写入，
   // 不伪造任何事实），确认成功后重新读取服务端状态即可继续生成。
-  const needsCreativeConfirmation = errorCode === "no_confirmed_facts";
+  const needsCreativeConfirmation = errorCode === "creative_confirmation_required";
   // Single source of truth for every safety-status surface on this page. The green
   // "passed" badge used to be driven by `listing` alone, so BLOCK / REPAIRABLE /
   // stale / gate-refused states all rendered as a pass.
@@ -210,9 +228,9 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
   const aiModelLabel: string | null = trace?.stages?.writer?.model ?? trace?.stages?.strategy?.model ?? null;
   const traceStages: Array<[string, any]> = trace
     ? [
-        ["Strategy", trace.stages?.strategy],
-        ["Writer", trace.stages?.writer],
-        ["Repair", trace.stages?.repair],
+        ["策略分析 (Strategy)", trace.stages?.strategy],
+        ["文案创作 (Writer)", trace.stages?.writer],
+        ["智能修复 (Repair)", trace.stages?.repair],
       ]
     : [];
 
@@ -401,16 +419,16 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
         >
           <span className="font-bold">
             {realAiEnabled === true
-              ? "AI Writer 已启用"
+              ? "真实 AI 已启用"
               : realAiEnabled === false
-              ? "安全演示模式（未启用真实 AI）"
+              ? "安全回退模式（未启用真实 AI）"
               : "正在读取服务端 AI 状态…"}
           </span>
           <span className="text-[11px] leading-relaxed">
             {realAiEnabled === true
-              ? `本次生成会调用服务端已配置的 Provider${aiModelLabel ? `（模型 ${aiModelLabel}）` : ""}，链路为 Writer → Validator，失败时按有界预算回退到确定性安全稿。是否调用由服务端决定，页面不能自行开启或关闭。`
+              ? `已连接智能创作模型${aiModelLabel ? `（${aiModelLabel}）` : ""}，严格基于人工确认事实生成文案，并经事实核验守卫校验。`
               : realAiEnabled === false
-              ? "服务端未启用真实 AI，本次生成只使用确定性安全模板（Safe Fallback），文案全部来自已确认事实。这是部署开关（服务端 OPENAI_LISTING_ENABLED），界面无法开启。"
+              ? "当前环境未启用真实 AI 模型，本次生成将使用确定性安全模板（安全回退文案），文案全部来自已确认事实。"
               : "状态来自服务端 realAiEnabled。"}
           </span>
         </div>
@@ -429,7 +447,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
                   目标买家
                 </span>
                 <p className="mt-1 text-xs font-medium text-slate-800 leading-relaxed">
-                  {strategy.targetAudience?.join("、") || "通用消费者"}
+                  {localizeStrategyList(strategy.targetAudience, localizeTargetAudience) || "追求日常实用与可靠品质的消费者"}
                 </p>
               </div>
               <div className="flex flex-col justify-between rounded-xl border border-slate-200/70 bg-slate-50/60 p-3">
@@ -437,7 +455,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
                   核心需求 / 痛点
                 </span>
                 <p className="mt-1 text-xs font-medium text-slate-800 leading-relaxed">
-                  {strategy.purchaseMotivations?.join("、") || "按已确认资料表达"}
+                  {localizeStrategyList(strategy.purchaseMotivations, localizePurchaseMotivation) || "按已确认资料表达"}
                 </p>
               </div>
               <div className="flex flex-col justify-between rounded-xl border border-slate-200/70 bg-slate-50/60 p-3">
@@ -445,7 +463,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
                   主表达角度
                 </span>
                 <p className="mt-1 text-xs font-medium text-slate-800 leading-relaxed">
-                  {strategy.primaryAngle || "事实优先"}
+                  {localizePrimaryAngle(strategy.primaryAngle) || "事实优先"}
                 </p>
               </div>
               <div className="flex flex-col justify-between rounded-xl border border-slate-200/70 bg-slate-50/60 p-3">
@@ -453,7 +471,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
                   文案语气
                 </span>
                 <p className="mt-1 text-xs font-medium text-slate-800 leading-relaxed">
-                  {strategy.tone?.join("、") || "清晰、专业"}
+                  {localizeStrategyList(strategy.tone, localizeTone) || "清晰、专业"}
                 </p>
               </div>
               <div className="flex flex-col justify-between rounded-xl border border-slate-200/70 bg-slate-50/60 p-3">
@@ -461,7 +479,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
                   使用场景
                 </span>
                 <p className="mt-1 text-xs font-medium text-slate-800 leading-relaxed">
-                  {strategy.useCases?.join("、") || "日常使用"}
+                  {localizeStrategyList(strategy.useCases, localizeUseCase) || "日常高频使用"}
                 </p>
               </div>
               <div className="flex flex-col justify-between rounded-xl border border-slate-200/70 bg-slate-50/60 p-3">
@@ -469,7 +487,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
                   避免表达
                 </span>
                 <p className="mt-1 text-xs font-medium text-slate-800 leading-relaxed">
-                  {strategy.avoidClaims?.join("、") || "避免夸大或未经核实声明"}
+                  {localizeStrategyList(strategy.avoidClaims, localizeAvoidClaim) || "避免夸大或未经核实声明"}
                 </p>
               </div>
             </div>
@@ -546,9 +564,9 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
                 }`}
               >
                 {provider.fallbackUsed
-                  ? "确定性 fallback 输出 · 安全模板"
+                  ? "安全回退文案 · 安全模板"
                   : provider.writerAttempted
-                  ? "AI Writer 输出"
+                  ? "AI 创作输出"
                   : "确定性输出"}
               </span>
             ) : null}
@@ -606,11 +624,11 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
                   <span className="font-semibold text-slate-800">
                     本次采用策略:
                   </span>
-                  <span>{strategy.primaryAngle || "事实优先"}</span>
+                  <span>{localizePrimaryAngle(strategy.primaryAngle) || "事实优先"}</span>
                   <span className="text-slate-400">·</span>
-                  <span>主打 {strategy.targetAudience?.[0] || "目标人群"}</span>
+                  <span>主打 {localizeTargetAudience(strategy.targetAudience?.[0]) || "目标人群"}</span>
                   <span className="text-slate-400">·</span>
-                  <span>语气 {strategy.tone?.[0] || "专业"}</span>
+                  <span>语气 {localizeTone(strategy.tone?.[0]) || "专业"}</span>
                 </div>
                 <span className="rounded border border-emerald-200 bg-emerald-100/70 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
                   ✓ 已应用到本次 Listing
@@ -891,14 +909,14 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
               <p>
                 <strong>生成方式：</strong>
                 {provider?.fallbackUsed
-                  ? "确定性 fallback · 安全模板稿（未使用 AI 输出）"
+                  ? "确定性安全回退 · 基础模板稿（未使用 AI 输出）"
                   : provider?.recoveryAttempted
-                  ? "Conversion Recovery · 安全转化恢复稿（AI）"
+                  ? "安全转化恢复稿（AI 智能修复）"
                   : provider?.rewriteAttempted
-                  ? "Conversion Rewrite · 整篇重写稿（AI）"
+                  ? "转化重写稿（AI 深度重构）"
                   : provider?.repairAttempted
-                  ? "AI Draft Repaired · 修复后 AI 草稿"
-                  : "AI Draft Passed · AI 草稿"}
+                  ? "AI 局部修复稿"
+                  : "AI 创作通过"}
                 ；所有事实仍以已确认资料为准。
               </p>
             </div>
@@ -921,7 +939,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
               {snapshot.qualityEvaluation.dimensions.map((dimension: any) => (
                 <div key={dimension.id}>
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium text-slate-700">{dimension.label}</span>
+                    <span className="font-medium text-slate-700">{QUALITY_DIMENSION_LABELS[dimension.id] ?? dimension.label}</span>
                     <span className="tabular-nums text-slate-500">
                       {dimension.score}/{dimension.max}
                     </span>
@@ -959,11 +977,21 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
               <p>
                 <strong>买家意图：</strong>
                 {snapshot.conversionBlueprint.buyerIntent?.primary || "按关键词意图"}
-                {snapshot.conversionBlueprint.buyerIntent?.stage ? `（${snapshot.conversionBlueprint.buyerIntent.stage}）` : ""}
+                {snapshot.conversionBlueprint.buyerIntent?.stage
+                  ? `（${
+                      snapshot.conversionBlueprint.buyerIntent.stage === "purchase_ready"
+                        ? "购买决断期"
+                        : snapshot.conversionBlueprint.buyerIntent.stage === "consideration"
+                        ? "比对考量期"
+                        : snapshot.conversionBlueprint.buyerIntent.stage === "awareness"
+                        ? "认知了解期"
+                        : snapshot.conversionBlueprint.buyerIntent.stage
+                    }）`
+                  : ""}
               </p>
               <p>
                 <strong>转化角度：</strong>
-                {snapshot.conversionBlueprint.conversionAngle?.angle || "事实优先"}
+                {localizePrimaryAngle(snapshot.conversionBlueprint.conversionAngle?.angle) || "事实优先"}
               </p>
               <div>
                 <strong>买家痛点：</strong>
@@ -997,11 +1025,13 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
               <p>
                 <strong>证据点：</strong>
                 {snapshot.conversionBlueprint.proofPointCount} 条已确认事实；卖点顺序{" "}
-                {snapshot.conversionBlueprint.benefitOrder?.map((item: any) => item.role).join(" → ") || "默认顺序"}
+                {snapshot.conversionBlueprint.benefitOrder
+                  ?.map((item: any) => localizeBenefitRole(item.role))
+                  .join(" → ") || "默认顺序"}
               </p>
               {snapshot.conversionBlueprint.purchaseTriggers?.length ? (
                 <div data-testid="listing-v5-conversion-strategy">
-                  <strong>购买触发（Conversion Strategy）：</strong>
+                  <strong>购买触发（转化策略）：</strong>
                   <ul className="mt-1 space-y-1">
                     {snapshot.conversionBlueprint.purchaseTriggers.map((trigger: any, index: number) => (
                       <li key={`${trigger.trigger}-${index}`} className="flex flex-wrap items-center gap-1.5">
@@ -1044,7 +1074,16 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
               {snapshot.conversionBlueprint.decisionSequence?.length ? (
                 <p>
                   <strong>决策顺序：</strong>
-                  {snapshot.conversionBlueprint.decisionSequence.join(" → ")}
+                  {snapshot.conversionBlueprint.decisionSequence
+                    .map((seq: string) =>
+                      ({
+                        use_scenario: "使用场景",
+                        core_benefit: "核心价值",
+                        proof: "规格佐证",
+                        risk_reduction: "消除疑虑",
+                      }[seq] ?? seq)
+                    )
+                    .join(" → ")}
                 </p>
               ) : null}
               {snapshot.conversionBlueprint.disallowedTemptations?.length ? (
@@ -1075,7 +1114,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
         >
           <div className="border-b border-slate-200/80 pb-2.5">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-              AI Execution Trace · 仅开发/测试环境
+              AI 执行轨迹 · 仅开发/测试环境
             </span>
             <h3 className="mt-0.5 text-sm font-bold text-slate-900">
               AI 调用轨迹
@@ -1098,9 +1137,9 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
                   <th className="px-3 py-2 font-semibold">失败原因</th>
                   <th className="px-3 py-2 font-semibold">错误码</th>
                   <th className="px-3 py-2 font-semibold">模型</th>
-                  <th className="px-3 py-2 font-semibold">finishReason</th>
+                  <th className="px-3 py-2 font-semibold">完成原因</th>
                   <th className="px-3 py-2 font-semibold">返回字符</th>
-                  <th className="px-3 py-2 font-semibold">tokens</th>
+                  <th className="px-3 py-2 font-semibold">Token 消耗</th>
                   <th className="px-3 py-2 font-semibold">耗时</th>
                 </tr>
               </thead>
@@ -1184,7 +1223,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
             </div>
             <div className="rounded-lg border border-slate-200/70 bg-white p-2">
               <dt className="text-[11px] font-semibold text-slate-400">
-                Safe Fallback
+                安全回退模式
               </dt>
               <dd
                 className="mt-0.5 font-medium text-slate-800"

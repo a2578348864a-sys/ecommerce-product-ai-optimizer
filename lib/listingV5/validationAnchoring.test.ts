@@ -133,6 +133,47 @@ describe("Listing V5 claim anchoring (V2)", () => {
   });
 });
 
+describe("fact scope guards", () => {
+  it("does not expand a product-level care fact to an unconfirmed component pair", () => {
+    const ctx = context([
+      { factId: "care-1", field: "care", label: "Care", value: "Dishwasher Safe" },
+      { factId: "type-1", field: "product_type", label: "Product type", value: "Food Jar" },
+    ], "Food Jar");
+    const report = validateListingV5Draft(ctx, buildListingV5Strategy(ctx), probeDraft(
+      "Dishwasher Safe care means the jar and lid go straight into the dishwasher after lunch.",
+      ["care-1"],
+    ));
+    expect(report.claims.unsupportedClaims.join(" ")).toMatch(/jar and lid/i);
+  });
+
+  it("does not expand a set-level measurement to each item", () => {
+    const ctx = context(TAUCI_FACTS, "Utensil Holder Set");
+    const report = validateListingV5Draft(ctx, buildListingV5Strategy(ctx), probeDraft(
+      "Each utensil organizer in this 2 Count set weighs 2.29 kg.",
+      ["weight-1"],
+    ));
+    expect(report.claims.unsupportedClaims.join(" ")).toMatch(/Each utensil organizer/i);
+  });
+
+  it("accepts explicit component and per-item scopes when the fact states them", () => {
+    const componentContext = context([
+      { factId: "care-1", field: "care", label: "Care", value: "Dishwasher Safe jar and lid" },
+    ], "Food Jar");
+    const componentReport = validateListingV5Draft(componentContext, buildListingV5Strategy(componentContext), probeDraft(
+      "Dishwasher Safe jar and lid simplify cleanup after use.", ["care-1"],
+    ));
+    expect(componentReport.claims.unsupportedClaims).toEqual([]);
+
+    const perItemContext = context([
+      { factId: "weight-1", field: "weight", label: "Weight", value: "Each holder weighs 2.29 kg" },
+    ], "Utensil Holder Set");
+    const perItemReport = validateListingV5Draft(perItemContext, buildListingV5Strategy(perItemContext), probeDraft(
+      "Each holder weighs 2.29 kg.", ["weight-1"],
+    ));
+    expect(perItemReport.claims.unsupportedClaims).toEqual([]);
+  });
+});
+
 describe("Listing V5 copula narrowing (V2b)", () => {
   it("does not treat a measurement participle as new when the sentence carries a confirmed number", () => {
     expect(reportedFor(OWALA_FACTS, REAL_SIZED_SENTENCE, ["dims-1", "weight-1", "material-1", "care-1"])).toEqual([]);

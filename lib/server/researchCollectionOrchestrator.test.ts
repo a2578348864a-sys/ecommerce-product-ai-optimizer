@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   createReviewCollectPreview: vi.fn(),
   findPendingReviewCollectPreview: vi.fn(),
   getSourcingEvidence: vi.fn(),
+  acquireByImage: vi.fn(),
   getRuntimeMode: vi.fn(),
 }));
 
@@ -115,6 +116,14 @@ vi.mock("@/lib/server/sourcingEvidence", async (importOriginal) => {
   return {
     ...actual,
     getSourcingEvidence: mocks.getSourcingEvidence,
+  };
+});
+
+vi.mock("@/lib/server/sourcingImageAcquisition", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/server/sourcingImageAcquisition")>();
+  return {
+    ...actual,
+    acquireByImage: mocks.acquireByImage,
   };
 });
 
@@ -226,6 +235,15 @@ describe("researchCollectionOrchestrator", () => {
     mocks.findPendingReviewCollectPreview.mockReturnValue(null);
     mocks.createReviewCollectPreview.mockReset();
     mocks.getSourcingEvidence.mockResolvedValue(null);
+    mocks.acquireByImage.mockResolvedValue({
+      candidates: [],
+      trace: {
+        driverVersion: "test-driver",
+        resolverVersion: null,
+        success: true,
+        failClosedReason: null,
+      },
+    });
   });
 
   describe("sanitizeErrorMessage", () => {
@@ -1720,6 +1738,7 @@ describe("VOC auto collection contract (v11)", { timeout: 30000 }, () => {
     });
 
     it("1688 在 orchestrate 时立即返回 running，并在后台异步执行不阻塞整链", async () => {
+      mocks.acquireByImage.mockImplementationOnce(() => new Promise(() => undefined));
       mocks.findFirst.mockResolvedValueOnce({
         id: "task-sourcing-async",
         updatedAt: new Date(),
@@ -1747,6 +1766,57 @@ describe("VOC auto collection contract (v11)", { timeout: 30000 }, () => {
         action: "inspect",
       });
       expect(inspectResult.sources.sourcing1688.status).toBe("running");
+    });
+
+    it("1688 后台任务失败后再次点击重试会清理旧失败状态并重新发起采集", async () => {
+      mocks.findFirst.mockResolvedValue({
+        id: "task-sourcing-retry",
+        updatedAt: new Date(),
+        resultJson: JSON.stringify({
+          type: "workflow",
+          productName: "Retryable Image Product",
+          sourceMeta: {
+            productBatchSnapshot: {
+              imageUrl: "https://m.media-amazon.com/images/I/71X8e8wz7mL._AC_SL1500_.jpg",
+            },
+          },
+        }),
+      });
+      mocks.acquireByImage
+        .mockRejectedValueOnce(new Error("extension disconnected"))
+        .mockResolvedValueOnce({
+          candidates: [],
+          trace: {
+            driverVersion: "test-driver",
+            resolverVersion: null,
+            success: true,
+            failClosedReason: null,
+          },
+        });
+
+      const first = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-sourcing-retry",
+        action: "orchestrate",
+      });
+      expect(first.sources.sourcing1688.status).toBe("running");
+
+      // 后台 Promise 的失败需要先落到账本，模拟前端轮询 inspect。
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const failed = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-sourcing-retry",
+        action: "inspect",
+      });
+      expect(failed.sources.sourcing1688.status).toBe("failed");
+
+      const retry = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-sourcing-retry",
+        action: "orchestrate",
+      });
+      expect(retry.sources.sourcing1688.status).toBe("running");
+      expect(mocks.acquireByImage).toHaveBeenCalledTimes(2);
     });
   });
 });

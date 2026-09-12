@@ -1898,7 +1898,7 @@ function LegacyRecordContent({
       {decisionEvidence ? <DecisionEvidencePanel evidence={decisionEvidence} compact /> : null}
       {result ? <EvidenceWorkbench taskId={record.id} result={result} sourceImageUrl={resolvePublicSourceImageUrl(result, record.id, record.productImage)} onDataChanged={onUpdated} /> : null}
       {result ? <WorkflowResultSection result={result} /> : null}
-      <section className="mt-6 border-t border-slate-200 pt-6" aria-label="下一步：Listing 准备情况">
+      <section className="mt-6 border-t border-slate-200 pt-6" aria-label="下一步：创作资料交接">
         <ReferenceListingDraftPanel taskId={record.id} onDraftGenerated={onUpdated} />
       </section>
       <RecordFooter isActiveResearchView={isActiveResearchView} deleting={deleting} deleteError={deleteError} onDelete={onDelete} />
@@ -2157,8 +2157,8 @@ function FormalV2RecordContent({
         </section>
       ) : null}
 
-      {/* ── 下一步：Listing 准备情况（归入下一步创作动作） ── */}
-      <section id="formal-v2-next-action-draft" className="mt-6 border-t border-slate-200 pt-6" aria-label="下一步：Listing 准备情况">
+      {/* ── 下一步：创作资料交接（归入下一步创作动作） ── */}
+      <section id="formal-v2-next-action-draft" className="mt-6 border-t border-slate-200 pt-6" aria-label="下一步：创作资料交接">
         <ReferenceListingDraftPanel
           taskId={record.id}
           onDraftGenerated={onUpdated}
@@ -2185,9 +2185,9 @@ function FormalV2RecordContent({
             <p className="mt-2 text-sm leading-6 text-slate-700 font-medium">
               {view.hasListingDraft ? "AI Listing 草稿已生成（未人工核实，暂不可发布）。" : "Listing 草稿尚未取得。"}
             </p>
-            <p className="mt-2 text-xs leading-5 text-slate-500">人工核实入口：点击下方「前往 Listing Studio 人工核对」，在「确认创作资料」区勾选「人工确认」并保存后，才可发布。</p>
+            <p className="mt-2 text-xs leading-5 text-slate-500">人工核实入口：点击下方「前往文案工作台确认资料」，在「确认创作资料」区勾选「人工确认」并保存后，才可发布。</p>
             {!studioLegacyUnsupported && !effectiveResearchStale ? (
-              <Link href={`/listing-studio?taskId=${encodeURIComponent(record.id)}`} className="linear-button mt-4 inline-flex h-9 items-center justify-center px-3 text-sm font-semibold">前往 Listing Studio 人工核对</Link>
+              <Link href={`/listing-studio?taskId=${encodeURIComponent(record.id)}`} className="linear-button mt-4 inline-flex h-9 items-center justify-center px-3 text-sm font-semibold">前往文案工作台确认资料</Link>
             ) : <p className="mt-3 text-xs font-semibold text-amber-700">{effectiveResearchStale ? "研究资料已变化，请先重新确认研究。" : "当前记录的创作资料尚未取得。"}</p>}
           </div>
           <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4">

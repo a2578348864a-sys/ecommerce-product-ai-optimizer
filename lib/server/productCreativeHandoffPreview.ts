@@ -75,6 +75,7 @@ import type {
 export type CreativeHandoffEligibility =
   | "eligible"
   | "no_confirmed_facts"
+  | "creative_confirmation_required"
   | "legacy_not_supported"
   | "decision_not_creative_ready"
   | "research_not_completed"
@@ -617,6 +618,19 @@ export async function checkCreativeHandoffGate(
     if (handoffRawHere !== undefined) {
       currentHandoffHere = parseProductCreativeHandoff(handoffRawHere);
     }
+    const researchConfirmedHere = getFactCandidates(resultJson)?.confirmed ?? [];
+    const researchBridgeHere = researchConfirmedHere.length > 0
+      ? mapResearchConfirmedToHandoff({
+          confirmed: researchConfirmedHere,
+          actor: { mode: context.mode === "owner" ? "owner" : "visitor", subjectFingerprint: "0000000000000000" },
+          candidateId: record.candidateId,
+          confirmedAt: record.latestDecision?.decidedAt ?? updatedAt ?? new Date().toISOString(),
+        })
+      : { facts: [], skipped: [] };
+    const hasListingEligibleResearchFacts = researchBridgeHere.facts.some((fact) => fact.usageScopes.includes("listing"));
+    const latestHandoffHere = currentHandoffHere?.versions[currentHandoffHere.versions.length - 1];
+    const hasActiveListingHandoff = currentHandoffHere?.controlState === "active"
+      && Boolean(latestHandoffHere?.confirmedFacts.some((fact) => fact.usageScopes.includes("listing")));
     // Fix.4: 从证据层构造候选（含 stable facts，confirmedFacts 留空）
     // 供 Persistence 锁内生成 confirmable 候选；Preview 展示来源层。
     const stableSourceFactsHere = evidenceLayers
@@ -633,6 +647,17 @@ export async function checkCreativeHandoffGate(
         }
       }
     }
+    // Research-side confirmed facts are already the authority for their
+    // canonical fields. Keeping the same field in stableSourceFacts would
+    // make the handoff candidate fail its cross-tier conflict check, even
+    // though no new evidence is waiting for confirmation. Remove only the
+    // duplicate stable projection; unconfirmed fields remain selectable.
+    const researchConfirmedFields = new Set(
+      (getFactCandidates(resultJson)?.confirmed ?? []).map((fact) => toConsumerField(fact.field)),
+    );
+    const nonDuplicateStableSourceFacts = stableSourceFactsHere.filter(
+      (fact) => !researchConfirmedFields.has(fact.field),
+    );
     const candidateHere: ProductCreativeHandoffCandidate = {
       sourceResearch: {
         recordSchema: "product-research-record.v1",
@@ -660,7 +685,7 @@ export async function checkCreativeHandoffGate(
         });
         return bridge.facts;
       })(),
-      stableSourceFacts: stableSourceFactsHere,
+      stableSourceFacts: nonDuplicateStableSourceFacts,
       aiCreativeReferences: evidenceLayers
         .filter((e): e is Extract<typeof e, { evidenceTier: "ai_hypothesis" }> => e.evidenceTier === "ai_hypothesis")
         .map((e) => e.reference),
@@ -679,8 +704,13 @@ export async function checkCreativeHandoffGate(
       humanReviewRequired: true,
     };
     return {
-      allowed: false,
-      reason: "no_confirmed_facts",
+      // 研究事实只能作为确认表单的依据；只有已确认的 active handoff 才能生成。
+      allowed: hasActiveListingHandoff,
+      reason: hasActiveListingHandoff
+        ? "eligible"
+        : hasListingEligibleResearchFacts
+          ? "creative_confirmation_required"
+          : "no_confirmed_facts",
       taskAccessible: accessible,
       storageVersion: {
         resultJsonHash: fullHash(resultJsonStr || ""),
@@ -842,8 +872,10 @@ export async function generateCreativeHandoffPreview(
 ): Promise<{ preview: CreativeHandoffPreview | null; gate: CreativeHandoffGateResult }> {
   const gate = await checkCreativeHandoffGate(taskId, context);
 
-  // 无人工确认事实：返回来源层信息（stable/AI/issues）+ confirmable 候选，不可创建
-  if (!gate.allowed && gate.reason === "no_confirmed_facts" && gate.evidenceLayers) {
+  // 无创作交接确认：返回来源层信息（stable/AI/issues）+ confirmable 候选，不可创建。
+  if (!gate.allowed
+    && (gate.reason === "no_confirmed_facts" || gate.reason === "creative_confirmation_required")
+    && gate.evidenceLayers) {
     const layers = gate.evidenceLayers;
     const authorityNow = projectFactAuthority(gate);
     const degradedRevision = gate.candidate?.sourceResearch.researchRevision ?? 1;
@@ -1014,8 +1046,10 @@ export async function getCreativeHandoffDetail(
   context: AccessContext,
 ): Promise<{ detail: CreativeHandoffDetail | null; gate: CreativeHandoffGateResult }> {
   const gate = await checkCreativeHandoffGate(taskId, context);
-  // Fix.5: no_confirmed_facts 是合法研究状态 — 已存在的 Handoff 仍需可查看/可撤回
-  if (!gate.allowed && gate.reason !== "no_confirmed_facts") return { detail: null, gate };
+  // 无创作交接确认时仍允许读取详情，以便用户完成现有确认流程。
+  if (!gate.allowed
+    && gate.reason !== "no_confirmed_facts"
+    && gate.reason !== "creative_confirmation_required") return { detail: null, gate };
 
   const handoff = gate.currentHandoff;
   if (!handoff) {

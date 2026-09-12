@@ -276,4 +276,77 @@ describe("Reference Material Filter (小白名单与高风险值拦截)", () => 
     const validation = validateDraftContent(draft, readiness.adoptedMaterials);
     expect(validation.valid).toBe(true);
   });
+
+  it("场景 G（THERMOS 真实规格）：人工确认的客观规格（material, care, weight, functional_feature, operation, capacity=10oz等）全部安全放行，市场观察与外部研报被排除且去重", () => {
+    const rawResult = {
+      productName: "THERMOS FUNTAINER Kids Food Jar with Spoon, 10oz, Pink",
+      asin: "B08NCVT244",
+      factCandidates: {
+        confirmed: [
+          { field: "brand", value: "THERMOS", label: "品牌" },
+          { field: "category", value: "Kitchen & Dining", label: "类目" },
+          { field: "price", value: "13.46", label: "参考价格" },
+          { field: "rating", value: "4.7", label: "评分" },
+          { field: "reviews", value: "48559", label: "评论数" },
+          { field: "bsr", value: "9", label: "大类 BSR" },
+          { field: "capacity", value: "10oz", label: "容量" },
+          { field: "product_type", value: "THERMOS", label: "商品类型" },
+          { field: "color_or_variant", value: "Pink", label: "颜色/款式" },
+          { field: "material", value: "Stainless Steel", label: "材质" },
+          { field: "dimensions", value: '3.5"L x 3.5"W x 5.3"H', label: "尺寸" },
+          { field: "weight", value: "4 ounces", label: "重量" },
+          { field: "quantity_or_pack_size", value: "1 Count", label: "数量/包装" },
+          { field: "included_components", value: "food jar with unfolding spoon", label: "随附组件" },
+          { field: "care", value: "Dishwasher Safe", label: "清洁保养" },
+          { field: "functional_feature", value: "Vacuum Insulated", label: "功能特性" },
+          { field: "operation", value: "Latch", label: "操作方式" },
+        ],
+      },
+      reviewEvidence: { total: 100 },
+      competitorEvidence: { count: 3 },
+      sourcingEvidence: { candidateCount: 2 },
+    };
+
+    const readiness = filterReferenceMaterials({
+      resultJson: rawResult,
+      taskContext: { title: "THERMOS FUNTAINER Kids Food Jar with Spoon, 10oz, Pink" },
+    });
+
+    expect(readiness.status).toBe("ready");
+
+    const adoptedFields = readiness.adoptedMaterials.map((m) => m.field);
+    expect(adoptedFields).toContain("brand");
+    expect(adoptedFields).toContain("capacity");
+    expect(adoptedFields).toContain("product_type");
+    expect(adoptedFields).toContain("color_or_variant");
+    expect(adoptedFields).toContain("material");
+    expect(adoptedFields).toContain("dimensions");
+    expect(adoptedFields).toContain("weight");
+    expect(adoptedFields).toContain("quantity_or_pack_size");
+    expect(adoptedFields).toContain("included_components");
+    expect(adoptedFields).toContain("care");
+    expect(adoptedFields).toContain("functional_feature");
+    expect(adoptedFields).toContain("operation");
+
+    expect(readiness.adoptedMaterials.find((m) => m.field === "material")?.value).toBe("Stainless Steel");
+    expect(readiness.adoptedMaterials.find((m) => m.field === "care")?.value).toBe("Dishwasher Safe");
+    expect(readiness.adoptedMaterials.find((m) => m.field === "functional_feature")?.value).toBe("Vacuum Insulated");
+    expect(readiness.adoptedMaterials.find((m) => m.field === "operation")?.value).toBe("Latch");
+    expect(readiness.adoptedMaterials.find((m) => m.field === "capacity")?.value).toBe("10oz");
+
+    // 市场观察数据与研报必须被排除
+    const excludedFields = readiness.excludedMaterials.map((e) => e.field);
+    expect(excludedFields).toContain("category");
+    expect(excludedFields).toContain("price");
+    expect(excludedFields).toContain("rating");
+    expect(excludedFields).toContain("reviews");
+    expect(excludedFields).toContain("bsr");
+    expect(excludedFields).toContain("voc");
+    expect(excludedFields).toContain("competitor");
+    expect(excludedFields).toContain("sourcing");
+
+    // 验证排除项没有重复
+    const keys = readiness.excludedMaterials.map((e) => `${e.field}:${e.value}:${e.reason}`);
+    expect(new Set(keys).size).toBe(readiness.excludedMaterials.length);
+  });
 });

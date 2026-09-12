@@ -895,7 +895,7 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
           <header className="workspace-header">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="eyebrow">{view === "research" ? "Active Research" : "Research History"}</p>
+                <p className="eyebrow">{view === "research" ? "正在研究" : "研究记录"}</p>
                 <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{view === "research" ? "商品研究" : "研究记录"}</h1>
                 <p className="mt-1 text-sm text-slate-500">
                   {view === "research"

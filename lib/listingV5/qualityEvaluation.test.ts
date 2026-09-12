@@ -167,4 +167,37 @@ describe("Listing Quality Evaluation（附加评分，不替代 Validator）", (
     else if (result.total >= 55) expect(grade).toBe("C");
     else expect(grade).toBe("D");
   });
+
+  it("reports bounded hard copy flags without changing Validator safety", () => {
+    const result = evaluate({
+      draft: {
+        ...draft,
+        bullets: [
+          { ...draft.bullets[0]!, text: "[CARE INSTRUCTIONS]: The two-size design keeps everyday essentials better sorted and easier to reach." },
+          { ...draft.bullets[1]!, text: "[CARE INSTRUCTIONS]: The two-size design keeps everyday essentials better sorted and easier to reach." },
+          { ...draft.bullets[2]!, text: "[PRODUCT DIMENSIONS]: A measured size to plan around when packing." },
+        ],
+      },
+    });
+    expect(result.hardFlags).toEqual(expect.arrayContaining([
+      "repeated_sentence_or_benefit",
+      "hook_role_mismatch",
+      "meta_shopping_filler",
+    ]));
+    expect(result.deterministicFallback).toBe(false);
+  });
+
+  it("returns no hard flags for clean, role-aligned copy", () => {
+    const clean = evaluate({
+      draft: {
+        ...draft,
+        bullets: [
+          { ...draft.bullets[0]!, text: "Stainless steel construction suits everyday commuting." },
+          { ...draft.bullets[1]!, text: "Dishwasher safe lid simplifies cleanup after use." },
+          { ...draft.bullets[2]!, text: "The 24 oz capacity fits a familiar daily hydration routine." },
+        ],
+      },
+    });
+    expect(clean.hardFlags).toEqual([]);
+  });
 });

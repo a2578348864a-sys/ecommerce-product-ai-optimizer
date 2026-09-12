@@ -1179,6 +1179,66 @@ describe("ResearchCollectionOrchestratorCard (Phase 3 UI / Interaction)", () => 
         expect(retryBtn?.textContent).toContain("重试");
       });
 
+      it("1688 失败态点击重试会真实发送统一编排请求并显示完成状态", async () => {
+        const fetchSpy = vi.fn().mockImplementation((_url, opts) => {
+          const body = JSON.parse(opts?.body as string);
+          if (body.action === "inspect") {
+            return Promise.resolve({
+              ok: true,
+              json: async () => ({
+                ok: true,
+                data: {
+                  sources: {
+                    amazon: { state: "ready" },
+                    keywords_competitors: { state: "ready" },
+                    voc: { state: "ready" },
+                    sourcing_1688: { state: "failed", detail: "1688 助手连接中断，请重试" },
+                  },
+                },
+              }),
+            });
+          }
+          if (body.action === "orchestrate") {
+            return Promise.resolve({
+              ok: true,
+              json: async () => ({
+                ok: true,
+                data: {
+                  sources: {
+                    amazon: { state: "ready" },
+                    keywords_competitors: { state: "ready" },
+                    voc: { state: "ready" },
+                    sourcing_1688: { state: "ready", detail: "1688 货源证据已就绪" },
+                  },
+                },
+              }),
+            });
+          }
+          return Promise.reject(new Error("unexpected"));
+        });
+        globalThis.fetch = fetchSpy;
+
+        root = createRoot(container as unknown as Element);
+        await act(async () => {
+          root?.render(createElement(ResearchCollectionOrchestratorCard, { taskId: "task-retry-sourcing" }));
+        });
+        await flush();
+        await flush();
+
+        const retryBtn = container.querySelector('[data-testid="action-retry-sourcing_1688"]') as HTMLButtonElement | null;
+        expect(retryBtn).toBeTruthy();
+        expect(retryBtn?.textContent).toContain("重试");
+
+        await act(async () => {
+          retryBtn?.click();
+        });
+        await flush();
+        await flush();
+
+        expect(fetchSpy.mock.calls.filter((call) => JSON.parse(call[1]?.body).action === "orchestrate")).toHaveLength(1);
+        expect(container.querySelector('[data-testid="badge-sourcing_1688"]')?.textContent).toContain("已有");
+      });
+
       it("后端返回 error.message / message 时，detail 能正确渲染真实脱敏错误信息", async () => {
         const fetchSpy = vi.fn().mockImplementation((_url, opts) => {
           const body = JSON.parse(opts?.body as string);

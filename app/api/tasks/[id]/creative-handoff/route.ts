@@ -408,9 +408,10 @@ export async function POST(
     if (gate.handoffContractInvalid) {
       return errorResponse(500, "handoff_contract_invalid", "创作交接合同结构异常，已阻止覆盖。");
     }
-    // Fix.5: no_confirmed_facts 是合法研究状态（来源层可见，可提交 confirmable selectionId），
-    // 由锁内确认转换决定成败；其他拒绝状态才阻断。
-    if (!gate.allowed && gate.reason !== "no_confirmed_facts") {
+    // 无创作交接确认时仍允许提交现有确认表单；研究事实本身不能绕过该步骤。
+    if (!gate.allowed
+      && gate.reason !== "no_confirmed_facts"
+      && gate.reason !== "creative_confirmation_required") {
       // Micro-Gate: 跨身份/不存在资源统一 404 — 不泄露 legacy_not_supported 等业务状态
       if (gate.reason === "legacy_not_supported") {
         return errorResponse(404, "task_not_found", "任务不存在。");

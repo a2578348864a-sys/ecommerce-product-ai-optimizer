@@ -10,6 +10,7 @@
 export type HandoffEligibility =
   | "eligible"
   | "no_confirmed_facts"
+  | "creative_confirmation_required"
   | "legacy_not_supported"
   | "decision_not_creative_ready"
   | "workflow_incomplete"
@@ -234,5 +235,6 @@ export const ELIGIBILITY_BLOCK_LABELS: Record<string, string> = {
   research_mode_invalid: "当前研究模式不允许创建创作交接。",
   legacy_not_supported: "该记录没有可信商品研究合同，暂不支持创建创作交接。请从商品研究池重新创建正式研究。",
   no_confirmed_facts: "当前没有可人工确认的商品事实。",
+  creative_confirmation_required: "研究中已有可用于创作的商品事实，请先确认创作资料。",
   default: "当前研究状态不允许创建创作交接。",
 };
