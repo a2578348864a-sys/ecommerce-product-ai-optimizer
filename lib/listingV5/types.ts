@@ -13,8 +13,15 @@ export const LISTING_V5_WRITER_VERSION = "listing-v5.writer-draft.v1" as const;
  * previously persisted Listing V5 snapshots stale.
  */
 export const LISTING_V5_VALIDATION_VERSION = "listing-v5.validation.v5" as const;
-/** v5 requires an `evidenceIds` list per strategy conclusion (Evidence Binding). */
-export const LISTING_V5_STRATEGY_PROMPT_VERSION = "listing-v5-strategy.v5" as const;
+/**
+ * v5 requires an `evidenceIds` list per strategy conclusion (Evidence Binding).
+ * v6 adds the FRAMING VOCABULARY rule: strategy framing must be expressible with the
+ * supplied confirmed-fact vocabulary, never as a promised outcome and never with an
+ * adjective no fact states. Measured reason: an outcome-phrased `bulletAngles.shopperValue`
+ * reached the Writer copy and was rejected as an unsupported dimension claim, which
+ * blocked the whole AI draft in favour of the deterministic fallback.
+ */
+export const LISTING_V5_STRATEGY_PROMPT_VERSION = "listing-v5-strategy.v6" as const;
 /**
  * v4 adds the Conversion Blueprint to the Writer input (conversion intelligence layer).
  * v5 aligns the Writer's banned vocabulary with the Validator's hard-token set: the M3a
@@ -22,8 +29,11 @@ export const LISTING_V5_STRATEGY_PROMPT_VERSION = "listing-v5-strategy.v5" as co
  * claimVocabulary.ts from HARD_OR_ESCALATION_TOKENS, never hand-written). The prompt
  * text changes, so `contextFingerprint` changes and previously persisted Listing V5
  * snapshots become stale by design.
+ * v6 states the benefit boundary the Validator already enforced (a benefit is the plain
+ * meaning of the fact, never a physical outcome or an unstated size adjective) and stops
+ * the Writer from copying a strategy phrase that promises an outcome.
  */
-export const LISTING_V5_WRITER_PROMPT_VERSION = "listing-v5-writer.v5" as const;
+export const LISTING_V5_WRITER_PROMPT_VERSION = "listing-v5-writer.v6" as const;
 export const LISTING_V5_REPAIR_PROMPT_VERSION = "listing-v5-repair.v3" as const;
 
 export type ListingV5Reference = {

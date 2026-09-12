@@ -93,6 +93,44 @@ describe("Listing V5 prompt contracts", () => {
     expect(prompt).toMatch(/dishwasher-safe bottle and lid/i);
   });
 
+  /**
+   * Measured on the real Case-D chain (2026-09-12, deepseek-v4-flash): the provider
+   * strategy phrased a bullet angle as an outcome ("designed for small desks where the
+   * lamp should stay put and not slide"), the Writer copied the outcome into bullet 5
+   * ("A weighted base helps the lamp stay in place ..."), the Validator rejected it as an
+   * unsupported dimension claim, and because that reason is not locally repairable the
+   * whole AI draft was discarded — the shipped Listing became the deterministic fallback
+   * and every strategy-derived sentence was lost. The benefit boundary below is what the
+   * Validator already enforced; stating it in the prompt removes the contradiction instead
+   * of relaxing the rule.
+   */
+  it("states the benefit boundary the Validator enforces (fact meaning, never an outcome)", async () => {
+    await generateListingV5Draft(context, strategy, { useProvider: true });
+    const prompt = systemPromptOf(0);
+    expect(prompt).toMatch(/A benefit states what the fact means for the shopper's task/i);
+    expect(prompt).toMatch(/never a physical outcome the fact does not itself state/i);
+    expect(prompt).toMatch(/never "the base keeps the lamp in place"/i);
+    expect(prompt).toMatch(/rather than an adjective no fact states such as "compact"/i);
+  });
+
+  it("stops the Writer copying a strategy phrase that promises an outcome", async () => {
+    await generateListingV5Draft(context, strategy, { useProvider: true });
+    const prompt = systemPromptOf(0);
+    expect(prompt).toMatch(/When the strategy itself phrases a value as an outcome/i);
+    expect(prompt).toMatch(/do not copy that promise/i);
+    expect(prompt).toMatch(/re-state it through the confirmed facts/i);
+  });
+
+  it("keeps strategy framing inside the supplied fact vocabulary", async () => {
+    await analyzeListingV5Strategy(context, { useProvider: true });
+    const prompt = systemPromptOf(0);
+    expect(prompt).toMatch(/FRAMING VOCABULARY/i);
+    expect(prompt).toMatch(/Never phrase a value as a physical outcome or a promise/i);
+    expect(prompt).toMatch(/never "the base keeps the lamp in place", "stays put" or "does not slide"/i);
+    expect(prompt).toMatch(/never introduce an adjective the supplied facts do not state/i);
+    expect(prompt).toMatch(/instead of a word such as compact/i);
+  });
+
   it("sends the same confirmed facts and strategy to the writer as the request payload", async () => {
     await generateListingV5Draft(context, strategy, { useProvider: true });
     const payload = JSON.parse(userPayloadOf(0)) as Record<string, unknown>;
