@@ -409,7 +409,8 @@ describe("Visitor 锁内幂等闭环（真实 Store）", () => {
     for (let i = 0; i < 10; i++) {
       const reqId = `550e8400-e29b-41d4-a716-${(446655440000 + i).toString().padStart(12, "0")}`;
       const p = await generateCreativeHandoffPreview("demo-task-a", ctx);
-      expect(p.gate.reason).toBe("no_confirmed_facts");
+      // 首次创建前没有 active handoff；后续 append 已有可用交接，门禁应投影为 eligible。
+      expect(p.gate.reason).toBe(i === 0 ? "no_confirmed_facts" : "eligible");
       const result = await createOrAppendCreativeHandoff("demo-task-a", ctx, {
         requestId: reqId,
         expectedResearchRevision: 1,
@@ -443,7 +444,7 @@ describe("Visitor 锁内幂等闭环（真实 Store）", () => {
     for (let i = 0; i < 10; i++) {
       const reqId = `550e8400-e29b-41d4-a716-${(446655440000 + i).toString().padStart(12, "0")}`;
       const p = await generateCreativeHandoffPreview("demo-task-a", ctx);
-      expect(p.gate.reason).toBe("no_confirmed_facts");
+      expect(p.gate.reason).toBe(i === 0 ? "no_confirmed_facts" : "eligible");
       await createOrAppendCreativeHandoff("demo-task-a", ctx, {
         requestId: reqId,
         expectedResearchRevision: 1,

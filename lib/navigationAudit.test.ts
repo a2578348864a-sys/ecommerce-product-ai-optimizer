@@ -332,7 +332,7 @@ describe("TaskRecordDetail operation overview", () => {
     expect(detailSource).toContain("Listing 与商品图片");
     expect(detailSource).toContain("AI Listing 草稿已生成（未人工核实，暂不可发布）。");
     expect(detailSource).toContain("发布前需人工确认");
-    expect(detailSource).toContain("前往 Listing Studio 人工核对");
+    expect(detailSource).toContain("前往文案工作台确认资料");
     expect(detailSource).not.toContain("/prototype");
   });
 });

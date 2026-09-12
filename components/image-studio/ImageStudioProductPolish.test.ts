@@ -146,7 +146,7 @@ describe("Image Studio product workbench", () => {
     }
     expect(html).toContain("引导生成");
     expect(html).toContain("自由提示词");
-    expect(html).toContain("Mock 预览");
+    expect(html).toContain("Mock 本地预览");
     expect(html).toContain("本地确定性预览，不调用 Provider");
     expect(html).toContain("图片工作区");
     expect(html).toContain("独立创作没有 Task 研究事实，只使用你明确填写并确认的信息。");
