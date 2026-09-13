@@ -54,6 +54,8 @@ describe("ListingStudioV5Client 安全检查状态接线", () => {
     expect(client).toContain("import { TaskStudioPreparation } from \"@/components/studio/TaskStudioPreparation\";");
     expect(client).toContain('const needsCreativeConfirmation = errorCode === "creative_confirmation_required";');
     expect(client).toContain('data-testid="listing-v5-creative-confirmation"');
+    expect(client).toContain("研究事实已确认，还需完成一次创作资料确认");
+    expect(client).toContain("关键词方案确认不等于创作资料确认");
     expect(client).toContain('<TaskStudioPreparation taskId={taskId} kind="listing" onCommitted={() => void load()}>');
     // 确认入口只在需要确认时出现，且不得自动创建/伪造事实
     expect(client).toContain("{needsCreativeConfirmation ? (");

@@ -276,7 +276,7 @@ describe("Evidence Card Flow 闭环回归测试（10大关键断言）", () => {
     await flush();
   };
 
-  /* ── 8. briefEvidenceCount=0 + keywordPending -> 「确认并用于 Listing」 disabled ── */
+  /* ── 8. briefEvidenceCount=0 + keywordPending -> 「确认关键词方案」 disabled ── */
   it("断言 8: briefEvidenceCount=0 且有 keywordPending 时，按钮禁用并显示「先保存关键词证据」", async () => {
     await render(
       createElement(KeywordStrategyCard, {
@@ -329,8 +329,8 @@ describe("Evidence Card Flow 闭环回归测试（10大关键断言）", () => {
     expect(status?.textContent).toContain("状态：待确认");
   });
 
-  /* ── 9. briefEvidenceCount>0 -> 「确认并用于 Listing」 enabled ── */
-  it("断言 9: briefEvidenceCount>0 时，「确认并用于 Listing」 按钮启用", async () => {
+  /* ── 9. briefEvidenceCount>0 -> 「确认关键词方案」 enabled ── */
+  it("断言 9: briefEvidenceCount>0 时，「确认关键词方案」按钮启用", async () => {
     await render(
       createElement(KeywordStrategyCard, {
         rows: [{ keyword: "organizer", rowNumber: 1 }],
@@ -348,7 +348,7 @@ describe("Evidence Card Flow 闭环回归测试（10大关键断言）", () => {
     const btn = container.querySelector("[data-testid=kw-adjust]");
     expect(btn).not.toBeNull();
     expect(btn?.disabled).toBe(false);
-    expect(btn?.textContent).toBe("确认并用于 Listing");
+    expect(btn?.textContent).toBe("确认关键词方案");
 
     const status = container.querySelector("[data-testid=kw-status]");
     expect(status?.textContent).toContain("已采集3条关键词，尚未确认方案");
@@ -377,7 +377,7 @@ describe("Evidence Card Flow 闭环回归测试（10大关键断言）", () => {
 
     const status = container.querySelector("[data-testid=kw-status]");
     expect(status?.textContent).toContain("状态：已确认");
-    expect(status?.textContent).toContain("Listing：已用于 Listing");
+    expect(status?.textContent).toContain("关键词方案：已确认");
   });
 
   /* ── pendingPanel 内嵌在 KeywordStrategyCard 内部 ── */
