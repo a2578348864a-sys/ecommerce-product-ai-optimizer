@@ -1,7 +1,7 @@
 export const AI_IMAGE_DRAFT_DISCLAIMER =
   "AI 生成图片仅供 Listing 素材方向参考，不代表真实商品实拍，不可直接作为商品事实、认证或平台上架依据。";
 
-import { composeImagePrompt, IMAGE_PROMPT_UNTRUSTED_MAX_CHARS } from "@/lib/imagePromptComposer";
+import { composeImagePrompt, IMAGE_PROMPT_UNTRUSTED_MAX_CHARS, resolveImageAuthorityMode } from "@/lib/imagePromptComposer";
 import { getImageStylePreset, isImageStylePresetId, type ImageStylePresetId } from "@/lib/imageStyleLibrary";
 
 export const AI_IMAGE_PROMPT_SUMMARY_MAX_LENGTH = 500;
@@ -503,6 +503,9 @@ export function buildAiImagePrompt(input: {
     const userDirection = input.additionalDirection || studioStyle.creativeDirection || null;
     return composeImagePrompt({
       imageTypeInstruction: TYPE_INSTRUCTIONS[input.imageType],
+      // 独立工具路径的权限模式由入口形态**结构性决定**（无 taskId ⇒ user_supplied），
+      // 绝不从 resultJson / 请求体读取：历史或伪造的快照都改不了这一事实。
+      authorityMode: resolveImageAuthorityMode({ taskId: null }),
       facts: {
         productName: input.basis.productName || "unspecified product",
         listingTitle: input.basis.listingTitle,

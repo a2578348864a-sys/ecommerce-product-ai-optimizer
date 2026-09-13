@@ -10,6 +10,7 @@ import type {
   StudioImageLifestyleScene,
   StudioImagePrimaryPurpose,
 } from "@/lib/studioImageCreativeIntent";
+import type { ImageStylePresetId } from "@/lib/imageStyleLibrary";
 import { buildImageHandoffBinding, parseImageHandoffBinding, computeImageStatus, type ImageHandoffBindingV1, type ImageStatus } from "@/lib/imageHandoff/imageBinding";
 import { createMockImageProvider, type MockImageProvider } from "@/lib/imageHandoff/mockImageProvider";
 import { createImageProviderByMode, realImageProviderEnabled } from "@/lib/imageHandoff/realImageProvider";
@@ -70,6 +71,8 @@ export type ImageGenerateInput = {
   lifestyleScene?: StudioImageLifestyleScene;
   customImagePurpose?: string;
   userCreativeDescription?: string;
+  /** Image Style Library V1：主链视觉方向（纯视觉表达，永不改变已确认事实）。 */
+  stylePresetId?: ImageStylePresetId;
   confirmed: true;
 };
 
@@ -301,6 +304,11 @@ export async function generateImageDraftFromHandoff(
       ?? "基于已确认商品资料制作清晰、可人工复核的商品图片。",
   };
   const generationInput = applyTaskImageCreativeDirection(buildResult.input, creativeDirection);
+  // Image Style Library V1：主链视觉方向只写入风格通道；productFacts / approvedVisualReferences /
+  // targetProduct 全部保持 gate 投影结果，风格不可能改写已确认事实。
+  if (input.stylePresetId) {
+    generationInput.stylePresetId = input.stylePresetId;
+  }
   // Final Capability: product_visual_draft 真实参考图输入（从 gate 解析的批准参考图片；仅服务端）
   if (input.mode === "product_visual_draft" && gateA.approvedReferenceImageDataUrl) {
     generationInput.referenceImageDataUrl = gateA.approvedReferenceImageDataUrl;
@@ -328,6 +336,7 @@ export async function generateImageDraftFromHandoff(
   const generationRequestFingerprint = sha256([
     buildResult.generationInputFingerprint,
     `creative-direction:${sha256(JSON.stringify(creativeDirection))}`,
+    `style-preset:${input.stylePresetId ?? "none"}`,
     `count:${requestedCount}`,
     selectedVisualReferences.length > 0
       ? `visual-selection:${selectedVisualReferences.map((r) => r.selectionId).sort().join(",")}`

@@ -15,6 +15,7 @@ import type { AccessContext } from "@/lib/server/accessPassword";
 import type { DemoAccessSnapshot } from "@/lib/server/demoGuard";
 import { getImageStylePreset, type ImageStylePresetId } from "@/lib/imageStyleLibrary";
 import { resolveStudioImageCreativeIntent } from "@/lib/studioImageCreativeIntent";
+import { resolveImageAuthorityMode } from "@/lib/imagePromptComposer";
 import { generateAiImageDraft } from "@/lib/server/aiImageDraftService";
 import { readAiImage } from "@/lib/server/aiImageDraftStorage";
 import type { LoadedAiImageTask } from "@/lib/server/aiImageTaskAccess";
@@ -410,6 +411,9 @@ export async function generateRealStudioImage(input: {
     : null;
   const studioImageStyle = {
     presetId: input.studio.stylePresetId,
+    // 独立工具入口（无 taskId）没有研究确认链：这里只记录**审计用途**的权限来源，
+    // 事实权限由 Prompt Composer 按入口形态推导（见 lib/aiImageDraft.ts），本字段不参与判定。
+    authorityMode: resolveImageAuthorityMode({ taskId: null }),
     ...(resolvedIntent
       ? {
           purposeId: resolvedIntent.primaryImagePurpose,

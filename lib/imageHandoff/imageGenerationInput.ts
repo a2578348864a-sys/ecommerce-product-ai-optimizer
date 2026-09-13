@@ -55,6 +55,12 @@ export type ImageGenerationInput = {
   lifestyleScene?: import("@/lib/studioImageCreativeIntent").StudioImageLifestyleScene;
   /** V3 Creative Intent Propagation：custom 用途的用户自定义文本（prompt 内 untrusted 围栏展示，永不视为指令） */
   customPurposeText?: string;
+  /**
+   * Image Style Library V1：主链视觉方向（共享风格注册表的 8 个预设之一）。
+   * **只影响视觉表达**（构图/灯光/环境/色彩/镜头语言/道具/文字策略），
+   * 永不改变 productFacts、approvedVisualReferences 或 targetProduct。
+   */
+  stylePresetId?: import("@/lib/imageStyleLibrary").ImageStylePresetId;
   compositionReferences: string[];
   creativePreferences: Record<string, string>;
   prohibitedVisualClaims: string[];

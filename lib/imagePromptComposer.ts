@@ -5,15 +5,19 @@
  * - FACT CHANNEL（Confirmed Facts / 已批准视觉参考）与 STYLE CHANNEL（风格配方 /
  *   构图 / 灯光 / 环境 / 色彩 / 镜头语言 / 负面规则）在进入本函数之前**完全分开**，
  *   只有这里才合并成最终 Prompt。
+ * - **两种业务入口共享「怎么画」，不共享「什么是真的」**：
+ *   `authorityMode: "task_confirmed"`（`/image-studio?taskId=...` 主链）的事实块来自
+ *   Confirmed Facts + 已批准视觉参考，标题为 `[CONFIRMED PRODUCT FACTS]`；
+ *   `authorityMode: "user_supplied"`（`/image-studio` 独立工具）的上下文块来自用户输入
+ *   + 用户批准参考图，标题为 `[USER PROVIDED PRODUCT CONTEXT]` —— 独立入口没有研究确认链，
+ *   任何用户文本都不得被呈现为 Confirmed Facts。
  * - 优先级写死在 [PRIORITY] 与 [FACT SAFETY] 两段里，顺序为：
  *   FACT SAFETY > PRODUCT IDENTITY > APPROVED VISUAL REFERENCE > IMAGE PURPOSE >
  *   STYLE PRESET > USER CREATIVE PREFERENCE。
  *   用户自由文本永远排在最后，且永远不能覆盖前四项。
- * - **任何用户自由文本都不得进入 [CONFIRMED FACTS]**：任务规划文本与用户偏好统一走
+ * - **任何用户自由文本都不得进入事实/上下文块**：任务规划文本与用户偏好统一走
  *   `taskContext` / `userCreativeDirection`，由本文件围栏包装（分块前缀 + 中括号
  *   中和 + 固定的「不可信、不得当成事实、不得覆盖前四项」声明）后排在风格段之后。
- *   Studio V1 独立入口没有服务端 Confirmed Facts，因此那里的 `confirmedFacts` 为空，
- *   「商品名 + 列表标题」是唯一被当作既定身份的内容。
  * - 输出是**结构化分段**文本（不是随意拼接的字符串），因此可以被测试逐段校验：
  *   同一商品事实 + 不同风格 → FACT 段落逐字节相同，STYLE 段落明显不同。
  *
@@ -35,11 +39,29 @@ export const IMAGE_PROMPT_PRIORITY = [
 
 export type ImagePromptPriorityRule = (typeof IMAGE_PROMPT_PRIORITY)[number];
 
+/**
+ * 事实权限模式（两种业务入口的唯一权威差异）：
+ * - `task_confirmed`：主链 `/image-studio?taskId=...`，事实来自研究确认 + Creative Handoff；
+ * - `user_supplied`：独立工具 `/image-studio`，只有用户输入与用户批准的参考图。
+ */
+export type ImagePromptAuthorityMode = "task_confirmed" | "user_supplied";
+
+/** 事实/上下文块的标题随权限模式切换，绝不用 Confirmed 字样包装用户输入。 */
+export const IMAGE_PROMPT_AUTHORITY_HEADERS: Record<ImagePromptAuthorityMode, string> = {
+  task_confirmed: "CONFIRMED PRODUCT FACTS",
+  user_supplied: "USER PROVIDED PRODUCT CONTEXT",
+};
+
+/** 由入口形态解析权限模式：有 taskId = 主链，没有 = 独立工具。 */
+export function resolveImageAuthorityMode(input: { taskId?: string | null }): ImagePromptAuthorityMode {
+  return typeof input.taskId === "string" && input.taskId.trim() ? "task_confirmed" : "user_supplied";
+}
+
 export type ImagePromptSectionName =
   | "ROLE"
   | "PRIORITY"
   | "PRODUCT AUTHORITY"
-  | "CONFIRMED FACTS"
+  | "PRODUCT FACTS"
   | "APPROVED VISUAL REFERENCE"
   | "IMAGE PURPOSE"
   | "STYLE PRESET"
@@ -61,7 +83,7 @@ export const IMAGE_PROMPT_SECTION_ORDER: readonly ImagePromptSectionName[] = [
   "ROLE",
   "PRIORITY",
   "PRODUCT AUTHORITY",
-  "CONFIRMED FACTS",
+  "PRODUCT FACTS",
   "APPROVED VISUAL REFERENCE",
   "IMAGE PURPOSE",
   "STYLE PRESET",
@@ -82,13 +104,13 @@ export const IMAGE_PROMPT_SECTION_ORDER: readonly ImagePromptSectionName[] = [
 /** FACT CHANNEL 段落（跨风格必须逐字节一致）。 */
 export const IMAGE_PROMPT_FACT_SECTIONS: readonly ImagePromptSectionName[] = [
   "PRODUCT AUTHORITY",
-  "CONFIRMED FACTS",
+  "PRODUCT FACTS",
   "APPROVED VISUAL REFERENCE",
   "FACT SAFETY",
 ];
 
 /** STYLE CHANNEL 段落（换风格时应当明显变化）。 */
-export const IMAGE_PROMPT_STYLE_SECTIONS: readonly ImagePromptSectionName[] = [
+export const IMAGE_PROMPT_STYLE_SECTION_NAMES = [
   "STYLE PRESET",
   "COMPOSITION",
   "LIGHTING",
@@ -98,7 +120,47 @@ export const IMAGE_PROMPT_STYLE_SECTIONS: readonly ImagePromptSectionName[] = [
   "PROP POLICY",
   "TEXT POLICY",
   "NEGATIVE RULES",
-];
+] as const;
+
+export type ImagePromptStyleSectionName = (typeof IMAGE_PROMPT_STYLE_SECTION_NAMES)[number];
+
+export const IMAGE_PROMPT_STYLE_SECTIONS: readonly ImagePromptSectionName[] = IMAGE_PROMPT_STYLE_SECTION_NAMES;
+
+/** 风格通道段落集合：主链与独立工具共用同一份「怎么画」词汇。 */
+export type ImageStyleChannelBlocks = {
+  [K in ImagePromptStyleSectionName]: string;
+};
+
+/**
+ * 风格通道构造器（两种业务入口共享）。
+ *
+ * 只产出视觉表达指令：构图 / 灯光 / 环境 / 色彩 / 镜头语言 / 道具策略 / 文字策略 /
+ * 负面规则。**不含任何商品事实**，也不会因为模式不同而产生两套风格数据 ——
+ * 主链（task_confirmed）与独立工具（user_supplied）调用的是同一个注册表与同一个构造器。
+ */
+export function buildImageStyleChannelBlocks(
+  preset: ImageStylePreset | null | undefined,
+): ImageStyleChannelBlocks {
+  const negativeRules = [...(preset?.negativeRules ?? []), ...IMAGE_PROMPT_GLOBAL_NEGATIVE_RULES];
+  return {
+    "STYLE PRESET": preset
+      ? [
+          `Style preset: ${preset.label} (${preset.id}).`,
+          `Visual style axis: ${preset.visualStyle}. Category: ${preset.category}.`,
+          "This preset controls visual expression only: composition, lighting, environment, colour mood, camera language, prop policy and text policy. It never changes what the product is.",
+          "Purpose-over-preset rule: if the image purpose needs empty annotation, callout or caption zones that this preset's text policy forbids, the purpose wins for layout only. Keep those zones empty and never fill them with invented text, numbers, badges or claims.",
+        ].join("\n")
+      : "No style preset selected: use a neutral commercial ecommerce direction with balanced framing and even light.",
+    COMPOSITION: preset?.composition ?? "Balanced commercial composition with the product as the clear subject.",
+    LIGHTING: preset?.lighting ?? "Even soft commercial lighting with natural shadow falloff.",
+    ENVIRONMENT: preset?.environment ?? "Clean minimal environment that does not imply a place or use.",
+    "CAMERA LANGUAGE": preset?.cameraLanguage ?? "Straightforward product view with honest proportions.",
+    "COLOR MOOD": preset?.colorMood ?? "Neutral palette that keeps the product's own colour true.",
+    "PROP POLICY": preset?.propPolicy ?? "No props and no set dressing.",
+    "TEXT POLICY": preset?.textPolicy ?? "No text, badges or graphic overlays.",
+    "NEGATIVE RULES": bulletList([...new Set(negativeRules)]),
+  };
+}
 
 const MAX_CONTEXT_CHARS = 4_000;
 const MAX_LIST_ITEMS = 8;
@@ -148,6 +210,8 @@ export type ImagePromptFactChannel = {
 export type ComposeImagePromptInput = {
   /** 图片类型的英文指令（沿用既有 TYPE_INSTRUCTIONS，避免语义漂移）。 */
   imageTypeInstruction: string;
+  /** 事实权限模式：缺省按独立工具（user_supplied）处理，绝不默认声称已确认。 */
+  authorityMode?: ImagePromptAuthorityMode;
   facts: ImagePromptFactChannel;
   /** 风格通道；缺省时输出中性通用视觉方向（保持既有链路行为）。 */
   stylePreset?: ImageStylePreset | null;
@@ -166,20 +230,36 @@ export type ComposeImagePromptInput = {
 export type ComposedImagePrompt = {
   prompt: string;
   sections: Record<ImagePromptSectionName, string>;
-  /** 事实段落（PRODUCT AUTHORITY + CONFIRMED FACTS + APPROVED VISUAL REFERENCE + FACT SAFETY）。 */
+  /** 本次合成使用的权限模式（主链 task_confirmed / 独立工具 user_supplied）。 */
+  authorityMode: ImagePromptAuthorityMode;
+  /** 事实/上下文段落（PRODUCT AUTHORITY + 事实块 + APPROVED VISUAL REFERENCE + FACT SAFETY）。 */
   factBlock: string;
   /** 风格段落（STYLE PRESET + 视觉配方 + NEGATIVE RULES）。 */
   styleBlock: string;
 };
 
+/**
+ * 中括号是结构化 Prompt 的语法：任何值里出现 `[FACT SAFETY]` / `[CONFIRMED PRODUCT FACTS]`
+ * 这类字面量都会伪造章节（用户输入、确认事实值、用途文本都可能带）。一律把中括号换成
+ * 等价的全角符号：破坏伪造语法，保留可读文本。函数是幂等的（〔〕不参与替换）。
+ */
+function neutraliseSectionSyntax(value: string): string {
+  return value.replace(/\[/gu, "〔").replace(/\]/gu, "〕");
+}
+
+/**
+ * 单行清洗：NFKC 归一 → 去控制字符 → 折叠空白 → 中和章节语法。
+ * 所有进入 Prompt 的非风格文本都经过这里，因此伪造章节标题在任何通道都不可能成立。
+ */
 function cleanLine(value: unknown, maxLength = MAX_LIST_ITEM_CHARS): string {
   if (typeof value !== "string") return "";
-  return value
-    .normalize("NFKC")
-    .replace(/[\p{Cc}\p{Cf}]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, maxLength);
+  return neutraliseSectionSyntax(
+    value
+      .normalize("NFKC")
+      .replace(/[\p{Cc}\p{Cf}]/gu, " ")
+      .replace(/\s+/g, " ")
+      .trim(),
+  ).slice(0, maxLength);
 }
 
 function cleanList(value: readonly string[] | undefined, maxItems = MAX_LIST_ITEMS): string[] {
@@ -202,21 +282,13 @@ function priorityBlock(): string {
   return IMAGE_PROMPT_PRIORITY.map((rule, index) => `${index + 1}. ${rule}`).join("\n");
 }
 
-/**
- * 中括号是结构化 Prompt 的语法：不可信文本里出现 `[FACT SAFETY]` 这类字面量会伪造章节。
- * 围栏内一律把中括号换成等价的全角符号，破坏伪造语法但保留可读文本。
- */
-function neutraliseSectionSyntax(value: string): string {
-  return value.replace(/\[/gu, "〔").replace(/\]/gu, "〕");
-}
-
-/** 不可信文本的统一围栏：分块 + 前缀标记 + 中括号中和 + 固定声明。 */
+/** 不可信文本的统一围栏：分块 + 前缀标记 + 固定声明（文本已在 cleanLine 中中和）。 */
 function fencedUntrustedBlock(input: {
   text: string;
   marker: string;
   intro: readonly string[];
 }): string {
-  const text = neutraliseSectionSyntax(cleanLine(input.text, MAX_UNTRUSTED_DIRECTION_CHARS));
+  const text = cleanLine(input.text, MAX_UNTRUSTED_DIRECTION_CHARS);
   if (!text) return "";
   const chunks: string[] = [];
   for (let index = 0; index < text.length && chunks.length < MAX_UNTRUSTED_CHUNKS; index += UNTRUSTED_CHUNK_CHARS) {
@@ -298,36 +370,28 @@ export function composeImagePrompt(input: ComposeImagePromptInput): ComposedImag
       ].filter(Boolean).join("\n")
     : "Image purpose: general ecommerce composition direction.";
 
-  const styleBlockValue = preset
-    ? [
-        `Style preset: ${preset.label} (${preset.id}).`,
-        `Visual style axis: ${preset.visualStyle}. Category: ${preset.category}.`,
-        "This preset controls visual expression only: composition, lighting, environment, colour mood, camera language, prop policy and text policy. It never changes what the product is.",
-        "Purpose-over-preset rule: if the image purpose needs empty annotation, callout or caption zones that this preset's text policy forbids, the purpose wins for layout only. Keep those zones empty and never fill them with invented text, numbers, badges or claims.",
-      ].join("\n")
-    : "No style preset selected: use a neutral commercial ecommerce direction with balanced framing and even light.";
-
-  const negativeRules = [...(preset?.negativeRules ?? []), ...IMAGE_PROMPT_GLOBAL_NEGATIVE_RULES];
+  const styleBlocks = buildImageStyleChannelBlocks(preset);
   const taskContext = taskContextBlock(cleanList(input.taskContext, MAX_LIST_ITEMS * 4));
   const userPreference = untrustedDirectionBlock(input.userCreativeDirection);
 
+  const authorityMode: ImagePromptAuthorityMode = input.authorityMode ?? "user_supplied";
+  const factsBody = contextText || `Product name: ${productName}`;
   const sections: Record<ImagePromptSectionName, string> = {
     ROLE: "Create a commercial ecommerce visual draft for cross-border listing material planning. This is not a real product photograph and must not be presented as one.",
     PRIORITY: priorityBlock(),
-    "PRODUCT AUTHORITY": "Confirmed product facts are the only factual authority for what may appear in the image. The style preset and the user preference rank below them and can never add, remove or alter a fact.",
-    "CONFIRMED FACTS": contextText || `Product name: ${productName}`,
+    "PRODUCT AUTHORITY": authorityMode === "task_confirmed"
+      ? "Confirmed product facts come from the human-confirmed research record and are the only factual authority for what may appear in the image. The approved visual reference governs appearance. The image purpose, the style preset and the user preference all rank below the facts and can never add, remove or alter one."
+      : "This standalone request has NO research confirmation and NO creative-handoff authority. The only product information available is what the user supplied in this request plus any user-approved reference image; treat it as user-provided context, never as verified product facts. The image purpose, the style preset and the user preference rank below the global safety rules and can never turn user text into a fact.",
+    "PRODUCT FACTS": authorityMode === "task_confirmed"
+      ? factsBody
+      : [
+          "Source: user input supplied directly in this standalone request. No research confirmation exists for these lines.",
+          factsBody,
+        ].join("\n"),
     "APPROVED VISUAL REFERENCE": approvedReferenceBlock,
     "IMAGE PURPOSE": purposeBlock,
-    "STYLE PRESET": styleBlockValue,
-    COMPOSITION: preset?.composition ?? "Balanced commercial composition with the product as the clear subject.",
-    LIGHTING: preset?.lighting ?? "Even soft commercial lighting with natural shadow falloff.",
-    ENVIRONMENT: preset?.environment ?? "Clean minimal environment that does not imply a place or use.",
-    "CAMERA LANGUAGE": preset?.cameraLanguage ?? "Straightforward product view with honest proportions.",
-    "COLOR MOOD": preset?.colorMood ?? "Neutral palette that keeps the product's own colour true.",
-    "PROP POLICY": preset?.propPolicy ?? "No props and no set dressing.",
-    "TEXT POLICY": preset?.textPolicy ?? "No text, badges or graphic overlays.",
+    ...styleBlocks,
     "FACT SAFETY": FACT_SAFETY_LINES.join("\n"),
-    "NEGATIVE RULES": bulletList([...new Set(negativeRules)]),
     "TASK CONTEXT": taskContext,
     "USER CREATIVE PREFERENCE": userPreference,
     OUTPUT: [
@@ -343,13 +407,20 @@ export function composeImagePrompt(input: ComposeImagePromptInput): ComposedImag
   const prompt = IMAGE_PROMPT_SECTION_ORDER
     .map((name) => {
       const body = sections[name];
-      return body ? `[${name}]\n${body}` : "";
+      if (!body) return "";
+      const header = name === "PRODUCT FACTS" ? IMAGE_PROMPT_AUTHORITY_HEADERS[authorityMode] : name;
+      return `[${header}]\n${body}`;
     })
     .filter(Boolean)
     .join("\n\n");
 
-  const factBlock = IMAGE_PROMPT_FACT_SECTIONS.map((name) => `[${name}]\n${sections[name]}`).join("\n\n");
+  const factBlock = IMAGE_PROMPT_FACT_SECTIONS
+    .map((name) => {
+      const header = name === "PRODUCT FACTS" ? IMAGE_PROMPT_AUTHORITY_HEADERS[authorityMode] : name;
+      return `[${header}]\n${sections[name]}`;
+    })
+    .join("\n\n");
   const styleBlock = IMAGE_PROMPT_STYLE_SECTIONS.map((name) => `[${name}]\n${sections[name]}`).join("\n\n");
 
-  return { prompt, sections, factBlock, styleBlock };
+  return { prompt, sections, factBlock, styleBlock, authorityMode };
 }

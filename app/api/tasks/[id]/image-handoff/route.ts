@@ -19,6 +19,7 @@ import { mutateTaskResultJson, TaskResultJsonMutationError } from "@/lib/server/
 import { parseProductCreativeHandoff } from "@/lib/productCreativeHandoff";
 import { classifyImageDraft, isFinalSelectableDraft } from "@/lib/imageHandoff/historicalDraftClassification";
 import { evaluatePurposeRequirements } from "@/lib/imageHandoff/purposeRequirements";
+import { isImageStylePresetId } from "@/lib/imageStyleLibrary";
 import {
   buildTaskImageCreativeDescriptionContext,
   parseTaskImageCreativeDirection,
@@ -35,6 +36,8 @@ const ALLOWED_GENERATE_FIELDS = new Set([
   "requestId", "expectedStorageVersion", "expectedHandoffRevision", "mode",
   "approvedVisualReferenceSelectionIds", "confirmed",
   "count", "primaryImagePurpose", "lifestyleScene", "customImagePurpose", "userCreativeDescription",
+  // Image Style Library V1：视觉方向（纯视觉表达，永不改变已确认事实与已批准参考）。
+  "stylePresetId",
 ]);
 const ALLOWED_SELECT_FIELDS = new Set([
   "selectedImageId", "expectedStorageVersion", "expectedHandoffRevision", "confirmed",
@@ -344,8 +347,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     lifestyleScene: body.lifestyleScene ?? "none",
     customImagePurpose: body.customImagePurpose ?? "",
     userCreativeDescription: body.userCreativeDescription ?? "基于已确认商品资料制作清晰、可人工复核的商品图片。",
-  });
-  if (!creativeDirection.ok) {
+  });  if (!creativeDirection.ok) {
     const messages = {
       invalid_primary_image_purpose: "图片主用途无效。",
       invalid_lifestyle_scene: "生活场景选择无效。",
@@ -355,6 +357,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       unsafe_creative_description: "创作描述包含不安全指令，请删除后重试。",
     } as const;
     return errorResponse(400, creativeDirection.code, messages[creativeDirection.code]);
+  }
+
+  // Image Style Library V1：视觉方向只做「是不是共享注册表里的预设」校验；
+  // 缺失时保持 undefined（不注入默认值），因此旧请求的 Prompt 与指纹逐字节不变。
+  const stylePresetId = body.stylePresetId === undefined ? undefined : body.stylePresetId;
+  if (stylePresetId !== undefined && !isImageStylePresetId(stylePresetId)) {
+    return errorResponse(400, "invalid_style_preset", "视觉方向无效，请重新选择。");
   }
 
   const { ctx, error } = getAuth(req, id, body);
@@ -424,6 +433,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       count,
       approvedVisualReferenceSelectionIds,
       ...creativeDirection.data,
+      ...(stylePresetId ? { stylePresetId } : {}),
       confirmed: true,
     }, providerOptions as never);
     if (ctx!.mode === "demo") {

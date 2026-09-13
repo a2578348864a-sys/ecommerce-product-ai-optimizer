@@ -10,7 +10,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import type { StudioImageResultMeta } from "@/lib/studioImageInput";
-import { imageStylePresetLabel } from "@/lib/imageStyleLibrary";
+import { imageStylePresetLabel, isImageStylePresetId } from "@/lib/imageStyleLibrary";
 import styles from "./ImageStudioPolish.module.css";
 
 export type ImageStudioData = {
@@ -92,7 +92,10 @@ export function ImageResultWorkspace({
   const styleLabel = meta.creationMode === "prompt"
     ? "服务端整理"
     : STYLE_LABELS[meta.input.visualStyle];
-  const stylePresetLabel = imageStylePresetLabel(meta.input.stylePresetId);
+  // 兼容历史/外部结果：缺失或非法预设 id 时降级为「未标注」，绝不在渲染期抛错。
+  const stylePresetLabel = isImageStylePresetId(meta.input.stylePresetId)
+    ? imageStylePresetLabel(meta.input.stylePresetId)
+    : "未标注";
   const downloadKind = meta.creationMode === "prompt" ? "prompt" : meta.input.imageType;
   const productAltName = input.productName.trim() || (isPrompt ? "自由提示词方案" : "未命名商品");
   const localCheckText = isMock ? {
