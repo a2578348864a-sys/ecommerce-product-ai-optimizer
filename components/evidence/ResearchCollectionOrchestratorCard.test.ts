@@ -8,6 +8,7 @@ import { resolve } from "node:path";
 import {
   ResearchCollectionOrchestratorCard,
   computeSummary,
+  deriveOrchestratorRunFeedback,
   formatBadgeLabel,
   getAmazonFailureReason,
   normalizeState,
@@ -671,6 +672,74 @@ describe("ResearchCollectionOrchestratorCard (Phase 3 UI / Interaction)", () => 
       expect(sourcingBadge?.textContent).toContain("已有");
     });
 
+    it("orchestrate 返回 mixed 时展示本次运行的成功与失败来源及结构化原因", async () => {
+      const fetchSpy = vi.fn().mockImplementation((_url, opts) => {
+        const body = JSON.parse(opts?.body as string);
+        if (body.action === "inspect") {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              ok: true,
+              data: {
+                sources: {
+                  amazon: { state: "needs_supplement" },
+                  keywords_competitors: { state: "pending" },
+                  voc: { state: "needs_action" },
+                  sourcing_1688: { state: "pending_review" },
+                },
+              },
+            }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            ok: true,
+            data: {
+              overallStatus: "mixed",
+              sources: {
+                amazon: {
+                  status: "failed",
+                  message: "导航被重定向到白名单外地址；该状态不等同于验证码",
+                  error: { code: "navigation_not_allowed" },
+                },
+                keywordCompetitor: { status: "ready" },
+                voc: {
+                  status: "failed",
+                  message: "页面导航被安全白名单阻断",
+                  error: { code: "navigation_not_allowed" },
+                },
+                sourcing1688: { status: "ready" },
+              },
+            },
+          }),
+        });
+      });
+      globalThis.fetch = fetchSpy;
+
+      root = createRoot(container as unknown as Element);
+      await act(async () => {
+        root?.render(
+          createElement(ResearchCollectionOrchestratorCard, {
+            taskId: "task-mixed-feedback",
+          }),
+        );
+      });
+      await flush();
+      await flush();
+
+      await act(async () => {
+        (container.querySelector('[data-testid="btn-orchestrate"]') as unknown as { click: () => void } | null)?.click();
+      });
+      await flush();
+      await flush();
+
+      const feedback = container.querySelector('[data-testid="orchestrator-run-feedback"]');
+      expect(feedback?.textContent).toContain("本次资料整理已完成");
+      expect(feedback?.textContent).toContain("关键词与竞品");
+      expect(feedback?.textContent).toContain("页面导航被安全策略阻断");
+    });
+
     it("生成新 Preview 时：触发 onDataChanged，渲染警示栏，绝不替用户自动确认", async () => {
       const onDataChanged = vi.fn();
       const onNavigate = vi.fn();
@@ -889,7 +958,7 @@ describe("ResearchCollectionOrchestratorCard (Phase 3 UI / Interaction)", () => 
       expect(onNavigate).toHaveBeenCalledWith("sourcing", "formal-v2-sourcing-evidence");
     });
 
-    it("inspect 失败时展示克制错误栏，并提供重试检查入口", async () => {
+    it("inspect 失败时展示克制错误栏，并提供重新检查状态入口", async () => {
       const fetchSpy = vi.fn().mockResolvedValue({
         ok: false,
         json: async () => ({
@@ -916,6 +985,7 @@ describe("ResearchCollectionOrchestratorCard (Phase 3 UI / Interaction)", () => 
 
       const retryBtn = container.querySelector('[data-testid="orchestrator-retry-btn"]');
       expect(retryBtn).toBeTruthy();
+      expect(retryBtn?.textContent).toContain("重新检查状态");
 
       // 点击重试检查，再次发起 inspect
       await act(async () => {
@@ -1837,6 +1907,41 @@ describe("ResearchCollectionOrchestratorCard (Phase 3 UI / Interaction)", () => 
 
     it("Amazon verification blocker is not presented as an ASIN error", () => {
       expect(getAmazonFailureReason("Amazon验证阻断")).toBe("Amazon验证阻断");
+    });
+
+    it("uses structured source error codes before message text", () => {
+      expect(
+        getAmazonFailureReason(
+          "页面导航被重定向到白名单外地址；该状态不等同于验证码",
+          "navigation_not_allowed",
+        ),
+      ).toBe("页面导航被安全策略阻断");
+      expect(getAmazonFailureReason("需要验证码", "captcha_required")).toBe("验证或登录阻断");
+
+      const feedback = deriveOrchestratorRunFeedback({
+        overallStatus: "mixed",
+        sources: {
+          amazon: {
+            status: "failed",
+            message: "页面导航被重定向到白名单外地址；该状态不等同于验证码",
+            error: { code: "navigation_not_allowed" },
+          },
+          keywordCompetitor: { status: "ready" },
+          voc: {
+            status: "failed",
+            message: "页面导航被安全白名单阻断",
+            error: { code: "navigation_not_allowed" },
+          },
+          sourcing1688: { status: "ready" },
+        },
+      });
+      expect(feedback).toEqual({
+        successSources: ["关键词与竞品", "1688 供应链"],
+        failedSources: [
+          { title: "Amazon 商品资料", reason: "页面导航被安全策略阻断" },
+          { title: "买家评论 / VOC", reason: "页面导航被安全策略阻断" },
+        ],
+      });
     });
 
     it("Amazon 失败时展示 ○ 获取失败徽章、收敛原因与双按钮（重新尝试+人工补充），消除恐慌红字", async () => {

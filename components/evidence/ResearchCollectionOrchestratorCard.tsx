@@ -57,6 +57,7 @@ export type OrchestratorSourceItem = {
   state: OrchestratorSourceState;
   stateLabel?: string;
   detail?: string;
+  errorCode?: string;
   anchorId: string;
   tabKey: "market" | "buyers" | "sourcing" | "cost-risk";
   previewId?: string | null;
@@ -71,6 +72,11 @@ export type OrchestratorSummary = {
   allReady: boolean;
 };
 
+export type OrchestratorRunFeedback = {
+  successSources: string[];
+  failedSources: Array<{ title: string; reason: string }>;
+};
+
 export type ResearchCollectionOrchestratorCardProps = {
   taskId: string;
   onDataChanged?: () => void;
@@ -79,7 +85,7 @@ export type ResearchCollectionOrchestratorCardProps = {
   /** 供单元测试或外部注入初始状态 */
   initialData?: {
     summary?: string;
-    items?: Partial<Record<OrchestratorSourceKey, { state: OrchestratorSourceState; detail?: string }>>;
+    items?: Partial<Record<OrchestratorSourceKey, { state: OrchestratorSourceState; detail?: string; errorCode?: string }>>;
     hasNewPreview?: boolean;
     rawSources?: ResearchOrchestratorSources;
   };
@@ -175,6 +181,14 @@ export function sanitizeDetail(text?: string): string | undefined {
   }
 
   return trimmed;
+}
+
+function readErrorCode(value: unknown): string | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const error = (value as Record<string, unknown>).error;
+  if (typeof error !== "object" || error === null || Array.isArray(error)) return undefined;
+  const code = (error as Record<string, unknown>).code;
+  return typeof code === "string" && code.trim() ? code.trim() : undefined;
 }
 
 /**
@@ -433,11 +447,15 @@ export function computeSummary(
   };
 }
 
-export function getAmazonFailureReason(detail?: string): string {
+export function getAmazonFailureReason(detail?: string, errorCode?: string): string {
+  if (errorCode === "navigation_not_allowed") return "页面导航被安全策略阻断";
+  if (errorCode === "captcha_required" || errorCode === "login_required") {
+    return "验证或登录阻断";
+  }
   if (!detail) return "页面无法识别";
   const lower = detail.toLowerCase();
-  if (lower.includes("captcha") || lower.includes("login") || lower.includes("验证")) {
-    return "Amazon验证阻断";
+  if (lower.includes("captcha") || lower.includes("login")) {
+    return "验证或登录阻断";
   }
   if (lower.includes("asin")) {
     return "ASIN异常";
@@ -452,6 +470,73 @@ export function getAmazonFailureReason(detail?: string): string {
     return "页面无法识别";
   }
   return detail;
+}
+
+export function getSourceFailureReason(
+  key: OrchestratorSourceKey,
+  detail?: string,
+  errorCode?: string,
+): string {
+  if (key === "amazon" || key === "voc") {
+    if (errorCode === "navigation_not_allowed") return "页面导航被安全策略阻断";
+    if (errorCode === "captcha_required" || errorCode === "login_required") {
+      return "验证或登录阻断";
+    }
+  }
+  if (key === "amazon") return getAmazonFailureReason(detail, errorCode);
+  return detail || "上次采集未完成";
+}
+
+export function deriveOrchestratorRunFeedback(data: unknown): OrchestratorRunFeedback | null {
+  if (typeof data !== "object" || data === null || Array.isArray(data)) return null;
+  const payload = data as Record<string, unknown>;
+  const sourceObject =
+    payload.sources && typeof payload.sources === "object" && !Array.isArray(payload.sources)
+      ? payload.sources as Record<string, unknown>
+      : undefined;
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  const sourceAliases: Record<OrchestratorSourceKey, string[]> = {
+    amazon: ["amazon"],
+    keywords_competitors: ["keywords_competitors", "keywordCompetitor", "keywords"],
+    voc: ["voc"],
+    sourcing_1688: ["sourcing_1688", "sourcing1688", "sourcing"],
+  };
+  const getSource = (key: OrchestratorSourceKey): unknown => {
+    if (sourceObject) {
+      for (const alias of sourceAliases[key]) {
+        if (sourceObject[alias] !== undefined) return sourceObject[alias];
+      }
+    }
+    const item = items.find((candidate) => {
+      if (typeof candidate !== "object" || candidate === null || Array.isArray(candidate)) return false;
+      const itemKey = String((candidate as Record<string, unknown>).key ?? "");
+      return sourceAliases[key].includes(itemKey);
+    });
+    return item;
+  };
+
+  const successSources: string[] = [];
+  const failedSources: Array<{ title: string; reason: string }> = [];
+  for (const key of ORDERED_KEYS) {
+    const source = getSource(key);
+    if (typeof source !== "object" || source === null || Array.isArray(source)) continue;
+    const record = source as Record<string, unknown>;
+    const state = normalizeState(key, record.state ?? record.status, record.ready);
+    const detail = sanitizeDetail(extractDetailFromPayload(record));
+    const errorCode = readErrorCode(record);
+    if (state === "failed") {
+      failedSources.push({
+        title: SOURCE_META[key].title,
+        reason: getSourceFailureReason(key, detail, errorCode),
+      });
+    } else if (state === "ready" || state === "pending_review" || state === "confirmed_no_reviews") {
+      successSources.push(SOURCE_META[key].title);
+    }
+  }
+
+  const overallStatus = typeof payload.overallStatus === "string" ? payload.overallStatus : "";
+  if (overallStatus !== "mixed" && failedSources.length === 0) return null;
+  return { successSources, failedSources };
 }
 
 function getSourceDescription(
@@ -488,10 +573,7 @@ function getSourceDescription(
     );
   }
   if (item.state === "failed") {
-    if (item.key === "amazon") {
-      return getAmazonFailureReason(item.detail);
-    }
-    return item.detail || "上次采集未完成";
+    return getSourceFailureReason(item.key, item.detail, item.errorCode);
   }
   if (item.state === "pending") {
     return item.detail || "待补齐";
@@ -524,6 +606,7 @@ export function ResearchCollectionOrchestratorCard({
   const [retryingSource, setRetryingSource] = useState<OrchestratorSourceKey | null>(null);
   const isOrchestratingRef = useRef(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [runFeedback, setRunFeedback] = useState<OrchestratorRunFeedback | null>(null);
   const [hasNewPreviewAlert, setHasNewPreviewAlert] = useState(Boolean(initialData?.hasNewPreview));
   const lastFeedbackFingerprintRef = useRef<string | null>(null);
   const [customSummaryText, setCustomSummaryText] = useState<string | undefined>(
@@ -545,7 +628,7 @@ export function ResearchCollectionOrchestratorCard({
 
   // 初始化 4 项状态
   const [rawItemStates, setRawItemStates] = useState<
-    Record<OrchestratorSourceKey, { state: OrchestratorSourceState; detail?: string }>
+    Record<OrchestratorSourceKey, { state: OrchestratorSourceState; detail?: string; errorCode?: string }>
   >(() => {
     const rawSrc = initialData?.rawSources;
     const rawMap: Partial<Record<OrchestratorSourceKey, unknown>> = {
@@ -561,21 +644,19 @@ export function ResearchCollectionOrchestratorCard({
         return {
           state: explicit.state,
           detail: sanitizeDetail(explicit.detail),
+          errorCode: explicit.errorCode,
         };
       }
       const fromSrc = rawMap[key];
       if (fromSrc && typeof fromSrc === "object") {
         const iv = fromSrc as Record<string, unknown>;
-        const errorCode =
-          iv.error && typeof iv.error === "object" && iv.error !== null
-            ? (iv.error as Record<string, unknown>).code
-            : undefined;
+        const errorCode = readErrorCode(iv);
         const effectiveState =
           errorCode === "confirmed_no_reviews" ? "confirmed_no_reviews" :
             errorCode === "extraction_empty" || errorCode === "no_public_reviews" ? "extraction_empty" : iv.status ?? iv.state;
         const state = normalizeState(key, effectiveState, iv.ready);
         const detail = sanitizeDetail(extractDetailFromPayload(iv));
-        return { state, detail };
+        return { state, detail, errorCode };
       }
       return {
         state: SOURCE_META[key].defaultState,
@@ -601,6 +682,7 @@ export function ResearchCollectionOrchestratorCard({
         title: meta.title,
         state: raw?.state ?? meta.defaultState,
         detail: raw?.detail,
+        errorCode: raw?.errorCode,
         anchorId: meta.anchorId,
         tabKey: meta.tabKey,
         canRetry:
@@ -713,6 +795,7 @@ export function ResearchCollectionOrchestratorCard({
               nextRaw[k] = {
                 state,
                 detail: sanitizeDetail(extractedDetail) ?? (prevState === "failed" && state === "failed" ? prev[k]?.detail : undefined),
+                errorCode: readErrorCode(itemVal),
               };
               if (state === "pending_review" && (iv.previewId || iv.hasPreview)) {
                 hasPreview = true;
@@ -766,6 +849,7 @@ export function ResearchCollectionOrchestratorCard({
                 nextRaw[targetKey] = {
                   state,
                   detail: sanitizeDetail(extractedDetail) ?? (prevState === "failed" && state === "failed" ? prev[targetKey]?.detail : undefined),
+                  errorCode: readErrorCode(it),
                 };
                 if (state === "pending_review" && (it.previewId || it.hasPreview)) {
                   hasPreview = true;
@@ -895,6 +979,7 @@ export function ResearchCollectionOrchestratorCard({
     isOrchestratingRef.current = true;
     setIsOrchestrating(true);
     setErrorMessage(null);
+    setRunFeedback(null);
     try {
       const res = await fetch(
         `/api/tasks/${encodeURIComponent(taskId)}/research-orchestrator`,
@@ -919,6 +1004,7 @@ export function ResearchCollectionOrchestratorCard({
         );
         return;
       }
+      setRunFeedback(deriveOrchestratorRunFeedback(json.data));
       applyApiResponse(json.data);
     } catch {
       setErrorMessage("网络异常，请求编排服务失败。");
@@ -1006,6 +1092,33 @@ export function ResearchCollectionOrchestratorCard({
         </div>
       </div>
 
+      {runFeedback && (
+        <div
+          role="status"
+          data-testid="orchestrator-run-feedback"
+          className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs sm:text-sm text-slate-700"
+        >
+          <p className="font-semibold text-slate-900">本次资料整理已完成</p>
+          {runFeedback.successSources.length > 0 && (
+            <p className="mt-1">
+              成功来源：{runFeedback.successSources.join("、")}
+            </p>
+          )}
+          {runFeedback.failedSources.length > 0 && (
+            <div className="mt-1">
+              <p>失败来源：</p>
+              <ul className="mt-0.5 list-disc pl-5">
+                {runFeedback.failedSources.map((source) => (
+                  <li key={`${source.title}:${source.reason}`}>
+                    {source.title}：{source.reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── 错误警示栏（支持重试） ── */}
       {errorMessage && (
         <div
@@ -1023,7 +1136,7 @@ export function ResearchCollectionOrchestratorCard({
             onClick={() => void executeInspect()}
             className="font-semibold underline hover:text-rose-900"
           >
-            重试检查
+            重新检查状态
           </button>
         </div>
       )}
