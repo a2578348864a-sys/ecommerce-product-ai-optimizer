@@ -1,6 +1,7 @@
 import type { ImageGenerationInput } from "@/lib/imageHandoff/imageGenerationInput";
 import { buildImageStyleChannelBlocks } from "@/lib/imagePromptComposer";
 import { getImageStylePreset } from "@/lib/imageStyleLibrary";
+import { formatSlotRecipeBlock, resolveSlotRecipe } from "@/lib/imageHandoff/slotPromptRecipes";
 
 /**
  * PR2-3 Image Prompt 双模式构造器。
@@ -103,8 +104,8 @@ export function buildCreativeIntentBlock(input: ImageGenerationInput): string[] 
 
 const CREATIVE_PURPOSE_PROMPT_TEXT: Record<string, string> = {
   white_studio: "Clean white studio/hero product shot on a plain white background. Do NOT add lifestyle environments.",
-  selling_point_infographic: "Selling-point infographic layout with restrained callout zones. Do NOT invent factual labels.",
-  dimension_specification: "Dimension/specification display layout with annotation zones. Only confirmed measurements may be indicated; do not invent dimensions.",
+  selling_point_infographic: "Selling-point infographic layout with clean reserved negative space for copy. Do NOT render text, badges, callout arrows or claims into the image.",
+  dimension_specification: "Dimension/specification scale layout with clean buffer zones. Do NOT render dimension numbers, measurement lines, rulers or arrows.",
   detail_closeup: "Close-up of the real product detail visible in the reference image; keep the environment quiet and secondary.",
   packaging_bundle: "Packaging/set presentation as the MAIN purpose: show the product together with its confirmed packaging or bundled items only. Do NOT invent packaging, boxes or accessories that are not in the reference image or confirmed facts.",
   usage_steps: "Sequential usage-steps layout with caption zones. Do NOT invent unconfirmed actions or steps.",
@@ -137,7 +138,34 @@ export function buildTaskImageStyleBlock(input: ImageGenerationInput): string[] 
   ];
 }
 
-/** 双模式 Prompt 构造（纯函数） */
+/**
+ * 槽位视觉配方文本块（纯视觉控制与商业设计约束）。
+ */
+export function buildSlotRecipeBlock(input: ImageGenerationInput): string[] {
+  const recipe = resolveSlotRecipe({
+    slotType: (input as { slotType?: string }).slotType,
+    primaryPurpose: input.primaryPurpose,
+    lifestyleScene: input.lifestyleScene,
+    stylePresetId: input.stylePresetId,
+  });
+  return [
+    `CURRENT VISUAL SLOT: ${recipe.name} (${recipe.id})`,
+    formatSlotRecipeBlock(recipe),
+  ];
+}
+
+/**
+ * 双模式 Prompt 构造（纯函数）。
+ *
+ * 严格遵循 7 级优先级顺序：
+ * 1. Confirmed Facts (已确认商品事实)
+ * 2. Product Identity Lock (目标商品类别与身份硬锁)
+ * 3. Reference Gate (视觉参考门禁)
+ * 4. Slot Recipe (槽位专业摄影与构图配方)
+ * 5. Style Preset (视觉风格预设)
+ * 6. User Custom Description (用户偏好与描述)
+ * 7. Negative Constraints (负面约束与防伪底线)
+ */
 export function buildImagePromptFromInput(input: ImageGenerationInput): string {
   const commonSafety = [
     "You generate a human-review image draft for cross-border ecommerce listing material planning.",
@@ -148,6 +176,7 @@ export function buildImagePromptFromInput(input: ImageGenerationInput): string {
     "Human review is required before any use. The output is a draft only and is not publishable.",
   ];
 
+  const slotLines = buildSlotRecipeBlock(input);
   const styleLines = buildTaskImageStyleBlock(input);
   const styleSection = styleLines.length ? ["", ...styleLines] : [];
 
@@ -164,6 +193,9 @@ export function buildImagePromptFromInput(input: ImageGenerationInput): string {
       "- Do NOT complete unknown product attributes (colour, material, structure, interface, packaging, accessories).",
       "- Do NOT generate logos, certification marks, or packaging text.",
       "- Do NOT imply this is a finished product image.",
+      "",
+      "=== 槽位视觉配方与主用途（Slot Recipe & Creative Intent）===",
+      ...slotLines,
       "",
       "=== 主用途与场景（用户显式 Creative Intent，最高创意权威）===",
       ...buildCreativeIntentBlock(input),
@@ -210,6 +242,9 @@ export function buildImagePromptFromInput(input: ImageGenerationInput): string {
     "",
     "=== 已批准产品视觉参考（唯一产品形态来源）===",
     textList(input.approvedVisualReferences.map((r) => r.summary)),
+    "",
+    "=== 槽位视觉配方与主用途（Slot Recipe & Creative Intent）===",
+    ...slotLines,
     "",
     "=== 主用途与场景（用户显式 Creative Intent，最高创意权威）===",
     ...buildCreativeIntentBlock(input),

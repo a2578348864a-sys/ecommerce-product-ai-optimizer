@@ -8,6 +8,7 @@ import { ImageScenePresetPicker } from "@/components/image-studio/ImageScenePres
 import { ImageStylePresetPicker } from "@/components/image-studio/ImageStylePresetPicker";
 import {
   DEFAULT_IMAGE_STYLE_PRESET_ID,
+  imageStylePresetLabel,
   isImageStylePresetId,
   recommendedImageStylePreset,
   type ImageStylePresetId,
@@ -26,6 +27,12 @@ import {
   type StudioImageCreativeIntent,
 } from "@/lib/studioImageCreativeIntent";
 import { evaluatePurposeRequirements } from "@/lib/imageHandoff/purposeRequirements";
+import { VisualAssetPlanCard } from "@/components/image-handoff/VisualAssetPlanCard";
+import { VisualGenerationBriefCard } from "@/components/image-handoff/VisualGenerationBriefCard";
+import {
+  buildVisualAssetPlan,
+  type VisualAssetSlot,
+} from "@/lib/imageHandoff/visualAssetPlan";
 
 type ImageStatus =
   | "ready" | "active" | "stale" | "revoked" | "concept_only" | "legacy_unbound" | "invalid";
@@ -120,6 +127,21 @@ function modeLabel(mode: "composition_concept" | "product_visual_draft" | null) 
   if (mode === "product_visual_draft") return "产品视觉草稿";
   if (mode === "composition_concept") return "构图概念";
   return "未确定";
+}
+
+function formatCompositionSummary(summary?: string | null): string {
+  if (!summary) return "";
+  const s = summary.trim();
+  if (s.startsWith("Product visual draft derived strictly from the approved visual reference")) {
+    return "已基于批准的视觉参考生成，严格锁定商品真实外观与关键特征。";
+  }
+  if (s.startsWith("Abstract composition concept")) {
+    return "构图概念草稿：用于探索画面背景方向、场景氛围与留白布局。";
+  }
+  if (s.startsWith("Real product photo with exact colour")) {
+    return "商品真实照片：严格展示真实颜色与材质细节。";
+  }
+  return s;
 }
 
 /**
@@ -234,6 +256,7 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
     DEFAULT_STUDIO_IMAGE_CREATIVE_INTENT,
   );
   const [stylePresetId, setStylePresetId] = useState<ImageStylePresetId>(DEFAULT_IMAGE_STYLE_PRESET_ID);
+  const [activeSlotId, setActiveSlotId] = useState<string | null>(null);
   const [userCreativeDescription, setUserCreativeDescription] = useState("");
   const [descriptionDirty, setDescriptionDirty] = useState(false);
   const seededDescriptionKeyRef = useRef("");
@@ -463,6 +486,83 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
       value: String(fact.value ?? ""),
     })),
   );
+
+  const visualAssetPlan = state
+    ? buildVisualAssetPlan({
+        facts: (state.creativeDescriptionContext?.confirmedFacts ?? []).map((fact) => ({
+          field: "",
+          label: fact.label,
+          value: String(fact.value ?? ""),
+        })),
+        hasApprovedVisualReference: state.approvedVisualReferenceSummary.length > 0,
+        productName: state.creativeDescriptionContext?.productName,
+      })
+    : null;
+
+  const handleSelectSlot = (slot: VisualAssetSlot) => {
+    setActiveSlotId(slot.slotId);
+    setCreativeIntent({
+      primaryImagePurpose: slot.suggestedPurpose,
+      lifestyleScene: slot.suggestedScene,
+      customImagePurpose: "",
+    });
+    setStylePresetId(slot.suggestedStylePresetId);
+    if (state?.creativeDescriptionContext) {
+      setUserCreativeDescription(
+        buildTaskImageCreativeDescription(
+          state.creativeDescriptionContext,
+          slot.suggestedPurpose,
+          slot.suggestedScene,
+          "",
+        ),
+      );
+      setDescriptionDirty(false);
+    }
+  };
+
+  const currentSlot = activeSlotId
+    ? visualAssetPlan?.slots.find((s) => s.slotId === activeSlotId)
+    : visualAssetPlan?.slots.find((s) => s.suggestedPurpose === creativeIntent.primaryImagePurpose) ?? visualAssetPlan?.slots[0];
+
+  const allFacts = (state?.creativeDescriptionContext?.confirmedFacts ?? []).map((fact) => ({
+    label: fact.label,
+    value: String(fact.value ?? ""),
+  }));
+  const briefFacts = currentSlot && currentSlot.factRefs && currentSlot.factRefs.length > 0
+    ? allFacts.filter((f) => currentSlot.factRefs.some((ref) => f.label.includes(ref) || ref.includes(f.label)))
+    : allFacts;
+  const displayBriefFacts = briefFacts.length > 0 ? briefFacts : allFacts;
+
+  const briefConstraints = [
+    "保持商品真实物理外观，禁止篡改外形轮廓与核心部件",
+    "严格依据已确认事实，禁止虚构未证实的功能或性能参数",
+    creativeIntent.primaryImagePurpose === "white_studio"
+      ? "Amazon 白底主图规范：纯白背景 (RGB 255,255,255)，无阴影杂物，无嵌入文字"
+      : "生活场景搭配需符合日常真实使用情境，主体突出，不喧宾夺主",
+  ];
+
+  const briefReferenceNotice = {
+    title: isComposition ? "概念创作模式" : "参考图创作模式",
+    description: isComposition
+      ? "当前没有已确认商品参考图。生成结果用于构图、场景和视觉方向参考，不代表真实商品外观。"
+      : "将参考已批准商品图片进行视觉创作，结果仍需人工检查商品外观和文字。",
+    isComposition,
+  };
+
+  const briefStrategy = {
+    purposeLabel: primaryPurposeLabel(creativeIntent.primaryImagePurpose),
+    sceneLabel: creativeIntent.primaryImagePurpose === "white_studio"
+      ? "纯白背景无杂质"
+      : lifestyleSceneLabel(creativeIntent.lifestyleScene),
+    styleLabel: imageStylePresetLabel(stylePresetId),
+    rationale: currentSlot?.rationale ?? "突出商品核心特征与真实质感",
+  };
+
+  const briefAssetTitle = currentSlot?.title ?? `${primaryPurposeLabel(creativeIntent.primaryImagePurpose)}素材`;
+  const briefGoal = currentSlot
+    ? `${currentSlot.purposeSummary} · ${currentSlot.rationale}`
+    : "生成符合电商上架与转化规范的高质感视觉素材";
+
   const generateDisabled = !state.canGenerate
     || submitting
     || state.imageStatus === "revoked"
@@ -534,11 +634,20 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
 
       {state.canGenerate ? (
         <div className="mt-4 space-y-4">
+          {visualAssetPlan ? (
+            <VisualAssetPlanCard
+              plan={visualAssetPlan}
+              selectedSlotId={activeSlotId}
+              onSelectSlot={handleSelectSlot}
+            />
+          ) : null}
+
           <div className="[&_fieldset>p]:hidden [&>div>p]:hidden">
             <ImageScenePresetPicker
               name="task-image-creative-intent"
               value={creativeIntent}
               onChange={(nextCreativeIntent) => {
+                setActiveSlotId(null);
                 setCreativeIntent(nextCreativeIntent);
                 if (state.creativeDescriptionContext && !descriptionDirty) {
                   setUserCreativeDescription(buildTaskImageCreativeDescription(
@@ -562,6 +671,23 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
               onChange={(nextStylePresetId) => setStylePresetId(nextStylePresetId)}
             />
           </div>
+
+          {/* AI 视觉方案 (Visual Generation Brief) */}
+          <VisualGenerationBriefCard
+            mode="task"
+            assetTitle={briefAssetTitle}
+            categoryLabel={currentSlot?.categoryLabel}
+            goal={briefGoal}
+            facts={displayBriefFacts}
+            strategy={briefStrategy}
+            constraints={briefConstraints}
+            referenceNotice={briefReferenceNotice}
+            customPromptSummary={
+              descriptionDirty && userCreativeDescription
+                ? userCreativeDescription.slice(0, 120) + (userCreativeDescription.length > 120 ? "..." : "")
+                : undefined
+            }
+          />
 
           <div className="flex flex-wrap items-center gap-3 pt-1">
             <label className="flex items-center text-sm font-semibold text-slate-700">
@@ -666,30 +792,91 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
       </details>
 
       {state.candidates.length > 0 ? (
-        <div className="mt-4 grid gap-4 lg:grid-cols-2" data-testid="task-image-candidates">
+        <div
+          className={`mt-5 ${
+            state.candidates.length === 1
+              ? "mx-auto max-w-2xl w-full"
+              : state.candidates.length === 2
+                ? "grid gap-5 md:grid-cols-2"
+                : "grid gap-5 md:grid-cols-2 lg:grid-cols-3"
+          }`}
+          data-testid="task-image-candidates"
+        >
           {state.candidates.map((candidate, index) => candidate.id ? (
             <article
               key={candidate.id}
-              className={`space-y-3 rounded-2xl border p-3 ${
+              className={`flex flex-col justify-between space-y-3.5 rounded-2xl border p-4 shadow-sm transition ${
                 state.selectedImageId === candidate.id
-                  ? "border-teal-400 bg-teal-50/40"
-                  : "border-slate-200 bg-white"
+                  ? "border-teal-500 bg-teal-50/40 ring-1 ring-teal-500"
+                  : "border-slate-200 bg-white hover:border-slate-300"
               }`}
             >
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-slate-500">
-                <span>候选图 {index + 1} · {modeLabel(candidate.mode)}</span>
-                <span>{formatTime(candidate.generatedAt)}</span>
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-slate-500">
+                  <span className="flex items-center gap-1.5">
+                    <span className="flex h-5 w-5 items-center justify-center rounded bg-slate-100 font-mono text-[11px] font-bold text-slate-700">
+                      0{index + 1}
+                    </span>
+                    <span className="text-slate-900 font-bold">候选方案 {index + 1}</span>
+                    <span className="text-slate-400">·</span>
+                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">
+                      {modeLabel(candidate.mode)}
+                    </span>
+                  </span>
+                  <span className="text-[11px] text-slate-400">{formatTime(candidate.generatedAt)}</span>
+                </div>
+
+                <DraftImagePreview taskId={taskId} draftId={candidate.id} />
+
+                {candidate.compositionSummary ? (
+                  <p className="rounded-xl border border-slate-100 bg-slate-50/80 p-3 text-xs leading-relaxed text-slate-700">
+                    {formatCompositionSummary(candidate.compositionSummary)}
+                  </p>
+                ) : null}
+
+                {candidate.approvedReferenceFingerprint ? (
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-teal-700">
+                    <span className="inline-block h-2 w-2 rounded-full bg-teal-500" />
+                    <span>已基于批准的视觉参考生成</span>
+                  </div>
+                ) : null}
+
+                {/* 候选方案三要素：推荐用途 · 适用原因 · 必要限制 */}
+                <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-2.5 text-xs space-y-1.5 shadow-2xs">
+                  <div className="flex items-start gap-2">
+                    <span className="shrink-0 rounded bg-teal-100 px-1.5 py-0.5 text-[10px] font-bold text-teal-800">
+                      推荐用途
+                    </span>
+                    <span className="text-slate-700 font-medium leading-relaxed">
+                      {candidate.mode === "product_visual_draft"
+                        ? "Amazon Listing 场景副图 / A+ 详情页重点展示"
+                        : "视觉构图、光影背景与留白布局探索"}
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="shrink-0 rounded bg-slate-200/80 px-1.5 py-0.5 text-[10px] font-bold text-slate-700">
+                      适用原因
+                    </span>
+                    <span className="text-slate-600 leading-relaxed">
+                      {candidate.mode === "product_visual_draft"
+                        ? "严格锁定已批准参考图的外观特征与物理材质，杜绝模型幻觉"
+                        : "在无参考图时快速预演生活场景与构图搭配，指导后续拍摄"}
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
+                      必要限制
+                    </span>
+                    <span className="text-slate-600 leading-relaxed">
+                      {candidate.mode === "product_visual_draft"
+                        ? "上线前必须人工复核关键文字、Logo 与细节一致性"
+                        : "构图概念不代表真实商品外观，不可直接用于正式主图上架"}
+                    </span>
+                  </div>
+                </div>
               </div>
-              <DraftImagePreview taskId={taskId} draftId={candidate.id} />
-              {candidate.compositionSummary ? (
-                <p className="rounded-xl bg-slate-50 p-3 text-sm leading-6 text-slate-700">
-                  {candidate.compositionSummary}
-                </p>
-              ) : null}
-              {candidate.approvedReferenceFingerprint ? (
-                <p className="text-sm font-semibold text-teal-700">已基于你批准的视觉参考生成。</p>
-              ) : null}
-              <div className="flex flex-wrap items-center gap-2">
+
+              <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
                 <button
                   type="button"
                   onClick={() => {
@@ -707,14 +894,14 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
                       setTimeout(() => URL.revokeObjectURL(url), 60_000);
                     }).catch(() => { win.document.body.innerHTML = "<p>图片加载失败，请刷新后重试。</p>"; });
                   }}
-                  className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs"
                 >
                   查看大图
                 </button>
                 <button
                   type="button"
                   onClick={() => downloadDraftImage(taskId, candidate.id!, candidate.mode === "composition_concept" ? `composition-${index + 1}` : `product-visual-${index + 1}`)}
-                  className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs"
                 >
                   下载
                 </button>
@@ -733,7 +920,7 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
                   title={candidate.mode === "composition_concept"
                     ? "构图概念仅用于构图/场景/视觉方向参考，不代表真实商品外观，不能作为正式商品图。"
                     : "已基于批准的商品参考图生成，仍需人工核对商品外观。"}
-                  className="inline-flex h-9 items-center justify-center rounded-lg bg-teal-600 px-3 text-sm font-bold text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex h-9 items-center justify-center rounded-lg bg-teal-600 px-3.5 text-xs font-bold text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60 shadow-2xs ml-auto"
                 >
                   {candidate.mode === "composition_concept" ? "作为构图参考" : (state.selectedImageId === candidate.id ? "已选择" : "选择此图")}
                 </button>
