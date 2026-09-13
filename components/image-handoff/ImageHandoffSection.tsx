@@ -327,7 +327,11 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
       expectedHandoffRevision: state.expectedHandoffRevision,
       mode: state.mode,
       count: candidateCount,
-      ...creativeIntent,
+      // 该 Route 用严格字段白名单校验请求体：这里逐字段列举，绝不整体展开共享意图对象，
+      // 否则 Studio 专属维度（如 stylePresetId）会以 unknown_field 被拒。
+      primaryImagePurpose: creativeIntent.primaryImagePurpose,
+      lifestyleScene: creativeIntent.lifestyleScene,
+      customImagePurpose: creativeIntent.customImagePurpose,
       userCreativeDescription,
       // Final Capability: product_visual_draft 提交服务端批准参考的 selectionId（首个批准参考）
       ...(state.mode === "product_visual_draft" && state.approvedVisualReferenceSummary?.[0]

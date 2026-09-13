@@ -144,6 +144,34 @@ Research Lifecycle Reader 为 Task List、Task Detail 和 Evidence Workbench 提
 - **Listing Studio**：生成和复核 Title、Bullets、Description、Search Terms，并经过 Claim Evidence 和 Copy Quality 检查。
 - **Image Studio**：基于确认事实和人工批准的视觉参考，组织图片提示词和分镜计划。
 
+### Image Style Library V1（Image Studio 视觉方向）
+
+Image Studio 在「图片用途」之外新增 **8 种视觉方向**，让同一商品事实可以产出视觉语言明显不同的商业图片方向：
+
+| 视觉方向 | 一句话说明 |
+| --- | --- |
+| 高级白底 `amazon_clean_hero` | 干净棚拍，突出商品主体 |
+| 杂志质感 `premium_editorial` | 克制侧光与高级商业摄影 |
+| 家居生活 `lifestyle_home` | 自然窗光与真实家庭场景 |
+| 户外故事 `outdoor_story` | 自然环境中的使用叙事 |
+| 微距细节 `macro_detail` | 突出结构、纹理和工艺细节 |
+| 卖点视觉 `feature_board` | 商品主体 + 信息留白 |
+| 套装展示 `packaging_set` | 包装、组件和套装规整呈现 |
+| Campaign `campaign_visual` | 更强主视觉和广告构图 |
+
+边界（与 Listing 同一条事实纪律）：
+
+- **Confirmed Facts 仍是唯一事实权威**：视觉方向只控制怎么画（构图、灯光、环境、色彩、镜头语言、道具与文字策略），不决定允许画什么。
+- 视觉方向**不能**改变商品颜色、形状、材质、数量、配件或包装；缺失事实保持视觉中性，不由风格猜测补齐。
+- 用户自由提示词降级为**最低优先级的创意偏好**：它被标记为不可信文本，永远不能覆盖事实安全、商品身份与已批准参考图。
+- 冲突时的权威顺序（与 `lib/imagePromptComposer.ts` 写死的优先级一致）：
+  **FACT SAFETY > PRODUCT IDENTITY > APPROVED VISUAL REFERENCE > IMAGE PURPOSE > STYLE PRESET > USER CREATIVE PREFERENCE**。
+  图片用途高于视觉方向：当用途需要留白标注区、而预设的文字策略禁止文字时，以用途为准（标注区保持留空，不得自行补字）。
+- 任务链路（Creative Handoff / TaskStudioPreparation）请求体受严格字段白名单校验，视觉方向是 Image Studio 独立入口专属维度，不会随共享意图对象进入这些请求。
+- 生成结果仍是**待人工复核的草稿**，不代表真实商品实拍，也不构成认证、性能或上架依据。
+
+实现入口：`lib/imageStyleLibrary.ts`（纯视觉数据）、`lib/imagePromptComposer.ts`（结构化 Prompt 合流）。
+
 Marketing Intelligence、Copy Strategy 和 Planner Strategy Preview 当前是 **sidecar / reference-only** 旁路能力，用于提供买家痛点、市场角度和写作结构参考。它们不直接修改 ListingPlan、不直接进入 deterministic renderer，也不会自动改写最终 Listing 正文。
 
 ## V4 / LangGraph 实验链

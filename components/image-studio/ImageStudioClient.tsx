@@ -40,6 +40,11 @@ import { TaskStudioPreparation } from "@/components/studio/TaskStudioPreparation
 import { ImageHandoffSection } from "@/components/image-handoff/ImageHandoffSection";
 import { studioApiErrorCode, studioErrorMessage } from "@/lib/client/studioErrorMessage";
 import { ImageScenePresetPicker } from "@/components/image-studio/ImageScenePresetPicker";
+import { ImageStylePresetPicker } from "@/components/image-studio/ImageStylePresetPicker";
+import {
+  DEFAULT_IMAGE_STYLE_PRESET_ID,
+  recommendedImageStylePreset,
+} from "@/lib/imageStyleLibrary";
 import { StudioProgressRail } from "@/components/studio/StudioProgressRail";
 import { deriveImageStudioProgress } from "@/lib/client/studioProgress";
 import { readJsonApiResponse } from "@/lib/client/safeApiResponse";
@@ -442,6 +447,11 @@ function ManualImageStudioClient({ onProgressChange }: {
             <span>决定素材用途与视觉语气</span>
           </div>
           <ImageScenePresetPicker value={intent} onChange={selectCreativeIntent} />
+          <ImageStylePresetPicker
+            value={intent.stylePresetId ?? DEFAULT_IMAGE_STYLE_PRESET_ID}
+            recommendedId={recommendedImageStylePreset(intent.primaryImagePurpose)}
+            onChange={(stylePresetId) => updateIntent("stylePresetId", stylePresetId)}
+          />
         </section>
         ) : (
           <section className={styles.formSection} aria-labelledby="image-prompt-section">
@@ -495,6 +505,10 @@ function ManualImageStudioClient({ onProgressChange }: {
                 onChange={(event) => updatePromptIntent("avoidElements", event.target.value)}
               />
             </div>
+            <ImageStylePresetPicker
+              value={promptIntent.stylePresetId ?? DEFAULT_IMAGE_STYLE_PRESET_ID}
+              onChange={(stylePresetId) => updatePromptIntent("stylePresetId", stylePresetId)}
+            />
           </section>
         )}
 

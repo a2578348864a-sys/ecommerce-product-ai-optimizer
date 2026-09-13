@@ -1,3 +1,10 @@
+import {
+  DEFAULT_IMAGE_STYLE_PRESET_ID,
+  getImageStylePreset,
+  isImageStylePresetId,
+  type ImageStylePresetId,
+} from "@/lib/imageStyleLibrary";
+
 export const STUDIO_IMAGE_PRIMARY_PURPOSES = [
   { id: "white_studio", label: "白底主图/棚拍" },
   { id: "selling_point_infographic", label: "卖点信息图" },
@@ -24,6 +31,16 @@ export type StudioImageCreativeIntent = {
   primaryImagePurpose: StudioImagePrimaryPurpose;
   lifestyleScene: StudioImageLifestyleScene;
   customImagePurpose: string;
+  /**
+   * Image Style Library V1：视觉方向（纯视觉表达维度，与图片用途正交）。
+   * 只影响构图/灯光/环境/色彩/镜头语言/道具与文字策略，永不改变商品事实。
+   *
+   * 该字段**只属于 Image Studio 独立创作入口**：任务链路（Creative Handoff 偏好、
+   * TaskStudioPreparation）不携带它，其请求体受严格字段白名单校验，多带一个键会 400。
+   * 因此共享的默认值与归一化函数都不注入该字段，默认值只在 Studio 请求构建
+   * （`lib/client/studioImageRequest.ts`）与 Studio 服务端解析（`resolveStudioImageCreativeIntent`）补齐。
+   */
+  stylePresetId?: ImageStylePresetId;
 };
 
 export const DEFAULT_STUDIO_IMAGE_CREATIVE_INTENT: StudioImageCreativeIntent = {
@@ -42,14 +59,28 @@ export function isStudioImageLifestyleScene(value: unknown): value is StudioImag
     && STUDIO_IMAGE_LIFESTYLE_SCENES.some((candidate) => candidate.id === value);
 }
 
+/** 已解析视觉方向的意图：只由 `resolveStudioImageCreativeIntent` 产出。 */
+export type NormalizedStudioImageCreativeIntent = StudioImageCreativeIntent & {
+  stylePresetId: ImageStylePresetId;
+};
+
+/**
+ * 归一化用途/场景组合，并**原样保留**调用方已显式给出的视觉方向。
+ * 这里不注入默认风格：本函数是 Studio 与任务链路共用的，注入会让任务链路
+ * 的严格字段白名单请求多出一个未知键（见 `StudioImageCreativeIntent.stylePresetId` 注释）。
+ */
 export function normalizeStudioImageCreativeIntent(
   intent: StudioImageCreativeIntent,
 ): StudioImageCreativeIntent {
+  // 视觉方向与图片用途正交：切换用途不会重置用户显式选择的风格。
+  const stylePresetId = isImageStylePresetId(intent.stylePresetId) ? intent.stylePresetId : undefined;
+  const style = stylePresetId ? { stylePresetId } : {};
   if (intent.primaryImagePurpose === "white_studio") {
     return {
       primaryImagePurpose: "white_studio",
       lifestyleScene: "none",
       customImagePurpose: "",
+      ...style,
     };
   }
   return {
@@ -58,6 +89,7 @@ export function normalizeStudioImageCreativeIntent(
     customImagePurpose: intent.primaryImagePurpose === "custom"
       ? intent.customImagePurpose.trim()
       : "",
+    ...style,
   };
 }
 
@@ -70,7 +102,14 @@ export function lifestyleSceneLabel(scene: StudioImageLifestyleScene) {
 }
 
 export function resolveStudioImageCreativeIntent(intent: StudioImageCreativeIntent) {
-  const normalized = normalizeStudioImageCreativeIntent(intent);
+  // 视觉方向的默认值在这里补齐：解析阶段是 Studio 服务端/生成器的唯一入口，
+  // 因此默认风格只作用于 Studio 链路，不会写回共享的意图对象。
+  const normalized: NormalizedStudioImageCreativeIntent = {
+    ...normalizeStudioImageCreativeIntent(intent),
+    stylePresetId: isImageStylePresetId(intent.stylePresetId)
+      ? intent.stylePresetId
+      : DEFAULT_IMAGE_STYLE_PRESET_ID,
+  };
   const purposeDirections = {
     white_studio: {
       imageType: "product_main" as const,
@@ -163,6 +202,7 @@ export function resolveStudioImageCreativeIntent(intent: StudioImageCreativeInte
     label: normalized.primaryImagePurpose === "custom"
       ? normalized.customImagePurpose
       : primaryPurposeLabel(normalized.primaryImagePurpose),
+    stylePresetLabel: getImageStylePreset(normalized.stylePresetId).label,
     imageType: purposeDirections.imageType,
     visualStyle: sceneDirections?.visualStyle ?? purposeDirections.visualStyle,
     background: sceneDirections?.background ?? purposeDirections.background,

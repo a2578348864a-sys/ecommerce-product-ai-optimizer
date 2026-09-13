@@ -1,6 +1,9 @@
 export const AI_IMAGE_DRAFT_DISCLAIMER =
   "AI 生成图片仅供 Listing 素材方向参考，不代表真实商品实拍，不可直接作为商品事实、认证或平台上架依据。";
 
+import { composeImagePrompt, IMAGE_PROMPT_UNTRUSTED_MAX_CHARS } from "@/lib/imagePromptComposer";
+import { getImageStylePreset, isImageStylePresetId, type ImageStylePresetId } from "@/lib/imageStyleLibrary";
+
 export const AI_IMAGE_PROMPT_SUMMARY_MAX_LENGTH = 500;
 export const AI_IMAGE_ADDITIONAL_DIRECTION_MAX_LENGTH = 300;
 export const AI_IMAGE_DRAFT_MAX_ITEMS = 50;
@@ -23,6 +26,22 @@ export type AiImageGenerationBasis = {
   riskWarnings: string[];
   missingFacts: string[];
   imageMaterialNeeds: string[];
+  /**
+   * Image Style Library V1：Studio 请求携带的纯视觉方向。
+   * 它只描述「怎么画」，不含任何商品事实；缺省时走既有扁平 Prompt 路径。
+   */
+  studioStyle?: AiImageStudioStyleBasis;
+};
+
+export type AiImageStudioStyleBasis = {
+  presetId: ImageStylePresetId;
+  purposeId?: string;
+  purposeLabel?: string;
+  purposeDirection?: string;
+  aspectRatio?: string;
+  hasApprovedVisualReference: boolean;
+  /** 用户自由创意文本（不可信，永远最后一级优先级）。 */
+  creativeDirection?: string;
 };
 
 export type AiImageDraftItem = {
@@ -429,6 +448,7 @@ export function buildAiImageGenerationBasis(task: AiImageTaskContext): AiImageGe
   ].filter((item, index, all) => Boolean(item) && all.indexOf(item) === index).slice(0, 8);
   const missingFacts = cleanStringArray(listingPrep.manualSupplementChecklist);
   const imageMaterialNeeds = cleanStringArray(listingPrep.imageMaterialNeeds);
+  const studioStyle = normalizeStudioImageStyleBasis(nestedRecord(result, "studioImageStyle"));
 
   return {
     productName: productName || undefined,
@@ -437,6 +457,30 @@ export function buildAiImageGenerationBasis(task: AiImageTaskContext): AiImageGe
     riskWarnings,
     missingFacts,
     imageMaterialNeeds,
+    ...(studioStyle ? { studioStyle } : {}),
+  };
+}
+
+/**
+ * Studio 视觉方向基准：只接受白名单字段，任何非法值都退回「无风格」（既有扁平 Prompt 路径），
+ * 因此旧请求/旧快照不会因为缺少该字段而改变行为。
+ */
+function normalizeStudioImageStyleBasis(value: Record<string, unknown> | null): AiImageStudioStyleBasis | null {
+  if (!value) return null;
+  if (!isImageStylePresetId(value.presetId)) return null;
+  const purposeId = cleanText(value.purposeId, 60);
+  const purposeLabel = cleanText(value.purposeLabel, 80);
+  const purposeDirection = cleanText(value.purposeDirection, 200);
+  const aspectRatio = cleanText(value.aspectRatio, 40);
+  const creativeDirection = cleanText(value.creativeDirection, IMAGE_PROMPT_UNTRUSTED_MAX_CHARS);
+  return {
+    presetId: value.presetId,
+    ...(purposeId ? { purposeId } : {}),
+    ...(purposeLabel ? { purposeLabel } : {}),
+    ...(purposeDirection ? { purposeDirection } : {}),
+    ...(aspectRatio ? { aspectRatio } : {}),
+    hasApprovedVisualReference: value.hasApprovedVisualReference === true,
+    ...(creativeDirection ? { creativeDirection } : {}),
   };
 }
 
@@ -451,6 +495,39 @@ export function buildAiImagePrompt(input: {
   basis: AiImageGenerationBasis;
   additionalDirection?: string;
 }): string {
+  // Image Style Library V1：Studio 请求带视觉方向时走结构化 Composer。
+  // 事实通道与风格通道在 composeImagePrompt 内部才合流；既有任务链路（无风格）
+  // 继续走下面的扁平 Prompt，保持字节级兼容。
+  const studioStyle = input.basis.studioStyle;
+  if (studioStyle) {
+    const userDirection = input.additionalDirection || studioStyle.creativeDirection || null;
+    return composeImagePrompt({
+      imageTypeInstruction: TYPE_INSTRUCTIONS[input.imageType],
+      facts: {
+        productName: input.basis.productName || "unspecified product",
+        listingTitle: input.basis.listingTitle,
+        // 这里**不传** confirmedFacts：Studio 独立入口没有服务端 Confirmed Facts，
+        // 卖点/风险提示/资料需求都是用户自由文本或机器产物，只能作为不可信任务语境。
+        missingFacts: input.basis.missingFacts,
+        hasApprovedVisualReference: studioStyle.hasApprovedVisualReference,
+      },
+      taskContext: [
+        ...input.basis.sellingPoints,
+        ...input.basis.riskWarnings,
+        ...input.basis.imageMaterialNeeds,
+      ],
+      stylePreset: getImageStylePreset(studioStyle.presetId),
+      imagePurpose: studioStyle.purposeLabel
+        ? {
+            id: studioStyle.purposeId ?? "custom",
+            label: studioStyle.purposeLabel,
+            ...(studioStyle.purposeDirection ? { direction: studioStyle.purposeDirection } : {}),
+          }
+        : null,
+      userCreativeDirection: userDirection,
+      ...(studioStyle.aspectRatio ? { aspectRatio: studioStyle.aspectRatio } : {}),
+    }).prompt;
+  }
   const facts = {
     productName: input.basis.productName || "unspecified product",
     listingTitle: input.basis.listingTitle,

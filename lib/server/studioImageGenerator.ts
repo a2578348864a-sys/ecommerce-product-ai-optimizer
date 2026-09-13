@@ -13,6 +13,8 @@ import {
 } from "@/lib/studioImageInput";
 import type { AccessContext } from "@/lib/server/accessPassword";
 import type { DemoAccessSnapshot } from "@/lib/server/demoGuard";
+import { getImageStylePreset, type ImageStylePresetId } from "@/lib/imageStyleLibrary";
+import { resolveStudioImageCreativeIntent } from "@/lib/studioImageCreativeIntent";
 import { generateAiImageDraft } from "@/lib/server/aiImageDraftService";
 import { readAiImage } from "@/lib/server/aiImageDraftStorage";
 import type { LoadedAiImageTask } from "@/lib/server/aiImageTaskAccess";
@@ -90,6 +92,26 @@ const STYLE_PALETTES: Record<StudioImageVisualStyle, {
     accentSoft: "#d8f1e2",
     ink: "#173127",
   },
+};
+
+/**
+ * Image Style Library V1 — 本地 Mock 的视觉区分（§25：palette / composition / marker）。
+ * 真实效果以 Real Provider 为准；这里只保证 8 个风格在 mock 上肉眼与断言可区分。
+ */
+const STYLE_PRESET_TINTS: Record<ImageStylePresetId, {
+  base: string;
+  accent: string;
+  accentSoft: string;
+  marker: string;
+}> = {
+  amazon_clean_hero: { base: "#f4f6f8", accent: "#2f6f4f", accentSoft: "#e3efe7", marker: "hero-white" },
+  premium_editorial: { base: "#efeae4", accent: "#7a6247", accentSoft: "#e0d5c6", marker: "editorial-side" },
+  lifestyle_home: { base: "#f6efe7", accent: "#a36c4d", accentSoft: "#f0dcc9", marker: "home-window" },
+  outdoor_story: { base: "#e9f0e6", accent: "#4d7358", accentSoft: "#d3e4d4", marker: "outdoor-daylight" },
+  macro_detail: { base: "#eceff1", accent: "#4a5b66", accentSoft: "#d9e2e8", marker: "macro-detail" },
+  feature_board: { base: "#f3f5f7", accent: "#31566f", accentSoft: "#dde8f0", marker: "feature-board" },
+  packaging_set: { base: "#f5f2ee", accent: "#6b6152", accentSoft: "#e6dfd4", marker: "set-flatlay" },
+  campaign_visual: { base: "#eef1f4", accent: "#1f3a5f", accentSoft: "#d6e0ec", marker: "campaign-key" },
 };
 
 const IMAGE_DIMENSIONS = {
@@ -193,6 +215,7 @@ function publicPromptContext(input: StudioPromptInput): StudioImagePublicPromptC
     description: input.description,
     aspectRatio: input.aspectRatio,
     count: input.count,
+    stylePresetId: input.stylePresetId,
     promptSummary: summary,
     avoidElementsSummary: input.avoidElements || "未设置额外避免元素",
   };
@@ -217,20 +240,21 @@ function generatePromptMockStudioImage(input: StudioPromptInput): StudioImageRes
   const theme = promptTheme(input);
   const visualStyle = promptVisualStyle(input, seed);
   const renderIntent = { creationMode: "guided" as const, imageType: theme.imageType, visualStyle };
-  const palette = STYLE_PALETTES[visualStyle];
+  const palette = styleAwarePalette(visualStyle, input.stylePresetId);
+  const styleLabel = getImageStylePreset(input.stylePresetId).label;
   const { width, height } = IMAGE_DIMENSIONS[input.aspectRatio];
   const summary = compact(context.promptSummary, 92);
   const avoid = compact(context.avoidElementsSummary, 72);
   const product = compact(input.productName || "Custom creative", 54);
   const metadata = escapeXml(JSON.stringify(context));
   const images = Array.from({ length: input.count }, (_, index) => {
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Local Mock prompt preview" data-mock-variant="${index + 1}" data-mock-seed="${seedHex}">
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Local Mock prompt preview" data-mock-variant="${index + 1}" data-mock-seed="${seedHex}" data-mock-style="${palette.marker}">
       <metadata>${metadata}</metadata>
       <rect fill="${palette.base}" width="${width}" height="${height}"/>
       <circle cx="${Math.round(width * 0.88)}" cy="${Math.round(height * 0.12)}" r="${Math.round(Math.min(width, height) * 0.18)}" fill="${palette.accentSoft}" opacity=".52"/>
       ${mockLayout(renderIntent, width, height, index + (seed[1] % 3))}
       <g font-family="system-ui,-apple-system,sans-serif" fill="${palette.ink}">
-        <text x="${Math.round(width * 0.06)}" y="${Math.round(height * 0.08)}" font-size="${Math.max(15, Math.round(Math.min(width, height) * 0.024))}" font-weight="700">LOCAL MOCK · PROMPT</text>
+        <text x="${Math.round(width * 0.06)}" y="${Math.round(height * 0.08)}" font-size="${Math.max(15, Math.round(Math.min(width, height) * 0.024))}" font-weight="700">LOCAL MOCK · PROMPT · ${escapeXml(styleLabel)}</text>
         <text x="${Math.round(width * 0.06)}" y="${Math.round(height * 0.82)}" font-size="${Math.max(22, Math.round(Math.min(width, height) * 0.04))}" font-weight="720">${product}</text>
         <text x="${Math.round(width * 0.06)}" y="${Math.round(height * 0.88)}" font-size="${Math.max(13, Math.round(Math.min(width, height) * 0.02))}" opacity=".76">${summary}</text>
         <text x="${Math.round(width * 0.06)}" y="${Math.round(height * 0.94)}" font-size="${Math.max(12, Math.round(Math.min(width, height) * 0.017))}" opacity=".58">Avoid: ${avoid} · Variant ${index + 1}</text>
@@ -274,28 +298,42 @@ function chunkUntrustedText(value: string, chunkSize = 180) {
   return chunks;
 }
 
+/** 视觉方向叠加在既有视觉轴上：风格只调整 mock 的色调与标记，不改变事实与用途。 */
+function styleAwarePalette(visualStyle: StudioImageVisualStyle, stylePresetId: ImageStylePresetId) {
+  const base = STYLE_PALETTES[visualStyle];
+  const tint = STYLE_PRESET_TINTS[stylePresetId];
+  return {
+    ...base,
+    base: tint.base,
+    accent: tint.accent,
+    accentSoft: tint.accentSoft,
+    marker: tint.marker,
+  };
+}
+
 export function generateMockStudioImage(input: StudioImageInput): StudioImageResult {
   if (input.creationMode === "prompt") return generatePromptMockStudioImage(input);
   const count = input.count;
   const context = toStudioImageContext(input);
   const { width, height } = IMAGE_DIMENSIONS[input.aspectRatio];
-  const palette = STYLE_PALETTES[input.visualStyle];
+  const palette = styleAwarePalette(input.visualStyle, input.stylePresetId);
+  const styleLabel = getImageStylePreset(input.stylePresetId).label;
   const productName = compact(input.productName, 54);
   const description = compact(input.description || "No description supplied", 72);
   const composition = compact(input.compositionRequirements || "Default balanced composition", 64);
   const exclusions = compact(input.prohibitedElements || "Standard safety exclusions", 58);
   const metadata = escapeXml(JSON.stringify(context));
   const images = Array.from({ length: count }, (_, index) => {
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Local Mock preview" data-mock-variant="${index + 1}">
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Local Mock preview" data-mock-variant="${index + 1}" data-mock-style="${palette.marker}">
       <metadata>${metadata}</metadata>
       <rect fill="${palette.base}" width="${width}" height="${height}"/>
       <circle cx="${Math.round(width * 0.88)}" cy="${Math.round(height * 0.12)}" r="${Math.round(Math.min(width, height) * 0.18)}" fill="${palette.accentSoft}" opacity=".52"/>
       ${mockLayout(input, width, height, index)}
       <g font-family="system-ui,-apple-system,sans-serif" fill="${palette.ink}">
-        <text x="${Math.round(width * 0.06)}" y="${Math.round(height * 0.08)}" font-size="${Math.max(15, Math.round(Math.min(width, height) * 0.024))}" font-weight="700">LOCAL MOCK · ${TYPE_MARKERS[input.imageType].toUpperCase()}</text>
+        <text x="${Math.round(width * 0.06)}" y="${Math.round(height * 0.08)}" font-size="${Math.max(15, Math.round(Math.min(width, height) * 0.024))}" font-weight="700">LOCAL MOCK · ${TYPE_MARKERS[input.imageType].toUpperCase()} · ${escapeXml(styleLabel)}</text>
         <text x="${Math.round(width * 0.06)}" y="${Math.round(height * 0.82)}" font-size="${Math.max(22, Math.round(Math.min(width, height) * 0.04))}" font-weight="720">${productName}</text>
         <text x="${Math.round(width * 0.06)}" y="${Math.round(height * 0.87)}" font-size="${Math.max(14, Math.round(Math.min(width, height) * 0.022))}" opacity=".76">${description}</text>
-        <text x="${Math.round(width * 0.06)}" y="${Math.round(height * 0.92)}" font-size="${Math.max(12, Math.round(Math.min(width, height) * 0.018))}" opacity=".62">Composition: ${composition}</text>
+        <text x="${Math.round(width * 0.06)}" y="${Math.round(height * 0.92)}" font-size="${Math.max(12, Math.round(Math.min(width, height) * 0.018))}" opacity=".62">Composition: ${composition} · Style: ${palette.marker}</text>
         <text x="${Math.round(width * 0.06)}" y="${Math.round(height * 0.955)}" font-size="${Math.max(12, Math.round(Math.min(width, height) * 0.017))}" opacity=".58">Excluded: ${exclusions} · Variant ${index + 1}</text>
       </g>
     </svg>`;
@@ -360,12 +398,38 @@ export async function generateRealStudioImage(input: {
   }
 
   const studioContext = toStudioImageContext(input.studio);
+  // Image Style Library V1：把纯视觉方向随请求一起交给 Prompt Composer。
+  // 它只描述构图/灯光/环境/色彩/镜头语言/道具与文字策略，不含任何商品事实。
+  const resolvedIntent = input.studio.creationMode === "guided"
+    ? resolveStudioImageCreativeIntent({
+        primaryImagePurpose: input.studio.primaryImagePurpose ?? "custom",
+        lifestyleScene: input.studio.lifestyleScene ?? "none",
+        customImagePurpose: input.studio.customImagePurpose ?? "",
+        stylePresetId: input.studio.stylePresetId,
+      })
+    : null;
+  const studioImageStyle = {
+    presetId: input.studio.stylePresetId,
+    ...(resolvedIntent
+      ? {
+          purposeId: resolvedIntent.primaryImagePurpose,
+          purposeLabel: resolvedIntent.label,
+          purposeDirection: resolvedIntent.direction,
+        }
+      : {}),
+    aspectRatio: input.studio.aspectRatio,
+    hasApprovedVisualReference: Boolean(input.studio.referenceImageDataUrl),
+  };
   let resultJson: string;
   if (input.studio.creationMode === "prompt") {
-    const promptChunks = chunkUntrustedText(input.studio.creativePrompt);
     const avoidChunks = chunkUntrustedText(input.studio.avoidElements);
     resultJson = JSON.stringify({
       productName: input.studio.productName || "Image Studio prompt concept",
+      studioImageStyle: {
+        ...studioImageStyle,
+        // 用户自由创意文本是最后一级优先级，由 Composer 围栏包装后再进入 Prompt。
+        creativeDirection: input.studio.creativePrompt,
+      },
       finalReport: {
         sellingPoints: input.studio.description ? [input.studio.description] : [],
         riskWarnings: [
@@ -376,7 +440,6 @@ export async function generateRealStudioImage(input: {
       listingPrepSnapshot: {
         imageMaterialNeeds: [
           `Studio requested aspect ratio: ${input.studio.aspectRatio}`,
-          ...promptChunks.map((chunk, index) => `[UC ${index + 1}/${promptChunks.length}] ${chunk}`),
         ],
       },
       ...(snapshot ? { aiImageDraftSnapshot: snapshot } : {}),
@@ -384,6 +447,7 @@ export async function generateRealStudioImage(input: {
   } else {
     resultJson = JSON.stringify({
       productName: input.studio.productName,
+      studioImageStyle,
       finalReport: {
         sellingPoints: input.studio.description ? [input.studio.description] : [],
         riskWarnings: [
