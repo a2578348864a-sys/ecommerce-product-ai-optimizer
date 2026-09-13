@@ -5,6 +5,13 @@ import { buildAccessHeaders, updateDemoAccessSnapshot, type DemoAccessInfo } fro
 import { createBrowserUuid } from "@/lib/browserUuid";
 import { useRouter } from "next/navigation";
 import { ImageScenePresetPicker } from "@/components/image-studio/ImageScenePresetPicker";
+import { ImageStylePresetPicker } from "@/components/image-studio/ImageStylePresetPicker";
+import {
+  DEFAULT_IMAGE_STYLE_PRESET_ID,
+  isImageStylePresetId,
+  recommendedImageStylePreset,
+  type ImageStylePresetId,
+} from "@/lib/imageStyleLibrary";
 import {
   buildTaskImageCreativeDescription,
   type TaskImageCreativeDescriptionContext,
@@ -77,10 +84,14 @@ type ImageGenerateResult = {
 type TaskImageCreativeDraft = StudioImageCreativeIntent & {
   userCreativeDescription: string;
   descriptionDirty: boolean;
+  /** Image Style Library V1：主链视觉方向（与独立工具共享同一注册表）。 */
+  stylePresetId?: ImageStylePresetId;
 };
 
 const EMPTY_TASK_IMAGE_CREATIVE_DRAFT: TaskImageCreativeDraft = {
   ...DEFAULT_STUDIO_IMAGE_CREATIVE_INTENT,
+  // 主链默认视觉方向：共享注册表的默认预设（用户可改，且永不改变已确认事实）。
+  stylePresetId: DEFAULT_IMAGE_STYLE_PRESET_ID,
   userCreativeDescription: "",
   descriptionDirty: false,
 };
@@ -222,6 +233,7 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
   const [creativeIntent, setCreativeIntent] = useState<StudioImageCreativeIntent>(
     DEFAULT_STUDIO_IMAGE_CREATIVE_INTENT,
   );
+  const [stylePresetId, setStylePresetId] = useState<ImageStylePresetId>(DEFAULT_IMAGE_STYLE_PRESET_ID);
   const [userCreativeDescription, setUserCreativeDescription] = useState("");
   const [descriptionDirty, setDescriptionDirty] = useState(false);
   const seededDescriptionKeyRef = useRef("");
@@ -243,6 +255,9 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
       lifestyleScene: sessionDraft.draft.lifestyleScene,
       customImagePurpose: sessionDraft.draft.customImagePurpose,
     });
+    if (isImageStylePresetId(sessionDraft.draft.stylePresetId)) {
+      setStylePresetId(sessionDraft.draft.stylePresetId);
+    }
     setUserCreativeDescription(sessionDraft.draft.userCreativeDescription);
     setDescriptionDirty(sessionDraft.draft.descriptionDirty === true);
   }, [sessionDraft.draft]);
@@ -251,10 +266,11 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
     if (state?.expectedHandoffRevision == null) return;
     sessionDraft.save({
       ...creativeIntent,
+      stylePresetId,
       userCreativeDescription,
       descriptionDirty,
     });
-  }, [creativeIntent, descriptionDirty, sessionDraft, state?.expectedHandoffRevision, userCreativeDescription]);
+  }, [creativeIntent, descriptionDirty, sessionDraft, state?.expectedHandoffRevision, stylePresetId, userCreativeDescription]);
 
   const loadState = useCallback(async () => {
     try {
@@ -327,7 +343,13 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
       expectedHandoffRevision: state.expectedHandoffRevision,
       mode: state.mode,
       count: candidateCount,
-      ...creativeIntent,
+      // 该 Route 用严格字段白名单校验请求体：这里逐字段列举，绝不整体展开共享意图对象，
+      // 否则 Studio 专属维度（如 stylePresetId）会以 unknown_field 被拒。
+      primaryImagePurpose: creativeIntent.primaryImagePurpose,
+      lifestyleScene: creativeIntent.lifestyleScene,
+      customImagePurpose: creativeIntent.customImagePurpose,
+      // 共享风格注册表的预设 id（服务端会再次校验；缺失时保持旧请求形状）。
+      stylePresetId,
       userCreativeDescription,
       // Final Capability: product_visual_draft 提交服务端批准参考的 selectionId（首个批准参考）
       ...(state.mode === "product_visual_draft" && state.approvedVisualReferenceSummary?.[0]
@@ -527,6 +549,17 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
                   ));
                 }
               }}
+            />
+          </div>
+
+          {/* Image Style Library V1：与独立工具共享同一份风格注册表；只改变视觉表达，
+              不改变上方来自研究确认的商品身份、事实与参考图。 */}
+          <div className="[&_fieldset>p]:hidden [&>div>p]:hidden">
+            <ImageStylePresetPicker
+              name="task-image-style-preset"
+              value={stylePresetId}
+              recommendedId={recommendedImageStylePreset(creativeIntent.primaryImagePurpose)}
+              onChange={(nextStylePresetId) => setStylePresetId(nextStylePresetId)}
             />
           </div>
 

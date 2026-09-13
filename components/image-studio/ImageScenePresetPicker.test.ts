@@ -21,6 +21,8 @@ describe("ImageScenePresetPicker lifestyle state contract", () => {
       primaryImagePurpose: "detail_closeup",
       lifestyleScene: "none",
       customImagePurpose: "",
+      // 显式选择的视觉方向：归一化只保留，不注入默认值（共享意图对象不得带 Studio 专属字段）。
+      stylePresetId: "premium_editorial",
     });
     const outdoor = normalizeStudioImageCreativeIntent({ ...detail, lifestyleScene: "outdoor_travel" });
     const white = normalizeStudioImageCreativeIntent({ ...outdoor, primaryImagePurpose: "white_studio" });
@@ -31,6 +33,8 @@ describe("ImageScenePresetPicker lifestyle state contract", () => {
       primaryImagePurpose: "white_studio",
       lifestyleScene: "none",
       customImagePurpose: "",
+      // 视觉方向与图片用途正交：切回白底不会重置用户显式选择的风格。
+      stylePresetId: "premium_editorial",
     });
 
     const detailHtml = renderToStaticMarkup(createElement(ImageScenePresetPicker, {

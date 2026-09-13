@@ -10,6 +10,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import type { StudioImageResultMeta } from "@/lib/studioImageInput";
+import { imageStylePresetLabel, isImageStylePresetId } from "@/lib/imageStyleLibrary";
 import styles from "./ImageStudioPolish.module.css";
 
 export type ImageStudioData = {
@@ -91,6 +92,10 @@ export function ImageResultWorkspace({
   const styleLabel = meta.creationMode === "prompt"
     ? "服务端整理"
     : STYLE_LABELS[meta.input.visualStyle];
+  // 兼容历史/外部结果：缺失或非法预设 id 时降级为「未标注」，绝不在渲染期抛错。
+  const stylePresetLabel = isImageStylePresetId(meta.input.stylePresetId)
+    ? imageStylePresetLabel(meta.input.stylePresetId)
+    : "未标注";
   const downloadKind = meta.creationMode === "prompt" ? "prompt" : meta.input.imageType;
   const productAltName = input.productName.trim() || (isPrompt ? "自由提示词方案" : "未命名商品");
   const localCheckText = isMock ? {
@@ -110,6 +115,7 @@ export function ImageResultWorkspace({
       <div className={styles.strategyStrip} aria-label="本次图片策略">
         <span>{imageTypeLabel}</span>
         <span>{styleLabel}</span>
+        <span data-testid="image-result-style-preset">视觉方向：{stylePresetLabel}</span>
         <span>{RATIO_LABELS[input.aspectRatio]}</span>
         <span>{result.images.length} 张方案</span>
       </div>

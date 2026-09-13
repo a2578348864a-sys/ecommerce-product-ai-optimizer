@@ -8,6 +8,8 @@ import { PrismaClient } from "@prisma/client";
 import { generateCreativeHandoffPreview } from "@/lib/server/productCreativeHandoffPreview";
 import { generateImageDraftFromHandoff } from "@/lib/imageHandoff/imageGenerationService";
 import { createMockImageProvider } from "@/lib/imageHandoff/mockImageProvider";
+import { assertImagePromptIsSafe, buildImagePromptFromInput } from "@/lib/imageHandoff/imagePrompt";
+import type { ImageGenerationInput } from "@/lib/imageHandoff/imageGenerationInput";
 import { parseImageHandoffBinding } from "@/lib/imageHandoff/imageBinding";
 import { buildConfirmableCandidates } from "@/lib/productCreativeHandoffConfirmation";
 import { createOrAppendCreativeHandoff } from "@/lib/server/productCreativeHandoffPersistence";
@@ -245,6 +247,52 @@ describe("Draft Metadata Batch Consistency（mock provider，零真实调用）"
       expect(c.sourceHandoffRevision).toBe(1);
       expect(c.humanReviewRequired).toBe(true);
     }
+  });
+
+  it("视觉方向随生成输入抵达 Provider，且不改变已确认事实（主链风格端到端）", async () => {
+    await createHandoff("task-batch", ownerContext as never, "550e8400-e29b-41d4-a716-446655441040");
+    const base = createMockImageProvider();
+    const seen: ImageGenerationInput[] = [];
+    const provider = {
+      get model() { return base.model; },
+      get callCount() { return base.callCount; },
+      get records() { return base.records; },
+      async generate(input: ImageGenerationInput, options: never) {
+        seen.push(input);
+        return base.generate(input, options);
+      },
+    };
+    const input = {
+      ...(await imageInputFor("task-batch", ownerContext as never, "550e8400-e29b-41d4-a716-446655441041", 1) as unknown as Record<string, unknown>),
+      stylePresetId: "campaign_visual",
+    } as never;
+    await generateImageDraftFromHandoff("task-batch", ownerContext as never, input, { provider: provider as never });
+
+    // 1) 预设确实进入 Provider 收到的生成输入（删除 service 的附加逻辑必须让本用例变红）。
+    expect(seen).toHaveLength(1);
+    const captured = seen[0]!;
+    expect(captured.stylePresetId).toBe("campaign_visual");
+
+    // 2) Provider 实际绑定的 Prompt 含共享预设 id 与主链权限标记。
+    const prompt = buildImagePromptFromInput(captured);
+    expect(prompt).toContain("(campaign_visual)");
+    expect(prompt).toContain("AUTHORITY: task_confirmed");
+    expect(prompt).toContain("=== 已确认商品事实");
+    expect(assertImagePromptIsSafe(prompt)).toBe(true);
+
+    // 3) 风格不改变事实：风格段之前的全部内容（身份/用途）与「已确认商品事实」段逐字节一致。
+    const withoutPrompt = buildImagePromptFromInput({ ...captured, stylePresetId: undefined });
+    const head = (text: string) => {
+      const index = text.indexOf("=== 视觉方向");
+      return index === -1 ? text : text.slice(0, index);
+    };
+    expect(withoutPrompt.startsWith(head(prompt))).toBe(true);
+    const factsSection = (text: string) => text.slice(
+      text.indexOf("=== 已确认商品事实"),
+      text.indexOf("=== 构图参考"),
+    );
+    expect(factsSection(withoutPrompt)).toBe(factsSection(prompt));
+    expect(factsSection(prompt).length).toBeGreaterThan(0);
   });
 });
 

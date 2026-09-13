@@ -422,6 +422,95 @@ textarea.control {
   gap: 0.45rem;
 }
 
+/* ── Image Style Library V1：视觉方向卡片 ───────────────────────── */
+.styleGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.styleOption {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  cursor: pointer;
+  border: 1px solid var(--color-rule);
+  border-radius: 12px;
+  background: var(--panel-soft);
+  padding: 0.5rem 0.56rem;
+  transition:
+    transform 180ms ease,
+    border-color 200ms ease,
+    background 200ms ease,
+    box-shadow 200ms ease;
+}
+
+.styleOption:hover {
+  border-color: var(--brand-200);
+  transform: translateY(-1px);
+}
+
+.styleOption[data-selected="true"] {
+  border-color: var(--brand-200);
+  background: var(--brand-core);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84);
+}
+
+.styleOption[data-recommended="true"]:not([data-selected="true"]) {
+  border-color: color-mix(in srgb, var(--brand-600) 34%, var(--color-rule));
+}
+
+.styleOption input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.styleOption:has(input:focus-visible) {
+  outline: 2px solid var(--brand-600);
+  outline-offset: 2px;
+}
+
+.stylePreview {
+  display: inline-flex;
+  color: var(--brand-600);
+}
+
+.styleOptionText {
+  display: grid;
+  gap: 0.08rem;
+  min-width: 0;
+}
+
+.styleOptionText strong {
+  display: flex;
+  align-items: center;
+  gap: 0.28rem;
+  color: var(--text-primary);
+  font-size: 0.72rem;
+  font-weight: 720;
+}
+
+.styleOptionText small {
+  color: var(--color-muted);
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+.styleRecommended {
+  border: 1px solid var(--brand-200);
+  border-radius: 999px;
+  color: var(--brand-700);
+  font-size: 0.6rem;
+  font-style: normal;
+  font-weight: 700;
+  padding: 0 0.3rem;
+}
+
 .templateButton {
   min-height: 2.35rem;
   border: 1px solid var(--color-rule);
