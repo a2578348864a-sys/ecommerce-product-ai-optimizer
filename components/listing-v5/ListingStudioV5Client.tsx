@@ -15,6 +15,10 @@ import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { copyPlainText } from "@/lib/client/copyPlainText";
 import { deriveListingV5SafetyDisplay } from "@/lib/client/listingV5SafetyDisplay";
 import { TaskStudioPreparation } from "@/components/studio/TaskStudioPreparation";
+import {
+  ProductCreationFlowStatus,
+  type ProductCreationFlowStates,
+} from "@/components/studio/ProductCreationFlowStatus";
 import { StandaloneListingStudio } from "@/components/listing-studio/StandaloneListingStudio";
 import {
   localizeTargetAudience,
@@ -109,6 +113,10 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
   // happen: it only reports what the server says, and mirrors that same flag back in the
   // request so the server's own gate stays satisfied.
   const [realAiEnabled, setRealAiEnabled] = useState<boolean | null>(null);
+  // Read-only projection used only to keep the five visible workflow states in
+  // sync with the research page. It never participates in the server gate.
+  const [keywordPlanConfirmed, setKeywordPlanConfirmed] = useState<boolean | null>(null);
+  const [imageFlowStatus, setImageFlowStatus] = useState<"complete" | "pending" | "blocked" | "unknown">("unknown");
   const busy = pendingAction !== null;
 
   const load = useCallback(async () => {
@@ -135,9 +143,52 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
     }
   }, [taskId]);
 
+  const loadKeywordPlanStatus = useCallback(async () => {
+    if (!taskId) return;
+    try {
+      const response = await fetch(
+        `/api/tasks/${encodeURIComponent(taskId)}/listing-handoff`,
+        { cache: "no-store", headers: buildAccessHeaders() },
+      );
+      const json = await response.json().catch(() => null);
+      setKeywordPlanConfirmed(
+        response.ok && json?.ok === true && Boolean(json?.data?.keywordBriefSummary),
+      );
+    } catch {
+      setKeywordPlanConfirmed(null);
+    }
+  }, [taskId]);
+
+  const loadImageStatus = useCallback(async () => {
+    if (!taskId) return;
+    try {
+      const response = await fetch(
+        `/api/tasks/${encodeURIComponent(taskId)}/image-handoff`,
+        { cache: "no-store", headers: buildAccessHeaders() },
+      );
+      const json = await response.json().catch(() => null);
+      if (response.ok && json?.ok === true && json?.data) {
+        const imageStatus = json.data.imageStatus as string | undefined;
+        setImageFlowStatus(
+          json.data.draft
+            ? "complete"
+            : imageStatus === "stale" || imageStatus === "revoked" || imageStatus === "legacy_unbound" || imageStatus === "invalid"
+              ? "blocked"
+              : "pending",
+        );
+        return;
+      }
+      setImageFlowStatus(json?.error?.code === "creative_confirmation_required" ? "blocked" : "unknown");
+    } catch {
+      setImageFlowStatus("unknown");
+    }
+  }, [taskId]);
+
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadKeywordPlanStatus();
+    void loadImageStatus();
+  }, [load, loadImageStatus, loadKeywordPlanStatus]);
 
   const run = async (action: "analyze_strategy" | "generate") => {
     setPendingAction(action);
@@ -167,7 +218,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
         setErrorCode(typeof json?.error?.code === "string" ? json.error.code : "");
         return;
       }
-      await load();
+      await Promise.all([load(), loadKeywordPlanStatus(), loadImageStatus()]);
       setNotice(
         action === "analyze_strategy"
           ? `策略已重新分析完成（${new Date().toLocaleTimeString()}）`
@@ -214,6 +265,35 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
   // 用户动作。复用与 Image Studio / 旧版 Studio 相同的确认链（服务端仍按 human_confirmed 写入，
   // 不伪造任何事实），确认成功后重新读取服务端状态即可继续生成。
   const needsCreativeConfirmation = errorCode === "creative_confirmation_required";
+  const creationFlowStates: ProductCreationFlowStates = {
+    facts: data?.context.factCount && data.context.factCount > 0
+      ? "complete"
+      : needsCreativeConfirmation
+        ? "complete"
+        : data
+          ? "pending"
+          : "unknown",
+    keywords: keywordPlanConfirmed === true
+      ? "complete"
+      : keywordPlanConfirmed === false
+        ? "pending"
+        : "unknown",
+    creative: data
+      ? "complete"
+      : needsCreativeConfirmation
+        ? "current"
+        : error
+          ? "blocked"
+          : "unknown",
+    listing: listing
+      ? "complete"
+      : data
+        ? "current"
+        : needsCreativeConfirmation
+          ? "pending"
+          : "unknown",
+    image: imageFlowStatus,
+  };
   // Single source of truth for every safety-status surface on this page. The green
   // "passed" badge used to be driven by `listing` alone, so BLOCK / REPAIRABLE /
   // stale / gate-refused states all rendered as a pass.
@@ -224,6 +304,9 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
     errorCode,
     provider: provider ?? null,
   });
+  const userFacingError = errorCode === "creative_confirmation_required"
+    ? "研究事实已确认，还需完成一次创作资料确认。请先确认创作资料后再生成文案。"
+    : error;
   // The model name is only known after a provider call; it is displayed read-only.
   const aiModelLabel: string | null = trace?.stages?.writer?.model ?? trace?.stages?.strategy?.model ?? null;
   const traceStages: Array<[string, any]> = trace
@@ -233,6 +316,20 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
         ["智能修复 (Repair)", trace.stages?.repair],
       ]
     : [];
+
+  const flowAction = needsCreativeConfirmation
+    ? {
+        href: "#listing-v5-creative-confirmation",
+        label: "完成创作资料确认",
+        description: "研究事实与关键词方案已确认。请在下方核对并确认创作资料；这一步不会自动创建或伪造事实。",
+      }
+    : listing && imageFlowStatus !== "complete"
+      ? {
+          href: `/image-studio?taskId=${encodeURIComponent(taskId)}`,
+          label: "进入图片生成",
+          description: "Listing 已生成。图片生成状态请在 Image Studio 中查看，图片生成仍使用同一份已确认创作资料。",
+        }
+      : null;
 
   const copyFullListing = async () => {
     if (!listing) return;
@@ -249,47 +346,13 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
 
   return (
     <div className="flex w-full min-w-0 flex-col gap-4 pb-16 pt-1 sm:gap-5">
-      {/* 阶段导航条 (Workflow Progress Rail) */}
-      <div className="grid w-full min-w-0 grid-cols-3 gap-2 rounded-2xl border border-slate-200/90 bg-white p-2 shadow-xs">
-        <div className="flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-xs font-semibold text-emerald-800">
-          <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[10px] text-white">
-            ✓
-          </span>
-          <span className="truncate">01 资料确认</span>
-        </div>
-        <div
-          className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
-            strategy
-              ? "border-emerald-200 bg-emerald-50/70 text-emerald-800"
-              : "border-slate-200 bg-slate-50 text-slate-500"
-          }`}
-        >
-          <span
-            className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] ${
-              strategy ? "bg-emerald-600 text-white" : "bg-slate-200 text-slate-600"
-            }`}
-          >
-            {strategy ? "✓" : "02"}
-          </span>
-          <span className="truncate">02 营销策略</span>
-        </div>
-        <div
-          className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
-            listing
-              ? "border-emerald-200 bg-emerald-50/70 text-emerald-800"
-              : "border-slate-200 bg-slate-50 text-slate-500"
-          }`}
-        >
-          <span
-            className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] ${
-              listing ? "bg-emerald-600 text-white" : "bg-slate-200 text-slate-600"
-            }`}
-          >
-            {listing ? "✓" : "03"}
-          </span>
-          <span className="truncate">03 生成草稿</span>
-        </div>
-      </div>
+      <ProductCreationFlowStatus
+        states={creationFlowStates}
+        activeStep={needsCreativeConfirmation ? "creative" : listing && imageFlowStatus !== "complete" ? "image" : listing ? undefined : "listing"}
+        actionHref={flowAction?.href}
+        actionLabel={flowAction?.label}
+        actionDescription={flowAction?.description}
+      />
 
       {/* 状态提示条：过期 / 需复核 / 未通过 时把后端真实结论放在最显眼处 */}
       {safety.tone === "stale" || safety.tone === "blocked" || safety.tone === "review" ? (
@@ -321,12 +384,15 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
       {/* 创作资料人工确认：研究已完成、但还没有 creativeHandoff 时的下一步（不再是无路可走） */}
       {needsCreativeConfirmation ? (
         <section
+          id="listing-v5-creative-confirmation"
           data-testid="listing-v5-creative-confirmation"
           className="w-full min-w-0 rounded-2xl border border-teal-200 bg-teal-50/40 p-4"
         >
-          <h2 className="text-sm font-bold text-teal-900 sm:text-base">还差一步：完成创作资料人工确认</h2>
+          <h2 className="text-sm font-bold text-teal-900 sm:text-base" data-testid="listing-v5-creative-confirmation-message">
+            研究事实已确认，还需完成一次创作资料确认
+          </h2>
           <p className="mt-1 text-xs leading-5 text-teal-900/80">
-            商品研究已完成。核对下方「当前已确认商品事实」并勾选人工确认后，Listing V5 即可继续生成。
+            商品研究已完成。核对下方「当前已确认商品事实」并勾选人工确认后，Listing V5 即可继续生成。关键词方案确认不等于创作资料确认。
             本步骤只使用研究阶段已人工确认的事实，不会自动创建或伪造任何事实。
           </p>
           <div className="mt-3">
@@ -1249,12 +1315,12 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
         </section>
       ) : null}
 
-      {error ? (
+      {userFacingError ? (
         <div
           role="alert"
           className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-800"
         >
-          <span>{error}</span>
+          <span>{userFacingError}</span>
           <button
             type="button"
             onClick={() => void load()}

@@ -30,6 +30,10 @@ import { evaluatePurposeRequirements } from "@/lib/imageHandoff/purposeRequireme
 import { VisualAssetPlanCard } from "@/components/image-handoff/VisualAssetPlanCard";
 import { VisualGenerationBriefCard } from "@/components/image-handoff/VisualGenerationBriefCard";
 import {
+  ProductCreationFlowStatus,
+  type ProductCreationFlowStates,
+} from "@/components/studio/ProductCreationFlowStatus";
+import {
   buildVisualAssetPlan,
   type VisualAssetSlot,
 } from "@/lib/imageHandoff/visualAssetPlan";
@@ -571,8 +575,36 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
     || !purposeGate.ok
     || (creativeIntent.primaryImagePurpose === "custom" && !creativeIntent.customImagePurpose.trim());
 
+  const creationFlowStates: ProductCreationFlowStates = {
+    facts: state?.creativeDescriptionContext?.confirmedFacts.length
+      ? "complete"
+      : state
+        ? "blocked"
+        : "unknown",
+    // Image Studio intentionally does not infer keyword confirmation from its
+    // image payload. The status remains explicit rather than being guessed.
+    keywords: "unknown",
+    creative: state?.expectedHandoffRevision != null ? "complete" : state ? "blocked" : "unknown",
+    listing: "unknown",
+    image: state?.draft
+      ? "complete"
+      : state?.imageStatus === "stale" || state?.imageStatus === "revoked" || state?.imageStatus === "legacy_unbound" || state?.imageStatus === "invalid"
+        ? "blocked"
+        : state?.canGenerate
+          ? "current"
+          : state
+            ? "pending"
+            : "unknown",
+  };
+
   return (
     <section className="mt-4 rounded-2xl border border-cyan-200 bg-white p-4" data-testid="image-handoff-section">
+      <ProductCreationFlowStatus
+        states={creationFlowStates}
+        activeStep="image"
+        actionDescription="当前页负责图片生成。关键词方案确认与 Listing 生成状态分别在研究页和文案工作台读取；图片生成不会替代创作资料确认。"
+        compact
+      />
       <div className="flex flex-col gap-2 border-b border-slate-100 pb-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <h3 className="text-base font-bold text-slate-950">图片创作设置</h3>

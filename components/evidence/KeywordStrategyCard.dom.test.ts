@@ -276,7 +276,8 @@ describe("KeywordStrategyCard", () => {
     const text = documentInstance.body.textContent;
     expect(text).toContain("关键词策略");
     expect(text).toContain("已采集10条关键词，尚未确认方案");
-    expect(text).toContain("确认并用于 Listing");
+    expect(text).toContain("确认关键词方案");
+    expect(text).toContain("关键词方案确认不等于创作资料确认");
     expect(text).not.toContain("状态：待确认");
     expect(text).toContain("thermos for hot food kids");
     expect(text).not.toContain("lunch box");
@@ -348,7 +349,8 @@ describe("KeywordStrategyCard", () => {
   });
   it("按钮有中文可访问名称", async () => {
     await render({ rows: ROWS, productName: PRODUCT, briefPrimary: null, briefEvidenceCount: 10, inListing: false, needsReconfirm: false, onSave: async () => null, onSaved: () => {}, rawEvidence: RAW as never });
-    expect(documentInstance.body.textContent).toContain("确认并用于 Listing");
+    expect(documentInstance.body.textContent).toContain("确认关键词方案");
+    expect(documentInstance.body.textContent).toContain("关键词方案确认不等于创作资料确认");
   });
   it("原始报表折叠内表格容器有局部横向滚动（overflow-x-auto）", async () => {
     await render({ rows: ROWS, productName: PRODUCT, briefPrimary: null, briefEvidenceCount: 10, inListing: false, needsReconfirm: false, onSave: async () => null, onSaved: () => {}, rawEvidence: RAW as never });

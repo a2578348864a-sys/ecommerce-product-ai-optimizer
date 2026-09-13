@@ -74,6 +74,10 @@ import {
   type ResearchHistoryStatus,
 } from "@/lib/taskResearchHistoryPresentation";
 import { StudioNavigationLink } from "@/components/studio/StudioNavigationLink";
+import {
+  ProductCreationFlowStatus,
+  type ProductCreationFlowStates,
+} from "@/components/studio/ProductCreationFlowStatus";
 import type { ResearchLifecycleSnapshot } from "@/lib/server/researchLifecycleReader";
 
 type TaskCenterItem = {
@@ -323,6 +327,7 @@ function ResearchCompletionControl({
   // 轮 15 修复：不再用 window.confirm（自动化/headless 环境静默返回 false → 按钮无响应）；
   // 改为组件内自定义确认对话框（React 状态控制，任何环境都工作）。
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [keywordPlanConfirmed, setKeywordPlanConfirmed] = useState<boolean | null>(null);
 
   const completion = isRecordValue(result.researchCompletion) ? result.researchCompletion as Record<string, unknown> : null;
   const completionStatus = lifecycleSnapshot
@@ -339,6 +344,62 @@ function ResearchCompletionControl({
       ? summary.status
       : (latest && typeof latest.status === "string" ? latest.status : null));
   const effectiveResearchStale = lifecycleSnapshot?.stale ?? researchStale === true;
+
+  useEffect(() => {
+    if (completionStatus !== "completed") {
+      setKeywordPlanConfirmed(null);
+      return;
+    }
+    let active = true;
+    void fetch(`/api/tasks/${encodeURIComponent(taskId)}/listing-handoff`, {
+      cache: "no-store",
+      headers: buildAccessHeaders(),
+    })
+      .then(async (response) => ({ response, json: await response.json().catch(() => null) }))
+      .then(({ response, json }) => {
+        if (!active) return;
+        setKeywordPlanConfirmed(
+          response.ok && json?.ok === true && Boolean(json?.data?.keywordBriefSummary),
+        );
+      })
+      .catch(() => {
+        if (active) setKeywordPlanConfirmed(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [completionStatus, taskId]);
+
+  const completedListingDraft = isRecordValue(result.aiListingPackSnapshot)
+    || isRecordValue(result.listingPackSnapshot)
+    || isRecordValue(result.listing)
+    || (isRecordValue(result.listingV5) && isRecordValue(result.listingV5.listing));
+  const completedImageDraft = isRecordValue(result.aiImageDraftSnapshot)
+    && Array.isArray(result.aiImageDraftSnapshot.items)
+    && result.aiImageDraftSnapshot.items.length > 0;
+  const creationFlowStates = deriveProductCreationFlowStates(result, completedListingDraft, completedImageDraft, keywordPlanConfirmed);
+  const creationFlowAction = creationFlowStates.facts !== "complete"
+    ? { href: "#formal-v2-materials", label: "确认商品事实", description: "先在研究资料区确认商品事实。" }
+    : creationFlowStates.keywords === "pending"
+      ? { href: "#workbench-keyword-strategy", label: "确认关键词方案", description: "研究事实已具备，请先确认关键词方案；关键词方案确认不等于创作资料确认。" }
+      : creationFlowStates.creative === "pending"
+        ? { href: `/listing-studio?taskId=${encodeURIComponent(taskId)}`, label: "进入创作资料确认", description: "关键词方案已确认。下一步请进入 Listing Studio，完成一次创作资料确认。" }
+        : creationFlowStates.listing === "pending"
+          ? { href: `/listing-studio?taskId=${encodeURIComponent(taskId)}`, label: "进入 Listing 生成", description: "创作资料已确认，可以进入 Listing Studio 生成文案草稿。" }
+          : creationFlowStates.image === "pending"
+            ? { href: `/image-studio?taskId=${encodeURIComponent(taskId)}`, label: "进入图片生成", description: "Listing 已生成，可以继续进入 Image Studio 生成图片候选。" }
+            : null;
+  const creationFlowActiveStep = creationFlowStates.facts !== "complete"
+    ? "facts"
+    : creationFlowStates.keywords !== "complete"
+      ? "keywords"
+      : creationFlowStates.creative !== "complete"
+        ? "creative"
+        : creationFlowStates.listing !== "complete"
+          ? "listing"
+          : creationFlowStates.image !== "complete"
+            ? "image"
+            : undefined;
 
   const canComplete = latestStatus === "creative_ready" || latestStatus === "abandoned";
   const blockReason = !latestStatus
@@ -444,12 +505,37 @@ function ResearchCompletionControl({
     return (
       <section className="mt-4 rounded-2xl border border-teal-200 bg-teal-50/60 p-4" data-testid="research-completed">
         <p className="text-sm font-bold text-teal-800">研究已完成并保存到研究记录。</p>
-        <Link
-          href="/tasks"
-          className="mt-2 inline-flex h-9 items-center rounded-lg border border-teal-300 bg-white px-3 text-xs font-semibold text-teal-700 hover:bg-teal-50"
-        >
-          查看研究记录
-        </Link>
+        <p className="mt-1 text-xs leading-5 text-teal-900/80">
+          {creationFlowStates.creative === "complete"
+            ? "创作资料已确认；可继续生成 Listing，或进入 Image Studio 生成图片候选。"
+            : "下一步：研究事实确认完成后，还需进入 Listing Studio 完成一次创作资料确认，才能继续生成 Listing。"}
+        </p>
+        <div className="mt-4">
+          <ProductCreationFlowStatus
+            states={creationFlowStates}
+            activeStep={creationFlowActiveStep}
+            actionHref={creationFlowAction?.href}
+            actionLabel={creationFlowAction?.label}
+            actionDescription={creationFlowAction?.description}
+          />
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {creationFlowAction ? (
+            <Link
+              href={creationFlowAction.href}
+              data-testid={creationFlowAction.label === "进入创作资料确认" ? "enter-creative-confirmation" : "research-next-flow-action"}
+              className="linear-button inline-flex h-9 items-center justify-center px-3 text-xs font-semibold"
+            >
+              {creationFlowAction.label}
+            </Link>
+          ) : null}
+          <Link
+            href="/tasks"
+            className="inline-flex h-9 items-center rounded-lg border border-teal-300 bg-white px-3 text-xs font-semibold text-teal-700 hover:bg-teal-50"
+          >
+            查看研究记录
+          </Link>
+        </div>
       </section>
     );
   }
@@ -1464,6 +1550,31 @@ function formalRecord(value: unknown) {
 
 function formalText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function deriveProductCreationFlowStates(
+  result: Record<string, unknown>,
+  hasListingDraft: boolean,
+  hasImageDraft: boolean,
+  keywordPlanConfirmed: boolean | null,
+): ProductCreationFlowStates {
+  const factCandidates = formalRecord(result.factCandidates);
+  const confirmedFacts = Array.isArray(factCandidates?.confirmed) ? factCandidates.confirmed : [];
+  const keywordBrief = formalRecord(result.listingKeywordBrief);
+  const creativeHandoff = formalRecord(result.creativeHandoff);
+  const creativeControlState = formalText(creativeHandoff?.controlState);
+
+  return {
+    facts: confirmedFacts.length > 0 ? "complete" : "pending",
+    keywords: formalText(keywordBrief?.primaryKeyword) || keywordPlanConfirmed === true
+      ? "complete"
+      : keywordPlanConfirmed === false
+        ? "pending"
+        : "unknown",
+    creative: creativeControlState === "active" ? "complete" : "pending",
+    listing: hasListingDraft ? "complete" : "pending",
+    image: hasImageDraft ? "complete" : "pending",
+  };
 }
 
 function formalTexts(value: unknown, limit = 3) {

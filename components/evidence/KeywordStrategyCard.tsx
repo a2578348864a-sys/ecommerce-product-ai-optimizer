@@ -54,7 +54,7 @@ export function KeywordStrategyCard({
   const buttonText = briefPrimary
     ? "调整关键词方案"
     : briefEvidenceCount > 0
-      ? "确认并用于 Listing"
+      ? "确认关键词方案"
       : hasPending && !hasPendingExpired
         ? "先保存关键词证据"
         : "等待采集";
@@ -111,7 +111,10 @@ export function KeywordStrategyCard({
                   : briefEvidenceCount > 0
                     ? `已采集${briefEvidenceCount}条关键词，尚未确认方案`
                     : "状态：待确认"}
-            {" · "}Listing：{inListing ? "已用于 Listing" : "尚未用于 Listing"}
+            {" · "}关键词方案：{inListing ? "已确认" : "待确认"}
+          </p>
+          <p className="mt-1 text-[11px] leading-5 text-amber-700" data-testid="kw-listing-confirmation-note">
+            关键词方案确认不等于创作资料确认。确认关键词后，还需进入 Listing Studio 完成创作资料确认。
           </p>
         </div>
         <button

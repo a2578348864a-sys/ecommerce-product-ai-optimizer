@@ -94,6 +94,15 @@ describe("deriveListingV5SafetyDisplay", () => {
     expect(unknown.detail).toContain("some_new_reason");
   });
 
+  it("creative_confirmation_required 明确区分研究事实确认与创作资料确认", () => {
+    const display = deriveListingV5SafetyDisplay({
+      hasListing: false,
+      errorCode: "creative_confirmation_required",
+    });
+    expect(display.detail).toContain("研究事实已确认，还需完成一次创作资料确认");
+    expect(display.detail).toContain("确认创作资料");
+  });
+
   it("stale 优先于 PASS，门禁拒绝优先于 stale", () => {
     expect(passed({ hasListing: true, validationStatus: "PASS", stale: true })).toBe(false);
     expect(passed({ hasListing: true, validationStatus: "PASS", stale: true, errorCode: "handoff_required" })).toBe(false);
