@@ -102,3 +102,7 @@ archives/
 
 # Public Showcase static export artifacts
 dist/public-showcase/
+
+# Distribution and build archives
+dist/
+*.tar.gz

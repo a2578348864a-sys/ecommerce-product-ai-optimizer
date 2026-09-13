@@ -10,12 +10,18 @@ import { ShowcaseFooter } from "./ShowcaseFooter";
 
 export function ShowcasePage() {
   return (
-    <div className="flex min-h-screen w-full flex-col bg-[#f8fafc] text-slate-900 antialiased selection:bg-teal-500/20 selection:text-teal-900">
+    <div className="relative flex min-h-screen w-full flex-col overflow-x-clip bg-gradient-to-b from-white via-grass-50/15 to-slate-50 text-slate-900 antialiased selection:bg-grass-500/20 selection:text-grass-900">
+      {/* 顶部柔和环境微光 */}
+      <div
+        className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 size-[42rem] rounded-full bg-grass-100/35 blur-3xl"
+        aria-hidden="true"
+      />
+
       {/* ① Hero 首屏 */}
       <ShowcaseHero content={showcaseContent.hero} />
 
       {/* 主体单页内容区 */}
-      <main className="flex-1 w-full">
+      <main className="relative flex-1 w-full">
         {/* ② 真实演示视频区域 */}
         <ShowcaseVideo video={showcaseContent.video} />
 
