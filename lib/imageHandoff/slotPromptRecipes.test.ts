@@ -188,7 +188,6 @@ describe("Slot Prompt Recipes Specification", () => {
 
     it("Slot 5 (真实生活使用场景图) 真实 Provider Prompt 包含场景上下文并维持主用途领先", async () => {
       const { buildProductVisualPrompt } = await import("@/lib/imageHandoff/realImageProvider");
-      const { writeFileSync } = await import("node:fs");
       const prompt1 = buildProductVisualPrompt({
         schema: "image-generation-input.v1",
         mode: "product_visual_draft",
@@ -292,12 +291,6 @@ describe("Slot Prompt Recipes Specification", () => {
         lifestyleScene: "outdoor_travel",
         stylePresetId: "outdoor_story",
       } as never);
-
-      writeFileSync(
-        "C:/Users/a2578/.gemini/antigravity/brain/589da4b9-8b64-498e-b19d-0c933b58482c/scratch/prompt_samples.json",
-        JSON.stringify({ slot1: prompt1, slot2: prompt2, slot3: prompt3, slot5: prompt5 }, null, 2),
-        "utf-8",
-      );
 
       expect(prompt5).toContain("CURRENT VISUAL SLOT: 真实生活使用场景图 (lifestyle_in_use)");
       expect(prompt5).toContain("Authentic, clean and tidy lifestyle environment");
