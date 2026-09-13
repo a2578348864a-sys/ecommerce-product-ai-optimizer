@@ -116,3 +116,7 @@ playwright-report/
 # Local sqlite files
 prisma/*.db
 prisma/dev.db
+
+# Distribution and build archives
+dist/
+*.tar.gz

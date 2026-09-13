@@ -120,7 +120,7 @@ export function ImageResultWorkspace({
         <span>{result.images.length} 张方案</span>
       </div>
 
-      <div className={styles.contactSheet}>
+      <div className={styles.contactSheet} data-count={result.images.length}>
         {result.images.map((image, index) => {
           const selected = selectedIndices.includes(index);
           const extension = downloadExtension(image.base64);
@@ -159,6 +159,20 @@ export function ImageResultWorkspace({
                     <p><strong>避免元素</strong><span>{meta.avoidElementsSummary}</span></p>
                   </div>
                 ) : null}
+                <div className={styles.candidateAttributes}>
+                  <p>
+                    <span className={styles.attrBadgeTeal}>推荐用途</span>
+                    <span>{imageTypeLabel} · 电商展示概念</span>
+                  </p>
+                  <p>
+                    <span className={styles.attrBadgeSlate}>适用原因</span>
+                    <span>用途优先匹配电商视觉层级，风格辅助强化质感</span>
+                  </p>
+                  <p>
+                    <span className={styles.attrBadgeAmber}>必要限制</span>
+                    <span>独立创作未绑定商品研究，上线前需核查商品真实性</span>
+                  </p>
+                </div>
                 <div className={styles.cardActions}>
                   <button
                     type="button"

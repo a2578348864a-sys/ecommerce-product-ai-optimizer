@@ -43,8 +43,14 @@ import { ImageScenePresetPicker } from "@/components/image-studio/ImageScenePres
 import { ImageStylePresetPicker } from "@/components/image-studio/ImageStylePresetPicker";
 import {
   DEFAULT_IMAGE_STYLE_PRESET_ID,
+  imageStylePresetLabel,
   recommendedImageStylePreset,
 } from "@/lib/imageStyleLibrary";
+import {
+  lifestyleSceneLabel,
+  primaryPurposeLabel,
+} from "@/lib/studioImageCreativeIntent";
+import { VisualGenerationBriefCard } from "@/components/image-handoff/VisualGenerationBriefCard";
 import { StudioProgressRail } from "@/components/studio/StudioProgressRail";
 import { deriveImageStudioProgress } from "@/lib/client/studioProgress";
 import { readJsonApiResponse } from "@/lib/client/safeApiResponse";
@@ -394,8 +400,8 @@ function ManualImageStudioClient({ onProgressChange }: {
 
         <section className={styles.formSection} aria-labelledby="image-product-section">
           <div className={styles.formSectionHeader}>
-            <h3 id="image-product-section">01 商品信息</h3>
-            <span>只填写已确认事实</span>
+            <h3 id="image-product-section">01 商品信息 · 基线</h3>
+            <span>商品事实与视觉参考</span>
           </div>
           <div className={styles.field}>
             <label htmlFor="image-product-name">
@@ -438,13 +444,92 @@ function ManualImageStudioClient({ onProgressChange }: {
             />
             <p className={styles.fieldHint}>独立创作没有 Task 研究事实，只使用你明确填写并确认的信息。</p>
           </div>
+
+          <div className={styles.field}>
+            <label htmlFor="image-reference-file">
+              商品参考图 <span className={styles.optionalLabel}>可选，决定是否启用参考图创作模式</span>
+            </label>
+            <input
+              id="image-reference-file"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className={styles.control}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                setReferenceImageApproved(false);
+                setFactsConfirmed(false);
+                realAttemptRef.current = null;
+                if (!file) {
+                  setReferenceImageDataUrl("");
+                  setReferenceImageName("");
+                  return;
+                }
+                if (!(["image/png", "image/jpeg", "image/webp"].includes(file.type)) || file.size > 10 * 1024 * 1024) {
+                  setReferenceImageDataUrl("");
+                  setReferenceImageName("");
+                  setError("参考图需为 10MB 以内的 PNG、JPEG 或 WebP 图片。");
+                  event.currentTarget.value = "";
+                  return;
+                }
+                const reader = new FileReader();
+                reader.onload = () => {
+                  if (typeof reader.result !== "string") {
+                    setError("参考图读取失败，请重新上传。");
+                    return;
+                  }
+                  setReferenceImageDataUrl(reader.result);
+                  setReferenceImageName(file.name);
+                  setError("");
+                };
+                reader.onerror = () => setError("参考图读取失败，请重新上传。");
+                reader.readAsDataURL(file);
+              }}
+            />
+            <p className={styles.fieldHint}>上传 PNG、JPEG 或 WebP（最大 10MB），不保存到会话草稿。</p>
+          </div>
+          {referenceImageDataUrl ? (
+            <div className="mt-3 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3" data-testid="manual-image-reference-preview">
+              {/* eslint-disable-next-line @next/next/no-img-element -- 本地 FileReader data URL，不访问外部资源 */}
+              <img src={referenceImageDataUrl} alt="待批准的商品参考图" className="max-h-64 w-full rounded-lg object-contain" />
+              <p className="text-sm text-slate-600">{referenceImageName}</p>
+              <label className={styles.warning}>
+                <input
+                  type="checkbox"
+                  checked={referenceImageApproved}
+                  onChange={(event) => setReferenceImageApproved(event.target.checked)}
+                />
+                <span>我有权使用这张图片，并批准它只用于本次商品视觉草稿；生成结果仍需人工核对商品外观。</span>
+              </label>
+              <button
+                type="button"
+                className={`${styles.toolbarButton} ${styles.dangerAction}`}
+                onClick={() => {
+                  setReferenceImageDataUrl("");
+                  setReferenceImageName("");
+                  setReferenceImageApproved(false);
+                  setFactsConfirmed(false);
+                  realAttemptRef.current = null;
+                }}
+              >
+                移除参考图
+              </button>
+            </div>
+          ) : null}
+          <div className={styles.prefillNotice} data-testid="manual-image-authority-mode">
+            <strong>{referenceImageDataUrl && referenceImageApproved ? "参考图创作模式" : "概念创作模式"}</strong>
+            <p>
+              {referenceImageDataUrl && referenceImageApproved
+                ? "将参考已批准商品图片进行视觉创作，结果仍需人工检查商品外观和文字。"
+                : "当前没有已确认商品参考图。生成结果用于构图、场景和视觉方向参考，不代表真实商品外观。"}
+            </p>
+          </div>
         </section>
 
         {creationMode === "guided" ? (
         <section className={styles.formSection} aria-labelledby="image-strategy-section">
           <div className={styles.formSectionHeader}>
-            <h3 id="image-strategy-section">02 图片策略</h3>
-            <span>决定素材用途与视觉语气</span>
+            <h3 id="image-strategy-section">02 图片策略 · 视觉方案</h3>
+            <span>用途优先，风格匹配</span>
           </div>
           <ImageScenePresetPicker value={intent} onChange={selectCreativeIntent} />
           <ImageStylePresetPicker
@@ -456,7 +541,7 @@ function ManualImageStudioClient({ onProgressChange }: {
         ) : (
           <section className={styles.formSection} aria-labelledby="image-prompt-section">
             <div className={styles.formSectionHeader}>
-              <h3 id="image-prompt-section">02 自由提示词</h3>
+              <h3 id="image-prompt-section">02 自由提示词 · 图片策略</h3>
               <span>创意需求，不是系统指令</span>
             </div>
             <div className={styles.field}>
@@ -512,10 +597,66 @@ function ManualImageStudioClient({ onProgressChange }: {
           </section>
         )}
 
+        {(() => {
+          const standaloneBriefAssetTitle = creationMode === "guided"
+            ? `${primaryPurposeLabel(intent.primaryImagePurpose)}概念草稿`
+            : "自由提示词探索";
+          const standaloneBriefGoal = creationMode === "guided"
+            ? "根据填写的商品描述与选择的用途/风格，生成电商视觉概念参考。"
+            : "根据自由提示词描述与指定风格，生成商品主视觉创意草稿。";
+          const standaloneBriefStrategy = {
+            purposeLabel: creationMode === "guided" ? primaryPurposeLabel(intent.primaryImagePurpose) : "自由创意",
+            sceneLabel: creationMode === "guided"
+              ? (intent.primaryImagePurpose === "white_studio" ? "纯白底无干扰" : lifestyleSceneLabel(intent.lifestyleScene))
+              : "由提示词指定",
+            styleLabel: imageStylePresetLabel(
+              creationMode === "guided"
+                ? (intent.stylePresetId ?? DEFAULT_IMAGE_STYLE_PRESET_ID)
+                : (promptIntent.stylePresetId ?? DEFAULT_IMAGE_STYLE_PRESET_ID),
+            ),
+            rationale: creationMode === "guided"
+              ? "用途优先匹配电商图片展示层级，风格辅助增强视觉质感"
+              : "根据用户自由输入的视觉情绪与光影参数组合生成",
+          };
+          const standaloneBriefConstraints = [
+            "保持基础物理常识与真实比例，禁止生成违规/侵权内容",
+            "独立创作模式没有商品研究事实约束，生成内容切勿用于未经核实的参数宣传",
+            creationMode === "guided" && intent.prohibitedElements
+              ? `排除元素：${intent.prohibitedElements}`
+              : (creationMode === "prompt" && promptIntent.avoidElements ? `避免元素：${promptIntent.avoidElements}` : "避免出现与商品无关的杂乱背景"),
+          ];
+          const standaloneReferenceNotice = {
+            title: referenceImageDataUrl && referenceImageApproved ? "参考图创作模式" : "概念创作模式",
+            description: referenceImageDataUrl && referenceImageApproved
+              ? "将参考已批准商品图片进行视觉创作，结果仍需人工检查商品外观和文字。"
+              : "当前没有已确认商品参考图。生成结果用于构图、场景和视觉方向参考，不代表真实商品外观。",
+            isComposition: !(referenceImageDataUrl && referenceImageApproved),
+          };
+
+          return (
+            <div style={{ margin: "1.25rem 0" }}>
+              <VisualGenerationBriefCard
+                mode="standalone"
+                assetTitle={standaloneBriefAssetTitle}
+                categoryLabel={creationMode === "guided" ? "独立创作" : "自由创意"}
+                goal={standaloneBriefGoal}
+                strategy={standaloneBriefStrategy}
+                constraints={standaloneBriefConstraints}
+                referenceNotice={standaloneReferenceNotice}
+                customPromptSummary={
+                  creationMode === "guided"
+                    ? (description ? `商品描述: ${description}` : undefined)
+                    : (promptIntent.creativePrompt ? `创意需求: ${promptIntent.creativePrompt.slice(0, 80)}...` : undefined)
+                }
+              />
+            </div>
+          );
+        })()}
+
         <section className={styles.formSection} aria-labelledby="image-settings-section">
           <div className={styles.formSectionHeader}>
-            <h3 id="image-settings-section">生成设置</h3>
-            <span>Mock 最多 2 张</span>
+            <h3 id="image-settings-section">03 生成设置 · 交付</h3>
+            <span>补充要求 · 规格与合规确认</span>
           </div>
           <div className={styles.inlineGrid}>
             <div className={styles.field}>
@@ -555,114 +696,22 @@ function ManualImageStudioClient({ onProgressChange }: {
               </select>
             </div>
           </div>
-        </section>
 
-        {creationMode === "guided" ? (
-        <section className={styles.formSection} aria-labelledby="image-constraints-section">
-          <div className={styles.formSectionHeader}>
-            <h3 id="image-constraints-section">补充要求</h3>
-            <span>作为独立 Image 上下文</span>
-          </div>
-          <div className={styles.inlineGrid}>
-            <div className={styles.field}>
+          {creationMode === "guided" ? (
+            <div className={styles.field} style={{ marginTop: "0.75rem" }}>
               <label htmlFor="image-prohibited-elements">禁止元素</label>
               <textarea
                 id="image-prohibited-elements"
                 name="prohibitedElements"
                 maxLength={240}
                 className={styles.control}
-                rows={3}
-                placeholder="例如：Logo、水印、认证标识"
+                rows={2}
+                placeholder="例如：Logo、水印、认证标识、夸张光斑"
                 value={intent.prohibitedElements}
                 onChange={(event) => updateIntent("prohibitedElements", event.target.value)}
               />
             </div>
-          </div>
-        </section>
-        ) : null}
-
-        <section className={styles.formSection} aria-labelledby="image-reference-section">
-          <div className={styles.formSectionHeader}>
-            <h3 id="image-reference-section">商品参考图</h3>
-            <span>可选，不保存到会话草稿</span>
-          </div>
-          <div className={styles.field}>
-            <label htmlFor="image-reference-file">上传 PNG、JPEG 或 WebP（最大 10MB）</label>
-            <input
-              id="image-reference-file"
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              className={styles.control}
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                setReferenceImageApproved(false);
-                setFactsConfirmed(false);
-                realAttemptRef.current = null;
-                if (!file) {
-                  setReferenceImageDataUrl("");
-                  setReferenceImageName("");
-                  return;
-                }
-                if (!(["image/png", "image/jpeg", "image/webp"].includes(file.type)) || file.size > 10 * 1024 * 1024) {
-                  setReferenceImageDataUrl("");
-                  setReferenceImageName("");
-                  setError("参考图需为 10MB 以内的 PNG、JPEG 或 WebP 图片。");
-                  event.currentTarget.value = "";
-                  return;
-                }
-                const reader = new FileReader();
-                reader.onload = () => {
-                  if (typeof reader.result !== "string") {
-                    setError("参考图读取失败，请重新上传。");
-                    return;
-                  }
-                  setReferenceImageDataUrl(reader.result);
-                  setReferenceImageName(file.name);
-                  setError("");
-                };
-                reader.onerror = () => setError("参考图读取失败，请重新上传。");
-                reader.readAsDataURL(file);
-              }}
-            />
-          </div>
-          {referenceImageDataUrl ? (
-            <div className="mt-3 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3" data-testid="manual-image-reference-preview">
-              {/* eslint-disable-next-line @next/next/no-img-element -- 本地 FileReader data URL，不访问外部资源 */}
-              <img src={referenceImageDataUrl} alt="待批准的商品参考图" className="max-h-64 w-full rounded-lg object-contain" />
-              <p className="text-sm text-slate-600">{referenceImageName}</p>
-              <label className={styles.warning}>
-                <input
-                  type="checkbox"
-                  checked={referenceImageApproved}
-                  onChange={(event) => setReferenceImageApproved(event.target.checked)}
-                />
-                <span>我有权使用这张图片，并批准它只用于本次商品视觉草稿；生成结果仍需人工核对商品外观。</span>
-              </label>
-              <button
-                type="button"
-                className={`${styles.toolbarButton} ${styles.dangerAction}`}
-                onClick={() => {
-                  setReferenceImageDataUrl("");
-                  setReferenceImageName("");
-                  setReferenceImageApproved(false);
-                  setFactsConfirmed(false);
-                  realAttemptRef.current = null;
-                }}
-              >
-                移除参考图
-              </button>
-            </div>
-          ) : (
-            null
-          )}
-          <div className={styles.prefillNotice} data-testid="manual-image-authority-mode">
-            <strong>{referenceImageDataUrl && referenceImageApproved ? "参考图创作模式" : "概念创作模式"}</strong>
-            <p>
-              {referenceImageDataUrl && referenceImageApproved
-                ? "将参考已批准商品图片进行视觉创作，结果仍需人工检查商品外观和文字。"
-                : "当前没有已确认商品参考图。生成结果用于构图、场景和视觉方向参考，不代表真实商品外观。"}
-            </p>
-          </div>
+          ) : null}
         </section>
 
         <label className={styles.warning}>
