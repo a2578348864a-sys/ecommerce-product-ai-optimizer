@@ -1,6 +1,8 @@
 # CURRENT_WORK — 轻选工作台 V3 执行状态
 
-> 主 Agent 维护的唯一权威状态文档（执行包 23_CURRENT_WORK_TEMPLATE.md）。
+> **历史快照 / 非当前权威状态。** 本文记录 V3 阶段的执行状态；当前项目状态以仓库 `main`、根目录 [README.md](../../README.md) 和 [文档中心](../README.md) 为准。
+
+> 本文在 V3 阶段曾作为主 Agent 状态记录；当前不再作为全局权威状态文档。
 
 ## 当前版本
 

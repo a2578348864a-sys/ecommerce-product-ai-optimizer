@@ -51,6 +51,13 @@ function tinyPngFile(): string {
   return path;
 }
 
+function temporaryImagePath(prefix = "v35-driver-test-"): { dir: string; path: string } {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  const path = join(dir, "candidate.png");
+  writeFileSync(path, Buffer.from([137, 80, 78, 71]));
+  return { dir, path };
+}
+
 /** 本地 tiny PNG 的 base64 长度（预览 Identity Proof 需要匹配） */
 function tinyPngBase64Length(): number {
   const bytes = [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0, 31, 21, 196, 137, 0, 0, 0, 13, 73, 68, 65, 84, 120, 156, 99, 248, 207, 192, 80, 15, 0, 4, 132, 1, 129, 138, 153, 49, 8, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130];
@@ -65,6 +72,93 @@ function capture(promise: Promise<unknown>): Promise<string> {
 }
 
 describe("Native1688ExtensionDriver 编排错误映射", () => {
+  it("本地图片必须位于受批准的服务端临时目录", async () => {
+    const { dir, path } = temporaryImagePath("unapproved-image-");
+    const bridgeFactory = vi.fn(() => fakeBridge({}));
+    try {
+      const code = await capture(acquireByImage({
+        localImagePath: path,
+        taskId: "t1",
+        candidateId: "c1",
+        bridgeFactory,
+      }));
+      expect(code).toBe("invalid_image_url");
+      expect(bridgeFactory).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("本地图片路径中的 .. 逃逸一律拒绝", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "v35-driver-test-"));
+    const bridgeFactory = vi.fn(() => fakeBridge({}));
+    try {
+      const code = await capture(acquireByImage({
+        localImagePath: join(dir, "..", "escape.png"),
+        taskId: "t1",
+        candidateId: "c1",
+        bridgeFactory,
+      }));
+      expect(code).toBe("invalid_image_url");
+      expect(bridgeFactory).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("不存在的本地图片文件拒绝且不启动 bridge", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "v35-driver-test-"));
+    const bridgeFactory = vi.fn(() => fakeBridge({}));
+    try {
+      const code = await capture(acquireByImage({
+        localImagePath: join(dir, "missing.png"),
+        taskId: "t1",
+        candidateId: "c1",
+        bridgeFactory,
+      }));
+      expect(code).toBe("invalid_image_url");
+      expect(bridgeFactory).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("本地图片目录本身拒绝", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "v35-driver-test-"));
+    const bridgeFactory = vi.fn(() => fakeBridge({}));
+    try {
+      const code = await capture(acquireByImage({
+        localImagePath: dir,
+        taskId: "t1",
+        candidateId: "c1",
+        bridgeFactory,
+      }));
+      expect(code).toBe("invalid_image_url");
+      expect(bridgeFactory).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("本地图片超过 30MB 仍拒绝", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "v35-driver-test-"));
+    const path = join(dir, "large.png");
+    const bridgeFactory = vi.fn(() => fakeBridge({}));
+    try {
+      writeFileSync(path, Buffer.alloc(30 * 1024 * 1024 + 1));
+      const code = await capture(acquireByImage({
+        localImagePath: path,
+        taskId: "t1",
+        candidateId: "c1",
+        bridgeFactory,
+      }));
+      expect(code).toBe("invalid_image_url");
+      expect(bridgeFactory).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("扩展未见（extensionSeen=false）→ EXTENSION_NOT_INSTALLED", { timeout: 60_000 }, async () => {
     const path = tinyPngFile();
     try {
@@ -490,6 +584,18 @@ describe("fetchImageWithRedirectGuard", () => {
   function imageResponse(body: string, init?: ResponseInit): Response {
     return new Response(body, { status: 200, headers: { "content-type": "image/png" }, ...init });
   }
+
+  it("初始 URL 未通过 SSRF 校验时不发起 fetch", async () => {
+    const fetchMock = vi.fn(async () => imageResponse("should-not-fetch"));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await expect(fetchImageWithRedirectGuard(new URL("https://192.168.1.5/private.png"), AbortSignal.timeout(5_000)))
+        .rejects.toMatchObject({ code: "invalid_image_url" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 
   it("正常 200 → 返回最终响应", async () => {
     const fetchMock = vi.fn(async () => imageResponse("png-bytes"));

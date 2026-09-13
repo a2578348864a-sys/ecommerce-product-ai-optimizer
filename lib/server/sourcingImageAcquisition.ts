@@ -16,9 +16,9 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { existsSync, statSync } from "node:fs";
+import { realpathSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { validateProxyAwareHttpsUrl } from "@/lib/server/ssrfGuard";
 import type { TargetDnsLookup } from "@/lib/server/ssrfGuard";
 import { SourcingAcquisitionError, type AcquisitionCandidate } from "@/lib/upstream/1688/contracts";
@@ -37,6 +37,12 @@ const ALLOWED_IMAGE_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/w
 const UPLOAD_RETRIES = 3;
 const RESULT_PAGE_WAIT_MS = 45_000;
 const MAX_IMAGE_REDIRECT_HOPS = 5;
+const APPROVED_LOCAL_IMAGE_TEMP_PREFIXES = [
+  "v35-1688-image-",
+  "v35-sourcing-task-img-",
+  "v35-orch-sourcing-img-",
+  "v35-driver-test-",
+] as const;
 
 type ImageAcquisitionDiagnostic = "submit_trigger_failed" | "result_page_proof_failed" | "extension_not_ready";
 
@@ -62,6 +68,10 @@ export async function fetchImageWithRedirectGuard(
 ): Promise<Response> {
   let current = initialUrl;
   for (let hop = 0; ; hop++) {
+    const verdict = await validateProxyAwareHttpsUrl(current, lookup);
+    if (!verdict.ok) {
+      fail("invalid_image_url", 400, "候选图片链接未通过安全校验（禁止内网/本地地址）。");
+    }
     const response = await fetch(current, { signal, redirect: "manual" });
     if (response.status >= 300 && response.status < 400) {
       if (hop >= MAX_IMAGE_REDIRECT_HOPS) {
@@ -81,15 +91,47 @@ export async function fetchImageWithRedirectGuard(
       if (next.protocol !== "https:") {
         fail("image_redirect_downgrade", 400, "候选图片跳转目标仅支持 https。");
       }
-      const verdict = await validateProxyAwareHttpsUrl(next, lookup);
-      if (!verdict.ok) {
-        fail("invalid_image_url", 400, "候选图片链接未通过安全校验（禁止内网/本地地址）。");
-      }
       current = next;
       continue;
     }
     return response;
   }
+}
+
+function assertApprovedLocalImagePath(inputPath: string): string {
+  if (!isAbsolute(inputPath)) {
+    fail("invalid_image_url", 400, "本地图片路径必须是绝对路径。");
+  }
+  if (inputPath.split(/[\\/]+/u).some((segment) => segment === "..")) {
+    fail("invalid_image_url", 400, "本地图片路径非法。");
+  }
+
+  let resolvedPath: string;
+  try {
+    resolvedPath = realpathSync(inputPath);
+  } catch {
+    fail("invalid_image_url", 400, "候选图片文件不存在。");
+  }
+  const tempRoot = realpathSync(tmpdir());
+  const relativePath = relative(tempRoot, resolvedPath);
+  const firstSegment = relativePath.split(sep)[0] ?? "";
+  const insideApprovedTempDir = relativePath.length > 0
+    && !relativePath.startsWith(`..${sep}`)
+    && !isAbsolute(relativePath)
+    && APPROVED_LOCAL_IMAGE_TEMP_PREFIXES.some((prefix) => firstSegment.startsWith(prefix));
+  if (!insideApprovedTempDir) {
+    fail("invalid_image_url", 400, "本地图片路径必须位于受批准的服务端临时目录内。");
+  }
+  let fileStats: ReturnType<typeof statSync>;
+  try {
+    fileStats = statSync(resolvedPath);
+  } catch {
+    fail("invalid_image_url", 400, "候选图片文件不存在。");
+  }
+  if (!fileStats.isFile()) {
+    fail("invalid_image_url", 400, "本地图片路径必须指向文件。");
+  }
+  return resolvedPath;
 }
 
 /** 下载候选图片到临时目录（SSRF 守卫 + 类型/大小限制） */
@@ -204,13 +246,13 @@ export async function acquireByImage(input: {
   let contentType: string;
   let tempDir = "";
   if (input.localImagePath) {
-    if (!existsSync(input.localImagePath)) fail("invalid_image_url", 400, "候选图片文件不存在。");
-    const size = statSync(input.localImagePath).size;
+    const localImagePath = assertApprovedLocalImagePath(input.localImagePath);
+    const size = statSync(localImagePath).size;
     if (size < 1 || size > MAX_IMAGE_BYTES) fail("invalid_image_url", 400, "本地图片大小超出限制（≤30MB）。");
-    const ext = input.localImagePath.split(".").pop()?.toLowerCase() ?? "";
+    const ext = localImagePath.split(".").pop()?.toLowerCase() ?? "";
     contentType = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : ext === "gif" ? "image/gif" : "image/jpeg";
     if (!ALLOWED_IMAGE_CONTENT_TYPES.has(contentType)) fail("invalid_image_url", 400, `本地图片类型不支持（${ext}）。`);
-    imageBytes = Buffer.from(await readFile(input.localImagePath));
+    imageBytes = Buffer.from(await readFile(localImagePath));
   } else if (input.imageUrl) {
     const downloaded = await downloadCandidateImage(input.imageUrl);
     tempDir = downloaded.path.split("candidate-image.bin")[0];

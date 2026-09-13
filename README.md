@@ -100,6 +100,8 @@ Creative Handoff
 
 Research Collection Orchestrator 统一管理 Amazon、关键词/竞品和 VOC 的采集状态、预览和失败反馈。1688 也会在研究页展示和聚合状态，但真正找货仍需要关键词、商品 URL 或图片等参数化 sourcing 流程；不能把四类来源理解为无条件的一键自动采集。
 
+当前正式 Listing V5 链路为：`Confirmed Facts → Decision / Strategy → Writer → Validator → bounded Repair（必要时）→ Rewrite / Recovery（仅安全失败路径需要时）→ deterministic fallback（最后兜底）→ Human Review`。Confirmed Facts 是商品硬事实的唯一权威；VOC、关键词和竞品只作 reference-only 表达参考，1688 仅作采购参考，不会自动升级为商品事实。最终 Listing 仍需人工审核，本项目不宣称 CTR、CVR 或真实转化提升。
+
 ## 事实与人工确认
 
 每个来源都遵循同一条证据边界：
@@ -243,7 +245,9 @@ npm run build
 
 ---
 
-## Listing V5.1 — Listing Intelligence Layer（2026-09-11）
+> 以下 V5.1、V5.7 等版本段落是阶段性实验与冻结记录；当前正式状态以本页“当前稳定主链”、`main` 分支和 [文档中心](docs/README.md) 为准。
+
+## Listing V5.1 — Listing Intelligence Layer（2026-09-11，历史记录）
 
 **产品定位**：面向跨境电商新手/小团队的受控研究 + Listing 准备助手；AI 只做表达与组织，事实只能来自人工确认的 Confirmed Facts。
 
