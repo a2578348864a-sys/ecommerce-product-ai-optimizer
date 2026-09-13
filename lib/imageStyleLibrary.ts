@@ -314,7 +314,14 @@ const PRESETS: readonly ImageStylePreset[] = [
   },
 ];
 
-export const IMAGE_STYLE_PRESETS: readonly ImageStylePreset[] = PRESETS;
+/**
+ * 共享风格注册表（唯一一份，两个业务入口复用）。
+ * 运行时冻结：`readonly` 只是类型层约束，冻结后任何意外写入都会立即失败而不是静默漂移。
+ * 注意：这是浅冻结 + 每个预设对象冻结；嵌套数组仍由类型层保护（本文件是唯一写入点）。
+ */
+export const IMAGE_STYLE_PRESETS: readonly ImageStylePreset[] = Object.freeze(
+  PRESETS.map((preset) => Object.freeze(preset)),
+);
 
 export const DEFAULT_IMAGE_STYLE_PRESET_ID: ImageStylePresetId = "amazon_clean_hero";
 

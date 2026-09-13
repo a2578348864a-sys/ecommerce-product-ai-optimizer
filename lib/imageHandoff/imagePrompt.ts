@@ -244,10 +244,11 @@ function buildResearchReferenceLayers(
   context: ImageGenerationInput["creativeContext"],
 ): string {
   if (!context) return "研究参考层：无";
+  const line = (value: string) => `- ${neutralise(value)}`;
   const sections: string[] = [];
-  if (context.vocInsights.length) sections.push(`VOC_INSIGHTS_START\n${context.vocInsights.map((v) => `- ${v}`).join("\n")}\nVOC_INSIGHTS_END`);
-  if (context.aiReferences.length) sections.push(`AI_REFERENCES_START\n${context.aiReferences.map((v) => `- ${v}`).join("\n")}\nAI_REFERENCES_END`);
-  if (context.competitiveContext.length) sections.push(`COMPETITIVE_CONTEXT_START\n${context.competitiveContext.map((v) => `- ${v}`).join("\n")}\nCOMPETITIVE_CONTEXT_END`);
+  if (context.vocInsights.length) sections.push(`VOC_INSIGHTS_START\n${context.vocInsights.map(line).join("\n")}\nVOC_INSIGHTS_END`);
+  if (context.aiReferences.length) sections.push(`AI_REFERENCES_START\n${context.aiReferences.map(line).join("\n")}\nAI_REFERENCES_END`);
+  if (context.competitiveContext.length) sections.push(`COMPETITIVE_CONTEXT_START\n${context.competitiveContext.map(line).join("\n")}\nCOMPETITIVE_CONTEXT_END`);
   return sections.length ? sections.join("\n") : "研究参考层：无";
 }
 
