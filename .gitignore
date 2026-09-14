@@ -12,7 +12,7 @@ out
 # Local Playwright CLI session state and release staging
 .playwright-cli/
 .release-*/
-release/
+/release/
 # Test temp artifacts
 .tmp/
 # Local smoke / audit / debug output
@@ -42,7 +42,6 @@ prisma/*.db-journal
 # dot suffix so the live prisma/dev.db is never masked.
 prisma/dev.db.*
 
-.vercel
 
 # Local debug artifacts
 .real_api_result.json
@@ -111,11 +110,8 @@ debug/
 coverage/
 test-results/
 playwright-report/
-.playwright-cli/
 
 # Local sqlite files
-prisma/*.db
-prisma/dev.db
 
 # Distribution and build archives
 dist/

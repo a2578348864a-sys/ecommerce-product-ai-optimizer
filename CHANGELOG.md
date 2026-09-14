@@ -1,8 +1,14 @@
 # Changelog
 
-本项目按语义化版本管理，版本标记见 Git tags 与 GitHub Releases。
+本项目按语义化版本管理，版本标记见 Git tags 与 GitHub Releases。当前仓库发布线以 Git tag 和本文件为准；`package.json` 中保留的历史 npm 元数据不作为产品发布编号。
 
 ## Unreleased
+
+### 文档与仓库卫生
+
+- 统一公开 README、文档中心与当前 Listing V5 收口说明。
+- 将历史版本说明、验收证据和原型资料归入明确的 releases、evidence 与 prototypes 归档区。
+- 公开部署示例使用泛化地址和路径，避免暴露具体服务器或本地环境信息。
 
 ## [4.1.1] - 2026-09-08
 
@@ -82,7 +88,7 @@
 - Amazon/1688 真机 live 模式与真实图片生成需授权后启用（本机默认 Mock；公网不提供实时采集）
 - 移动端 /v4/runs 导航未加（V3.1 常量冻结约束）；视觉检查无资产观测时保守 blocked
 - 依赖：1 high（brace-expansion dev-only）；项目书 research-report.schema.json 未接线（in-code 校验强制）
-- 发布记录：validatedCodeSha=`2feb848…`（全量 lint/test/tsc/build 与浏览器 E2E 基线），release SHA 见 Git tag `v4.0.0`
+- 发布记录：validatedCodeSha=`<redacted-hash>`（全量 lint/test/tsc/build 与浏览器 E2E 基线），release SHA 见 Git tag `v4.0.0`
 ## [2.2.16] - 2026-08-12
 
 ### 变更
@@ -149,4 +155,4 @@
 ### 新增
 - Creative Handoff（创作交接）：事实确认、视觉参考批准、幂等账本
 
-> 历史版本详细日志见 `docs/archive/release-history/`。
+> 历史版本与阶段性材料见 [`docs/archive/README.md`](docs/archive/README.md)。
