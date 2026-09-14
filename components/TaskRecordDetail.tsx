@@ -142,7 +142,9 @@ function formatDate(value: string) {
 }
 
 function sourceLabel(source: string) {
-  return source === "ai" ? "AI 深度拆解" : source ? `系统分析 · ${source}` : "系统分析";
+  if (source === "ai") return "AI 深度拆解";
+  if (source === "candidate_research") return "系统分析 · 候选商品研究";
+  return source ? `系统分析 · ${source}` : "系统分析";
 }
 
 /**
@@ -368,7 +370,10 @@ function ResearchCompletionControl({
     return () => {
       active = false;
     };
-  }, [completionStatus, taskId]);
+    // result 必须参与依赖：关键词方案确认成功后父级 refreshRecord 会替换 result 对象，
+    // 这里要重新读取 listing-handoff 的 keywordBriefSummary，否则创作流程第 02 步
+    // 会一直停留在保存前的「待完成」（详情 DTO 并不投影 listingKeywordBrief）。
+  }, [completionStatus, taskId, result]);
 
   const completedListingDraft = isRecordValue(result.aiListingPackSnapshot)
     || isRecordValue(result.listingPackSnapshot)
@@ -517,6 +522,11 @@ function ResearchCompletionControl({
             actionHref={creationFlowAction?.href}
             actionLabel={creationFlowAction?.label}
             actionDescription={creationFlowAction?.description}
+            onAction={
+              creationFlowAction && creationFlowAction.href.startsWith("#")
+                ? () => activateFlowHashTarget(creationFlowAction.href)
+                : undefined
+            }
           />
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -974,31 +984,40 @@ function WorkflowDecisionSummary({
         </div>
       )}
 
-      {/* 历史 Listing 包（只读展示，生成走「Listing 草稿」区） */}
-      <ListingPackCard
-        productName={summary.productName}
-        resultJson={result}
-        riskReviewSnapshot={hasRiskReviewSnapshot ? result.riskReviewSnapshot : undefined}
-        profitSnapshot={hasProfitSnapshot ? result.profitSnapshot : undefined}
-        disabled={decisionCard?.recommendation === "reject" || decisionCard?.recommendation === "needs_more_info"}
-        taskId={taskId}
-        existingSnapshot={(() => {
-          try {
-            const snap = (result as Record<string,unknown>)?.listingPackSnapshot as Record<string,unknown> | undefined;
-            if (snap?.pack) {
-              return { savedAt: snap.savedAt as string, source: snap.source as string, pack: snap.pack as ListingPack };
-            }
-          } catch { /* ignore */ }
-          return null;
-        })()}
-      />
+      {/* 历史与参考（默认折叠）：历史 Listing 包 + 已保存图片草稿 + 参考草稿统一收纳，减少重复展示 */}
+      <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-4" data-testid="history-and-reference">
+        <summary className="cursor-pointer text-sm font-bold text-slate-800">
+          历史与参考（历史 Listing / 历史图片 / 参考草稿）
+        </summary>
+        <p className="mt-1 text-xs leading-5 text-slate-500">
+          以下内容仅作历史留痕与参考，不参与创作资料确认与生成门禁；数据读取与生成能力保持不变。
+        </p>
+        <div className="mt-3 space-y-3">
+          <ListingPackCard
+            productName={summary.productName}
+            resultJson={result}
+            riskReviewSnapshot={hasRiskReviewSnapshot ? result.riskReviewSnapshot : undefined}
+            profitSnapshot={hasProfitSnapshot ? result.profitSnapshot : undefined}
+            disabled={decisionCard?.recommendation === "reject" || decisionCard?.recommendation === "needs_more_info"}
+            taskId={taskId}
+            existingSnapshot={(() => {
+              try {
+                const snap = (result as Record<string,unknown>)?.listingPackSnapshot as Record<string,unknown> | undefined;
+                if (snap?.pack) {
+                  return { savedAt: snap.savedAt as string, source: snap.source as string, pack: snap.pack as ListingPack };
+                }
+              } catch { /* ignore */ }
+              return null;
+            })()}
+          />
 
-      {/* 已保存图片草稿（只读展示；生成统一走上方「AI 生成图片草稿」Handoff 区） */}
-      <AiImageDraftCard
-        taskId={taskId}
-        initialSnapshot={extractAiImageDraftSnapshot(result)}
-        readOnly
-      />
+          <AiImageDraftCard
+            taskId={taskId}
+            initialSnapshot={extractAiImageDraftSnapshot(result)}
+            readOnly
+          />
+        </div>
+      </details>
 
       {/* ── Section 4: 运营推进与状态 ── */}
       <section className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -1560,6 +1579,8 @@ function deriveProductCreationFlowStates(
 ): ProductCreationFlowStates {
   const factCandidates = formalRecord(result.factCandidates);
   const confirmedFacts = Array.isArray(factCandidates?.confirmed) ? factCandidates.confirmed : [];
+  // 详情投影不返回 result.listingKeywordBrief（只有 listing-handoff 接口给 keywordBriefSummary），
+  // 因此关键词步骤以关键词卡片同源的 keywordPlanConfirmed 为准；这一项在父级刷新后会重新读取。
   const keywordBrief = formalRecord(result.listingKeywordBrief);
   const creativeHandoff = formalRecord(result.creativeHandoff);
   const creativeControlState = formalText(creativeHandoff?.controlState);
@@ -1885,6 +1906,28 @@ export function activateFormalV2Target(targetId: string, focusSelector: string):
   return true;
 }
 
+/**
+ * 创作流程卡里的 hash 动作（例如「确认关键词方案」指向 #workbench-keyword-strategy）。
+ *
+ * 之前它只是裸锚点：目标位于研究资料的 details 内、甚至位于未激活的工作台 tab 里，
+ * 而且 hash 已经等于该值时浏览器不会再次触发 hashchange —— 用户会看到「点击没有反馈」。
+ * 这里改为主动激活目标（展开祖先 details + 滚动 + 聚焦）；目标暂时不存在（tab 未切换）
+ * 时先用 hash 触发一次 tab 同步，再重试一次。
+ */
+function activateFlowHashTarget(href: string): void {
+  const targetId = href.replace(/^#/, "");
+  if (!targetId) return;
+  if (activateFormalV2Target(targetId, "summary, h3")) return;
+  try {
+    window.location.hash = targetId;
+  } catch {
+    // 测试环境或受限环境没有可写的 location.hash：忽略，仅做一次重试。
+  }
+  setTimeout(() => {
+    activateFormalV2Target(targetId, "summary, h3");
+  }, 200);
+}
+
 /** 四张业务卡 → 各自真实资料目标（按钮去向真实准确优先于其它）。 */
 const MODULE_EVIDENCE_TARGETS: Readonly<Record<string, string>> = {
   market: "formal-v2-market-evidence",
@@ -2182,7 +2225,7 @@ function FormalV2RecordContent({
                 </span>
                 {view.asin ? (
                   <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-mono text-slate-600">
-                    ASIN: {view.asin}
+                    ASIN（Amazon 商品编号）: {view.asin}
                   </span>
                 ) : null}
               </div>
@@ -2227,9 +2270,9 @@ function FormalV2RecordContent({
         <summary className="cursor-pointer bg-slate-50/70 px-5 py-3.5 text-sm font-semibold text-slate-800 hover:bg-slate-100/70 transition-colors flex items-center justify-between select-none">
           <div className="flex items-center gap-2.5">
             <span className="flex size-6 items-center justify-center rounded-lg bg-emerald-50 text-xs font-bold text-emerald-700">02</span>
-            <span>核对与补充当前研究资料（四维度工作台）</span>
+            <span>核对与补充研究资料（市场 / 评论 / 货源 / 成本）</span>
           </div>
-          <span className="text-xs font-normal text-slate-500">点击展开/折叠完整证据与录入表单</span>
+          <span className="text-xs font-normal text-slate-500">展开可核对证据并补充资料</span>
         </summary>
         <div className="p-4 sm:p-5 border-t border-slate-100">
           <p className="text-xs leading-5 text-slate-500 mb-3">这里只显示当前正式研究记录；缺失数据不会由 AI 猜测补齐。</p>
@@ -2268,13 +2311,21 @@ function FormalV2RecordContent({
         </section>
       ) : null}
 
-      {/* ── 下一步：创作资料交接（归入下一步创作动作） ── */}
-      <section id="formal-v2-next-action-draft" className="mt-6 border-t border-slate-200 pt-6" aria-label="下一步：创作资料交接">
-        <ReferenceListingDraftPanel
-          taskId={record.id}
-          onDraftGenerated={onUpdated}
-        />
-      </section>
+      {/* ── 历史与参考（默认折叠）：参考草稿收纳，避免与正式创作入口重复 ── */}
+      <details className="mt-6 rounded-2xl border border-slate-200/90 bg-slate-50/60 p-4 sm:p-5" data-testid="history-and-reference">
+        <summary className="cursor-pointer text-sm font-bold text-slate-800">
+          历史与参考（参考草稿）
+        </summary>
+        <p className="mt-1 text-xs leading-5 text-slate-500">
+          参考草稿仅供对照，不参与创作资料确认，也不影响生成结果；数据读取与生成能力保持不变。
+        </p>
+        <div className="mt-3">
+          <ReferenceListingDraftPanel
+            taskId={record.id}
+            onDraftGenerated={onUpdated}
+          />
+        </div>
+      </details>
 
       {/* ── 04: Listing 与商品图片（创作工作流） ── */}
       <section id="listing-and-images" className="mt-5 rounded-2xl border border-slate-200/90 bg-white p-5 sm:p-6 shadow-xs" aria-label="Listing 与商品图片" data-testid="formal-v2-listing-images">

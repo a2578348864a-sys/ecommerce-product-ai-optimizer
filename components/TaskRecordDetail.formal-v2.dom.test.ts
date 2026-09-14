@@ -661,4 +661,122 @@ describe("四证据目标路由（真实 TaskRecordDetail 挂载）", () => {
     expect(target).not.toBeNull();
     expect(target!.open).toBe(true);
   });
+
+  /**
+   * 关键词方案状态联动（2026-09 修复）。
+   *
+   * 现象：关键词方案确认成功后，创作流程第 02 步仍显示「待完成」、动作仍是「确认关键词方案」。
+   * 根因：详情 DTO 不投影 result.listingKeywordBrief，第 02 步实际只认 listing-handoff 的
+   * keywordBriefSummary；而那次读取只在挂载时跑一次，父级 refreshRecord 之后不会重读。
+   * 这里走真实点击链路：保存关键词方案 → 卡片 onSave/handleDataChanged → 父级 refreshRecord
+   * → 新的 result 对象 → 重新读取 keywordBriefSummary → 第 02 步就地转为已完成。
+   */
+  it("8. 保存关键词方案后：创作流程第 02 步就地变为已完成，不再是「确认关键词方案」", async () => {
+    let keywordBriefReads = 0;
+    let detailReads = 0;
+    let saved = false;
+    // 该用例需要区分同一 URL 的 GET / POST，所以直接接管 fetch（harness 的 fetchHandler 只拿到 URL）。
+    const g = globalThis as unknown as { fetch: (url: string, init?: { method?: string }) => Promise<FetchResponse> };
+    g.fetch = vi.fn(async (url: string, init?: { method?: string }) => {
+      const target = String(url);
+      if (target.includes("/api/runtime-mode")) {
+        return makeResponse(true, 200, { ok: true, mode: "local_owner", noAuthOwner: true, v4GraphEnabled: true });
+      }
+      if (target.includes("/api/tasks/task-x/research-lifecycle")) {
+        return makeResponse(true, 200, {
+          ok: true,
+          data: {
+            phase: "completed", collectionStatus: "ready", confirmationStatus: "confirmed",
+            decisionStatus: "creative_ready", completionStatus: "completed",
+            creativeReadiness: "ready", stale: false, blockers: [],
+            nextAction: "进入创作准备。", contractMode: "modern",
+          },
+        });
+      }
+      if (target.includes("/api/tasks/task-x/keyword-evidence")) {
+        return makeResponse(true, 200, {
+          ok: true,
+          data: {
+            evidence: {
+              reportType: "reverse_asin",
+              capturedAt: "2026-09-14T08:00:00.000Z",
+              rows: [{ rowNumber: 1, keyword: "halloween decorations", fields: {} }],
+            },
+            storageVersion: { resultJsonHash: "hash-1", updatedAt: "2026-09-14T08:00:00.000Z" },
+          },
+        });
+      }
+      if (target.includes("/api/tasks/task-x/listing-handoff")) {
+        if (init?.method === "POST") {
+          saved = true;
+          return makeResponse(true, 200, { ok: true, data: { saved: true } });
+        }
+        keywordBriefReads += 1;
+        return makeResponse(true, 200, {
+          ok: true,
+          data: {
+            keywordBriefSummary: saved
+              ? { primaryKeyword: "halloween decorations", source: "sellersprite", backendTermsCount: 0 }
+              : null,
+          },
+        });
+      }
+      if (target.includes("/api/tasks/task-x")) {
+        detailReads += 1;
+        return makeResponse(true, 200, {
+          ok: true,
+          data: recordFixture({
+            // 研究事实已确认：关键词步骤才是当前待办（与用户看到的页面一致）
+            result: { productName: "测试商品", factCandidates: { confirmed: [{ factId: "f-brand", field: "brand", label: "Brand", value: "TestBrand" }] } },
+          }),
+        });
+      }
+      return makeResponse(false, 404, { ok: false });
+    });
+
+    await mountDetail();
+    await flush();
+
+    const flowStep = (key: string): FakeElement | null => {
+      let found: FakeElement | null = null;
+      const walk = (node: FakeNode) => {
+        for (const child of [...node.childNodes]) {
+          if (child.nodeType !== 1) continue;
+          const el = child as FakeElement;
+          if (found === null && el.dataset["flow-step"] === key) found = el;
+          walk(el);
+        }
+      };
+      walk(container as FakeNode);
+      return found;
+    };
+
+    // 保存前：第 02 步待完成，动作是「确认关键词方案」
+    expect(flowStep("keywords")).not.toBeNull();
+    expect(flowStep("keywords")!.dataset["flow-state"]).toBe("pending");
+    expect(findByTestId("product-creation-flow-action")!.textContent).toContain("确认关键词方案");
+    const detailReadsAfterMount = detailReads;
+
+    // 真实用户动作：打开关键词方案编辑器 → 勾选核对 → 保存关键词方案
+    const openEditor = findByTestId("kw-adjust")!;
+    await act(async () => { openEditor.dispatchEvent(new FakeEvent("click", openEditor)); });
+    await flush();
+    expect(findByTestId("kw-editor")).not.toBeNull();
+
+    const confirmBox = findByTestId("kw-confirm") as FakeElement & { checked: boolean };
+    confirmBox.checked = true;
+    await act(async () => { confirmBox.dispatchEvent(new FakeEvent("click", confirmBox)); });
+    await flush();
+
+    const saveButton = findByTestId("kw-save")!;
+    await act(async () => { saveButton.dispatchEvent(new FakeEvent("click", saveButton)); });
+    for (let i = 0; i < 5; i += 1) await flush();
+
+    // 保存成功：立即反馈 + 父级重新拉取详情 + 关键词状态就地联动
+    expect(findByTestId("kw-saved-notice")!.textContent).toContain("关键词方案已保存");
+    expect(detailReads).toBeGreaterThan(detailReadsAfterMount);
+    expect(keywordBriefReads).toBeGreaterThan(1);
+    expect(flowStep("keywords")!.dataset["flow-state"]).toBe("complete");
+    expect(findByTestId("product-creation-flow-action")!.textContent).not.toContain("确认关键词方案");
+  });
 });
