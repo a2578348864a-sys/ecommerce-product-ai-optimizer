@@ -70,6 +70,21 @@ export type AiImageDraftItem = {
   /** 幂等请求键的 64-hex sha256（hash 不变量同上；占位符规范化为 undefined）。 */
   requestKeyHash?: string;
   providerRequestId?: string;
+  /**
+   * V2.1 候选级生成依据（全部可选）。
+   *
+   * 目的：让每张候选图能被追溯到「用哪个槽位配方 / 哪版配方 / 哪个风格 / 哪版视觉计划 /
+   * 哪张参考图」——此前只能靠不可逆的 generationInputFingerprint，无法回答"这张是怎么来的"。
+   *
+   * 兼容性：历史 item 缺失这些字段时保持 undefined，**不伪造版本、不批量改写历史快照**；
+   * 非法值一律降级为 undefined（而不是整条 item 拒绝），避免新增字段破坏旧数据读取。
+   */
+  slotRecipeId?: string;
+  recipeVersion?: string;
+  stylePresetId?: string;
+  planVersion?: string;
+  /** 实际传给 Provider 的参考图内容 sha256（64-hex）；未使用参考图时为 undefined。 */
+  referenceImageContentHash?: string;
   generationBasis: AiImageGenerationBasis;
 };
 
@@ -211,6 +226,15 @@ function normalizeProviderHash(value: unknown): string | undefined | null {
   return null;
 }
 
+/**
+ * V2.1 候选级依据用的**宽松** hash 规范化：非法或缺失一律 undefined。
+ * 与 normalizeProviderHash 的区别：绝不返回 null（不因新增字段让历史 item 整体拒绝）。
+ */
+function optionalProviderHash(value: unknown): string | undefined {
+  const cleaned = cleanText(value, 64);
+  return /^[0-9a-f]{64}$/i.test(cleaned) ? cleaned.toLowerCase() : undefined;
+}
+
 export function normalizeAiImageDraftItem(value: unknown): AiImageDraftItem | null {
   if (!isRecord(value)) return null;
   const generationBasis = normalizeGenerationBasis(value.generationBasis);
@@ -271,6 +295,12 @@ export function normalizeAiImageDraftItem(value: unknown): AiImageDraftItem | nu
     promptHash,
     requestKeyHash,
     providerRequestId: cleanText(value.providerRequestId, 200) || undefined,
+    // V2.1 候选级生成依据（宽松放行：缺失/非法即 undefined，不影响历史 item 读取）
+    slotRecipeId: cleanText(value.slotRecipeId, 64) || undefined,
+    recipeVersion: cleanText(value.recipeVersion, 32) || undefined,
+    stylePresetId: cleanText(value.stylePresetId, 64) || undefined,
+    planVersion: cleanText(value.planVersion, 32) || undefined,
+    referenceImageContentHash: optionalProviderHash(value.referenceImageContentHash),
     generationBasis,
   };
 }

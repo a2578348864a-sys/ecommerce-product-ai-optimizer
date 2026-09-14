@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  REQUIRED_FACT_KIND_SOURCES,
+  REQUIRED_FACT_KINDS_BY_PURPOSE,
   evaluatePurposeRequirements,
   hasDimensionEvidence,
   hasPackagingEvidence,
   hasSellingPointEvidence,
   hasUsageEvidence,
+  isPurposeFactRequirementSatisfied,
+  missingRequiredFactKinds,
+  requiredFactKindsForPurpose,
   PURPOSE_SCENE_COMPATIBILITY,
   PURPOSE_REQUIREMENTS,
+  type ConfirmedFactLike,
+  type RequiredFactKind,
 } from "@/lib/imageHandoff/purposeRequirements";
 
 describe("hasPackagingEvidence", () => {
@@ -222,5 +229,119 @@ describe("evaluatePurposeRequirements 三个 gate（服务端 fail-closed）", (
 
   it("scene 不绕过 gate（SIZE_SPEC+OUTDOOR 仍需尺寸）", () => {
     expect(evaluatePurposeRequirements("dimension_specification", THERMOS_IDENTITY_FACTS).ok).toBe(false);
+  });
+});
+
+// ── 本轮新增：用途 → 事实种类同源映射（requiredFactKindsForPurpose / missingRequiredFactKinds）──
+
+const ALL_PURPOSES = [
+  "white_studio",
+  "selling_point_infographic",
+  "dimension_specification",
+  "detail_closeup",
+  "packaging_bundle",
+  "usage_steps",
+  "comparison",
+  "custom",
+] as const;
+
+const FACT_SAMPLES: Array<{ name: string; facts: ConfirmedFactLike[] }> = [
+  { name: "空事实", facts: [] },
+  { name: "身份事实", facts: THERMOS_IDENTITY_FACTS },
+  { name: "尺寸事实", facts: [{ field: "width", label: "宽度", value: "3.24 in" }] },
+  { name: "容量事实（≠尺寸）", facts: [{ field: "capacity", label: "容量", value: "24 oz" }] },
+  { name: "卖点事实", facts: [{ field: "material", label: "材质", value: "Stainless Steel" }] },
+  { name: "包装事实", facts: [{ field: "quantity_or_pack_size", label: "数量/包装", value: "1 个" }] },
+  { name: "使用方式事实", facts: [{ field: "usage_steps", label: "使用步骤", value: "打开杯盖即可饮用" }] },
+  {
+    name: "非权威来源（AI/VOC）",
+    facts: [
+      { field: "ai_reference", label: "AI 摘要", value: "Leakproof, 24oz, 礼盒装" },
+      { field: "voc", label: "VOC", value: "尺寸偏小，包装精美" },
+    ],
+  },
+  {
+    name: "事实齐全",
+    facts: [
+      { field: "dimensions", label: "尺寸", value: "3.5\"L x 3.5\"W x 5.3\"H" },
+      { field: "material", label: "材质", value: "Ceramic" },
+      { field: "packaging", label: "包装", value: "Box of 4" },
+      { field: "usage_steps", label: "使用步骤", value: "1. 打开杯盖 2. 按压吸管" },
+    ],
+  },
+];
+
+describe("用途 → 事实种类映射（与既有 evidence 判定同源，不新增第二套规则）", () => {
+  it("只有既有需求矩阵声明 requiresEvidence 的用途才要求事实种类（不新增、不放宽门禁）", () => {
+    for (const purpose of ALL_PURPOSES) {
+      expect(
+        requiredFactKindsForPurpose(purpose).length > 0,
+        `用途 ${purpose} 的事实要求必须与 PURPOSE_REQUIREMENTS.requiresEvidence 一致`,
+      ).toBe(PURPOSE_REQUIREMENTS[purpose].requiresEvidence);
+      expect(REQUIRED_FACT_KINDS_BY_PURPOSE[purpose]).toBeDefined();
+    }
+  });
+
+  it("每个事实种类都直接指向既有 evidence 判定函数（函数身份一致，而不是复制品）", () => {
+    expect(REQUIRED_FACT_KIND_SOURCES.selling_point_fact.evidence).toBe(hasSellingPointEvidence);
+    expect(REQUIRED_FACT_KIND_SOURCES.dimension_fact.evidence).toBe(hasDimensionEvidence);
+    expect(REQUIRED_FACT_KIND_SOURCES.packaging_fact.evidence).toBe(hasPackagingEvidence);
+    expect(REQUIRED_FACT_KIND_SOURCES.usage_fact.evidence).toBe(hasUsageEvidence);
+
+    expect(REQUIRED_FACT_KIND_SOURCES.selling_point_fact.purpose).toBe("selling_point_infographic");
+    expect(REQUIRED_FACT_KIND_SOURCES.dimension_fact.purpose).toBe("dimension_specification");
+    expect(REQUIRED_FACT_KIND_SOURCES.packaging_fact.purpose).toBe("packaging_bundle");
+    expect(REQUIRED_FACT_KIND_SOURCES.usage_fact.purpose).toBe("usage_steps");
+  });
+
+  it("缺失事实种类与 evaluatePurposeRequirements 的判定在全部用途 × 事实样本上完全一致", () => {
+    let checked = 0;
+    for (const purpose of ALL_PURPOSES) {
+      for (const sample of FACT_SAMPLES) {
+        const satisfied = isPurposeFactRequirementSatisfied(purpose, sample.facts);
+        const gate = evaluatePurposeRequirements(purpose, sample.facts);
+        expect(
+          satisfied,
+          `用途 ${purpose} × ${sample.name}：事实种类判定必须与服务端门禁一致`,
+        ).toBe(gate.ok);
+        expect(missingRequiredFactKinds(purpose, sample.facts).length === 0).toBe(gate.ok);
+        checked += 1;
+      }
+    }
+    expect(checked).toBe(ALL_PURPOSES.length * FACT_SAMPLES.length);
+  });
+
+  it("缺尺寸事实 → dimension_specification 侧不能宣布满足（容量 ≠ 尺寸）", () => {
+    expect([...requiredFactKindsForPurpose("dimension_specification")]).toEqual(["dimension_fact"]);
+    expect(missingRequiredFactKinds("dimension_specification", THERMOS_IDENTITY_FACTS)).toEqual(["dimension_fact"]);
+    expect(missingRequiredFactKinds("dimension_specification", [{ field: "capacity", label: "容量", value: "24 oz" }]))
+      .toEqual(["dimension_fact"]);
+    expect(isPurposeFactRequirementSatisfied("dimension_specification", [{ field: "capacity", label: "容量", value: "24 oz" }])).toBe(false);
+
+    expect(missingRequiredFactKinds("dimension_specification", [{ field: "width", label: "宽度", value: "3.24 in" }])).toEqual([]);
+    expect(isPurposeFactRequirementSatisfied("dimension_specification", [{ field: "width", label: "宽度", value: "3.24 in" }])).toBe(true);
+  });
+
+  it("无事实门禁的用途（白底/特写/对比/自定义）不要求任何事实种类", () => {
+    for (const purpose of ["white_studio", "detail_closeup", "comparison", "custom"] as const) {
+      expect([...requiredFactKindsForPurpose(purpose)]).toEqual([]);
+      expect(missingRequiredFactKinds(purpose, [])).toEqual([]);
+      expect(isPurposeFactRequirementSatisfied(purpose, [])).toBe(true);
+      expect(evaluatePurposeRequirements(purpose, []).ok).toBe(true);
+    }
+  });
+
+  it("非权威来源（AI 摘要 / VOC）不得满足任何事实种类", () => {
+    const nonAuthoritative: ConfirmedFactLike[] = [
+      { field: "ai_reference", label: "AI 摘要", value: "Leakproof, 24oz, 礼盒装, 3.24 in" },
+      { field: "voc", label: "VOC", value: "尺寸偏小，包装精美" },
+    ];
+    const kinds: RequiredFactKind[] = ["selling_point_fact", "dimension_fact", "packaging_fact", "usage_fact"];
+    for (const kind of kinds) {
+      expect(REQUIRED_FACT_KIND_SOURCES[kind].evidence(nonAuthoritative), `${kind} 不得由非权威来源满足`).toBe(false);
+    }
+    for (const purpose of ALL_PURPOSES) {
+      expect(isPurposeFactRequirementSatisfied(purpose, nonAuthoritative)).toBe(evaluatePurposeRequirements(purpose, nonAuthoritative).ok);
+    }
   });
 });

@@ -17,7 +17,14 @@ export const TASK_IMAGE_CUSTOM_PURPOSE_MAX_LENGTH = 160;
 
 export type TaskImageCreativeDescriptionContext = {
   productName: string;
-  confirmedFacts: Array<{ label: string; value: string }>;
+  /**
+   * 可见安全资料投影。`field` = Handoff confirmedFacts[].field 的 canonical 字段名。
+   *
+   * V2.1 修复（前后端事实门禁同源）：此前 DTO 只带 label，前端只能用 label 做就绪度判定，
+   * 与服务端 `evaluatePurposeRequirements` 的 canonical field 判据可能不一致。
+   * 这里补上 canonical field，使两侧输入完全相同；缺失时为空字符串（历史兼容，不猜测放行）。
+   */
+  confirmedFacts: Array<{ field: string; label: string; value: string }>;
   existingVisualRequirements: string[];
   hasApprovedReference: boolean;
   suggestedCreativeIntent?: StudioImageCreativeIntent;
@@ -86,6 +93,9 @@ export function buildTaskImageCreativeDescriptionContext(
     confirmedFacts: (version?.confirmedFacts ?? [])
       .filter((fact) => fact.usageScopes.includes("image"))
       .map((fact) => ({
+        // canonical 字段名原样透出（仅做长度与字符规范化，不改写取值）；
+        // 历史数据缺失时保留空串，由消费方按「资料不足」处理，绝不用 label 猜测补齐。
+        field: normalizeText(String(fact.field ?? ""), 64),
         label: normalizeText(fact.label, 80),
         value: textValue(fact.value),
       }))

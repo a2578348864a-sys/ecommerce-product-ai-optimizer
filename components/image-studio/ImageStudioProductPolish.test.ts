@@ -149,8 +149,8 @@ describe("Image Studio product workbench", () => {
     }
     expect(html).toContain("引导生成");
     expect(html).toContain("自由提示词");
-    expect(html).toContain("Mock 本地预览");
-    expect(html).toContain("本地确定性预览，不调用 Provider");
+    expect(html).toContain("本地预览");
+    expect(html).toContain("不调用真实 AI，直接返回示例图");
     expect(html).toContain("图片工作区");
     expect(html).toContain("独立创作没有 Task 研究事实，只使用你明确填写并确认的信息。");
     expect(html).toContain("概念创作模式");
@@ -206,7 +206,7 @@ describe("Image Studio product workbench", () => {
     expect(html).toContain("自由提示词方案 · 自定义创意 · 商品主视觉 · 4:5");
     expect(html).toContain("避免元素");
     expect(html).toContain("logos, watermarks");
-    expect(html).toContain('alt="自由提示词方案的本地 Mock 预览 1"');
+    expect(html).toContain('alt="自由提示词方案的本地预览稿 1"');
     expect(html).not.toContain("Untrusted task context");
   });
 

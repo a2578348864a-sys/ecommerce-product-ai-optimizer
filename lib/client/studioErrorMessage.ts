@@ -12,7 +12,8 @@ const STUDIO_ERROR_MESSAGES: Record<string, string> = {
   demo_standalone_image_quota_exceeded: "该访客码的独立生图体验额度已用完。",
   // V3.1 Phase 2：公开模式成本/安全错误码（§39 / §40 区分展示）
   global_provider_cap_exceeded: "今日公开体验的 AI 额度暂时已用完，请明日再来体验。",
-  rate_limited: "操作过于频繁，请稍后再试。",
+  // V2.1.1：限流不再与"服务不可用"共用文案（此前用户无法判断"等一会儿再试"还是"服务真挂了"）
+  rate_limited: "请求过于频繁，请稍后再试。",
   origin_denied: "请求来源校验失败，请刷新页面后重试。",
   guest_scope_denied: "公开体验模式仅支持演示案例，此操作不可用。",
   provider_auth_failed: "AI 服务认证失败，请联系管理员检查服务配置。",
@@ -22,8 +23,15 @@ const STUDIO_ERROR_MESSAGES: Record<string, string> = {
   provider_quota: "AI 服务额度不足，请补充额度后重试。",
   provider_timeout: "AI 服务响应超时，请稍后重试。",
   image_provider_timeout: "AI 服务响应超时，请稍后重试。",
+  // V2.1.2：生图链路的真实超时使用独立码 `timeout`（504），文案与其它 studio 超时区分
+  timeout: "图片生成请求超时，请稍后重试。",
   provider_unavailable: "AI 服务暂时不可用，请稍后重试。",
   image_provider_unavailable: "AI 服务暂时不可用，请稍后重试。",
+  // V2.1.1 新增：此前这三类被服务端合并成 provider_unavailable，用户看不到真实原因
+  empty_response: "图片生成未返回有效结果，请重新生成。",
+  provider_error: "图片生成服务调用失败，请稍后重试。",
+  content_blocked: "本次图片请求未通过内容安全检查，请调整创作描述后重试。",
+  image_provider_rejected: "图片请求未被服务接受，请调整用途或创作描述后重试。",
   network_error: "网络连接异常，请稍后重试。",
   image_request_in_progress: "同一图片请求正在处理中，请稍候。",
   image_request_conflict: "请求参数已变化，请重新发起。",

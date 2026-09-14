@@ -7,15 +7,34 @@ import {
 import { imageStylePresetLabel } from "@/lib/imageStyleLibrary";
 import { CheckCircle2, AlertCircle, Sparkles, Layers } from "lucide-react";
 
+/**
+ * 逐槽位服务端同源门禁结果（slotId → 结果）。
+ * `evaluatePurposeRequirements(slot.suggestedPurpose, facts)` 在 ImageHandoffSection 中计算，
+ * facts 与整体 purposeGate 用的是同一份数组。
+ */
+export type VisualAssetSlotGate = { ok: boolean; message?: string };
+
 export function VisualAssetPlanCard({
   plan,
   selectedSlotId,
   onSelectSlot,
+  slotGates,
 }: {
   plan: VisualAssetPlan;
   selectedSlotId?: string | null;
   onSelectSlot?: (slot: VisualAssetSlot) => void;
+  slotGates?: Record<string, VisualAssetSlotGate>;
 }) {
+  const gateFor = (slot: VisualAssetSlot) => slotGates?.[slot.slotId];
+  // 对外只保留一个结论：规划层 ready 且服务端同源门禁通过，才显示「就绪」。
+  const gateBlocked = (slot: VisualAssetSlot) => slot.readiness === "ready" && gateFor(slot)?.ok === false;
+  const isSlotReady = (slot: VisualAssetSlot) => slot.readiness === "ready" && gateFor(slot)?.ok !== false;
+  const effectiveReadiness = (slot: VisualAssetSlot): VisualAssetSlot["readiness"] => {
+    if (isSlotReady(slot)) return "ready";
+    return slot.readiness === "ready" ? "blocked_needs_facts" : slot.readiness;
+  };
+  const effectiveReadyCount = plan.slots.filter(isSlotReady).length;
+
   return (
     <section
       className="rounded-2xl border border-teal-200/80 bg-gradient-to-b from-teal-50/50 to-white p-4 shadow-sm"
@@ -28,35 +47,35 @@ export function VisualAssetPlanCard({
               <Layers className="h-3.5 w-3.5" aria-hidden="true" />
             </span>
             <h3 className="text-base font-bold text-slate-900 tracking-tight">
-              AI 视觉资产规划（Visual Asset Plan）
+              AI 视觉资产规划
             </h3>
             <span className="rounded-full bg-teal-100 px-2.5 py-0.5 text-[11px] font-bold text-teal-800">
               AI 建议视觉组合
             </span>
           </div>
           <p className="mt-1 text-xs text-slate-600">
-            根据已确认事实与商品参考图智能推荐的视觉资产矩阵。点击槽位一键填入对应策略并联动 AI 视觉简报。
+            根据已确认事实与商品参考图推荐的图片组合，点击槽位即应用对应策略。
           </p>
         </div>
         <div className="flex flex-col items-start sm:items-end gap-1.5">
           <div className="flex items-center gap-2">
             <span
               className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
-                plan.readyCount === plan.totalCount
+                effectiveReadyCount === plan.totalCount
                   ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                   : "border-teal-200 bg-teal-50 text-teal-700"
               }`}
             >
               <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
               <span>
-                就绪进度 {plan.readyCount} / {plan.totalCount} 项
+                就绪进度 {effectiveReadyCount} / {plan.totalCount} 项
               </span>
             </span>
           </div>
           <div className="h-1.5 w-32 overflow-hidden rounded-full bg-slate-200/70">
             <div
               className="h-full rounded-full bg-teal-600 transition-all duration-300"
-              style={{ width: `${Math.round((plan.readyCount / plan.totalCount) * 100)}%` }}
+              style={{ width: `${Math.round((effectiveReadyCount / plan.totalCount) * 100)}%` }}
             />
           </div>
         </div>
@@ -78,14 +97,23 @@ export function VisualAssetPlanCard({
       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {plan.slots.map((slot) => {
           const isSelected = selectedSlotId === slot.slotId;
-          const isReady = slot.readiness === "ready";
+          const isReady = isSlotReady(slot);
           const needsRef = slot.readiness === "blocked_needs_visual_reference";
+          const gate = gateFor(slot);
+          const isGateBlocked = gateBlocked(slot);
+          const needsFacts = !isReady && !needsRef;
+          // 阻断原因：门禁阻断时直接复用服务端同源 message，其余沿用规划层既有原因。
+          const blockedReason = isReady
+            ? undefined
+            : (isGateBlocked ? (gate?.message ?? "该主题需要先确认对应事实。") : slot.blockedMessage);
 
           return (
             <div
               key={slot.slotId}
               data-testid={`visual-asset-slot-${slot.slotId}`}
-              data-readiness={slot.readiness}
+              data-readiness={effectiveReadiness(slot)}
+              data-gate-blocked={isGateBlocked ? "true" : "false"}
+              data-planned-readiness={slot.readiness}
               data-selected={isSelected ? "true" : "false"}
               onClick={() => onSelectSlot?.(slot)}
               className={`group relative flex flex-col justify-between rounded-xl border p-3 text-xs transition cursor-pointer ${
@@ -112,7 +140,7 @@ export function VisualAssetPlanCard({
                           ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                           : needsRef
                             ? "border-amber-200 bg-amber-50 text-amber-700"
-                            : "border-slate-200 bg-slate-100 text-slate-600"
+                            : "border-amber-200 bg-amber-50 text-amber-700"
                     }`}
                   >
                     {isSelected
@@ -125,14 +153,20 @@ export function VisualAssetPlanCard({
                   </span>
                 </div>
 
-                <p className="mt-1.5 text-slate-600 leading-relaxed text-xs">
+                <p className="mt-1.5 line-clamp-2 text-slate-600 leading-relaxed text-xs">
                   {slot.purposeSummary}
                 </p>
 
-                {slot.blockedMessage && !isReady ? (
+                {blockedReason && needsFacts ? (
                   <div className="mt-2 flex items-start gap-1 rounded-lg border border-amber-200/60 bg-amber-50/70 p-1.5 text-[11px] text-amber-800">
                     <AlertCircle className="mt-0.5 h-3 w-3 shrink-0 text-amber-600" aria-hidden="true" />
-                    <span>{slot.blockedMessage}</span>
+                    <span className="line-clamp-3">{blockedReason}</span>
+                  </div>
+                ) : null}
+                {blockedReason && needsRef ? (
+                  <div className="mt-2 flex items-start gap-1 rounded-lg border border-amber-200/60 bg-amber-50/70 p-1.5 text-[11px] text-amber-800">
+                    <AlertCircle className="mt-0.5 h-3 w-3 shrink-0 text-amber-600" aria-hidden="true" />
+                    <span className="line-clamp-2">{blockedReason}</span>
                   </div>
                 ) : null}
               </div>

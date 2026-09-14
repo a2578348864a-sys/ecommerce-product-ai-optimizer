@@ -13,9 +13,9 @@ import {
 const context = {
   productName: "30oz 黑色不锈钢水杯",
   confirmedFacts: [
-    { label: "容量", value: "30oz" },
-    { label: "材质", value: "不锈钢" },
-    { label: "颜色", value: "黑色" },
+    { field: "capacity", label: "容量", value: "30oz" },
+    { field: "material", label: "材质", value: "不锈钢" },
+    { field: "color_or_variant", label: "颜色", value: "黑色" },
   ],
   existingVisualRequirements: ["商品居中", "预留卖点文字区域"],
   hasApprovedReference: false,

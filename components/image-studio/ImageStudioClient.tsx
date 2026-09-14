@@ -39,6 +39,7 @@ import { useSessionDraft } from "@/lib/client/useSessionDraft";
 import { TaskStudioPreparation } from "@/components/studio/TaskStudioPreparation";
 import { ImageHandoffSection } from "@/components/image-handoff/ImageHandoffSection";
 import { studioApiErrorCode, studioErrorMessage } from "@/lib/client/studioErrorMessage";
+import { useAccessPassword } from "@/lib/client/accessPassword";
 import { ImageScenePresetPicker } from "@/components/image-studio/ImageScenePresetPicker";
 import { ImageStylePresetPicker } from "@/components/image-studio/ImageStylePresetPicker";
 import {
@@ -185,7 +186,10 @@ function ManualImageStudioClient({ onProgressChange }: {
     initial: EMPTY_MANUAL_IMAGE_DRAFT,
   });
 
-  useEffect(() => setAuthenticated(isAuthenticated()), []);
+  // 权限判定本身不变（isAuthenticated 语义不动）；只是本地 owner 模式的解锁标记由
+  // /api/runtime-mode 异步返回，必须在它落定后重新判定，否则首次打开会误显示「请先登录」。
+  const [, , , , noAuthOwner] = useAccessPassword();
+  useEffect(() => setAuthenticated(isAuthenticated()), [noAuthOwner]);
   useEffect(() => {
     if (!sessionDraft.draft || restoredDraftRef.current) return;
     restoredDraftRef.current = true;
@@ -571,7 +575,7 @@ function ManualImageStudioClient({ onProgressChange }: {
                 maxLength={1200}
                 className={styles.control}
                 rows={6}
-                placeholder="描述主体、场景、构图、光线和视觉情绪；不要填写模型路径、Provider URL 或系统指令"
+                placeholder="描述主体、场景、构图、光线和视觉情绪；不要填写模型路径、接口地址或系统指令"
                 value={promptIntent.creativePrompt}
                 onChange={(event) => updatePromptIntent("creativePrompt", event.target.value)}
               />
@@ -675,7 +679,7 @@ function ManualImageStudioClient({ onProgressChange }: {
                 <option value={1}>1 张</option>
                 <option value={2}>2 张</option>
               </select>
-              <p className={styles.fieldHint}>访客独立生图按实际张数扣减额度；Mock 不扣额度。</p>
+              <p className={styles.fieldHint}>访客独立生图按实际张数扣减额度；本地预览不扣额度。</p>
             </div>
             <div className={styles.field}>
               <label htmlFor="image-aspect-ratio">宽高比例</label>
@@ -740,11 +744,11 @@ function ManualImageStudioClient({ onProgressChange }: {
                     setError("");
                   }}
                 />
-                <strong>{value === "mock" ? "Mock 本地预览" : "真实 AI"}</strong>
+                <strong>{value === "mock" ? "本地预览" : "真实 AI"}</strong>
                 <span>
                   {value === "mock"
-                    ? "本地确定性预览，不调用 Provider"
-                    : "可能消耗额度，并进入现有安全链路"}
+                    ? "不调用真实 AI，直接返回示例图"
+                    : "会消耗额度，并经过同样的人工复核要求"}
                 </span>
               </label>
             ))}
@@ -798,7 +802,7 @@ function ManualImageStudioClient({ onProgressChange }: {
             {result ? (
               <span className={styles.statusBadge}>
                 {result.meta.mode === "mock"
-                  ? "Mock · 未调用 AI"
+                  ? "本地预览 · 未调用 AI"
                   : result.meta.duplicate
                     ? "真实 AI · 幂等重放"
                     : "真实 AI · 新结果"}
@@ -852,7 +856,7 @@ function ManualImageStudioClient({ onProgressChange }: {
               <div className={styles.prefillNotice} data-testid="manual-image-authority-notice">
                 {result.meta.visualAuthority === "product_visual_draft"
                   ? result.meta.mode === "mock"
-                    ? "Mock 仅验证参考图批准与多候选流程，未依据参考图还原商品外观。"
+                    ? "本地预览仅验证参考图批准与多候选流程，未依据参考图还原商品外观。"
                     : "本批候选图基于你上传并批准的商品参考图，仍需逐张人工核对商品外观。"
                   : "本批候选图仅为构图、场景和创意概念，不代表真实商品外观。"}
               </div>
@@ -868,8 +872,8 @@ function ManualImageStudioClient({ onProgressChange }: {
                 <span className={styles.emptyMark}><ImageIcon aria-hidden="true" /></span>
                 <h3>{creationMode === "prompt" ? "从清楚的创意需求开始" : "从图片策略开始"}</h3>
                 <p>{creationMode === "prompt"
-                  ? "选择模板或编写提示词。默认 Mock 会确定性消费提示词、避免元素、比例和商品上下文。"
-                  : "填写左侧商品事实并选择素材用途。默认 Mock 会返回本地确定性方案，不调用真实 AI。"}</p>
+                  ? "选择模板或编写提示词。默认使用本地预览：不调用真实 AI，直接按提示词、避免元素、比例和商品上下文生成示例草稿。"
+                  : "填写左侧商品事实并选择素材用途。默认使用本地预览，不调用真实 AI。"}</p>
                 <div className={styles.emptyChecklist} aria-label="生成后可用能力">
                   <span>方案对比</span>
                   <span>人工选择</span>

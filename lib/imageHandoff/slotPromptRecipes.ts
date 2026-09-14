@@ -7,9 +7,17 @@
  * - 纠偏 Slot 2 (卖点图) & Slot 3 (尺寸图)：坚决不要求生图模型直接绘制容易扭曲变形的微小文字、
  *   数字或标尺箭头，而是生成“主体清晰的高质商业底图 + 干净的排版留白负空间”。
  * - 纯函数与确定性数据字典，零外部依赖、零副作用。
+ *
+ * 机器可读字段（在既有 7 个字段名与语义不变的前提下新增）：
+ * - recipeVersion：由配方内容确定性派生（sha256 前 8 位），禁止手写，改内容即改版本；
+ * - buyerQuestion：这张图要回答的购买疑问，只写“帮助用户了解…”，不写未经证实的结论；
+ * - requiredFactKinds：该槽位依赖的已确认事实种类，唯一来源是 purposeRequirements 的既有判定，
+ *   本文件不复制任何字段白名单，也不新增第二套门禁规则；
+ * - textAllowed / backgroundPolicy：把既有 textPolicy / environment 文案的结论显式化为机器可读值。
  */
 
 import type { StudioImageLifestyleScene, StudioImagePrimaryPurpose } from "@/lib/studioImageCreativeIntent";
+import { requiredFactKindsForPurpose, type RequiredFactKind } from "@/lib/imageHandoff/purposeRequirements";
 import type { VisualAssetSlotType } from "@/lib/imageHandoff/visualAssetPlan";
 
 export type SlotPromptRecipeId =
@@ -18,7 +26,11 @@ export type SlotPromptRecipeId =
   | "dimension_specs"
   | "detail_closeup"
   | "lifestyle_in_use"
-  | "packaging_bundle";
+  | "packaging_bundle"
+  | "usage_steps";
+
+/** 背景策略：与 environment 文案一致（纯白合规底 / 中性棚拍面 / 真实场景环境） */
+export type SlotBackgroundPolicy = "pure_white" | "neutral" | "scene";
 
 export type SlotPromptRecipe = {
   id: SlotPromptRecipeId;
@@ -30,9 +42,142 @@ export type SlotPromptRecipe = {
   environment: string;
   textPolicy: string;
   negativeConstraints: readonly string[];
+  /** 内容确定性派生版本（sha256(recipeId + "|" + 规范化序列化) 前 8 位）；禁止手写 */
+  recipeVersion: string;
+  /** 这张图要回答的购买疑问（疑问句式，不得写成未经证实的结论） */
+  buyerQuestion: string;
+  /** 该槽位依赖的已确认事实种类（源自 purposeRequirements 的派生结果） */
+  requiredFactKinds: readonly RequiredFactKind[];
+  /** 是否允许画面出现文字：与既有 textPolicy 文案一致 */
+  textAllowed: boolean;
+  /** 背景策略：与既有 environment 文案一致 */
+  backgroundPolicy: SlotBackgroundPolicy;
 };
 
-export const SLOT_PROMPT_RECIPES: Record<SlotPromptRecipeId, SlotPromptRecipe> = {
+/** recipeVersion 的哈希输入内容：全部配方字段，但不含 recipeVersion 自身（避免自指） */
+export type SlotPromptRecipeContent = Omit<SlotPromptRecipe, "recipeVersion">;
+
+// ── recipeVersion 确定性派生（SHA-256，零依赖实现）──────────────────────────
+/**
+ * 这里没有使用 node:crypto：本模块同时被服务端提示词链路与展示层复用，
+ * node:crypto 会污染客户端 bundle。故使用无环境依赖的纯 TS SHA-256
+ * （Node / Edge / 浏览器结果一致），并由测试与 node:crypto 的 sha256 逐条对照校验。
+ */
+const SHA256_ROUND_CONSTANTS = new Uint32Array([
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+]);
+
+const SHA256_INITIAL_HASH = new Uint32Array([
+  0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+]);
+
+function rotateRight(value: number, bits: number): number {
+  return (value >>> bits) | (value << (32 - bits));
+}
+
+function sha256Hex(input: string): string {
+  const message = new TextEncoder().encode(input);
+  const paddedLength = (((message.length + 8) >> 6) << 6) + 64;
+  const padded = new Uint8Array(paddedLength);
+  padded.set(message);
+  padded[message.length] = 0x80;
+  const paddedView = new DataView(padded.buffer);
+  const bitLength = message.length * 8;
+  paddedView.setUint32(paddedLength - 8, Math.floor(bitLength / 0x100000000), false);
+  paddedView.setUint32(paddedLength - 4, bitLength >>> 0, false);
+
+  const hash = Uint32Array.from(SHA256_INITIAL_HASH);
+  const words = new Uint32Array(64);
+
+  for (let offset = 0; offset < paddedLength; offset += 64) {
+    for (let i = 0; i < 16; i += 1) {
+      words[i] = paddedView.getUint32(offset + i * 4, false);
+    }
+    for (let i = 16; i < 64; i += 1) {
+      const w15 = words[i - 15];
+      const w2 = words[i - 2];
+      const s0 = rotateRight(w15, 7) ^ rotateRight(w15, 18) ^ (w15 >>> 3);
+      const s1 = rotateRight(w2, 17) ^ rotateRight(w2, 19) ^ (w2 >>> 10);
+      words[i] = (words[i - 16] + s0 + words[i - 7] + s1) >>> 0;
+    }
+
+    let [a, b, c, d, e, f, g, h] = hash;
+    for (let i = 0; i < 64; i += 1) {
+      const sigma1 = rotateRight(e, 6) ^ rotateRight(e, 11) ^ rotateRight(e, 25);
+      const choice = (e & f) ^ (~e & g);
+      const temp1 = (h + sigma1 + choice + SHA256_ROUND_CONSTANTS[i] + words[i]) >>> 0;
+      const sigma0 = rotateRight(a, 2) ^ rotateRight(a, 13) ^ rotateRight(a, 22);
+      const majority = (a & b) ^ (a & c) ^ (b & c);
+      const temp2 = (sigma0 + majority) >>> 0;
+
+      h = g;
+      g = f;
+      f = e;
+      e = (d + temp1) >>> 0;
+      d = c;
+      c = b;
+      b = a;
+      a = (temp1 + temp2) >>> 0;
+    }
+
+    hash[0] = (hash[0] + a) >>> 0;
+    hash[1] = (hash[1] + b) >>> 0;
+    hash[2] = (hash[2] + c) >>> 0;
+    hash[3] = (hash[3] + d) >>> 0;
+    hash[4] = (hash[4] + e) >>> 0;
+    hash[5] = (hash[5] + f) >>> 0;
+    hash[6] = (hash[6] + g) >>> 0;
+    hash[7] = (hash[7] + h) >>> 0;
+  }
+
+  return Array.from(hash, (word) => word.toString(16).padStart(8, "0")).join("");
+}
+
+/**
+ * 规范化序列化：按固定字段顺序取值（与对象键顺序无关），数组保持原顺序，
+ * 输入内容不含 recipeVersion 自身，避免自指导致的版本漂移。
+ */
+function canonicalSlotRecipeSource(content: SlotPromptRecipeContent): string {
+  return JSON.stringify([
+    content.id,
+    content.name,
+    content.businessGoal,
+    content.composition,
+    content.cameraLanguage,
+    content.lighting,
+    content.environment,
+    content.textPolicy,
+    [...content.negativeConstraints],
+    content.buyerQuestion,
+    [...content.requiredFactKinds],
+    content.textAllowed,
+    content.backgroundPolicy,
+  ]);
+}
+
+/** 由内容派生 recipeVersion：sha256(recipeId + "|" + 规范化序列化).slice(0, 8) */
+export function deriveSlotRecipeVersion(content: SlotPromptRecipeContent): string {
+  return sha256Hex(`${content.id}|${canonicalSlotRecipeSource(content)}`).slice(0, 8);
+}
+
+/** 事实门禁用途对齐：只做槽位 → 既有用途枚举的映射，事实种类一律来自 purposeRequirements 派生 */
+const MAIN_STUDIO_FACT_KINDS = requiredFactKindsForPurpose("white_studio");
+const DETAIL_CLOSEUP_FACT_KINDS = requiredFactKindsForPurpose("detail_closeup");
+/**
+ * 场景槽位不依赖任何已确认事实种类：
+ * visualAssetPlan 中该槽位是构图概念探索槽位，readiness 恒为 ready，不读取任何 has*Evidence 结果，
+ * 因此这里与规划保持一致（不额外收紧门禁，也不宣布任何事实已满足）。
+ */
+const LIFESTYLE_FACT_KINDS: readonly RequiredFactKind[] = Object.freeze([]);
+
+const RECIPE_DEFINITIONS: Record<SlotPromptRecipeId, SlotPromptRecipeContent> = {
   main_white_studio: {
     id: "main_white_studio",
     name: "白底合规主图",
@@ -49,6 +194,12 @@ export const SLOT_PROMPT_RECIPES: Record<SlotPromptRecipeId, SlotPromptRecipe> =
       "no floating product with missing contact shadow",
       "no reflective floor mirror effect",
     ],
+    buyerQuestion: "帮助用户了解商品在纯白背景下的真实外观、整体比例与主体轮廓是什么样的。",
+    // environment: Pure seamless solid white background (pure white RGB 255, 255, 255) → pure_white
+    backgroundPolicy: "pure_white",
+    // textPolicy: Zero text, zero labels … → 禁止文字
+    textAllowed: false,
+    requiredFactKinds: MAIN_STUDIO_FACT_KINDS,
   },
 
   selling_points: {
@@ -66,23 +217,36 @@ export const SLOT_PROMPT_RECIPES: Record<SlotPromptRecipeId, SlotPromptRecipe> =
       "no multi-panel collage, grid or moodboard layout",
       "no cluttered backdrop competing with the product subject",
     ],
+    buyerQuestion: "帮助用户了解这款商品有哪些已确认的功能、材质或结构特征值得关注。",
+    // environment: Subtle neutral high-key studio background → neutral
+    backgroundPolicy: "neutral",
+    // textPolicy: Do NOT generate simulated text … → 禁止文字
+    textAllowed: false,
+    requiredFactKinds: requiredFactKindsForPurpose("selling_point_infographic"),
   },
 
   dimension_specs: {
     id: "dimension_specs",
     name: "尺寸规格与空间图",
-    businessGoal: "Clean spatial scale and physical proportion reference to eliminate buyer size confusion and prevent returns.",
-    composition: "Straightforward scale-reference composition showing the full exterior silhouette of the product with ample surrounding buffer space for post-production dimension callouts.",
-    cameraLanguage: "Orthographic straight-on or standard isometric perspective with zero wide-angle perspective distortion so physical proportions remain truthful.",
-    lighting: "Crisp architectural studio lighting that defines exact silhouette edges and vertical/horizontal volume contours.",
-    environment: "Minimal clean neutral surface with clear spatial boundaries and zero distracting decor.",
+    businessGoal: "Clear spatial scale and physical proportion reference to eliminate buyer size confusion and prevent returns.",
+    composition: "Intuitive scale-comparison composition: stage the product naturally alongside a recognized, standard everyday physical object (such as a standard smartphone, coffee mug, pen, or human hand placed next to the base) to clearly demonstrate truthful human-scale volume, height and depth, while maintaining generous negative space around the silhouette for post-production graphic annotations.",
+    cameraLanguage: "Orthographic straight-on or standard isometric perspective with zero wide-angle perspective distortion so physical proportions and relative scale remain truthful.",
+    lighting: "Crisp architectural studio lighting that defines exact silhouette edges and vertical/horizontal volume contours against the reference object.",
+    environment: "Clean, contemporary neutral tabletop or studio surface with clear spatial boundaries, subtle natural contact shadows and truthful depth reference.",
     textPolicy: "CLEAN SCALE TEMPLATE: Do NOT render dimension numbers (e.g. cm, inches), rulers, measurement tape, callout arrows or specification text. Provide an pristine commercial base image ready for vector overlays.",
     negativeConstraints: [
       "no rendered dimension numbers, measurement lines or arrow indicators",
       "no distorted perspective or fish-eye lens curvature",
       "no cropped product edges or clipped silhouette",
-      "no confusing props that mislead real-world scale",
+      "no misleading reference objects with non-standard or deceptive scale",
+      "no plain isolated product on blank white background without scale reference context",
     ],
+    buyerQuestion: "帮助用户了解商品的实际尺寸、体积与占用空间大概有多大。",
+    // environment: Clean, contemporary neutral tabletop or studio surface → neutral
+    backgroundPolicy: "neutral",
+    // textPolicy: Do NOT render dimension numbers … or specification text → 禁止文字
+    textAllowed: false,
+    requiredFactKinds: requiredFactKindsForPurpose("dimension_specification"),
   },
 
   detail_closeup: {
@@ -99,6 +263,12 @@ export const SLOT_PROMPT_RECIPES: Record<SlotPromptRecipeId, SlotPromptRecipe> =
       "no ultra-shallow depth of field that blurs the critical detail area",
       "no synthetic CGI plastic sheen or artificial gloss",
     ],
+    buyerQuestion: "帮助用户了解商品的做工细节、接缝处理与表面质感是什么样的。",
+    // environment: Quiet neutral seamless studio backdrop → neutral
+    backgroundPolicy: "neutral",
+    // textPolicy: Zero text, zero measurement arrows … → 禁止文字
+    textAllowed: false,
+    requiredFactKinds: DETAIL_CLOSEUP_FACT_KINDS,
   },
 
   lifestyle_in_use: {
@@ -116,6 +286,12 @@ export const SLOT_PROMPT_RECIPES: Record<SlotPromptRecipeId, SlotPromptRecipe> =
       "no mismatched lighting direction between subject and scene",
       "no exaggerated dramatic fantasy lighting",
     ],
+    buyerQuestion: "帮助用户了解商品放进真实生活场景后是什么样子、适合在哪些场合使用。",
+    // environment: Authentic … lifestyle environment (kitchen, living space, desk or commute) → scene
+    backgroundPolicy: "scene",
+    // textPolicy: Zero text, zero commercial slogans … → 禁止文字
+    textAllowed: false,
+    requiredFactKinds: LIFESTYLE_FACT_KINDS,
   },
 
   packaging_bundle: {
@@ -133,8 +309,57 @@ export const SLOT_PROMPT_RECIPES: Record<SlotPromptRecipeId, SlotPromptRecipe> =
       "no overlapping items that hide the true quantity of contents",
       "no simulated printed brand copy on unconfirmed boxes",
     ],
+    buyerQuestion: "帮助用户了解套装里包含哪些物品、每样各有多少件。",
+    // environment: Clean, neutral matte surface (light grey or soft neutral tone) → neutral
+    backgroundPolicy: "neutral",
+    // textPolicy: Zero fabricated box print text … → 禁止文字
+    textAllowed: false,
+    requiredFactKinds: requiredFactKindsForPurpose("packaging_bundle"),
+  },
+
+  usage_steps: {
+    id: "usage_steps",
+    name: "使用步骤与操作指引",
+    businessGoal: "Clear multi-step sequential workflow guide illustrating practical operation, setup or usage flow to eliminate customer confusion and support post-purchase confidence.",
+    composition: "Multi-step sequential layout presenting distinct operational phases (e.g. step 1 preparation, step 2 action, step 3 completion) in a clean logical progression with dedicated blank caption zones beneath each stage.",
+    cameraLanguage: "Consistent eye-level or 45-degree instructional angle across all step panels, 50mm natural focal length, crisp focus locked on the product mechanism and active operation point.",
+    lighting: "Even, bright, shadow-free commercial instructional lighting with balanced fill, ensuring mechanical parts, latches, caps and buttons are distinctly visible.",
+    environment: "Clean, neutral practical workspace or everyday countertop appropriate to the product function, completely free of visual clutter.",
+    textPolicy: "RESERVED STEP CAPTIONS: Keep all caption areas, numbering zones, callout circles and instructional labels completely blank and clean. Do NOT generate simulated numbers, text, arrows or icons.",
+    negativeConstraints: [
+      "no distorted or malformed human hands, missing knuckles, extra fingers or unnatural grip angles",
+      "no invented mechanical parts, latches, lids, hinges, valves or buttons not present in reference image",
+      "no simulated text, step numbers, callout arrows, badges or typography drawn into the frame",
+      "no chaotic background clutter competing with the functional demonstration",
+      "no single-step plain product photo masking as a multi-step sequence",
+    ],
+    buyerQuestion: "帮助用户了解这件商品从准备到完成需要按什么步骤操作。",
+    // environment: Clean, neutral practical workspace or everyday countertop → neutral
+    backgroundPolicy: "neutral",
+    // textPolicy: Do NOT generate simulated numbers, text, arrows or icons → 禁止文字
+    textAllowed: false,
+    requiredFactKinds: requiredFactKindsForPurpose("usage_steps"),
   },
 };
+
+function withRecipeVersion(content: SlotPromptRecipeContent): SlotPromptRecipe {
+  return Object.freeze({
+    ...content,
+    negativeConstraints: Object.freeze([...content.negativeConstraints]),
+    requiredFactKinds: Object.freeze([...content.requiredFactKinds]),
+    recipeVersion: deriveSlotRecipeVersion(content),
+  });
+}
+
+function buildSlotPromptRecipes(): Record<SlotPromptRecipeId, SlotPromptRecipe> {
+  const recipes = {} as Record<SlotPromptRecipeId, SlotPromptRecipe>;
+  for (const id of Object.keys(RECIPE_DEFINITIONS) as SlotPromptRecipeId[]) {
+    recipes[id] = withRecipeVersion(RECIPE_DEFINITIONS[id]);
+  }
+  return Object.freeze(recipes);
+}
+
+export const SLOT_PROMPT_RECIPES: Record<SlotPromptRecipeId, SlotPromptRecipe> = buildSlotPromptRecipes();
 
 export type ResolveSlotRecipeInput = {
   slotType?: VisualAssetSlotType | string | null;
@@ -155,6 +380,7 @@ export function resolveSlotRecipe(input: ResolveSlotRecipeInput): SlotPromptReci
     if (slotType === "detail_closeup" || slotType === "slot-detail-closeup") return SLOT_PROMPT_RECIPES.detail_closeup;
     if (slotType === "lifestyle_in_use" || slotType === "slot-lifestyle-scene") return SLOT_PROMPT_RECIPES.lifestyle_in_use;
     if (slotType === "packaging_bundle" || slotType === "slot-packaging-bundle") return SLOT_PROMPT_RECIPES.packaging_bundle;
+    if (slotType === "usage_steps" || slotType === "slot-usage-steps") return SLOT_PROMPT_RECIPES.usage_steps;
   }
 
   const purpose = input.primaryPurpose;
@@ -171,6 +397,9 @@ export function resolveSlotRecipe(input: ResolveSlotRecipeInput): SlotPromptReci
   }
   if (purpose === "packaging_bundle") {
     return SLOT_PROMPT_RECIPES.packaging_bundle;
+  }
+  if (purpose === "usage_steps") {
+    return SLOT_PROMPT_RECIPES.usage_steps;
   }
   if (scene && scene !== "none") {
     return SLOT_PROMPT_RECIPES.lifestyle_in_use;

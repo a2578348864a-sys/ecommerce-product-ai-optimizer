@@ -27,15 +27,19 @@ import {
   type StudioImageCreativeIntent,
 } from "@/lib/studioImageCreativeIntent";
 import { evaluatePurposeRequirements } from "@/lib/imageHandoff/purposeRequirements";
+import { resolveSlotRecipe } from "@/lib/imageHandoff/slotPromptRecipes";
 import { VisualAssetPlanCard } from "@/components/image-handoff/VisualAssetPlanCard";
-import { VisualGenerationBriefCard } from "@/components/image-handoff/VisualGenerationBriefCard";
 import {
-  ProductCreationFlowStatus,
-  type ProductCreationFlowStates,
-} from "@/components/studio/ProductCreationFlowStatus";
+  VisualGenerationBriefCard,
+  factKindLabel,
+  factSatisfiesRequiredKind,
+  selectPreviewFacts,
+  type VisualGenerationPreview,
+} from "@/components/image-handoff/VisualGenerationBriefCard";
 import {
   buildVisualAssetPlan,
   type VisualAssetSlot,
+  type VisualAssetSlotType,
 } from "@/lib/imageHandoff/visualAssetPlan";
 
 type ImageStatus =
@@ -49,6 +53,16 @@ type ImageDraftSafeSummary = {
   generatedAt: string | null;
   sourceHandoffRevision: number | null;
   humanReviewRequired: boolean;
+  /**
+   * V2.1 候选级生成依据（服务端安全投影；hash 只给前缀）。
+   * 历史草稿缺这些字段 → 显示「历史生成记录」，不伪造版本。
+   */
+  slotRecipeId?: string | null;
+  recipeVersion?: string | null;
+  stylePresetId?: string | null;
+  planVersion?: string | null;
+  promptHashPrefix?: string | null;
+  referenceImageContentHashPrefix?: string | null;
 };
 
 type ImageDraftHistoryEntry = {
@@ -106,6 +120,46 @@ const EMPTY_TASK_IMAGE_CREATIVE_DRAFT: TaskImageCreativeDraft = {
   userCreativeDescription: "",
   descriptionDirty: false,
 };
+
+/**
+ * 生成前预览所需的事实投影（canonical 字段名与服务端事实门禁同源）。
+ * `field` 缺失（历史 DTO）时保留空串，由 UI 按「资料不足」显示缺口，绝不用 label 猜测放行。
+ */
+type HandoffFactForGate = { field: string; label: string; value: string };
+
+/**
+ * Recipe 生成前预览字段（并行契约，字段名已冻结）：
+ * `buyerQuestion` / `textAllowed` / `backgroundPolicy` / `requiredFactKinds`。
+ * 这些字段由另一个 Agent 落地；这里用窄类型读取 + 兜底，保证字段尚未出现时 UI 不崩、
+ * 不显示 undefined，也不因对方实现进度而编译失败。
+ */
+type RecipePreviewFields = {
+  buyerQuestion?: string;
+  textAllowed?: boolean;
+  backgroundPolicy?: string;
+  requiredFactKinds?: readonly string[];
+};
+
+/** 商品身份可见性：只按 canonical field 取已确认事实；缺失即「未确认」，绝不猜测填充。 */
+const BRIEF_IDENTITY_FACT_KEYS = [
+  { key: "brand", label: "品牌" },
+  { key: "series_or_model", label: "系列或型号" },
+  { key: "color_or_variant", label: "颜色或款式" },
+  { key: "quantity_or_pack_size", label: "数量或包装" },
+] as const;
+
+/**
+ * 槽位类型解析：生成请求与生成前预览共用同一份判据，保持既有 POST 请求体取值不变。
+ */
+function resolveRequestSlotType(intent: StudioImageCreativeIntent): VisualAssetSlotType {
+  if (intent.primaryImagePurpose === "white_studio") return "main_white_studio";
+  if (intent.primaryImagePurpose === "dimension_specification") return "dimension_specs";
+  if (intent.primaryImagePurpose === "detail_closeup") return "detail_closeup";
+  if (intent.primaryImagePurpose === "packaging_bundle") return "packaging_bundle";
+  if (intent.primaryImagePurpose === "usage_steps") return "usage_steps";
+  if (intent.lifestyleScene && intent.lifestyleScene !== "none") return "lifestyle_in_use";
+  return "selling_points";
+}
 
 function formatTime(value: string | null) {
   if (!value) return "生成时间未知";
@@ -261,6 +315,7 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
   );
   const [stylePresetId, setStylePresetId] = useState<ImageStylePresetId>(DEFAULT_IMAGE_STYLE_PRESET_ID);
   const [activeSlotId, setActiveSlotId] = useState<string | null>(null);
+  const [activeSlotType, setActiveSlotType] = useState<VisualAssetSlotType | null>(null);
   const [userCreativeDescription, setUserCreativeDescription] = useState("");
   const [descriptionDirty, setDescriptionDirty] = useState(false);
   const seededDescriptionKeyRef = useRef("");
@@ -364,12 +419,14 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
     setNotice(null);
     const requestKey = requestId ?? createBrowserUuid();
     setRequestId(requestKey);
+    const resolvedSlotType = activeSlotType ?? resolveRequestSlotType(creativeIntent);
     const body = {
       requestId: requestKey,
       expectedStorageVersion: state.storageVersion,
       expectedHandoffRevision: state.expectedHandoffRevision,
       mode: state.mode,
       count: candidateCount,
+      slotType: resolvedSlotType,
       // 该 Route 用严格字段白名单校验请求体：这里逐字段列举，绝不整体展开共享意图对象，
       // 否则 Studio 专属维度（如 stylePresetId）会以 unknown_field 被拒。
       primaryImagePurpose: creativeIntent.primaryImagePurpose,
@@ -481,23 +538,25 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
   const purposeRequiresReference = REQUIRES_REFERENCE_PURPOSES.has(creativeIntent.primaryImagePurpose);
   const hasApprovedReference = state.approvedVisualReferenceSummary.length > 0;
   const referenceGateBlocked = purposeRequiresReference && !hasApprovedReference;
+  // V3.5 canonical 事实投影（前后端事实门禁同源）：DTO 已带 canonical `field`，
+  // 直接透传，绝不再伪造空字段；历史数据缺 `field` 时保留空串，由门禁按「资料不足」处理。
+  // 下面的 Purpose 门禁与视觉资产规划共用同一份投影，避免两处判定漂移。
+  const handoffFacts: HandoffFactForGate[] = (state.creativeDescriptionContext?.confirmedFacts ?? [])
+    .map((fact) => ({
+      field: typeof fact.field === "string" ? fact.field : "",
+      label: fact.label,
+      value: String(fact.value ?? ""),
+    }));
+
   // V3 Creative Intent Propagation：Purpose 要求证据 gate（前端与服务端共享同一规则；不静默降级）
   const purposeGate = evaluatePurposeRequirements(
     creativeIntent.primaryImagePurpose,
-    (state.creativeDescriptionContext?.confirmedFacts ?? []).map((fact) => ({
-      field: "",
-      label: fact.label,
-      value: String(fact.value ?? ""),
-    })),
+    handoffFacts,
   );
 
   const visualAssetPlan = state
     ? buildVisualAssetPlan({
-        facts: (state.creativeDescriptionContext?.confirmedFacts ?? []).map((fact) => ({
-          field: "",
-          label: fact.label,
-          value: String(fact.value ?? ""),
-        })),
+        facts: handoffFacts,
         hasApprovedVisualReference: state.approvedVisualReferenceSummary.length > 0,
         productName: state.creativeDescriptionContext?.productName,
       })
@@ -505,35 +564,52 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
 
   const handleSelectSlot = (slot: VisualAssetSlot) => {
     setActiveSlotId(slot.slotId);
+    setActiveSlotType(slot.slotType);
     setCreativeIntent({
       primaryImagePurpose: slot.suggestedPurpose,
       lifestyleScene: slot.suggestedScene,
       customImagePurpose: "",
     });
     setStylePresetId(slot.suggestedStylePresetId);
-    if (state?.creativeDescriptionContext) {
-      setUserCreativeDescription(
-        buildTaskImageCreativeDescription(
-          state.creativeDescriptionContext,
-          slot.suggestedPurpose,
-          slot.suggestedScene,
-          "",
-        ),
-      );
-      setDescriptionDirty(false);
+    if (!state?.creativeDescriptionContext) return;
+    // V2.1.1 修复：用户已编辑过创作描述时**绝不静默替换**。
+    // 旧行为：点主题会无条件用系统生成的描述覆盖用户输入，并清掉 dirty 标记 ——
+    // 用户会以为"我改了却没生效"。现在保留用户内容，并给出可见提示（不静默）。
+    if (descriptionDirty) {
+      setNotice({ tone: "info", text: "已切换视觉主题；你编辑过的创作描述已保留。" });
+      return;
     }
+    setUserCreativeDescription(
+      buildTaskImageCreativeDescription(
+        state.creativeDescriptionContext,
+        slot.suggestedPurpose,
+        slot.suggestedScene,
+        "",
+      ),
+    );
+    setDescriptionDirty(false);
   };
 
   const currentSlot = activeSlotId
     ? visualAssetPlan?.slots.find((s) => s.slotId === activeSlotId)
     : visualAssetPlan?.slots.find((s) => s.suggestedPurpose === creativeIntent.primaryImagePurpose) ?? visualAssetPlan?.slots[0];
 
-  const allFacts = (state?.creativeDescriptionContext?.confirmedFacts ?? []).map((fact) => ({
-    label: fact.label,
-    value: String(fact.value ?? ""),
-  }));
+  // 槽位就绪度校正（与服务端同源，收口成同一个对外结论）：
+  // 规划层把「真实生活使用场景图」等槽位标记为 ready，但其 suggestedPurpose 在缺少对应事实时
+  // 会被服务端 Purpose 门禁阻断（前端此前显示「就绪」→ 点下去生成按钮是灰的且看不到原因）。
+  // 这里用与上方 purposeGate 完全相同的 `handoffFacts` 逐槽位复算，UI 只有在两者都通过时才说「就绪」。
+  const slotGates: Record<string, { ok: boolean; message?: string }> = {};
+  for (const slot of visualAssetPlan?.slots ?? []) {
+    const slotGate = evaluatePurposeRequirements(slot.suggestedPurpose, handoffFacts);
+    slotGates[slot.slotId] = slotGate.ok ? { ok: true } : { ok: false, message: slotGate.message };
+  }
+
+  const allFacts = handoffFacts;
+  // 槽位事实筛选：canonical field 优先匹配（与服务端门禁同源），label 匹配保留为历史兼容。
   const briefFacts = currentSlot && currentSlot.factRefs && currentSlot.factRefs.length > 0
-    ? allFacts.filter((f) => currentSlot.factRefs.some((ref) => f.label.includes(ref) || ref.includes(f.label)))
+    ? allFacts.filter((f) => currentSlot.factRefs.some((ref) => (
+        (f.field !== "" && f.field === ref) || f.label.includes(ref) || ref.includes(f.label)
+      )))
     : allFacts;
   const displayBriefFacts = briefFacts.length > 0 ? briefFacts : allFacts;
 
@@ -567,6 +643,90 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
     ? `${currentSlot.purposeSummary} · ${currentSlot.rationale}`
     : "生成符合电商上架与转化规范的高质感视觉素材";
 
+  // ── 生成前方案预览（8 项）──────────────────────────────────────────────
+  // 数据全部来自已有 state 与共享 Recipe 解析：不新增 API、不新增请求。
+  // Recipe 新字段（buyerQuestion / textAllowed / backgroundPolicy / requiredFactKinds）用窄类型读取并兜底，
+  // 另一个 Agent 尚未落地时同样不崩、不显示 undefined。
+  const requestSlotType = activeSlotType ?? resolveRequestSlotType(creativeIntent);
+  const previewRecipe = resolveSlotRecipe({
+    slotType: requestSlotType,
+    primaryPurpose: creativeIntent.primaryImagePurpose,
+    lifestyleScene: creativeIntent.lifestyleScene,
+    stylePresetId,
+  }) as ReturnType<typeof resolveSlotRecipe> & RecipePreviewFields;
+  const requiredFactKinds = Array.isArray(previewRecipe.requiredFactKinds)
+    ? previewRecipe.requiredFactKinds.filter((kind): kind is string => (
+        typeof kind === "string" && kind.trim().length > 0
+      ))
+    : [];
+  const buyerQuestion = typeof previewRecipe.buyerQuestion === "string"
+    ? previewRecipe.buyerQuestion.trim()
+    : "";
+  const backgroundPolicy = typeof previewRecipe.backgroundPolicy === "string"
+    ? previewRecipe.backgroundPolicy
+    : "";
+  const recipeTextPolicy = typeof previewRecipe.textPolicy === "string" ? previewRecipe.textPolicy : "";
+  const textAllowed = typeof previewRecipe.textAllowed === "boolean" ? previewRecipe.textAllowed : null;
+  // 事实使用范围：优先按 Recipe 的 canonical requiredFactKinds 筛选（与服务端门禁同源）；
+  // 配方字段未就绪时回退到既有槽位 label 筛选，绝不显示 undefined。
+  const factsUsed = requiredFactKinds.length > 0
+    ? selectPreviewFacts(allFacts, requiredFactKinds)
+    : displayBriefFacts;
+
+  // 尚缺资料与可执行下一步：判据来自已有门禁结果、canonical 事实缺口与自定义用途校验。
+  const previewGaps: VisualGenerationPreview["gaps"] = [];
+  if (referenceGateBlocked) {
+    previewGaps.push({
+      label: "缺少已批准的商品参考图",
+      nextStep: "请先在研究记录中确认商品参考图后再生成，或改用构图概念方向",
+    });
+  }
+  if (!purposeGate.ok) {
+    previewGaps.push({
+      label: `${primaryPurposeLabel(creativeIntent.primaryImagePurpose)}所需事实尚未确认`,
+      nextStep: `${purposeGate.message}请先在研究页确认相关事实后再生成，或改用其他图片用途。`,
+    });
+  } else {
+    for (const kind of requiredFactKinds) {
+      const confirmed = allFacts.some((fact) => factSatisfiesRequiredKind(fact, kind));
+      if (confirmed) continue;
+      const kindLabel = factKindLabel(kind);
+      previewGaps.push({
+        label: `缺少已确认${kindLabel}事实`,
+        nextStep: `请先在研究页确认${kindLabel}后再生成`,
+      });
+    }
+  }
+  if (creativeIntent.primaryImagePurpose === "custom" && !creativeIntent.customImagePurpose.trim()) {
+    previewGaps.push({
+      label: "自定义图片用途尚未填写",
+      nextStep: "请先填写自定义图片用途后再生成",
+    });
+  }
+
+  const generationPreview: VisualGenerationPreview = {
+    generationType: state.mode,
+    productName: state.creativeDescriptionContext?.productName ?? "",
+    approvedReferenceCount: state.approvedVisualReferenceSummary?.length ?? 0,
+    identity: BRIEF_IDENTITY_FACT_KEYS.map(({ key, label }) => {
+      const match = allFacts.find((fact) => fact.field === key && fact.value.trim().length > 0);
+      return { key, label, value: match ? match.value.trim() : null };
+    }),
+    buyerQuestion,
+    factsUsed,
+    requiredFactKinds,
+    composition: typeof previewRecipe.composition === "string" ? previewRecipe.composition : "",
+    // 中文界面收口：构图方向直接显示槽位的中文规划说明（已有真源），
+    // 英文配方原文仍在 preview.composition 里，收进折叠区仅供核对，不作为主展示。
+    compositionLabel: (currentSlot?.purposeSummary ?? "").trim(),
+    backgroundPolicy,
+    styleLabel: briefStrategy.styleLabel,
+    textAllowed,
+    textPolicy: recipeTextPolicy,
+    negativeConstraints: briefConstraints,
+    gaps: previewGaps,
+  };
+
   const generateDisabled = !state.canGenerate
     || submitting
     || state.imageStatus === "revoked"
@@ -575,36 +735,58 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
     || !purposeGate.ok
     || (creativeIntent.primaryImagePurpose === "custom" && !creativeIntent.customImagePurpose.trim());
 
-  const creationFlowStates: ProductCreationFlowStates = {
-    facts: state?.creativeDescriptionContext?.confirmedFacts.length
-      ? "complete"
-      : state
-        ? "blocked"
-        : "unknown",
-    // Image Studio intentionally does not infer keyword confirmation from its
-    // image payload. The status remains explicit rather than being guessed.
-    keywords: "unknown",
-    creative: state?.expectedHandoffRevision != null ? "complete" : state ? "blocked" : "unknown",
-    listing: "unknown",
-    image: state?.draft
-      ? "complete"
-      : state?.imageStatus === "stale" || state?.imageStatus === "revoked" || state?.imageStatus === "legacy_unbound" || state?.imageStatus === "invalid"
-        ? "blocked"
-        : state?.canGenerate
-          ? "current"
-          : state
-            ? "pending"
-            : "unknown",
-  };
+  // 展示收口：本页不再重复「商品创作流程」五步（研究页与文案工作台已展示同一流程，
+  // 重复会让用户分不清主流程）。这里只陈述本页生成图片所依据的三项前提，
+  // 判据全部来自服务端既有快照字段，不新增任何状态判断。
+  const confirmedFactCount = state?.creativeDescriptionContext?.confirmedFacts.length ?? 0;
+  const basisItems = [
+    {
+      key: "facts",
+      label: "商品事实已确认",
+      pendingLabel: "商品事实待确认",
+      ready: confirmedFactCount > 0,
+      detail: confirmedFactCount > 0 ? `${confirmedFactCount} 项` : "请先在研究页完成事实确认",
+    },
+    {
+      key: "reference",
+      label: "商品参考图已确认",
+      pendingLabel: "商品参考图待确认",
+      ready: (state?.approvedVisualReferenceSummary?.length ?? 0) > 0,
+      detail: (state?.approvedVisualReferenceSummary?.length ?? 0) > 0
+        ? "生成真实商品外观已解锁"
+        : "未确认前只生成构图概念稿",
+    },
+    {
+      key: "creative",
+      label: "创作资料已准备",
+      pendingLabel: "创作资料待准备",
+      ready: state?.expectedHandoffRevision != null,
+      detail: state?.expectedHandoffRevision != null ? "可生成图片候选" : "请先确认创作资料",
+    },
+  ];
 
   return (
     <section className="mt-4 rounded-2xl border border-cyan-200 bg-white p-4" data-testid="image-handoff-section">
-      <ProductCreationFlowStatus
-        states={creationFlowStates}
-        activeStep="image"
-        actionDescription="当前页负责图片生成。关键词方案确认与 Listing 生成状态分别在研究页和文案工作台读取；图片生成不会替代创作资料确认。"
-        compact
-      />
+      <div
+        className="rounded-2xl border border-cyan-100 bg-cyan-50/40 p-3"
+        data-testid="image-creation-basis"
+      >
+        <p className="text-xs font-bold text-slate-800">创作依据（来自研究结果）</p>
+        <ul className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-700">
+          {basisItems.map((item) => (
+            <li key={item.key} className="flex items-center gap-1.5" data-basis={item.key} data-ready={item.ready ? "true" : "false"}>
+              <span className={item.ready ? "text-teal-600" : "text-slate-400"} aria-hidden="true">
+                {item.ready ? "✓" : "○"}
+              </span>
+              <span className="font-semibold text-slate-800">{item.ready ? item.label : item.pendingLabel}</span>
+              <span className="text-slate-500">· {item.detail}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-1.5 text-[11px] leading-5 text-slate-500">
+          图片候选基于上述研究结果生成，不会改写商品事实；生成结果仍需人工复核。
+        </p>
+      </div>
       <div className="flex flex-col gap-2 border-b border-slate-100 pb-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <h3 className="text-base font-bold text-slate-950">图片创作设置</h3>
@@ -671,6 +853,7 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
               plan={visualAssetPlan}
               selectedSlotId={activeSlotId}
               onSelectSlot={handleSelectSlot}
+              slotGates={slotGates}
             />
           ) : null}
 
@@ -680,6 +863,7 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
               value={creativeIntent}
               onChange={(nextCreativeIntent) => {
                 setActiveSlotId(null);
+                setActiveSlotType(null);
                 setCreativeIntent(nextCreativeIntent);
                 if (state.creativeDescriptionContext && !descriptionDirty) {
                   setUserCreativeDescription(buildTaskImageCreativeDescription(
@@ -714,6 +898,7 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
             strategy={briefStrategy}
             constraints={briefConstraints}
             referenceNotice={briefReferenceNotice}
+            preview={generationPreview}
             customPromptSummary={
               descriptionDirty && userCreativeDescription
                 ? userCreativeDescription.slice(0, 120) + (userCreativeDescription.length > 120 ? "..." : "")
@@ -752,7 +937,7 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
         <summary className="flex cursor-pointer items-center justify-between font-bold text-slate-700 hover:text-slate-900">
           <div className="flex items-center gap-2">
             <span>查看 / 调整创作描述与生成约束</span>
-            <span className="rounded-full bg-slate-200/70 px-2 py-0.5 text-[11px] font-normal text-slate-600">Prompt · 模式 · 安全说明</span>
+            <span className="rounded-full bg-slate-200/70 px-2 py-0.5 text-[11px] font-normal text-slate-600">提示词 · 模式 · 安全说明</span>
           </div>
           <span className="text-xs font-normal text-teal-700">展开详情 ↓</span>
         </summary>
@@ -872,6 +1057,28 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
                     <span>已基于批准的视觉参考生成</span>
                   </div>
                 ) : null}
+
+                {/* V2.1 生成依据（只展示安全投影：槽位/配方版本/风格/计划版本 + hash 前缀；绝不展示原始 Prompt） */}
+                <div
+                  className="rounded-xl border border-slate-200/70 bg-white px-3 py-2 text-[11px] leading-relaxed text-slate-500"
+                  data-testid="candidate-trace"
+                  data-has-trace={candidate.slotRecipeId || candidate.recipeVersion ? "true" : "false"}
+                >
+                  {candidate.slotRecipeId || candidate.recipeVersion ? (
+                    <div className="space-y-0.5">
+                      <div>
+                        生成依据：槽位 <span className="text-slate-700">{candidate.slotRecipeId ?? "—"}</span>
+                        {candidate.recipeVersion ? <> · 配方版本 <span className="text-slate-700">{candidate.recipeVersion}</span></> : null}
+                        {candidate.stylePresetId ? <> · 风格 <span className="text-slate-700">{candidate.stylePresetId}</span></> : null}
+                      </div>
+                      {candidate.planVersion ? <div>计划版本：{candidate.planVersion}</div> : null}
+                      {candidate.promptHashPrefix ? <div>实发提示词指纹：{candidate.promptHashPrefix}…</div> : null}
+                      {candidate.referenceImageContentHashPrefix ? <div>参考图内容指纹：{candidate.referenceImageContentHashPrefix}…</div> : null}
+                    </div>
+                  ) : (
+                    <div>历史生成记录（该版本尚未记录生成依据）</div>
+                  )}
+                </div>
 
                 {/* 候选方案三要素：推荐用途 · 适用原因 · 必要限制 */}
                 <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-2.5 text-xs space-y-1.5 shadow-2xs">

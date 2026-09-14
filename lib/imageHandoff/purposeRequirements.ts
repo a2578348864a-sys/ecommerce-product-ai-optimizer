@@ -290,6 +290,72 @@ export function hasSellingPointEvidence(facts: ConfirmedFactLike[]): boolean {
   });
 }
 
+// ── 用途 → 事实种类同源映射（本轮新增导出；既有判定逻辑与既有导出签名保持不变）──
+/**
+ * 已确认事实种类：与上方既有 evidence 判定函数一一对应。
+ * 这是「某用途依赖哪类事实」的唯一权威；槽位配方只引用这里的派生结果，
+ * 不再另行复制字段白名单或第二套判定规则。
+ */
+export type RequiredFactKind =
+  | "selling_point_fact"
+  | "dimension_fact"
+  | "packaging_fact"
+  | "usage_fact";
+
+/** 事实种类 → 既有 evidence 判定函数（及所属主用途）；唯一权威来源，不做任何复制 */
+export const REQUIRED_FACT_KIND_SOURCES: Readonly<
+  Record<RequiredFactKind, { purpose: StudioImagePrimaryPurpose; evidence: (facts: ConfirmedFactLike[]) => boolean }>
+> = {
+  selling_point_fact: { purpose: "selling_point_infographic", evidence: hasSellingPointEvidence },
+  dimension_fact: { purpose: "dimension_specification", evidence: hasDimensionEvidence },
+  packaging_fact: { purpose: "packaging_bundle", evidence: hasPackagingEvidence },
+  usage_fact: { purpose: "usage_steps", evidence: hasUsageEvidence },
+};
+
+function buildRequiredFactKindsByPurpose(): Record<StudioImagePrimaryPurpose, readonly RequiredFactKind[]> {
+  const collected = new Map<StudioImagePrimaryPurpose, RequiredFactKind[]>();
+  for (const purpose of Object.keys(PURPOSE_REQUIREMENTS) as StudioImagePrimaryPurpose[]) {
+    collected.set(purpose, []);
+  }
+  for (const kind of Object.keys(REQUIRED_FACT_KIND_SOURCES) as RequiredFactKind[]) {
+    const purpose = REQUIRED_FACT_KIND_SOURCES[kind].purpose;
+    // 只登记既有需求矩阵声明 requiresEvidence 的用途：不新增门禁、也不放宽门禁。
+    if (!PURPOSE_REQUIREMENTS[purpose].requiresEvidence) continue;
+    collected.get(purpose)?.push(kind);
+  }
+  const byPurpose = {} as Record<StudioImagePrimaryPurpose, readonly RequiredFactKind[]>;
+  for (const [purpose, kinds] of collected) {
+    byPurpose[purpose] = Object.freeze(kinds);
+  }
+  return byPurpose;
+}
+
+/** 主用途 → 该用途依赖的已确认事实种类（派生自 PURPOSE_REQUIREMENTS 与 REQUIRED_FACT_KIND_SOURCES） */
+export const REQUIRED_FACT_KINDS_BY_PURPOSE: Readonly<Record<StudioImagePrimaryPurpose, readonly RequiredFactKind[]>> =
+  Object.freeze(buildRequiredFactKindsByPurpose());
+
+/** 该用途依赖的事实种类；无事实门禁的用途返回空数组（不猜测、不新增要求） */
+export function requiredFactKindsForPurpose(purpose: StudioImagePrimaryPurpose): readonly RequiredFactKind[] {
+  return REQUIRED_FACT_KINDS_BY_PURPOSE[purpose] ?? [];
+}
+
+/** 该用途当前缺失的事实种类（调用既有 evidence 判定，不复制判定逻辑） */
+export function missingRequiredFactKinds(
+  purpose: StudioImagePrimaryPurpose,
+  facts: readonly ConfirmedFactLike[],
+): RequiredFactKind[] {
+  const factList = facts as ConfirmedFactLike[];
+  return requiredFactKindsForPurpose(purpose).filter((kind) => !REQUIRED_FACT_KIND_SOURCES[kind].evidence(factList));
+}
+
+/** 该用途的事实要求是否已被当前已确认事实满足（与 evaluatePurposeRequirements 的判据同源） */
+export function isPurposeFactRequirementSatisfied(
+  purpose: StudioImagePrimaryPurpose,
+  facts: readonly ConfirmedFactLike[],
+): boolean {
+  return missingRequiredFactKinds(purpose, facts).length === 0;
+}
+
 export type PurposeGateResult =
   | { ok: true }
   | { ok: false; code: string; message: string };

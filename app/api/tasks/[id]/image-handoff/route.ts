@@ -38,6 +38,8 @@ const ALLOWED_GENERATE_FIELDS = new Set([
   "count", "primaryImagePurpose", "lifestyleScene", "customImagePurpose", "userCreativeDescription",
   // Image Style Library V1：视觉方向（纯视觉表达，永不改变已确认事实与已批准参考）。
   "stylePresetId",
+  // 视觉资产规划槽位类型
+  "slotType",
 ]);
 const ALLOWED_SELECT_FIELDS = new Set([
   "selectedImageId", "expectedStorageVersion", "expectedHandoffRevision", "confirmed",
@@ -366,6 +368,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return errorResponse(400, "invalid_style_preset", "视觉方向无效，请重新选择。");
   }
 
+  const slotType = typeof body.slotType === "string" && body.slotType.trim() ? body.slotType.trim() : undefined;
+
   const { ctx, error } = getAuth(req, id, body);
   if (error) return error;
 
@@ -434,6 +438,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       approvedVisualReferenceSelectionIds,
       ...creativeDirection.data,
       ...(stylePresetId ? { stylePresetId } : {}),
+      ...(slotType ? { slotType } : {}),
       confirmed: true,
     }, providerOptions as never);
     if (ctx!.mode === "demo") {

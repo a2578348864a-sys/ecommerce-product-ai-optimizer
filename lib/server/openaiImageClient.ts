@@ -168,6 +168,73 @@ function assetFailureStage(code: ImageUrlFetchError["code"]): AiImageProviderFai
   return code === "image_provider_untrusted_result_url" ? "provider_response" : "asset_download";
 }
 
+/**
+ * V2.1.1：上游图片服务失败的**服务端**诊断日志（仅控制台，绝不进入 API 响应）。
+ *
+ * 记录：上游 HTTP 状态、上游错误类型、response 摘要（脱敏 + 截断）、上游 request id。
+ * 脱敏规则（避免泄漏凭据与内部地址）：
+ *  - 抹掉 `sk-…` / `Bearer …` 形式的密钥；
+ *  - 抹掉一切 http(s) URL（中转站/内部地址不外泄）；
+ *  - 摘要截断到 300 字符。
+ */
+function redactUpstreamText(value: string): string {
+  return value
+    .replace(/\b(?:sk|rk|pk)-[A-Za-z0-9_-]{8,}/g, "[redacted-key]")
+    .replace(/\bBearer\s+[A-Za-z0-9._-]{8,}/gi, "Bearer [redacted]")
+    .replace(/https?:\/\/[^\s"'<>]+/gi, "[redacted-url]")
+    .slice(0, 300);
+}
+
+function extractUpstreamRequestId(error: unknown): string | null {
+  if (typeof error !== "object" || error === null) return null;
+  const candidates = ["request_id", "_request_id", "requestId", "generation_id", "id"];
+  for (const key of candidates) {
+    const value = (error as Record<string, unknown>)[key];
+    if (typeof value === "string" && value.trim()) return redactUpstreamText(value.trim());
+  }
+  const headers = (error as { headers?: unknown }).headers;
+  if (headers && typeof headers === "object") {
+    const headerValue = (headers as Record<string, unknown>)["x-request-id"];
+    if (typeof headerValue === "string" && headerValue.trim()) return redactUpstreamText(headerValue.trim());
+  }
+  return null;
+}
+
+function logUpstreamImageFailure(input: {
+  status: number;
+  code: string;
+  name: string;
+  constructorName: string;
+  message: string;
+  nestedCode: string;
+  nestedMessage: string;
+  causeName: string;
+  causeCode: string;
+  causeMessage: string;
+  requestId: string | null;
+  elapsedMs: number | null;
+}): void {
+  try {
+    console.error("[image-upstream-failure]", JSON.stringify({
+      providerHttpStatus: Number.isFinite(input.status) && input.status > 0 ? input.status : null,
+      upstreamErrorName: input.name || null,
+      // V2.1.2：SDK 不设置 name，真正可靠的是类名
+      upstreamErrorConstructorName: input.constructorName || null,
+      upstreamErrorCode: input.code || null,
+      upstreamNestedCode: input.nestedCode || null,
+      // V2.1.3：连接层判因字段（如 ConnectTimeoutError / UND_ERR_CONNECT_TIMEOUT / timeout: 10000ms）
+      upstreamCauseName: input.causeName || null,
+      upstreamCauseCode: input.causeCode || null,
+      upstreamRequestId: input.requestId,
+      elapsedMs: input.elapsedMs,
+      upstreamSummary: redactUpstreamText(input.nestedMessage || input.message || ""),
+      upstreamCauseSummary: redactUpstreamText(input.causeMessage || ""),
+    }));
+  } catch {
+    // 诊断路径绝不影响主流程
+  }
+}
+
 export function mapProviderError(error: unknown, providerResultReceived = false): AiImageProviderError {
   if (error instanceof AiImageProviderError) return error;
   if (error instanceof ImageUrlFetchError) {
@@ -188,6 +255,14 @@ export function mapProviderError(error: unknown, providerResultReceived = false)
       ? String((error as { code?: unknown }).code || "")
       : "";
   const name = error instanceof Error ? error.name : "";
+  /**
+   * V2.1.2：**不能只依赖 `error.name`**。
+   * OpenAI SDK 的错误类不设置 `this.name`，因此 `new APIConnectionTimeoutError()` 实例的
+   * `error.name` 实际是继承来的 `"Error"`（见 node_modules/openai/core/error.js:88-92），
+   * 导致原先 `name === "APIConnectionTimeoutError"` 的判断**永远不成立**，
+   * 真实超时被误判为兜底的 provider_error。这里额外取 `constructor.name`（类名保留）作为可靠判据。
+   */
+  const constructorName = error instanceof Error ? (error.constructor?.name ?? "") : "";
   const message = error instanceof Error
     ? error.message
     : typeof error === "object" && error !== null && "message" in error
@@ -198,11 +273,55 @@ export function mapProviderError(error: unknown, providerResultReceived = false)
     && (error as { error?: unknown }).error !== null
     ? (error as { error: Record<string, unknown> }).error
     : null;
+  /**
+   * V2.1.3：**连接层信息在 `error.cause` 里**。
+   *
+   * 实证：Node 内置 undici 的默认 `connectTimeout` 是 **10 秒**；连接建立失败时抛出
+   * `TypeError: fetch failed`，其 `cause` 为
+   * `ConnectTimeoutError: Connect Timeout Error (attempted address: …, timeout: 10000ms)`
+   * （`code = UND_ERR_CONNECT_TIMEOUT`）。OpenAI SDK 在 client.js:373-397 用它匹配
+   * `/timed? ?out/i` 后转成 `APIConnectionTimeoutError("Request timed out.")`，
+   * 因此 `error.message` 只剩一句泛化文案 —— **真正的判因字段是 cause**。
+   */
+  const cause = typeof error === "object" && error !== null && "cause" in error
+    ? (error as { cause?: unknown }).cause
+    : null;
+  const causeName = cause instanceof Error ? cause.name : "";
+  const causeCode = cause && typeof cause === "object" && "code" in cause
+    ? String((cause as { code?: unknown }).code || "")
+    : "";
+  const causeMessage = cause instanceof Error
+    ? cause.message
+    : cause && typeof cause === "object" && "message" in cause
+      ? String((cause as { message?: unknown }).message || "")
+      : "";
+  // V2.1.1：在**分类之前**记录可判因诊断（仅服务端日志；对外合同与脱敏规则不变）。
+  logUpstreamImageFailure({
+    status,
+    code,
+    name,
+    constructorName,
+    message,
+    nestedCode: nestedError ? String(nestedError.code || "") : "",
+    nestedMessage: nestedError ? String(nestedError.message || "") : "",
+    causeName,
+    causeCode,
+    causeMessage,
+    requestId: extractUpstreamRequestId(error),
+    elapsedMs: typeof (error as { elapsedMs?: unknown }).elapsedMs === "number"
+      ? Number((error as { elapsedMs: number }).elapsedMs)
+      : null,
+  });
   const classificationText = [
     code,
     message,
     nestedError ? String(nestedError.code || "") : "",
     nestedError ? String(nestedError.message || "") : "",
+    // V2.1.3：连接层判因信息（ConnectTimeoutError / UND_ERR_CONNECT_TIMEOUT 等）在 cause 里，
+    // 不纳入分类文本就会漏判（例如把连接超时误判成网络错误或兜底错误）。
+    causeName,
+    causeCode,
+    causeMessage,
   ].join(" ").toLowerCase();
   if (code === "moderation_blocked" || code === "image_generation_user_error") {
     return new AiImageProviderError("content_blocked", "图片请求未通过内容安全检查。", false);
@@ -216,12 +335,29 @@ export function mapProviderError(error: unknown, providerResultReceived = false)
   if (status === 429) return new AiImageProviderError("rate_limited", "图片服务繁忙，请稍后重试。", true);
   if (status >= 500) return new AiImageProviderError("provider_unavailable", "图片服务暂时不可用。", true);
   if (status >= 400) return new AiImageProviderError("invalid_request", "图片请求不符合服务要求。", false);
-  if (name === "APIConnectionTimeoutError" || code === "ETIMEDOUT" || code === "ABORT_ERR") {
+  // ── V2.1.2：超时判定改用三重判据（类名 / 码 / 文案），不再只依赖 error.name ──
+  // 说明：状态码分支（429/≥500/≥400）已在本段之前，因此走到这里意味着**没有 HTTP 响应**
+  // （status 为 0 或 NaN）——这正是 SDK 超时与网络中断的典型形态。
+  const TIMEOUT_CONSTRUCTOR_NAMES = new Set([
+    "APIConnectionTimeoutError", "TimeoutError", "HeadersTimeoutError", "BodyTimeoutError", "ConnectTimeoutError",
+  ]);
+  const TIMEOUT_CODES = new Set([
+    "ETIMEDOUT", "ABORT_ERR", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT", "UND_ERR_CONNECT_TIMEOUT",
+  ]);
+  if (
+    TIMEOUT_CONSTRUCTOR_NAMES.has(constructorName)
+    || name === "APIConnectionTimeoutError"
+    || TIMEOUT_CODES.has(code)
+    || /request timed out|timed out|timeout/i.test(classificationText)
+  ) {
     return new AiImageProviderError("timeout", "图片生成超时。", true);
   }
-  if (name === "APIConnectionError"
-    || ["ECONNRESET", "ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN"].includes(code)
-    || /(?:fetch failed|network error|socket hang up|connection refused)/i.test(message)) {
+  if (
+    constructorName === "APIConnectionError"
+    || name === "APIConnectionError"
+    || ["ECONNRESET", "ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "UND_ERR_SOCKET"].includes(code)
+    || /(?:fetch failed|network error|socket hang up|connection refused|connection error|other side closed|terminated)/i.test(classificationText)
+  ) {
     return new AiImageProviderError("network_error", "图片服务网络连接失败。", true);
   }
   return new AiImageProviderError("provider_error", "图片生成服务调用失败。", false);

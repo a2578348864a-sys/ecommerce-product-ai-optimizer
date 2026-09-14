@@ -49,14 +49,38 @@ function preferenceLine(prefs: Record<string, string>) {
 }
 
 /**
+ * 任务标题后缀（研究类任务名会带上这些词，它们**不是商品名的一部分**）。
+ * 真实事故证据（中转站请求原文）：`- Product title: … Storage Solution w 商品研究`
+ * —— 内部任务词被当成商品标题喂给了模型。
+ */
+const TASK_TITLE_SUFFIX_PATTERN = /\s*(?:商品研究|产品研究|市场研究|选品研究)\s*$/u;
+
+/** 按词边界截断（不产生 `Solution w` 这种断词残片）。 */
+function truncateAtWordBoundary(value: string, max: number): string {
+  if (value.length <= max) return value;
+  const cut = value.slice(0, max);
+  const lastSpace = cut.lastIndexOf(" ");
+  return (lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut).trimEnd();
+}
+
+/**
+ * 商品身份用的标题清洗：先去掉任务类型后缀，再按词边界截断。
+ * 只做"去噪 + 断词修正"，**不改写商品本身的信息**（不删品牌、型号、规格里的任何真实标识）。
+ */
+export function cleanIdentityProductTitle(raw: string): string {
+  return truncateAtWordBoundary(raw.replace(TASK_TITLE_SUFFIX_PATTERN, "").trim(), 200);
+}
+
+/**
  * V3 Image Product Identity Lock（§8/§23/§31）：目标商品身份硬约束文本。
  * productType 已确认 → 类别锁；未确认 → 要求保持与目标商品同类别（不猜具体类别）。
  * 低层参考（VOC/AI/竞品/供应）永不能覆盖此身份（§22/§24）。
  */
 export function buildTargetProductIdentityBlock(input: ImageGenerationInput): string {
   const t = input.targetProduct;
+  const title = t.displayName ? cleanIdentityProductTitle(t.displayName) : "";
   const lines = [
-    t.displayName ? `- Product title: ${neutralise(t.displayName)}` : null,
+    title ? `- Product title: ${neutralise(title)}` : null,
     t.productType ? `- Product type: ${neutralise(t.productType)}` : null,
     t.brand ? `- Brand: ${neutralise(t.brand)}` : null,
     t.seriesOrModel ? `- Series/model: ${neutralise(t.seriesOrModel)}` : null,
@@ -143,7 +167,7 @@ export function buildTaskImageStyleBlock(input: ImageGenerationInput): string[] 
  */
 export function buildSlotRecipeBlock(input: ImageGenerationInput): string[] {
   const recipe = resolveSlotRecipe({
-    slotType: (input as { slotType?: string }).slotType,
+    slotType: input.slotType,
     primaryPurpose: input.primaryPurpose,
     lifestyleScene: input.lifestyleScene,
     stylePresetId: input.stylePresetId,
@@ -274,8 +298,13 @@ export function buildImagePromptFromInput(input: ImageGenerationInput): string {
   ].join("\n");
 }
 
-/** V3 Evidence → Creative Context Bridge：Image 参考层文本（bounded；全部 NOT FACT） */
-function buildResearchReferenceLayers(
+/**
+ * V3 Evidence → Creative Context Bridge：Image 参考层文本（bounded；全部 NOT FACT）
+ *
+ * V2.1 起对真实 Provider 路径导出：此前该函数只被"仅用于安全断言、随后被丢弃"的
+ * `buildImagePromptFromInput()` 使用，导致研究参考层**从未真正发送给模型**。
+ */
+export function buildResearchReferenceLayers(
   context: ImageGenerationInput["creativeContext"],
 ): string {
   if (!context) return "研究参考层：无";
