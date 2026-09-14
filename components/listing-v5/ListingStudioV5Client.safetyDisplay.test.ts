@@ -64,4 +64,24 @@ describe("ListingStudioV5Client 安全检查状态接线", () => {
   it("真正没有商品事实时仍不挂载创作确认步骤", () => {
     expect(client).not.toContain('const needsCreativeConfirmation = errorCode === "no_confirmed_facts";');
   });
+
+  it("草稿没有后端搜索词时不显示「0 个词」，并如实说明关键词方案仍在研究记录中", () => {
+    // 研究侧「关键词方案已确认」与草稿「0 个词」并列会让用户以为系统故障（真实浏览器复现）。
+    expect(client).toContain('searchTerms.length > 0 ? `${searchTerms.length} 个词` : "本次未写入"');
+    expect(client).toContain("本次 Listing 草稿未包含后端搜索词");
+    expect(client).toContain("已确认的关键词方案仍在研究记录中");
+    // 没有搜索词时不能给出「已复制」的假成功
+    expect(client).toContain("disabled={searchTerms.length === 0}");
+  });
+
+  it("开发者信息与质量明细默认折叠，且折叠标题不暴露模型/provider/token", () => {
+    const openingTag = (testId: string) =>
+      client.match(new RegExp(`<details[^>]*data-testid="${testId}"[^>]*>`))?.[0] ?? "";
+    expect(openingTag("listing-v5-trace-details")).not.toBe("");
+    expect(openingTag("listing-v5-trace-details")).not.toContain("open");
+    expect(openingTag("listing-v5-quality-evaluation")).not.toContain("open");
+    expect(client).toContain("开发者信息（可忽略）：AI 调用过程与校验明细");
+    // 模型名不得出现在默认可见的折叠标题上（展开后的执行明细里仍有 模型 列）
+    expect(client).not.toContain("模型：{aiModelLabel}");
+  });
 });

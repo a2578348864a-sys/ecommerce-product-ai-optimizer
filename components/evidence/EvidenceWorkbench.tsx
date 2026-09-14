@@ -201,7 +201,7 @@ const OVERVIEW_FIELDS: ReadonlyArray<{ field: string; label: string }> = [
   { field: "price", label: "价格(USD)" },
   { field: "rating", label: "评分" },
   { field: "reviews", label: "评论数" },
-  { field: "rootCategoryBsr", label: "大类BSR" },
+  { field: "rootCategoryBsr", label: "大类BSR（类目排名）" },
   { field: "subCategoryBsr", label: "小类BSR" },
   { field: "estimatedMonthlySales", label: "估算月销量" },
   { field: "estimatedMonthlyRevenue", label: "估算月销售额(USD)" },
@@ -577,6 +577,36 @@ export function researchLifecyclePhaseLabel(
   return labels[phase];
 }
 
+/**
+ * 生命周期阻断原因的展示标签（仅展示层）。
+ *
+ * 快照里的 blockers 是内部原因码，直接渲染会把 `candidate_binding_unverified` 之类的
+ * 开发字段暴露给普通用户；未登记的码保留原文，便于排查。
+ */
+const LIFECYCLE_BLOCKER_LABELS: Record<string, string> = {
+  research_result_invalid: "研究结果数据异常，需要重新核对资料",
+  research_record_invalid: "研究记录数据异常，需要重新核对资料",
+  research_verification_invalid: "研究校验信息异常，需要重新核对资料",
+  legacy_not_supported: "该任务属于旧版研究流程",
+  decision_abandoned: "研究已被放弃",
+  research_stale_requires_reconfirmation: "研究资料已变化，需要重新确认",
+  decision_not_creative_ready: "人工决定尚未进入创作准备",
+  research_verification_missing: "缺少研究校验信息，需要重新确认",
+  candidate_binding_invalid: "候选商品绑定已失效，需要重新确认研究对象",
+  candidate_binding_unverified: "候选商品绑定尚未核实，需要重新确认研究对象",
+  research_not_completed: "商品研究尚未完成",
+  research_needs_information: "研究资料不足，需要补充信息",
+  pending_confirmation: "还有事实待人工确认",
+  collection_failed: "资料采集失败，需要重试",
+  decision_not_saved: "人工决定尚未保存",
+};
+
+export function researchLifecycleBlockerLabel(blocker: unknown): string {
+  const raw = typeof blocker === "string" ? blocker.trim() : "";
+  if (!raw) return "";
+  return LIFECYCLE_BLOCKER_LABELS[raw] ?? raw;
+}
+
 export function EvidenceWorkbench({
   taskId,
   result,
@@ -774,6 +804,7 @@ export function EvidenceWorkbench({
   }
 
   const [keywordBriefState, setKeywordBriefState] = useState<{ primaryKeyword: string; source: string; backendTermsCount: number } | null>(null);
+  const [keywordBriefStateLoaded, setKeywordBriefStateLoaded] = useState(false);
   async function loadKeywordBriefState() {
     try {
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/listing-handoff`, {
@@ -783,6 +814,7 @@ export function EvidenceWorkbench({
       const json = await res.json() as { ok?: boolean; data?: { keywordBriefSummary?: { primaryKeyword: string; source: string; backendTermsCount: number } | null } };
       if (res.ok && json.ok) {
         setKeywordBriefState(json.data?.keywordBriefSummary ?? null);
+        setKeywordBriefStateLoaded(true);
       }
     } catch { /* best-effort */ }
   }
@@ -1016,7 +1048,7 @@ export function EvidenceWorkbench({
             <dt className="text-xs text-slate-500">目前知道什么</dt>
             <dd className="mt-0.5 text-slate-800">
               {overview.some((item) => item.value !== "unknown") || confirmedFacts.length > 0
-                ? `已整理商品概览 ${mergedOverview.filter((item) => item.value !== "unknown").length} 项、已确认 ${confirmedProductFacts.length} 条商品事实${confirmedMarketObservations.length > 0 ? `、${confirmedMarketObservations.length} 项市场观察（价格/评分/评论数/BSR/类目）` : ""}。`
+                ? `已整理商品概览 ${mergedOverview.filter((item) => item.value !== "unknown").length} 项、已确认 ${confirmedProductFacts.length} 条商品事实${confirmedMarketObservations.length > 0 ? `、${confirmedMarketObservations.length} 项市场观察（价格 / 评分 / 评论数 / BSR 类目排名 / 类目）` : ""}。`
                 : "暂无已确认的商品证据。"}
             </dd>
           </div>
@@ -1030,13 +1062,13 @@ export function EvidenceWorkbench({
             ) : null}
             {lifecycleSnapshot && lifecycleSnapshot.blockers.length > 0 ? (
               <ul className="mt-1 space-y-0.5 text-xs text-amber-700" data-testid="research-lifecycle-blockers">
-                {lifecycleSnapshot.blockers.map((blocker) => <li key={blocker}>· {blocker}</li>)}
+                {lifecycleSnapshot.blockers.map((blocker) => <li key={blocker}>· {researchLifecycleBlockerLabel(blocker)}</li>)}
               </ul>
             ) : null}
           </div>
           <div>
             <dt className="text-xs text-slate-500">目前不知道什么</dt>
-            <dd className="mt-0.5 text-slate-800">采购价 / MOQ / 物流成本 / 合规均尚未取得（未用 AI 填补）。</dd>
+            <dd className="mt-0.5 text-slate-800">采购价 / 最小起订量（MOQ）/ 物流成本 / 合规均尚未取得（未用 AI 填补）。</dd>
           </div>
           <div>
             <dt className="text-xs text-slate-500">人工决定</dt>
@@ -1137,7 +1169,7 @@ export function EvidenceWorkbench({
           briefCapturedAt={keywordReportEvidence?.capturedAt ?? null}
           briefEvidenceCount={keywordReportEvidence?.rows.length ?? 0}
           inListing={Boolean(keywordBriefState)}
-          needsReconfirm={false}
+          needsReconfirm={keywordBriefStateLoaded && Boolean(keywordBrief && keywordReportEvidence && !keywordBriefState)}
           hasPending={Boolean(keywordPending)}
           pendingKeywordCount={keywordPending?.keywordCount}
           hasPendingExpired={isPendingExpired}

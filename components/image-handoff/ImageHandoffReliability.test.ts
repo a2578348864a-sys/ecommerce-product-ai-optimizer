@@ -16,6 +16,9 @@ describe("Task Image creation experience", () => {
     expect(source).toContain("lifestyleScene");
     expect(source).toContain("customImagePurpose");
     expect(source).toContain("useSessionDraft");
+    expect(source).toContain("sessionDraft.ready");
+    expect(source).toContain("sessionDraft.restored");
+    expect(source).not.toContain("!restoredDraftRef.current");
     expect(source).not.toContain("confirmedFacts:");
     expect(source).not.toContain("prohibitedClaims:");
     expect(source).toContain("生成图片");

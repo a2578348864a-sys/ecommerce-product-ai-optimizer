@@ -53,6 +53,7 @@ describe("browserEvidenceFailClosedCode (redirect/final-page classification)", (
   it("maps every non-ok page status to a fail-closed error code", () => {
     expect(browserEvidenceFailClosedCode("ok")).toBeNull();
     expect(browserEvidenceFailClosedCode("captcha")).toBe("page_blocked_captcha");
+    expect(browserEvidenceFailClosedCode("automation_blocked")).toBe("automation_blocked");
     expect(browserEvidenceFailClosedCode("login_wall")).toBe("page_blocked_login_wall");
     expect(browserEvidenceFailClosedCode("error_page")).toBe("page_error");
     expect(browserEvidenceFailClosedCode("unknown_page")).toBe("page_unknown");

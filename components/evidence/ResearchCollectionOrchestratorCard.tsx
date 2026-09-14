@@ -124,7 +124,7 @@ const SOURCE_META: Record<
     allowedStates: new Set(["ready", "pending_review", "pending", "failed", "needs_user", "running"]),
   },
   voc: {
-    title: "买家评论 / VOC",
+    title: "买家评论与反馈（VOC）",
     anchorId: "formal-v2-buyer-evidence",
     tabKey: "buyers",
     defaultState: "needs_action",
@@ -449,11 +449,17 @@ export function computeSummary(
 
 export function getAmazonFailureReason(detail?: string, errorCode?: string): string {
   if (errorCode === "navigation_not_allowed") return "页面导航被安全策略阻断";
+  // Amazon 自动化访问校验（/errors_page/validateCaptcha + "Continue shopping"）：
+  // 与登录墙区分，避免指引用户去登录。
+  if (errorCode === "automation_blocked") return "Amazon自动化访问校验";
   if (errorCode === "captcha_required" || errorCode === "login_required") {
     return "验证或登录阻断";
   }
   if (!detail) return "页面无法识别";
   const lower = detail.toLowerCase();
+  if (lower.includes("自动化访问校验")) {
+    return "Amazon自动化访问校验";
+  }
   if (lower.includes("captcha") || lower.includes("login")) {
     return "验证或登录阻断";
   }
@@ -479,6 +485,7 @@ export function getSourceFailureReason(
 ): string {
   if (key === "amazon" || key === "voc") {
     if (errorCode === "navigation_not_allowed") return "页面导航被安全策略阻断";
+    if (errorCode === "automation_blocked") return "Amazon自动化访问校验";
     if (errorCode === "captcha_required" || errorCode === "login_required") {
       return "验证或登录阻断";
     }
@@ -1034,7 +1041,7 @@ export function ResearchCollectionOrchestratorCard({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm sm:text-base font-bold text-slate-900">
-              研究资料
+              数据采集状态
             </h3>
             {/* 状态徽章 */}
             {isInspecting ? (
@@ -1061,7 +1068,7 @@ export function ResearchCollectionOrchestratorCard({
             )}
           </div>
           <p className="mt-1 text-xs text-slate-500">
-            自动梳理 Amazon、关键词与竞品、买家 VOC 与 1688 货源线索；严格保证真实数据，绝不替用户自动确认。
+            自动梳理 Amazon 商品资料、关键词与竞品、买家反馈（VOC）与 1688 货源线索；严格保证真实数据，绝不替用户自动确认。
           </p>
         </div>
 

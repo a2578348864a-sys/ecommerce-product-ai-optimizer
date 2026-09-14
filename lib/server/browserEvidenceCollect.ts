@@ -191,6 +191,9 @@ export function browserEvidenceFailClosedCode(
   switch (pageStatus) {
     case "ok": return null;
     case "captcha": return "page_blocked_captcha";
+    // Amazon 自动化访问校验中间页（/errors_page/validateCaptcha + "Continue shopping"）：
+    // 独立错误码，避免被当成登录墙而给出"请登录"的错误指引。
+    case "automation_blocked": return "automation_blocked";
     case "login_wall": return "page_blocked_login_wall";
     case "error_page": return "page_error";
     case "unknown_page": return "page_unknown";
@@ -200,6 +203,7 @@ export function browserEvidenceFailClosedCode(
 function failClosedMessage(code: string): string {
   switch (code) {
     case "page_blocked_captcha": return "页面要求验证码（CAPTCHA）。我们不自动绕过验证码：请在本机浏览器手动打开该商品页并确认是否为正常商品页后重试。";
+    case "automation_blocked": return "Amazon 触发了自动化访问校验（“Continue shopping”中间页）。系统不会绕过该校验：请在本机浏览器手动打开该商品页确认，或稍后重试。";
     case "page_blocked_login_wall": return "页面要求登录。我们不自动登录：请确认该商品页可公开访问后重试。";
     case "page_error": return "页面返回错误页（商品可能不存在、下架或访问受限）。请确认 ASIN 后重试。";
     case "page_unknown": return "页面不是可识别的 Amazon 商品详情页。请确认 ASIN 与站点后重试。";

@@ -21,7 +21,7 @@ import { evaluateHandoffStatus } from "@/lib/productCreativeHandoffStatus";
 import { summarizeListingHandoffFacts, buildListingInputFromCreativeHandoff } from "@/lib/listingHandoff/listingGenerationInput";
 import { preflightListingClaimSafety } from "@/lib/listingHandoff/listingClaimPreflight";
 import { DEFAULT_CANNOT_SAY } from "@/lib/listingHandoff/listingPlan";
-import { buildListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
+import { buildListingKeywordBrief, isListingKeywordBriefCurrent, parseListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
 import { buildListingBrief } from "@/lib/listingHandoff/listingBrief";
 import { mutateTaskResultJson } from "@/lib/server/taskResultJsonMutation";
 
@@ -176,6 +176,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         // Visitor 无法访问（不存在或属于其他主体）→ 统一 404
         return errorResponse(404, "task_not_found", "任务不存在。");
       }
+      // 关键词方案独立于 Creative Handoff 保存。旧任务没有 handoff 时，仍须
+      // 返回当前 brief 摘要，否则确认成功后详情页永远只能看到“待确认”。
+      const earlyStoredKeywordBrief = parseListingKeywordBrief(gate.keywordBriefRaw);
+      const earlyKeywordBrief = isListingKeywordBriefCurrent(earlyStoredKeywordBrief, gate.keywordEvidenceRaw)
+        ? earlyStoredKeywordBrief
+        : null;
       return NextResponse.json({
         ok: true,
         data: {
@@ -188,6 +194,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           researchRevision: null,
           factSummary: { confirmedFacts: 0, listingEligibleFacts: 0, prohibitedClaims: 0 },
           history: [],
+          keywordBriefSummary: earlyKeywordBrief
+            ? { primaryKeyword: earlyKeywordBrief.primaryKeyword, source: earlyKeywordBrief.source, backendTermsCount: earlyKeywordBrief.backendSearchTerms.length }
+            : null,
+          keywordBriefPlanSummary: projectKeywordPlanSummary(earlyKeywordBrief),
         },
       });
     }
@@ -348,8 +358,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     // Quality.1：readiness（claimSafe / copyReady / keywordReady / missingForQuality）
     const { buildListingReadiness } = await import("@/lib/listingHandoff/listingReadiness");
-    const { parseListingKeywordBrief } = await import("@/lib/listingHandoff/listingKeywordBrief");
-    const keywordBrief = parseListingKeywordBrief(gate.keywordBriefRaw);
+    const storedKeywordBrief = parseListingKeywordBrief(gate.keywordBriefRaw);
+    const keywordBrief = isListingKeywordBriefCurrent(storedKeywordBrief, gate.keywordEvidenceRaw)
+      ? storedKeywordBrief
+      : null;
     // HISTORICAL_KEYWORD_READ_GUARD：真实 GET 必须传入当前 Brief + 策略上下文，历史草稿 keywords 按当前规则投影
     if (rawListingDraftPresent) {
       const confirmedFacts = handoff?.versions?.[handoff.versions.length - 1]?.confirmedFacts ?? [];

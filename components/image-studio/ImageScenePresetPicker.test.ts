@@ -5,6 +5,19 @@ import { ImageScenePresetPicker } from "@/components/image-studio/ImageScenePres
 import { normalizeStudioImageCreativeIntent } from "@/lib/studioImageCreativeIntent";
 
 describe("ImageScenePresetPicker lifestyle state contract", () => {
+  it("标准模板入口展示七个用户可理解的图片用途，并保留使用场景映射", () => {
+    const html = renderToStaticMarkup(createElement(ImageScenePresetPicker, {
+      value: { primaryImagePurpose: "white_studio", lifestyleScene: "none", customImagePurpose: "" },
+      onChange: () => undefined,
+    }));
+
+    expect((html.match(/data-template-id=/g) ?? []).length).toBe(7);
+    for (const label of ["白底主图", "卖点展示", "尺寸规格", "细节特写", "使用场景", "包装清单", "使用步骤"]) {
+      expect(html).toContain(label);
+    }
+    expect(html).toContain('data-template-id="lifestyle_in_use"');
+  });
+
   it("白底禁用生活场景并显示清楚原因", () => {
     const html = renderToStaticMarkup(createElement(ImageScenePresetPicker, {
       value: { primaryImagePurpose: "white_studio", lifestyleScene: "none", customImagePurpose: "" },

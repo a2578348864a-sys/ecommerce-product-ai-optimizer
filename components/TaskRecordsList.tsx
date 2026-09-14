@@ -144,8 +144,15 @@ function getTitle(item: TaskCenterItem) {
   return item.title?.trim() || item.materialText.trim().slice(0, 20) || "未命名记录";
 }
 
+const SOURCE_LABELS: Record<string, string> = {
+  ai: "AI",
+  candidate_research: "候选商品研究",
+  manual: "手动创建",
+};
+
 function sourceLabel(source: string) {
-  return source === "ai" ? "AI" : source ? source : "其他来源";
+  if (!source) return "其他来源";
+  return SOURCE_LABELS[source] ?? source;
 }
 
 const typeLabelMap: Record<string, string> = {
@@ -462,7 +469,9 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
     return () => {
       cancelled = true;
     };
-  }, [view, isAccessPasswordReady, accessPassword]);
+    // noAuthOwner 必须在依赖里：本地 owner 模式下该标记由 /api/runtime-mode 异步返回，
+    // 若只在首帧读一次，首次打开会误显示「请先输入访问密码」且不会自动重试。
+  }, [view, isAccessPasswordReady, accessPassword, noAuthOwner]);
 
   function onScopeChange(nextScope: "" | "research" | "historical" | "active" | "need_info" | "completed" | "abandoned") {
     setScope(nextScope);
@@ -585,7 +594,8 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [accessPassword, isAccessPasswordReady]);
+    // noAuthOwner 同上：解锁标记迟到时必须重新加载，否则首次打开会停在「0 条记录 + 访问密码」。
+  }, [accessPassword, isAccessPasswordReady, noAuthOwner]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);

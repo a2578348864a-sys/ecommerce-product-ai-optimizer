@@ -29,6 +29,22 @@ export type SlotPromptRecipeId =
   | "packaging_bundle"
   | "usage_steps";
 
+/**
+ * 七套对外模板共用的机器可读合同。
+ *
+ * 旧版字段（businessGoal / composition / negativeConstraints 等）继续保留，
+ * 这些字段是历史快照和 Provider 兼容的基础；下面的统一字段是同一份内容
+ * 的明确投影，不会创建第二套配方注册表。
+ */
+export type EcommerceImageTemplateContract = {
+  templateId: SlotPromptRecipeId;
+  description: string;
+  objective: string;
+  promptTemplate: string;
+  mustKeepRules: readonly string[];
+  forbiddenRules: readonly string[];
+};
+
 /** 背景策略：与 environment 文案一致（纯白合规底 / 中性棚拍面 / 真实场景环境） */
 export type SlotBackgroundPolicy = "pure_white" | "neutral" | "scene";
 
@@ -52,10 +68,20 @@ export type SlotPromptRecipe = {
   textAllowed: boolean;
   /** 背景策略：与既有 environment 文案一致 */
   backgroundPolicy: SlotBackgroundPolicy;
-};
+} & EcommerceImageTemplateContract;
 
 /** recipeVersion 的哈希输入内容：全部配方字段，但不含 recipeVersion 自身（避免自指） */
-export type SlotPromptRecipeContent = Omit<SlotPromptRecipe, "recipeVersion">;
+/** 配方定义的原始字段；统一模板字段在构建时从这里投影，避免维护两份内容。 */
+export type SlotPromptRecipeContent = Omit<SlotPromptRecipe, "recipeVersion" | keyof EcommerceImageTemplateContract>;
+
+/** 所有模板共享的商品身份保护规则；事实仍由上层 Confirmed Facts 门禁提供。 */
+export const UNIVERSAL_PRODUCT_PROTECTION_RULES = Object.freeze([
+  "Preserve the exact product structure shown in the approved reference image.",
+  "Do not add accessories, components or units that are not confirmed.",
+  "Do not invent functions, performance, dimensions or other product parameters.",
+  "Do not change the confirmed colour, quantity or material appearance.",
+  "The approved product reference has the highest visual priority; background and styling never override it.",
+] as const);
 
 // ── recipeVersion 确定性派生（SHA-256，零依赖实现）──────────────────────────
 /**
@@ -343,10 +369,26 @@ const RECIPE_DEFINITIONS: Record<SlotPromptRecipeId, SlotPromptRecipeContent> = 
 };
 
 function withRecipeVersion(content: SlotPromptRecipeContent): SlotPromptRecipe {
+  const forbiddenRules = Object.freeze([...content.negativeConstraints]);
+  const promptTemplate = [
+    "Product identity and approved reference take precedence.",
+    `Objective: ${content.businessGoal}`,
+    `Composition: ${content.composition}`,
+    `Camera & lens: ${content.cameraLanguage}`,
+    `Lighting: ${content.lighting}`,
+    `Environment: ${content.environment}`,
+    `Text policy: ${content.textPolicy}`,
+  ].join("\n");
   return Object.freeze({
     ...content,
     negativeConstraints: Object.freeze([...content.negativeConstraints]),
     requiredFactKinds: Object.freeze([...content.requiredFactKinds]),
+    templateId: content.id,
+    description: content.buyerQuestion,
+    objective: content.businessGoal,
+    promptTemplate,
+    mustKeepRules: Object.freeze([...UNIVERSAL_PRODUCT_PROTECTION_RULES]),
+    forbiddenRules,
     recipeVersion: deriveSlotRecipeVersion(content),
   });
 }
@@ -423,6 +465,14 @@ export function resolveSlotRecipe(input: ResolveSlotRecipeInput): SlotPromptReci
 export function formatSlotRecipeBlock(recipe: SlotPromptRecipe): string {
   return [
     `=== 槽位视觉配方（SLOT RECIPE: ${recipe.name.toUpperCase()} / ${recipe.id}）===`,
+    `=== 电商图片模板（ECOMMERCE IMAGE TEMPLATE: ${recipe.name.toUpperCase()} / ${recipe.templateId}）===`,
+    `Template ID: ${recipe.templateId}`,
+    `Description: ${recipe.description}`,
+    `Objective: ${recipe.objective}`,
+    `Prompt Template:\n${recipe.promptTemplate}`,
+    `Must Keep Rules: ${recipe.mustKeepRules.join("; ")}`,
+    `Forbidden Rules: ${recipe.forbiddenRules.join("; ")}`,
+    // 保留旧字段标签，兼容既有 prompt 回归和历史审计工具。
     `Business Goal: ${recipe.businessGoal}`,
     `Composition: ${recipe.composition}`,
     `Camera & Lens: ${recipe.cameraLanguage}`,

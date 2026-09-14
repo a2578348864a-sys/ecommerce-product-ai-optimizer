@@ -4,9 +4,9 @@
 
 - **日期**：2026-06-20
 - **阶段**：Phase 1C Final（收口验收）
-- **前序提交**：`3e481a0`（Phase 1C.3）、`b11bf17`（Phase 1C.2）、`be37cf4`（Phase 1C.1）
+- **前序提交**：`<redacted-hash>`（Phase 1C.3）、`<redacted-hash>`（Phase 1C.2）、`<redacted-hash>`（Phase 1C.1）
 - **当前分支**：main
-- **当前 HEAD**：`3e481a0`
+- **当前 HEAD**：`<redacted-hash>`
 - **目标**：对已完成的 Phase 1C 工作流闭环做最终验收——不新增功能，只确认展示效果、移动端布局、截图归档和阶段文档。
 
 ---
@@ -17,10 +17,10 @@
 |------|-----|
 | 工作目录 | `projects/project-001-跨境电商AI工具/电商工具` |
 | 当前分支 | `main` |
-| 当前 HEAD | `3e481a0` |
+| 当前 HEAD | `<redacted-hash>` |
 | 远端状态 | `main...origin/main`（对齐） |
 | 工作区 | 干净（无修改文件） |
-| 本地服务 | `localhost:3005`（dev server 已在运行） |
+| 本地服务 | `localhost:<PORT>`（dev server 已在运行） |
 | DB 文件 | `prisma/dev.db`（176KB，15 条任务记录） |
 
 ---
@@ -190,15 +190,15 @@ npx next build
 
 ## 10. 仓库修复说明
 
-- **原 commit `0ce4c44`** 曾误提交到 Workspace 根目录仓库（`C:\Users\a2578\Desktop\Workspace`），该仓库无 remote，无法推送。
+- **原 commit `<redacted-hash>`** 曾误提交到 Workspace 根目录仓库（`/path/to/user`），该仓库无 remote，无法推送。
 - **本文件**已复制到项目权威仓库 `projects/project-001-跨境电商AI工具/电商工具`，在 main 分支重新提交。
-- **项目远端**以本次项目仓库 commit 为准。Workspace 根目录的 `0ce4c44` 暂不处理。
+- **项目远端**以本次项目仓库 commit 为准。Workspace 根目录的 `<redacted-hash>` 暂不处理。
 
 ---
 
 ## 11. 下一步建议
 
-1. 用户在有浏览器的环境下打开 `localhost:3005` 补拍截图，保存到 `06_测试与验证/验收截图/Phase1C-Final/`
+1. 用户在有浏览器的环境下打开 `localhost:<PORT>` 补拍截图，保存到 `06_测试与验证/验收截图/Phase1C-Final/`
 2. 确认移动端（390/430/768px）展示无异常后，Phase 1C 可正式收口
 3. 进入 Phase 1D：测试阶段——编写单元测试、集成测试、端到端测试
 4. 可选：寻找 2-3 个真人做小范围 Alpha 测试

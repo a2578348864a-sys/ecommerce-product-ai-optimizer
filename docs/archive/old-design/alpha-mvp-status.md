@@ -1,6 +1,6 @@
 # Alpha MVP 状态说明
 
-> 最后更新：2026-06-24 · Phase 3-B.2 · 生产 HEAD `101ab5d`
+> 最后更新：2026-06-24 · Phase 3-B.2 · 生产 HEAD `<redacted-hash>`
 
 ## 1. 项目定位
 
@@ -93,7 +93,7 @@
 | 单品分析缓存 | 浏览器 localStorage | 2 小时 TTL，不跨设备 |
 | 真实 AI 调用 | DeepSeek chat 通过 OpenAI SDK | 需要访问密码 |
 | 任务沉淀 | Prisma + SQLite | 单用户，无权限分层 |
-| 生产部署 | PM2 + Next.js on 阿里云 | 127.0.0.1:3005 + Nginx 反代 |
+| 生产部署 | PM2 + Next.js on 阿里云 | 127.0.0.1:<PORT> + Nginx 反代 |
 | 访问控制 | 环境变量密码 + 前端 localStorage TTL | 单密码，无多用户 |
 
 ## 5. 当前可演示路径

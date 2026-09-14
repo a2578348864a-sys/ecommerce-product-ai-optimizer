@@ -173,7 +173,9 @@ export function localizeStrategyList(
     .filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
     .map(localizer)
     .filter(Boolean);
-  return items.join("、");
+  // 展示层去重：多个不同的机器码可能映射成同一句中文（如多路研究给出同一条受众结论），
+  // 直接 join 会出现「同一句话重复 4 遍」的观感问题。
+  return Array.from(new Set(items)).join("、");
 }
 
 const BENEFIT_ROLE_MAP: Record<string, string> = {
@@ -201,5 +203,45 @@ export function localizeIntentStage(stage: unknown): string {
   if (typeof stage !== "string" || !stage.trim()) return "";
   const trimmed = stage.trim();
   return INTENT_STAGE_MAP[trimmed] ?? trimmed;
+}
+
+/** 质量提示里的机器标记码 → 人话（仅展示层）。 */
+const LISTING_HARD_FLAG_LABELS: Record<string, string> = {
+  keyword_stuffing: "关键词堆砌",
+  malformed_english: "英文表达不自然",
+  repeated_sentence_or_benefit: "存在重复的句子或卖点",
+  hook_role_mismatch: "开头卖点与正文不匹配",
+  meta_shopping_filler: "存在空泛的套话",
+};
+
+/**
+ * 转化质量提示中文化（仅展示层）。
+ *
+ * `lib/listingV5/qualityEvaluation.ts` 产出的 notes 是内部评估语义（英文 + 机器码），
+ * 普通用户看到会以为出错。这里把已知形态翻成人话；仍无法识别且纯英文的提示不直接展示。
+ */
+export function localizeListingQualityNote(note: unknown): string {
+  const raw = typeof note === "string" ? note.trim() : "";
+  if (!raw) return "";
+  if (raw.startsWith("Validator reported unsupported claims")) {
+    return "有说法无法被已确认资料支持，需要补充资料或调整措辞（校验规则本身无需修改）。";
+  }
+  if (raw.startsWith("This listing shipped from the deterministic fallback path")) {
+    return "本次文案由安全模板生成（未采用模型改写），属于质量提示，不代表事实有误。";
+  }
+  if (raw.startsWith("Differentiation could not be measured")) {
+    return "暂时无法评估差异化：研究资料里没有可对比的竞品同项参数。";
+  }
+  const polish = raw.match(/^Copy polish needed:\s*(.+)$/);
+  if (polish) {
+    const flags = polish[1]
+      .split(",")
+      .map((flag) => flag.trim())
+      .filter(Boolean)
+      .map((flag) => LISTING_HARD_FLAG_LABELS[flag] ?? flag);
+    return flags.length > 0 ? `文案可继续打磨：${flags.join("、")}` : "";
+  }
+  // 未识别的纯英文提示不进界面（避免把内部评估语暴露给普通用户）；中文提示照常展示。
+  return /^[\x20-\x7e]+$/.test(raw) ? "" : raw;
 }
 

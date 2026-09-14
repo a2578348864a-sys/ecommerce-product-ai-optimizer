@@ -99,7 +99,7 @@ export function ListingCopyStrategyCard({
             {applied ? <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">✓ 已应用到本次 Listing</span> : null}
           </div>
           <p className="mt-1 text-xs leading-5 text-violet-900/75">
-            来自 VOC / 关键词 / 竞品研究，仅指导表达，不作为商品事实。
+            来自买家反馈（VOC）/ 关键词 / 竞品研究，仅指导表达，不作为商品事实。
           </p>
         </div>
       </div>
@@ -142,8 +142,8 @@ export function ListingCopyStrategyCard({
             <p className="font-semibold text-slate-700">五点描述表达结构</p>
             <ul className="mt-1 space-y-1 leading-5 text-slate-600">
               {bulletStrategies.length > 0
-                ? bulletStrategies.map((item, index) => <li key={`${item.order ?? index}-${item.purpose ?? index}`} className="break-words"><span className="font-semibold text-violet-900">Feature → Benefit → Scenario</span>{item.purpose ? ` · ${item.purpose}` : ""}</li>)
-                : <li>Feature → Benefit → Scenario；每条承担不同的购买价值</li>}
+                ? bulletStrategies.map((item, index) => <li key={`${item.order ?? index}-${item.purpose ?? index}`} className="break-words"><span className="font-semibold text-violet-900">卖点 → 价值 → 场景</span>{item.purpose ? ` · ${item.purpose}` : ""}</li>)
+                : <li>卖点 → 价值 → 场景；每条承担不同的购买价值</li>}
             </ul>
           </div>
           <div className="min-w-0 rounded-lg border border-amber-100 bg-amber-50/70 p-2.5 md:col-span-2">

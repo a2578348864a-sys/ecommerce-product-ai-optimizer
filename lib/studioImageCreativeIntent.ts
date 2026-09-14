@@ -27,6 +27,25 @@ export const STUDIO_IMAGE_LIFESTYLE_SCENES = [
 export type StudioImagePrimaryPurpose = (typeof STUDIO_IMAGE_PRIMARY_PURPOSES)[number]["id"];
 export type StudioImageLifestyleScene = (typeof STUDIO_IMAGE_LIFESTYLE_SCENES)[number]["id"];
 
+/**
+ * Image Studio 对用户展示的七套电商模板入口。
+ *
+ * comparison/custom 仍保留在旧 creative-intent 合同中用于历史数据读取，
+ * 但不再作为标准模板入口展示。生活场景模板复用既有
+ * selling_point_infographic + lifestyleScene 组合，避免新增第二套意图状态。
+ */
+export const IMAGE_STUDIO_TEMPLATE_OPTIONS = [
+  { templateId: "main_white_studio", label: "白底主图", primaryImagePurpose: "white_studio", lifestyleScene: "none" },
+  { templateId: "selling_points", label: "卖点展示", primaryImagePurpose: "selling_point_infographic", lifestyleScene: "none" },
+  { templateId: "dimension_specs", label: "尺寸规格", primaryImagePurpose: "dimension_specification", lifestyleScene: "none" },
+  { templateId: "detail_closeup", label: "细节特写", primaryImagePurpose: "detail_closeup", lifestyleScene: "none" },
+  { templateId: "lifestyle_in_use", label: "使用场景", primaryImagePurpose: "selling_point_infographic", lifestyleScene: "home_lifestyle" },
+  { templateId: "packaging_bundle", label: "包装清单", primaryImagePurpose: "packaging_bundle", lifestyleScene: "none" },
+  { templateId: "usage_steps", label: "使用步骤", primaryImagePurpose: "usage_steps", lifestyleScene: "none" },
+] as const;
+
+export type ImageStudioTemplateOption = (typeof IMAGE_STUDIO_TEMPLATE_OPTIONS)[number];
+
 export type StudioImageCreativeIntent = {
   primaryImagePurpose: StudioImagePrimaryPurpose;
   lifestyleScene: StudioImageLifestyleScene;

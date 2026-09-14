@@ -78,9 +78,11 @@ vi.mock("@/lib/server/aiClient", () => ({
 }));
 
 // Package C：半自动采集——mock 隔离浏览器会话（真实浏览器由授权 smoke 覆盖）
+// finalUrl 是真实会话必返字段（browser-control 由捕获的最终 URL 计算 allowedFinalOrigin）；
+// 采集器用它确认没有被 marketplace redirect 换到别的市场，所以 mock 也按契约返回。
 const collectState = vi.hoisted(() => ({
   session: {
-    navigate: vi.fn(async () => ({ allowedFinalOrigin: true })),
+    navigate: vi.fn(async () => ({ finalUrl: "https://www.amazon.com/dp/B0A1B2C3D4?language=en_US&currency=USD", allowedFinalOrigin: true })),
     evaluateDomByValue: vi.fn(async () => [
       { rating: 5, date: "August 1, 2026", title: "Fits perfectly and feels premium." },
       { rating: 2, date: "July 15, 2026", title: "Assembly instructions are confusing." },
@@ -342,7 +344,7 @@ describe("isolation", () => {
 describe("POST collect / collect-confirm（Package C 半自动采集）", () => {
   beforeEach(() => {
     vi.mocked(collectState.session.navigate).mockReset();
-    vi.mocked(collectState.session.navigate).mockResolvedValue({ allowedFinalOrigin: true });
+    vi.mocked(collectState.session.navigate).mockResolvedValue({ finalUrl: "https://www.amazon.com/dp/B0A1B2C3D4?language=en_US&currency=USD", allowedFinalOrigin: true });
     vi.mocked(collectState.session.evaluateDomByValue).mockReset();
     vi.mocked(collectState.session.evaluateDomByValue).mockResolvedValue([
       { rating: 5, date: "August 1, 2026", title: "Fits perfectly and feels premium." },

@@ -149,14 +149,37 @@ describe("detail-page expression source（P1-A）", () => {
   it.each([
     "Click the button below to continue shopping",
     "Continue shopping",
-  ])("matches Amazon %s interstitial as a login-wall blocker", (bodyText) => {
+  ])("classifies Amazon %s interstitial as automation_blocked (not a login wall)", (bodyText) => {
     const dom = fakeDom({ "#body": { innerText: bodyText } });
     const opts = options();
     const fromExpression = runExpression(dom, opts) as ReturnType<typeof extractAmazonDetailPage>;
     const fromNode = extractAmazonDetailPage(dom as never, "https://www.amazon.com/dp/B0TEST0001", opts);
     expect(fromExpression).toEqual(fromNode);
-    expect(fromExpression.pageStatus).toBe("login_wall");
+    expect(fromExpression.pageStatus).toBe("automation_blocked");
+    expect(fromExpression.pageStatus).not.toBe("login_wall");
     expect(fromExpression.entityBound).toBe(false);
+  });
+
+  it("classifies the /errors_page/validateCaptcha gateway as automation_blocked from the form action alone", () => {
+    const dom = fakeDom({
+      "#body": { innerText: "Amazon.com Conditions of Use Privacy Policy" },
+      "form[action*='validateCaptcha']": { textContent: "Continue shopping" },
+    });
+    const opts = options();
+    const fromExpression = runExpression(dom, opts) as ReturnType<typeof extractAmazonDetailPage>;
+    const fromNode = extractAmazonDetailPage(dom as never, "https://www.amazon.com/dp/B0TEST0001", opts);
+    expect(fromExpression).toEqual(fromNode);
+    expect(fromExpression.pageStatus).toBe("automation_blocked");
+    expect(fromExpression.pageStatus).not.toBe("login_wall");
+  });
+
+  it("keeps a real sign-in wall as login_wall", () => {
+    const dom = fakeDom({ "#body": { innerText: "Please sign in to continue" } });
+    const opts = options();
+    const fromExpression = runExpression(dom, opts) as ReturnType<typeof extractAmazonDetailPage>;
+    const fromNode = extractAmazonDetailPage(dom as never, "https://www.amazon.com/dp/B0TEST0001", opts);
+    expect(fromExpression).toEqual(fromNode);
+    expect(fromExpression.pageStatus).toBe("login_wall");
   });
 
   it("matches on captcha page status", () => {

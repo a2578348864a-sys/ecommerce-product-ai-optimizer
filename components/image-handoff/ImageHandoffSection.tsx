@@ -111,6 +111,13 @@ type TaskImageCreativeDraft = StudioImageCreativeIntent & {
   descriptionDirty: boolean;
   /** Image Style Library V1：主链视觉方向（与独立工具共享同一注册表）。 */
   stylePresetId?: ImageStylePresetId;
+  /**
+   * V2.1.4 状态持久化补齐：视觉主题卡（槽位）的选中态。
+   * 此前只保存 purpose/style，未保存槽位 id/type —— 点「应用此槽位」后刷新，高亮会消失
+   * （功能效果仍在，因为 purpose 已被持久化，但用户看到的是"我选的主题没了"）。
+   */
+  activeSlotId?: string | null;
+  activeSlotType?: string | null;
 };
 
 const EMPTY_TASK_IMAGE_CREATIVE_DRAFT: TaskImageCreativeDraft = {
@@ -119,6 +126,8 @@ const EMPTY_TASK_IMAGE_CREATIVE_DRAFT: TaskImageCreativeDraft = {
   stylePresetId: DEFAULT_IMAGE_STYLE_PRESET_ID,
   userCreativeDescription: "",
   descriptionDirty: false,
+  activeSlotId: null,
+  activeSlotType: null,
 };
 
 /**
@@ -319,7 +328,7 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
   const [userCreativeDescription, setUserCreativeDescription] = useState("");
   const [descriptionDirty, setDescriptionDirty] = useState(false);
   const seededDescriptionKeyRef = useRef("");
-  const restoredDraftRef = useRef(false);
+  const handledRevisionRef = useRef<string | null>(null);
   const sessionDraft = useSessionDraft<TaskImageCreativeDraft>({
     pageKind: "image-studio-task",
     entityId: taskId,
@@ -329,9 +338,19 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
     initial: EMPTY_TASK_IMAGE_CREATIVE_DRAFT,
   });
 
+  // handoff revision 变化时重置播种守卫。恢复是否完成由 useSessionDraft.ready
+  // 决定，避免异步 loadState 返回时把用户草稿重新覆盖成默认值。
   useEffect(() => {
-    if (!sessionDraft.draft || restoredDraftRef.current) return;
-    restoredDraftRef.current = true;
+    const revision = state?.expectedHandoffRevision == null
+      ? null
+      : String(state.expectedHandoffRevision);
+    if (revision === null || handledRevisionRef.current === revision) return;
+    handledRevisionRef.current = revision;
+    seededDescriptionKeyRef.current = "";
+  }, [state?.expectedHandoffRevision]);
+
+  useEffect(() => {
+    if (!sessionDraft.ready || !sessionDraft.draft) return;
     setCreativeIntent({
       primaryImagePurpose: sessionDraft.draft.primaryImagePurpose,
       lifestyleScene: sessionDraft.draft.lifestyleScene,
@@ -340,9 +359,36 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
     if (isImageStylePresetId(sessionDraft.draft.stylePresetId)) {
       setStylePresetId(sessionDraft.draft.stylePresetId);
     }
+    // V2.1.4：恢复槽位选中态（主题卡高亮）
+    setActiveSlotId(typeof sessionDraft.draft.activeSlotId === "string" ? sessionDraft.draft.activeSlotId : null);
+    setActiveSlotType(
+      typeof sessionDraft.draft.activeSlotType === "string"
+        ? (sessionDraft.draft.activeSlotType as VisualAssetSlotType)
+        : null,
+    );
     setUserCreativeDescription(sessionDraft.draft.userCreativeDescription);
     setDescriptionDirty(sessionDraft.draft.descriptionDirty === true);
-  }, [sessionDraft.draft]);
+  }, [sessionDraft.draft, sessionDraft.ready]);
+
+  useEffect(() => {
+    const context = state?.creativeDescriptionContext;
+    if (!context || !sessionDraft.ready || sessionDraft.restored) return;
+    const suggestedIntent = context.suggestedCreativeIntent ?? DEFAULT_STUDIO_IMAGE_CREATIVE_INTENT;
+    const seedKey = JSON.stringify({
+      revision: state.expectedHandoffRevision,
+      context,
+    });
+    if (seededDescriptionKeyRef.current === seedKey) return;
+    seededDescriptionKeyRef.current = seedKey;
+    setCreativeIntent(suggestedIntent);
+    setDescriptionDirty(false);
+    setUserCreativeDescription(buildTaskImageCreativeDescription(
+      context,
+      suggestedIntent.primaryImagePurpose,
+      suggestedIntent.lifestyleScene,
+      suggestedIntent.customImagePurpose,
+    ));
+  }, [sessionDraft.ready, sessionDraft.restored, state]);
 
   useEffect(() => {
     if (state?.expectedHandoffRevision == null) return;
@@ -351,8 +397,20 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
       stylePresetId,
       userCreativeDescription,
       descriptionDirty,
+      // V2.1.4：槽位选中态一并持久化
+      activeSlotId,
+      activeSlotType,
     });
-  }, [creativeIntent, descriptionDirty, sessionDraft, state?.expectedHandoffRevision, stylePresetId, userCreativeDescription]);
+  }, [
+    activeSlotId,
+    activeSlotType,
+    creativeIntent,
+    descriptionDirty,
+    sessionDraft,
+    state?.expectedHandoffRevision,
+    stylePresetId,
+    userCreativeDescription,
+  ]);
 
   const loadState = useCallback(async () => {
     try {
@@ -375,25 +433,6 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
       }
       const nextState = json.data as ImageStateData;
       setState(nextState);
-      if (nextState.creativeDescriptionContext) {
-        const suggestedIntent = nextState.creativeDescriptionContext.suggestedCreativeIntent
-          ?? DEFAULT_STUDIO_IMAGE_CREATIVE_INTENT;
-        const seedKey = JSON.stringify({
-          revision: nextState.expectedHandoffRevision,
-          context: nextState.creativeDescriptionContext,
-        });
-        if (seededDescriptionKeyRef.current !== seedKey) {
-          seededDescriptionKeyRef.current = seedKey;
-          setCreativeIntent(suggestedIntent);
-          setDescriptionDirty(false);
-          setUserCreativeDescription(buildTaskImageCreativeDescription(
-            nextState.creativeDescriptionContext,
-            suggestedIntent.primaryImagePurpose,
-            suggestedIntent.lifestyleScene,
-            suggestedIntent.customImagePurpose,
-          ));
-        }
-      }
     } catch {
       setState(null);
       setLoadError("网络异常，图片创作资料暂时无法加载。");

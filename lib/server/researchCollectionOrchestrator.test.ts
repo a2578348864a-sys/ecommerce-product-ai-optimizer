@@ -606,6 +606,35 @@ describe("researchCollectionOrchestrator", () => {
       expect(mocks.collectBrowserEvidencePreview).toHaveBeenCalledTimes(1); // delta = 0
     });
 
+    it("Amazon 自动化访问校验 → needs_user（可重试/人工处理），不是 failed", async () => {
+      const { BrowserEvidenceCollectError } = await import("@/lib/server/browserEvidenceCollect");
+      mocks.collectBrowserEvidencePreview.mockRejectedValueOnce(
+        new BrowserEvidenceCollectError(
+          "automation_blocked",
+          422,
+          "Amazon 触发了自动化访问校验（“Continue shopping”中间页）。系统不会绕过该校验：请在本机浏览器手动打开该商品页确认，或稍后重试。",
+        ),
+      );
+      const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+      expect(result.sources.amazon.status).toBe("needs_user");
+      expect(result.sources.amazon.status).not.toBe("failed");
+      expect(result.sources.amazon.error?.code).toBe("automation_blocked");
+      expect(result.sources.amazon.message).toContain("自动化访问校验");
+      // 不得被当成登录墙文案
+      expect(result.sources.amazon.message).not.toContain("请确认该商品页可公开访问");
+      expect(result.sources.amazon.previewId).toBeUndefined();
+    });
+
+    it("Amazon 自动化访问校验且 collector 未带文案时，仍给出可操作说明", async () => {
+      const { BrowserEvidenceCollectError } = await import("@/lib/server/browserEvidenceCollect");
+      mocks.collectBrowserEvidencePreview.mockRejectedValueOnce(
+        new BrowserEvidenceCollectError("automation_blocked", 422, ""),
+      );
+      const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+      expect(result.sources.amazon.status).toBe("needs_user");
+      expect(result.sources.amazon.message).toContain("自动化访问校验");
+    });
+
     it("Amazon 登录墙/验证码等 typed blocker → needs_user，不伪造 awaiting_confirmation", async () => {
       const { BrowserEvidenceCollectError } = await import("@/lib/server/browserEvidenceCollect");
       mocks.collectBrowserEvidencePreview.mockRejectedValueOnce(
@@ -1399,6 +1428,7 @@ describe("VOC auto collection contract (v11)", { timeout: 30000 }, () => {
   it.each([
     ["login_required", "页面要求登录，系统未自动登录。"],
     ["captcha_required", "页面要求完成 CAPTCHA 验证，系统未绕过。"],
+    ["captcha_required", "Amazon 触发了自动化访问校验（“Continue shopping”中间页），系统不会绕过：请在本机浏览器手动打开该商品页确认，或稍后重试。"],
   ] as const)("VOC 真实页面阻断 %s → needs_user 且保留精确分类", async (status, note) => {
     mocks.createReviewCollectPreview.mockResolvedValue({
       previewId: `rcp_${status}`,
@@ -1409,7 +1439,21 @@ describe("VOC auto collection contract (v11)", { timeout: 30000 }, () => {
     });
     const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
     expect(result.sources.voc.status).toBe("needs_user");
+    expect(result.sources.voc.status).not.toBe("failed");
     expect(result.sources.voc.error?.code).toBe(status);
+    expect(result.sources.voc.message).toContain(note.slice(0, 12));
+  });
+
+  it("VOC 自动化访问校验（collector 抛出）→ needs_user，不是 failed", async () => {
+    const { ReviewCollectorError } = await import("@/lib/server/reviewCollector");
+    mocks.createReviewCollectPreview.mockRejectedValueOnce(
+      new ReviewCollectorError("automation_blocked", 422, "Amazon 触发了自动化访问校验。"),
+    );
+    const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    expect(result.sources.voc.status).toBe("needs_user");
+    expect(result.sources.voc.status).not.toBe("failed");
+    expect(result.sources.voc.error?.code).toBe("automation_blocked");
+    expect(result.sources.voc.message).toContain("自动化访问校验");
   });
 
   it("V5 无权威 ASIN → needs_user 且 collector 不被调用", async () => {

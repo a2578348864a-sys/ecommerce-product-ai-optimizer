@@ -9,7 +9,7 @@
  * 不使用 LLM 猜字段；页面结构变化 → fail-closed。
  */
 
-export type AmazonDetailPageStatus = "ok" | "captcha" | "login_wall" | "error_page" | "unknown_page";
+export type AmazonDetailPageStatus = "ok" | "captcha" | "automation_blocked" | "login_wall" | "error_page" | "unknown_page";
 
 export type AmazonDetailFieldStatus = "correct" | "unknown";
 
@@ -129,7 +129,12 @@ export function parseDetailBsr(value: string | null | undefined): number | null 
 
 /**
  * 详情页分类（fail-closed）：
- * - captcha / login_wall / error_page：文本信号
+ * - captcha：出现可交互验证码/机器人校验文案
+ * - automation_blocked：Amazon 自动化访问校验中间页（如 `/errors_page/validateCaptcha` +
+ *   "Click the button below to continue shopping"）。它是**同源访问校验网关**，
+ *   没有登录表单/登录链接，因此**不能**归类为 login_wall（避免 UI 指引用户去登录）。
+ * - login_wall：真实登录墙文案
+ * - error_page：服务错误页
  * - ok：商品主容器 `#productTitle` 存在
  * - 其余 unknown_page
  */
@@ -141,20 +146,29 @@ export function detectDetailPageStatus(root: {
   if (/captcha|robot check|enter the characters you see|type the characters you see|验证码|机器人/i.test(bodyText)) {
     return "captcha";
   }
-  // Amazon may show a same-origin "Continue shopping" interstitial before the
-  // detail page. It is an access/verification blocker, not an ASIN problem.
-  // Keep the product-title gate intact so a normal product page containing
-  // incidental wording is still classified as `ok`.
+  // 商品主容器存在 → 正常商品页；只有缺失时才判定为阻断页，避免正常页面里的偶然措辞被误分类。
+  const productContainer = root.querySelector("#productTitle");
+  // Amazon "Continue shopping" 自动化校验中间页：页面通常只含一个
+  // `GET /errors_page/validateCaptcha` 表单（无登录表单、无验证码输入控件）。
   if (
-    !root.querySelector("#productTitle")
-    && /sign in to continue|login to continue|please sign in|登录后继续|click the button below to continue shopping|continue shopping/i.test(bodyText)
+    !productContainer
+    && (
+      root.querySelector("form[action*='validateCaptcha']")
+      || /click the button below to continue shopping|continue shopping/i.test(bodyText)
+    )
+  ) {
+    return "automation_blocked";
+  }
+  if (
+    !productContainer
+    && /sign in to continue|login to continue|please sign in|登录后继续/i.test(bodyText)
   ) {
     return "login_wall";
   }
   if (/sorry[, ]+something went wrong|service unavailable|internal server error|页面出错/i.test(bodyText)) {
     return "error_page";
   }
-  return root.querySelector("#productTitle") ? "ok" : "unknown_page";
+  return productContainer ? "ok" : "unknown_page";
 }
 
 /** 从详情子弹表提取 ASIN 锚点（"ASIN" 行值）；找不到 → null */

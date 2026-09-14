@@ -113,6 +113,8 @@ describe("useSessionDraft hook", () => {
     }));
     expect(h1.draft).toBeNull();
     expect(h1.restored).toBe(false);
+    expect(h1.ready).toBe(false);
+    expect(h1.activeRevision).toBeNull();
 
     // Mount with confirmed revision → restored
     const h2 = mount(() => draft.useSessionDraft<{ productName: string; step: number }>({
@@ -122,6 +124,8 @@ describe("useSessionDraft hook", () => {
       initial: { productName: "", step: 1 },
     }));
     expect(h2.restored).toBe(true);
+    expect(h2.ready).toBe(true);
+    expect(h2.activeRevision).toBe("rev1");
     expect(h2.draft).toEqual({ productName: "phone stand", step: 2 });
   });
 
@@ -142,6 +146,8 @@ describe("useSessionDraft hook", () => {
       initial: { guideStep: 1, selectedIds: [] },
     }));
     expect(h.restored).toBe(false);
+    expect(h.ready).toBe(true);
+    expect(h.activeRevision).toBe("1:2");
     expect(h.draft).toBeNull();
     expect(h.invalidated).toBe(true);
     // Old draft cleared from storage

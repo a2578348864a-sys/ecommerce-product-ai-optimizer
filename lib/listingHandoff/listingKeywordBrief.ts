@@ -53,6 +53,34 @@ export type ListingKeywordBriefResult =
   | { ok: true; brief: ListingKeywordBrief }
   | { ok: false; code: string; message: string };
 
+/**
+ * 判断已确认的关键词方案是否仍对应当前关键词证据。
+ *
+ * 关键词证据每次重新保存都会刷新 updatedAt；如果它晚于 brief.capturedAt，
+ * 旧方案只能作为历史记录，不能继续驱动创作流程。没有时间戳的旧证据按兼容
+ * 规则视为无法判断新旧，保留既有 brief，避免历史任务被无故降级。
+ */
+export function isListingKeywordBriefCurrent(
+  brief: ListingKeywordBrief | null,
+  keywordEvidence: unknown,
+): boolean {
+  if (!brief) return false;
+  if (!isRecord(keywordEvidence)) return true;
+
+  const briefTime = Date.parse(brief.capturedAt);
+  if (Number.isNaN(briefTime)) return false;
+
+  const updatedAt = typeof keywordEvidence.updatedAt === "string"
+    ? Date.parse(keywordEvidence.updatedAt)
+    : Number.NaN;
+  const capturedAt = typeof keywordEvidence.capturedAt === "string"
+    ? Date.parse(keywordEvidence.capturedAt)
+    : Number.NaN;
+  const evidenceTime = !Number.isNaN(updatedAt) ? updatedAt : capturedAt;
+  if (Number.isNaN(evidenceTime)) return true;
+  return evidenceTime <= briefTime;
+}
+
 const MAX_PRIMARY_LENGTH = 60;
 const MAX_SUPPORTING_ITEMS = 20;
 const MAX_SUPPORTING_LENGTH = 60;

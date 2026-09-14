@@ -47,7 +47,7 @@ let capturedMutationWriter: string | null = null;
 type CapturedMutate = (c: Record<string, unknown>, s: Readonly<import("@/lib/server/taskResultJsonMutation").TaskResultJsonSnapshot>) => Promise<{ result: Record<string, unknown>; value: Record<string, unknown> }>;
 let capturedMutateCallback: CapturedMutate | null = null;
 
-function gateResult(raw?: unknown, revision = REV, keywordBriefRaw?: unknown) {
+function gateResult(raw?: unknown, revision = REV, keywordBriefRaw?: unknown, keywordEvidenceRaw?: unknown) {
   return {
     allowed: true,
     reason: "eligible",
@@ -111,6 +111,7 @@ function gateResult(raw?: unknown, revision = REV, keywordBriefRaw?: unknown) {
     listingHandoffBindingRaw: undefined,
     listingDraftRaw: undefined,
     keywordBriefRaw: keywordBriefRaw,
+    keywordEvidenceRaw,
     imageHandoffBindingRaw: undefined,
     imageDraftRaw: undefined,
     imageStudioSelectionRaw: undefined,
@@ -179,6 +180,60 @@ describe("listing-brief save + GET chain", () => {
     expect(raw).not.toContain("backendSearchTerms");
     expect(raw).not.toContain("provenance");
     expect(raw).not.toContain("requestId");
+  });
+
+  it("1c. 新关键词证据会让旧 brief 进入待重新确认，确认新 brief 后恢复摘要", async () => {
+    const oldBrief = {
+      schema: "listing-keyword-brief.v1",
+      primaryKeyword: "keyword A",
+      supportingKeywords: [],
+      backendSearchTerms: [],
+      source: "manual",
+      capturedAt: "2026-08-27T04:00:00.000Z",
+    };
+    const newEvidence = {
+      schema: "seller-sprite-keyword-evidence.v1",
+      capturedAt: "2026-08-27T05:00:00.000Z",
+      updatedAt: "2026-08-27T05:01:00.000Z",
+      rows: [{ rowNumber: 1, keyword: "keyword B" }],
+    };
+    gateMock.mockResolvedValue(gateResult(LEGAL, REV, oldBrief, newEvidence));
+    const staleResponse = await GET(req("http://127.0.0.1:3010/api/tasks/" + TASK_ID + "/listing-handoff"), { params: params() });
+    expect(staleResponse.status).toBe(200);
+    const staleBody = await staleResponse.json();
+    expect(staleBody.data.keywordBriefSummary).toBeNull();
+    expect(staleBody.data.keywordBriefPlanSummary).toBeNull();
+
+    const freshBrief = { ...oldBrief, primaryKeyword: "keyword B", capturedAt: "2026-08-27T05:02:00.000Z" };
+    gateMock.mockResolvedValue(gateResult(LEGAL, REV, freshBrief, newEvidence));
+    const freshResponse = await GET(req("http://127.0.0.1:3010/api/tasks/" + TASK_ID + "/listing-handoff"), { params: params() });
+    expect(freshResponse.status).toBe(200);
+    const freshBody = await freshResponse.json();
+    expect(freshBody.data.keywordBriefSummary.primaryKeyword).toBe("keyword B");
+  });
+
+  it("1d. 没有 Creative Handoff 的旧任务也返回关键词确认摘要", async () => {
+    const legacyGate = gateResult(LEGAL, REV, {
+      schema: "listing-keyword-brief.v1",
+      primaryKeyword: "keyword B",
+      supportingKeywords: [],
+      backendSearchTerms: [],
+      source: "manual",
+      capturedAt: "2026-08-27T05:02:00.000Z",
+    }) as { reason: string; listingHandoffBindingRaw?: unknown; keywordEvidenceRaw?: unknown } & Record<string, unknown>;
+    legacyGate.reason = "legacy_not_supported";
+    legacyGate.listingHandoffBindingRaw = undefined;
+    legacyGate.keywordEvidenceRaw = {
+      schema: "seller-sprite-keyword-evidence.v1",
+      capturedAt: "2026-08-27T05:00:00.000Z",
+      updatedAt: "2026-08-27T05:01:00.000Z",
+      rows: [{ rowNumber: 1, keyword: "keyword B" }],
+    };
+    gateMock.mockResolvedValue(legacyGate);
+    const response = await GET(req("http://127.0.0.1:3010/api/tasks/" + TASK_ID + "/listing-handoff"), { params: params() });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data.keywordBriefSummary.primaryKeyword).toBe("keyword B");
   });
 
   it("2. GET 畸形历史值 → 200 且 listingBrief=null", async () => {

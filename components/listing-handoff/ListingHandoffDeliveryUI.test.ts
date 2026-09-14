@@ -58,7 +58,7 @@ describe("Listing Studio 交付结果页面化布局契约 (LISTING_STUDIO_DELIV
   it("保留事实状态摘要栏与完整契约", () => {
     expect(source).toContain("data-testid=\"task-listing-fact-counts\"");
     expect(source).toContain("已确认事实：{factSummary.confirmedFacts}");
-    expect(source).toContain("可用于 Listing：{factSummary.listingEligibleFacts}");
+    expect(source).toContain("Listing 可用事实：{factSummary.listingEligibleFacts}");
     expect(source).toContain("禁止声明：{factSummary.prohibitedClaims}");
   });
 

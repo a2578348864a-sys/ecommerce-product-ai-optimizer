@@ -251,6 +251,8 @@ export type CreativeHandoffGateResult = {
   imageDraftRaw?: unknown;
   /** Quality.1: Keyword Brief 原始值（只读） */
   keywordBriefRaw?: unknown;
+  /** Quality.1: 当前关键词证据原始值（只读，仅用于判断 brief 是否过期） */
+  keywordEvidenceRaw?: unknown;
   listingCreationBriefRaw?: unknown;
   /** Phase 2: 当前 Image Studio 人工选择（只读；不含图片二进制） */
   imageStudioSelectionRaw?: unknown;
@@ -449,22 +451,54 @@ export async function checkCreativeHandoffGate(
     // writes those markers long before research completion, so calling this state
     // legacy told users their own unfinished task was an unsupported old record.
     if (isModernResearchTaskShape(resultJson)) {
-      return { allowed: false, reason: "research_not_completed", taskAccessible: accessible };
+      return {
+        allowed: false,
+        reason: "research_not_completed",
+        taskAccessible: accessible,
+        keywordBriefRaw: resultJson.listingKeywordBrief,
+        keywordEvidenceRaw: resultJson.keywordEvidence,
+      };
     }
     // R4/R6：同一 actor 的旧版任务 → 业务状态 legacy_not_supported（不伪装"不存在"）
-    return { allowed: false, reason: "legacy_not_supported", taskAccessible: accessible };
+    return {
+      allowed: false,
+      reason: "legacy_not_supported",
+      taskAccessible: accessible,
+      keywordBriefRaw: resultJson.listingKeywordBrief,
+      keywordEvidenceRaw: resultJson.keywordEvidence,
+    };
   }
 
   const record = getProductResearchRecord(resultJson);
   const verification = getProductResearchVerification(resultJson);
-  if (!record || !verification) return { allowed: false, reason: "legacy_not_supported", taskAccessible: accessible };
+  if (!record || !verification) {
+    return {
+      allowed: false,
+      reason: "legacy_not_supported",
+      taskAccessible: accessible,
+      keywordBriefRaw: resultJson.listingKeywordBrief,
+      keywordEvidenceRaw: resultJson.keywordEvidence,
+    };
+  }
 
   if (!verifyProductResearchHash(record, verification)) {
-    return { allowed: false, reason: "research_hash_invalid", taskAccessible: accessible };
+    return {
+      allowed: false,
+      reason: "research_hash_invalid",
+      taskAccessible: accessible,
+      keywordBriefRaw: resultJson.listingKeywordBrief,
+      keywordEvidenceRaw: resultJson.keywordEvidence,
+    };
   }
 
   if (record.latestDecision?.status !== "creative_ready") {
-    return { allowed: false, reason: "decision_not_creative_ready", taskAccessible: accessible };
+    return {
+      allowed: false,
+      reason: "decision_not_creative_ready",
+      taskAccessible: accessible,
+      keywordBriefRaw: resultJson.listingKeywordBrief,
+      keywordEvidenceRaw: resultJson.keywordEvidence,
+    };
   }
 
   // V3 Completion Authority：Human Decision ≠ Research Completion。
@@ -473,20 +507,38 @@ export async function checkCreativeHandoffGate(
   // 未完成的任务不得生成 Creative Handoff / Listing / Image（服务端 fail-closed，不靠前端隐藏）。
   const completion = getResearchCompletion(resultJson);
   if (!completion || completion.status !== "completed") {
-    return { allowed: false, reason: "research_not_completed", taskAccessible: accessible };
+    return {
+      allowed: false,
+      reason: "research_not_completed",
+      taskAccessible: accessible,
+      keywordBriefRaw: resultJson.listingKeywordBrief,
+      keywordEvidenceRaw: resultJson.keywordEvidence,
+    };
   }
 
   // V3 UX Closure Staleness：完成研究后证据内容发生变化（evidenceHash 失配）→
   // 新 Listing/Image 生成 fail-closed，直到用户重新确认研究（completeCurrentResearch reconfirm）。
   // 旧 completion 无 evidenceHash（旧数据）→ 不视为 stale（兼容）。
   if (getResearchStaleState(resultJson).stale) {
-    return { allowed: false, reason: "research_stale_requires_reconfirmation", taskAccessible: accessible };
+    return {
+      allowed: false,
+      reason: "research_stale_requires_reconfirmation",
+      taskAccessible: accessible,
+      keywordBriefRaw: resultJson.listingKeywordBrief,
+      keywordEvidenceRaw: resultJson.keywordEvidence,
+    };
   }
 
   const taskRec = task as Record<string, unknown>;
   const researchMode = taskRec.researchMode as string | undefined;
   if (researchMode && researchMode !== "market_research_only") {
-    return { allowed: false, reason: "research_mode_invalid", taskAccessible: accessible };
+    return {
+      allowed: false,
+      reason: "research_mode_invalid",
+      taskAccessible: accessible,
+      keywordBriefRaw: resultJson.listingKeywordBrief,
+      keywordEvidenceRaw: resultJson.keywordEvidence,
+    };
   }
 
   const recAny = record as unknown as Record<string, unknown>;
@@ -726,6 +778,7 @@ export async function checkCreativeHandoffGate(
       imageHandoffBindingRaw: resultJson.imageHandoffBinding,
       imageDraftRaw: resultJson.aiImageDraftSnapshot,
       keywordBriefRaw: resultJson.listingKeywordBrief,
+      keywordEvidenceRaw: resultJson.keywordEvidence,
       listingCreationBriefRaw: resultJson.listingCreationBrief,
       imageStudioSelectionRaw: resultJson.imageStudioSelection,
       // V2 Final Integration: 降级分支也暴露生产视觉候选（从 researchContext2.productImage 解析）
@@ -762,12 +815,29 @@ export async function checkCreativeHandoffGate(
 
   if (!candidate && projectionBlockingCodes.length === 0) {
     // 无 candidateAnalysisContext 或投影失败 → 按 legacy_not_supported 处理（fail-closed）
-    return { allowed: false, reason: "legacy_not_supported", taskAccessible: accessible, storageVersion: undefined, handoffContractInvalid: false };
+    // 关键词方案独立于 Creative Handoff；即使旧任务无法进入创作交接，
+    // listing-handoff 仍需要读取当前 brief/evidence 来判断确认状态。
+    return {
+      allowed: false,
+      reason: "legacy_not_supported",
+      taskAccessible: accessible,
+      storageVersion: undefined,
+      handoffContractInvalid: false,
+      keywordBriefRaw: resultJson.listingKeywordBrief,
+      keywordEvidenceRaw: resultJson.keywordEvidence,
+    };
   }
 
   // blocking issue 门禁
   if (!candidate || projectionBlockingCodes.length > 0) {
-    return { allowed: false, reason: "blocking_issue_present", taskAccessible: accessible, storageVersion: undefined };
+    return {
+      allowed: false,
+      reason: "blocking_issue_present",
+      taskAccessible: accessible,
+      storageVersion: undefined,
+      keywordBriefRaw: resultJson.listingKeywordBrief,
+      keywordEvidenceRaw: resultJson.keywordEvidence,
+    };
   }
 
   const currentHandoffRaw = resultJson.creativeHandoff;
@@ -801,7 +871,19 @@ export async function checkCreativeHandoffGate(
   };
 
   if (handoffContractInvalid) {
-    return { allowed: false, reason: "legacy_not_supported", taskAccessible: accessible, candidate: undefined, currentHandoff: null, storageVersion, handoffContractInvalid: true, requestLedger, ledgerInvalid };
+    return {
+      allowed: false,
+      reason: "legacy_not_supported",
+      taskAccessible: accessible,
+      candidate: undefined,
+      currentHandoff: null,
+      storageVersion,
+      handoffContractInvalid: true,
+      requestLedger,
+      ledgerInvalid,
+      keywordBriefRaw: resultJson.listingKeywordBrief,
+      keywordEvidenceRaw: resultJson.keywordEvidence,
+    };
   }
 
   // V2 Final Integration: 生产视觉参考候选（candidateAnalysisContext.productImage → 安全候选）
@@ -824,7 +906,7 @@ export async function checkCreativeHandoffGate(
     approvedReferenceImageDataUrl = researchContext.productImage.dataUrl;
   }
 
-  return { allowed: true, reason: "eligible", taskAccessible: accessible, candidate, currentHandoff, storageVersion, requestLedger, ledgerInvalid, listingHandoffBindingRaw, listingDraftRaw, imageHandoffBindingRaw: resultJson.imageHandoffBinding, imageDraftRaw: resultJson.aiImageDraftSnapshot, imageStudioSelectionRaw: resultJson.imageStudioSelection, visualReferenceCandidates: visualCandidates, approvedReferenceImageDataUrl, externalUrlCandidate, keywordBriefRaw: resultJson.listingKeywordBrief, listingCreationBriefRaw: resultJson.listingCreationBrief, creativeContext: buildCreativeContextFromResearch({ resultJson, researchRevision: record.revision, candidateId: record.candidateId }), workbenchConfirmedFacts: (getFactCandidates(resultJson)?.confirmed ?? []).map((f) => ({ field: toConsumerField(f.field), label: f.label, value: f.value, sourceKind: f.sourceKind })), candidateBinding };
+  return { allowed: true, reason: "eligible", taskAccessible: accessible, candidate, currentHandoff, storageVersion, requestLedger, ledgerInvalid, listingHandoffBindingRaw, listingDraftRaw, imageHandoffBindingRaw: resultJson.imageHandoffBinding, imageDraftRaw: resultJson.aiImageDraftSnapshot, imageStudioSelectionRaw: resultJson.imageStudioSelection, visualReferenceCandidates: visualCandidates, approvedReferenceImageDataUrl, externalUrlCandidate, keywordBriefRaw: resultJson.listingKeywordBrief, keywordEvidenceRaw: resultJson.keywordEvidence, listingCreationBriefRaw: resultJson.listingCreationBrief, creativeContext: buildCreativeContextFromResearch({ resultJson, researchRevision: record.revision, candidateId: record.candidateId }), workbenchConfirmedFacts: (getFactCandidates(resultJson)?.confirmed ?? []).map((f) => ({ field: toConsumerField(f.field), label: f.label, value: f.value, sourceKind: f.sourceKind })), candidateBinding };
 }
 
 // ─── Preview ──────────────────────────────────────────────

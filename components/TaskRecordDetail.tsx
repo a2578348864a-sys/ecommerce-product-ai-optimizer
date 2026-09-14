@@ -1581,13 +1581,14 @@ function deriveProductCreationFlowStates(
   const confirmedFacts = Array.isArray(factCandidates?.confirmed) ? factCandidates.confirmed : [];
   // 详情投影不返回 result.listingKeywordBrief（只有 listing-handoff 接口给 keywordBriefSummary），
   // 因此关键词步骤以关键词卡片同源的 keywordPlanConfirmed 为准；这一项在父级刷新后会重新读取。
-  const keywordBrief = formalRecord(result.listingKeywordBrief);
   const creativeHandoff = formalRecord(result.creativeHandoff);
   const creativeControlState = formalText(creativeHandoff?.controlState);
 
   return {
     facts: confirmedFacts.length > 0 ? "complete" : "pending",
-    keywords: formalText(keywordBrief?.primaryKeyword) || keywordPlanConfirmed === true
+    // 关键词确认状态唯一来自 listing-handoff GET。详情 result 可能携带历史
+    // listingKeywordBrief，不能用它覆盖当前证据版本的 pending 判定。
+    keywords: keywordPlanConfirmed === true
       ? "complete"
       : keywordPlanConfirmed === false
         ? "pending"

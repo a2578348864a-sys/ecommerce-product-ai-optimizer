@@ -357,7 +357,7 @@ export function ListingFactSupplementPanel({
             <span className="text-xs font-normal text-teal-700 hover:underline">展开查看详情 ↓</span>
           </summary>
           <p className="mt-2 text-xs leading-5 text-slate-500">
-            这里填写的是你已经核实过的商品真实信息。确认后会用于 Listing 的事实校验。
+            这里填写的是你已经核实过的商品真实信息。确认后会作为 Listing 草稿的事实校验依据。
           </p>
           <div className="mt-2 grid gap-2 md:grid-cols-2" data-testid="listing-confirmed-facts">
             {mergedFacts.map((fact) => (
@@ -428,7 +428,7 @@ export function ListingFactSupplementPanel({
           {candidates.length > 0 ? (
             <>
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                以下候选来自商品标题 / 来源资料，<strong className="text-slate-800">需人工核实</strong>后才可用于 Listing 草稿。
+                以下候选来自商品标题 / 来源资料，<strong className="text-slate-800">需人工核实</strong>后才可作为 Listing 草稿事实。
                 勾选后确认，系统会保存新的创作资料版本。
               </p>
               <fieldset className="mt-3">
@@ -477,7 +477,7 @@ export function ListingFactSupplementPanel({
           <>
             <p className="mt-2 text-xs leading-5 text-slate-600">
               <strong className="text-slate-800">人工填写已核实事实</strong>：请填写以下你已核实确定的商品信息
-              （<strong className="text-slate-800">不必全部填写</strong>），填写项将保存为创作资料并可用于 Listing 草稿。
+              （<strong className="text-slate-800">不必全部填写</strong>），填写项将保存为创作资料并作为 Listing 草稿事实。
             </p>
             <div className="mt-2 rounded-lg border border-sky-100 bg-sky-50/60 p-2.5 text-xs leading-5 text-slate-600">
               <p className="font-bold text-slate-800">建议核实的缺失信息</p>
@@ -517,7 +517,7 @@ export function ListingFactSupplementPanel({
               onChange={(event) => setConfirmed(event.target.checked)}
               disabled={selectedIds.length === 0 && manualFilled.length === 0}
             />
-            <span>我已核对，这是商品真实信息；确认后可用于 Listing 草稿与事实校验。</span>
+            <span>我已核对，这是商品真实信息；确认后可作为 Listing 草稿事实并接受事实校验。</span>
           </label>
 
           <div className="mt-2.5 flex flex-wrap items-center gap-2">

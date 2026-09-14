@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildListingKeywordBrief,
+  isListingKeywordBriefCurrent,
   normalizeBackendSearchTerms,
   parseListingKeywordBrief,
 } from "@/lib/listingHandoff/listingKeywordBrief";
@@ -78,6 +79,39 @@ describe("listingKeywordBrief", () => {
     // 大量长词被 250 bytes 截断
     const long = normalizeBackendSearchTerms(Array.from({ length: 20 }, (_, i) => `term${i} `.repeat(8)));
     expect(long.bytes).toBeLessThanOrEqual(250);
+  });
+
+  it("重新采集的关键词证据会使旧 brief 失效，重新确认后的 brief 恢复有效", () => {
+    const first = buildListingKeywordBrief({
+      primaryKeyword: "keyword A",
+      capturedAt: "2026-09-14T08:00:00.000Z",
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+
+    const recollected = {
+      schema: "seller-sprite-keyword-evidence.v1",
+      capturedAt: "2026-09-14T09:00:00.000Z",
+      updatedAt: "2026-09-14T09:01:00.000Z",
+      rows: [{ rowNumber: 1, keyword: "keyword B" }],
+    };
+    expect(isListingKeywordBriefCurrent(first.brief, recollected)).toBe(false);
+
+    const second = buildListingKeywordBrief({
+      primaryKeyword: "keyword B",
+      capturedAt: "2026-09-14T09:02:00.000Z",
+    });
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(isListingKeywordBriefCurrent(second.brief, recollected)).toBe(true);
+  });
+
+  it("缺少证据时间戳的历史任务保持兼容，已有 brief 仍有效", () => {
+    const brief = buildListingKeywordBrief({ primaryKeyword: "legacy keyword", capturedAt: NOW });
+    expect(brief.ok).toBe(true);
+    if (!brief.ok) return;
+    expect(isListingKeywordBriefCurrent(brief.brief, { schema: "legacy-keyword-evidence" })).toBe(true);
+    expect(isListingKeywordBriefCurrent(brief.brief, null)).toBe(true);
   });
 });
 

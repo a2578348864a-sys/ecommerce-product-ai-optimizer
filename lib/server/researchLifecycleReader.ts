@@ -328,7 +328,7 @@ export function getResearchLifecycleState(input: ResearchLifecycleReaderInput): 
       creativeReadiness: "ready",
       stale: false,
       blockers: [],
-      nextAction: "进入 Creative Handoff。",
+      nextAction: "进入创作准备。",
       contractMode: "modern",
     };
   }

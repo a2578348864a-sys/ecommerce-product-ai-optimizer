@@ -435,7 +435,7 @@ export function TaskStudioPreparation({
                 <span className="text-slate-300">·</span>
                 <span className="rounded-md border border-teal-100 bg-white px-2 py-0.5">已确认事实：{listingFactSummary.confirmedFacts}</span>
                 <span className="text-slate-300">·</span>
-                <span className="rounded-md border border-teal-100 bg-white px-2 py-0.5">可用于 Listing：{listingFactSummary.listingEligibleFacts}</span>
+                <span className="rounded-md border border-teal-100 bg-white px-2 py-0.5">Listing 可用事实：{listingFactSummary.listingEligibleFacts}</span>
                 <span className="text-slate-300">·</span>
                 <span className={`rounded-md border px-2 py-0.5 ${listingFactSummary.prohibitedClaims > 0 ? "border-amber-200 bg-amber-50 text-amber-800" : "border-teal-100 bg-white"}`}>
                   禁止声明：{listingFactSummary.prohibitedClaims}
@@ -455,7 +455,7 @@ export function TaskStudioPreparation({
         {/* 缺事实时的首屏轻量提示 */}
         {listingFactsMissing ? (
           <div className="mb-2.5 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs font-semibold text-amber-800">
-            当前研究记录缺少可用于 Listing 的商品事实，请在下方「策略分析与详细证据来源」中补充并确认商品资料。
+            当前研究记录缺少 Listing 可用事实，请在下方「策略分析与详细证据来源」中补充并确认商品资料。
           </div>
         ) : null}
 
@@ -572,7 +572,7 @@ export function TaskStudioPreparation({
                     <div className="flex flex-wrap items-center gap-1.5 font-medium text-slate-700">
                       <span className="font-bold text-teal-900">创作参考资料</span>
                       <span className="text-slate-300">·</span>
-                      <span className="rounded-md border border-teal-100 bg-white px-2 py-0.5">VOC 洞察：{preview.creativeContextSummary.counts.vocInsights}</span>
+                      <span className="rounded-md border border-teal-100 bg-white px-2 py-0.5">买家反馈（VOC）：{preview.creativeContextSummary.counts.vocInsights}</span>
                       <span className="rounded-md border border-teal-100 bg-white px-2 py-0.5">关键词候选：{preview.creativeContextSummary.counts.keywordCandidates}</span>
                       <span className="rounded-md border border-teal-100 bg-white px-2 py-0.5">竞品参考：{preview.creativeContextSummary.counts.competitiveInsights}</span>
                       <span className="rounded-md border border-teal-100 bg-white px-2 py-0.5">供应线索：{preview.creativeContextSummary.counts.sourcingEntries}</span>
@@ -590,7 +590,7 @@ export function TaskStudioPreparation({
                   </div>
                   {preview.creativeContextSummary.vocInsights && preview.creativeContextSummary.vocInsights.length > 0 ? (
                     <details className="mt-2 border-t border-teal-100/60 pt-1.5">
-                      <summary className="cursor-pointer text-xs font-bold text-teal-800">查看 VOC 洞察（客户语言/场景参考，非事实）</summary>
+                      <summary className="cursor-pointer text-xs font-bold text-teal-800">查看买家反馈洞察（客户语言/场景参考，非事实）</summary>
                       <ul className="mt-1.5 space-y-1 text-xs leading-5 text-slate-600">
                         {preview.creativeContextSummary.vocInsights.map((v) => (
                           <li key={v.insightId}>- {v.theme}{v.reviewCount > 0 ? `（${v.reviewCount} 条评论）` : ""}：{v.summary}</li>
@@ -605,7 +605,7 @@ export function TaskStudioPreparation({
               <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-2xs" data-testid="task-listing-facts-missing">
                 {listingFactsMissing ? (
                   <div className="mb-2 rounded-lg bg-amber-50 p-2 text-xs font-semibold text-amber-800">
-                    当前研究记录缺少可用于 Listing 的商品事实，请在下方补充并确认商品资料。
+                    当前研究记录缺少 Listing 可用事实，请在下方补充并确认商品资料。
                   </div>
                 ) : null}
                 <ListingFactSupplementPanel
@@ -770,7 +770,7 @@ export function TaskStudioPreparation({
           <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-slate-700">
             <span className="rounded-full bg-white px-2.5 py-1">已确认商品事实：{authoritySummary.confirmedFacts}</span>
             <span className="rounded-full bg-white px-2.5 py-1">待确认候选：{authoritySummary.confirmableCandidates}</span>
-            <span className="rounded-full bg-white px-2.5 py-1">VOC 洞察：{preview.creativeContextSummary.counts.vocInsights}</span>
+            <span className="rounded-full bg-white px-2.5 py-1">买家反馈（VOC）：{preview.creativeContextSummary.counts.vocInsights}</span>
             <span className="rounded-full bg-white px-2.5 py-1">关键词候选：{preview.creativeContextSummary.counts.keywordCandidates}</span>
             <span className="rounded-full bg-white px-2.5 py-1">竞品参考：{preview.creativeContextSummary.counts.competitiveInsights}</span>
             <span className="rounded-full bg-white px-2.5 py-1">供应线索：{preview.creativeContextSummary.counts.sourcingEntries}</span>
@@ -781,7 +781,7 @@ export function TaskStudioPreparation({
           </div>
           {preview.creativeContextSummary.vocInsights && preview.creativeContextSummary.vocInsights.length > 0 ? (
             <details className="mt-2">
-              <summary className="cursor-pointer text-xs font-bold text-teal-800">查看 VOC 洞察（客户语言/场景参考，非事实）</summary>
+              <summary className="cursor-pointer text-xs font-bold text-teal-800">查看买家反馈洞察（客户语言/场景参考，非事实）</summary>
               <ul className="mt-2 space-y-1 text-xs leading-5 text-slate-600">
                 {preview.creativeContextSummary.vocInsights.map((v) => (
                   <li key={v.insightId}>- {v.theme}{v.reviewCount > 0 ? `（${v.reviewCount} 条评论）` : ""}：{v.summary}</li>
@@ -878,7 +878,7 @@ export function TaskStudioPreparation({
         <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-800" data-testid="task-studio-no-selectable-facts">
           {hasResearchConfirmedFacts
             ? "当前没有可确认的来源快照事实；研究已确认事实会自动用于创作，无需再次勾选。如需补充新事实或修改已确认事实，请先回到商品研究处理。"
-            : "当前没有可用于 Listing 的已确认商品事实，请先返回商品研究确认商品事实。"}
+            : "当前没有 Listing 可用的已确认商品事实，请先返回商品研究确认商品事实。"}
         </p>
       )}
 
@@ -997,7 +997,7 @@ export function TaskStudioPreparation({
 
       {kind === "listing" && !hasListingFactBasis ? (
         <p className="mt-3 text-sm font-semibold text-amber-700" role="alert" data-testid="task-studio-missing-fact-basis-notice">
-          当前没有可用于 Listing 的已确认商品事实，请先返回商品研究确认商品事实。
+          当前没有 Listing 可用的已确认商品事实，请先返回商品研究确认商品事实。
         </p>
       ) : null}
 

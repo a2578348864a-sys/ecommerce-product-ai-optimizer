@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   getResearchLifecycleLabel,
@@ -96,5 +98,26 @@ describe("TaskRecordsList research lifecycle labels (Bridge V1)", () => {
     expect(title).toContain("phase=completed");
     expect(title).toContain("research_stale_requires_reconfirmation");
     expect(title).toContain("重新确认研究结论。");
+  });
+});
+
+/**
+ * 首帧解锁依赖钉（2026-09 展示收口）。
+ *
+ * 本地 owner 模式的解锁标记（qx:no-auth-owner）由 /api/runtime-mode 异步返回；
+ * 加载记录的 effect 若不在依赖里带上 noAuthOwner，新标签页首次打开会停在
+ * 「共 0 条记录 + 请先输入访问密码后查看任务记录」且不会自动重试（真实浏览器复现）。
+ * 权限判定本身不变（仍走 canRequestWithAccessPassword）。
+ */
+describe("TaskRecordsList 首帧解锁依赖", () => {
+  const source = readFileSync(resolve(process.cwd(), "components/TaskRecordsList.tsx"), "utf8");
+
+  it("加载记录与运行状态的两处依赖都包含 noAuthOwner", () => {
+    expect(source).toContain("[view, isAccessPasswordReady, accessPassword, noAuthOwner]");
+    expect(source).toContain("[accessPassword, isAccessPasswordReady, noAuthOwner]");
+  });
+
+  it("权限判定仍走既有 canRequestWithAccessPassword，不改权限模型", () => {
+    expect(source).toContain("canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)");
   });
 });

@@ -24,9 +24,9 @@ describe("ListingCopyStrategyCard", () => {
   it("shows a compact strategy card without internal contract fields", () => {
     const html = renderToStaticMarkup(createElement(ListingCopyStrategyCard, { strategy }));
     expect(html).toContain("营销文案策略");
-    expect(html).toContain("来自 VOC / 关键词 / 竞品研究");
+    expect(html).toContain("来自买家反馈（VOC）/ 关键词 / 竞品研究");
     expect(html).toContain("目标买家");
-    expect(html).toContain("Feature");
+    expect(html).toContain("卖点");
     expect(html).not.toContain("factId");
     expect(html).not.toContain("confirmedFacts");
     expect(html).not.toContain("referenceOnly");

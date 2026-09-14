@@ -46,6 +46,7 @@ const USER_ERROR_MESSAGES: Record<string, string> = {
   extraction_failed: "Amazon 商品信息采集失败，请确认商品页可正常打开后重试；若持续失败可稍后再试。",
   collect_failed: "Amazon 商品信息采集失败，请稍后重试；若持续失败请检查本机浏览器与网络。",
   page_blocked_captcha: "页面要求完成验证码。我们不自动绕过：请在本机浏览器手动打开该商品页并确认后重试。",
+  automation_blocked: "Amazon 触发了自动化访问校验（“Continue shopping”中间页）。系统不会绕过该校验：请在本机浏览器手动打开该商品页确认，或稍后重试。",
   page_blocked_login_wall: "页面要求登录。我们不自动登录：请确认该商品页可公开访问后重试。",
   page_error: "页面返回错误页（商品可能不存在、下架或访问受限）。请确认商品后重试。",
   page_unknown: "页面不是可识别的 Amazon 商品详情页。请确认商品与站点后重试。",

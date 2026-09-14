@@ -45,6 +45,8 @@ function buildRoot(input: {
   reviewsText?: string | null;
   detailRows?: Array<{ text: string }>;
   includeRecommended?: boolean;
+  /** Amazon 自动化访问校验中间页：存在 `form[action*='validateCaptcha']`（无登录表单） */
+  automationForm?: boolean;
 }): AmazonDetailDomRoot {
   const rows = input.detailRows ?? [
     { text: `Best Sellers Rank: #2,541 in Kitchen & Dining (See Top 100 in Kitchen & Dining)` },
@@ -72,6 +74,7 @@ function buildRoot(input: {
         case "#productDetails_detailBullets_sections1": return null;
         case "#prodDetails": return null;
         case "#detailBulletsWrapper_feature_div": return null;
+        case "form[action*='validateCaptcha']": return input.automationForm ? node(null) : null;
         default: return null;
       }
     },
@@ -193,12 +196,38 @@ describe("Amazon detail page extractor (V3.1 Spike)", () => {
   it.each([
     "Click the button below to continue shopping",
     "Continue shopping",
-  ])("classifies Amazon %s interstitial as a verification blocker", (bodyText) => {
+  ])("classifies Amazon %s interstitial as automation_blocked (never a login wall)", (bodyText) => {
     const root = buildRoot({ bodyText });
     const result = extractAmazonDetailPage(root, URL, options());
-    expect(result.pageStatus).toBe("login_wall");
+    expect(result.pageStatus).toBe("automation_blocked");
+    expect(result.pageStatus).not.toBe("login_wall");
     expect(result.entityBound).toBe(false);
+    expect(result.fields.title.reason).toBe("page_status_automation_blocked");
+  });
+
+  it("classifies the /errors_page/validateCaptcha gateway as automation_blocked even without interstitial copy", () => {
+    // 实测形态：HTML 极小，可见文本只有 "Amazon.com" + 页脚，唯一表单 action 含 validateCaptcha
+    const root = buildRoot({ bodyText: "Amazon.com Conditions of Use Privacy Policy", automationForm: true });
+    const result = extractAmazonDetailPage(root, URL, options());
+    expect(result.pageStatus).toBe("automation_blocked");
+    expect(result.pageStatus).not.toBe("login_wall");
+  });
+
+  it("keeps a real sign-in wall classified as login_wall", () => {
+    const root = buildRoot({ bodyText: "Please sign in to continue" });
+    const result = extractAmazonDetailPage(root, URL, options());
+    expect(result.pageStatus).toBe("login_wall");
     expect(result.fields.title.reason).toBe("page_status_login_wall");
+  });
+
+  it("does not classify a normal product page with incidental 'continue shopping' copy as a blocker", () => {
+    const root = buildRoot({
+      bodyText: "Continue shopping with this bundle and save more",
+      title: "Owala FreeSip 24 oz",
+      priceText: "$32.99",
+    });
+    const result = extractAmazonDetailPage(root, URL, options());
+    expect(result.pageStatus).toBe("ok");
   });
 
   it("fails closed on unknown pages (no product container)", () => {

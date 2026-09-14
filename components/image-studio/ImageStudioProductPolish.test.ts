@@ -132,18 +132,17 @@ describe("Image Studio product workbench", () => {
       expect(html).toContain(label);
     }
     for (const option of [
-      "白底主图/棚拍",
-      "卖点信息图",
-      "尺寸规格图",
-      "产品细节特写",
-      "包装/套装展示",
-      "使用步骤图",
+      "白底主图",
+      "卖点展示",
+      "尺寸规格",
+      "细节特写",
+      "使用场景",
+      "包装清单",
+      "使用步骤",
       "家居生活",
       "办公/通勤",
       "户外/旅行",
       "运动/健身",
-      "对比展示",
-      "自定义",
     ]) {
       expect(html).toContain(option);
     }

@@ -44,6 +44,27 @@ describe("Slot Prompt Recipes Specification", () => {
       expect(recipe.environment).toBeTruthy();
       expect(recipe.textPolicy).toBeTruthy();
       expect(recipe.negativeConstraints.length).toBeGreaterThan(0);
+      expect(recipe.templateId).toBe(id);
+      expect(recipe.description).toBeTruthy();
+      expect(recipe.objective).toBe(recipe.businessGoal);
+      expect(recipe.promptTemplate).toContain(recipe.composition);
+      expect(recipe.mustKeepRules).toEqual(expect.arrayContaining([
+        "Preserve the exact product structure shown in the approved reference image.",
+        "Do not add accessories, components or units that are not confirmed.",
+      ]));
+      expect(recipe.forbiddenRules).toEqual(recipe.negativeConstraints);
+    }
+  });
+
+  it("统一模板合同使用七个唯一 templateId，且每个模板都会改变实际 Prompt 配方", () => {
+    const recipes = allRecipeIds.map((id) => SLOT_PROMPT_RECIPES[id]);
+    expect(new Set(recipes.map((recipe) => recipe.templateId)).size).toBe(7);
+    expect(new Set(recipes.map((recipe) => recipe.promptTemplate)).size).toBe(7);
+    for (const recipe of recipes) {
+      const block = formatSlotRecipeBlock(recipe);
+      expect(block).toContain(`Template ID: ${recipe.templateId}`);
+      expect(block).toContain("Must Keep Rules:");
+      expect(block).toContain("Forbidden Rules:");
     }
   });
 

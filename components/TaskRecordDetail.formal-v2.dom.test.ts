@@ -727,7 +727,19 @@ describe("四证据目标路由（真实 TaskRecordDetail 挂载）", () => {
           ok: true,
           data: recordFixture({
             // 研究事实已确认：关键词步骤才是当前待办（与用户看到的页面一致）
-            result: { productName: "测试商品", factCandidates: { confirmed: [{ factId: "f-brand", field: "brand", label: "Brand", value: "TestBrand" }] } },
+            result: {
+              productName: "测试商品",
+              // 详情 DTO 若携带历史 brief，也不能覆盖 listing-handoff 的当前确认摘要。
+              listingKeywordBrief: {
+                schema: "listing-keyword-brief.v1",
+                primaryKeyword: "old keyword A",
+                supportingKeywords: [],
+                backendSearchTerms: [],
+                source: "sellersprite",
+                capturedAt: "2026-08-01T00:00:00.000Z",
+              },
+              factCandidates: { confirmed: [{ factId: "f-brand", field: "brand", label: "Brand", value: "TestBrand" }] },
+            },
           }),
         });
       }
