@@ -218,3 +218,98 @@ describe("Listing V5", () => {
     expect(unsafe.repair.targets).toContain("bullets[0]");
   });
 });
+
+/**
+ * 安全回退模板的语言质量回归（2026-09 展示收口）。
+ *
+ * 真实现场（任务 cmu0bb2s6…，11 项已确认事实）交付过这样的文案：
+ * 标题 "…Aesthetic Modern L Lotus Atelier Light"（词被切成残片）、
+ * 五点 "…provides Red." / "…includes 1 for straightforward daily routines."、
+ * 描述 "…brings together Lotus Atelier and Light … It fits Placing the lamp as decor…"。
+ * 原因是回退模板用 `slice(0, n)` 截断、并按“第几条事实”选句式，而不是按事实字段。
+ * 这些用例只钉文本质量：安全回退机制、事实约束与 Validator 判定都不变。
+ */
+describe("Listing V5 安全回退模板文本质量", () => {
+  const fallbackInput = (productIdentity: string, confirmedFacts: Array<{ factId: string; field: string; label: string; value: string }>) =>
+    buildListingV5Context({
+      taskId: "fallback-language", researchRevision: 1, handoffRevision: 1, productIdentity,
+      generationInput: {
+        schema: "listing-generation-input.v1", source: { handoffRevision: 1, researchRevision: 1 },
+        productFacts: [], stableSourceFacts: [], creativeReferences: [], creativePreferences: {},
+        prohibitedClaims: [], unknowns: [], humanReviewRequired: true, researchMode: "market_research_only", promotionEligible: false,
+      },
+      confirmedFacts,
+    } as never);
+
+  it("长商品身份按词边界截断，不再产生 '…Modern L' 这类残片", () => {
+    const value = fallbackInput(
+      "Red Mushroom Lamp for Room Aesthetic Modern Lighting for Bedroom Mid Century lamp | Cool Retro Living Room Decor | Table",
+      [
+        { factId: "f-brand", field: "brand", label: "Brand", value: "Lotus Atelier" },
+        { factId: "f-type", field: "product_type", label: "Product type", value: "Light" },
+      ],
+    );
+    const title = buildListingV5FallbackDraft(value, buildListingV5Strategy(value)).title.text;
+    expect(title).toContain("Red Mushroom Lamp for Room Aesthetic Modern");
+    // 回归点：旧实现切出 "Modern L"，标题以单字母残片结尾。
+    expect(title).not.toMatch(/\b[A-Z]$/);
+    expect(title).not.toMatch(/\s\d+$/);
+  });
+
+  it("句式由事实字段决定：颜色/型号/类型不再拼成 'provides Red' / 'includes 1'", () => {
+    const value = fallbackInput("Red Mushroom Lamp for Room Aesthetic Modern", [
+      { factId: "f-color", field: "color_or_variant", label: "Color", value: "Red" },
+      { factId: "f-model", field: "series_or_model", label: "Series", value: "1" },
+      { factId: "f-type", field: "product_type", label: "Product type", value: "Light" },
+      { factId: "f-material", field: "material", label: "Material", value: "Acrylic, Plastic" },
+    ]);
+    const text = buildListingV5FallbackDraft(value, buildListingV5Strategy(value)).bullets.map((bullet) => bullet.text).join(" ");
+    expect(text).toContain("is available in Red");
+    expect(text).toContain("is listed under the model reference 1");
+    expect(text).toContain("belongs to the Light category");
+    expect(text).toContain("is made with Acrylic, Plastic");
+    // 回归点：旧的按序号句式会写出下面这些拼接残句。
+    expect(text).not.toContain("provides Red");
+    expect(text).not.toContain("includes 1 for");
+    expect(text).not.toContain("Featuring Light");
+    expect(text).not.toMatch(/\b(?:includes|provides)\s+\d+\b/i);
+  });
+
+  it("标题只拼标题成分：护理说明与裸编号不进标题，名词短语补冠词", () => {
+    const value = fallbackInput("Stainless Steel Water Bottle", [
+      { factId: "f-included", field: "included_components", label: "Included", value: "bulb and shade" },
+      { factId: "f-unknown", field: "mystery_field", label: "Mystery", value: "1" },
+      { factId: "f-care", field: "care_instruction", label: "Care", value: "Wipe with a dry cloth" },
+      { factId: "f-feature", field: "functional_feature", label: "Feature", value: "carrying loop" },
+    ]);
+    const draft = buildListingV5FallbackDraft(value, buildListingV5Strategy(value));
+    // 回归点：旧实现把前三条事实原样拼到标题后面（"… Blue bulb and shade 1 Wipe with a dry cloth"）。
+    expect(draft.title.text).toBe("Stainless Steel Water Bottle");
+    expect(draft.bullets.map((bullet) => bullet.text).join(" ")).toContain("includes a carrying loop");
+  });
+
+  it("真实形态事实仍然 PASS，描述不塞研究原句，也不引入未确认数字", () => {
+    const value = fallbackInput("Red Mushroom Lamp for Room Aesthetic Modern", [
+      { factId: "f-brand", field: "brand", label: "Brand", value: "Lotus Atelier" },
+      { factId: "f-type", field: "product_type", label: "Product type", value: "Light" },
+      { factId: "f-color", field: "color_or_variant", label: "Color", value: "Red" },
+      { factId: "f-model", field: "series_or_model", label: "Series", value: "1" },
+      { factId: "f-material", field: "material", label: "Material", value: "Acrylic, Plastic" },
+      { factId: "f-size", field: "dimensions", label: "Dimensions", value: "13\"D x 13\"W x 9\"H" },
+    ]);
+    const strategy = buildListingV5Strategy(value);
+    const draft = buildListingV5FallbackDraft(value, strategy);
+    const report = validateListingV5Draft(value, strategy, draft);
+    expect(report.status).toBe("PASS");
+    expect(report.claims.unsupportedClaims).toEqual([]);
+    expect(report.claims.prohibitedClaims).toEqual([]);
+    // 描述只陈述已确认事实，且仍是 2 句（Validator 要求 2–4 句）。
+    expect(draft.description.text.split(/[.!?]+/).filter((sentence) => sentence.trim()).length).toBe(2);
+    expect(draft.description.text).not.toMatch(/It fits\s+[A-Z]/);
+    // 交付文本里出现的数字必须来自已确认事实，回退模板不得引入新的量化声明。
+    const factNumbers = new Set(value.confirmedFacts.flatMap((fact) => fact.value.match(/\d+(?:\.\d+)?/g) ?? []));
+    const copyNumbers = new Set([draft.title.text, ...draft.bullets.map((bullet) => bullet.text), draft.description.text].join(" ").match(/\d+(?:\.\d+)?/g) ?? []);
+    for (const number of copyNumbers) expect(factNumbers.has(number)).toBe(true);
+    expect(draft.bullets).toHaveLength(5);
+  });
+});
