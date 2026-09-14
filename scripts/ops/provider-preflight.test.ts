@@ -15,7 +15,7 @@ function validEnv(overrides: Record<string, string> = {}) {
     OPENAI_IMAGE_BASE_URL: "https://api.65535.space/v1",
     OPENAI_IMAGE_MODEL: "gpt-image-2",
     OPENAI_IMAGE_RESULT_HOSTS: "api.65535.space",
-    AI_IMAGE_DRAFT_STORAGE_ROOT: "/srv/app/data/ai-image-drafts",
+    AI_IMAGE_DRAFT_STORAGE_ROOT: "/path/to/project/data/ai-image-drafts",
     OPENAI_LISTING_ENABLED: "true",
     OPENAI_IMAGE_GENERATION_ENABLED: "true",
     ...overrides,

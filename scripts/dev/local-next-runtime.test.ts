@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const RUNTIME_SCRIPT = resolve("scripts/local-next-runtime.mjs");
+const RUNTIME_SCRIPT = resolve("scripts/dev/local-next-runtime.mjs");
 const TEST_ROOT = mkdtempSync(join(tmpdir(), "local-next-runtime-test-"));
 
 async function loadRuntime() {
@@ -56,8 +56,8 @@ describe("local Next runtime", () => {
     ]);
 
     const packageJson = JSON.parse(readFileSync(resolve("package.json"), "utf8"));
-    expect(packageJson.scripts["start:local"]).toBe("node scripts/local-next-runtime.mjs start");
-    expect(packageJson.scripts["dev:local"]).toBe("node scripts/local-next-runtime.mjs dev");
+    expect(packageJson.scripts["start:local"]).toBe("node scripts/dev/local-next-runtime.mjs start");
+    expect(packageJson.scripts["dev:local"]).toBe("node scripts/dev/local-next-runtime.mjs dev");
   });
 
   it("default config preserves a synthetic CJK project path and keeps DATABASE_URL aligned", async () => {

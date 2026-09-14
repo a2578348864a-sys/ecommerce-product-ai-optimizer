@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 
 // Keep this executable module on LF; see .gitattributes.
 import {

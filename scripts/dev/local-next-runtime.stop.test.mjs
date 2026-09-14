@@ -32,7 +32,7 @@ const TARGET = { host: "127.0.0.1", port: 3005, repoRoot: REPO_ROOT };
 const CHILD_CMD_MATCH =
   '"' + REPO_ROOT + '\\node_modules\\next\\dist\\bin\\next" start -H 127.0.0.1 -p 3005';
 const LAUNCHER_CMD_MATCH =
-  '"C:\\Program Files\\nodejs\\node.exe" scripts/local-next-runtime.mjs start';
+  '"C:\\Program Files\\nodejs\\node.exe" scripts/dev/local-next-runtime.mjs start';
 const LAUNCHER_CMD_FOREIGN =
   '"C:\\Program Files\\nodejs\\node.exe" something-else-entirely';
 
@@ -291,7 +291,7 @@ test("14b stop 解析：默认非 dry-run；--dry-run 生效；--port 生效", (
 });
 
 test("15 静态合同：禁词扫描", async () => {
-  const src = readFileSync(path.resolve(REPO_ROOT, "scripts/local-next-runtime.mjs"), "utf8");
+  const src = readFileSync(path.resolve(REPO_ROOT, "scripts/dev/local-next-runtime.mjs"), "utf8");
   assert.ok(!/taskkill/i.test(src));
   assert.ok(!/Stop-Process/i.test(src));
   assert.ok(!/SIGKILL/i.test(src));
@@ -299,8 +299,8 @@ test("15 静态合同：禁词扫描", async () => {
 });
 
 test("15b 主入口守卫：导入运行器不会启动服务（isMainEntry 判定）", async () => {
-  assert.equal(isMainEntry("D:/x/scripts/local-next-runtime.mjs", "D:/y/test-runner.mjs"), false);
-  assert.equal(isMainEntry("D:/x/scripts/local-next-runtime.mjs", "D:/x/scripts/local-next-runtime.mjs"), true);
+  assert.equal(isMainEntry("D:/x/scripts/dev/local-next-runtime.mjs", "D:/y/test-runner.mjs"), false);
+  assert.equal(isMainEntry("D:/x/scripts/dev/local-next-runtime.mjs", "D:/x/scripts/dev/local-next-runtime.mjs"), true);
 });
 
 test("路径归一化辅助：斜杠/大小写/引号/尾随分隔符", () => {

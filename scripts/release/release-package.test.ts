@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
  * Release artifact 完整性（deploy/verify-release.sh 本地隔离验证）
  *
  * 验证点：
- * 1. 打包脚本（scripts/package-release.mjs）能产出 artifact 且校验通过；
+ * 1. 打包脚本（scripts/release/package-release.mjs）能产出 artifact 且校验通过；
  * 2. hashed external modules（@prisma/client-*、sharp-*）随包携带；
  * 3. 服务器侧校验脚本在"模块缺失"时自动补齐、在"模块已存在"时跳过。
  *
@@ -50,7 +50,7 @@ describe("release artifact packaging", () => {
     rmSync(TMP, { recursive: true, force: true });
     mkdirSync(join(FAKE_SERVER, "node_modules", "@prisma", "client"), { recursive: true });
     mkdirSync(join(FAKE_SERVER, "node_modules", "sharp"), { recursive: true });
-    artifact = run("node", ["scripts/package-release.mjs", "--out", join(TMP, "release")])
+    artifact = run("node", ["scripts/release/package-release.mjs", "--out", join(TMP, "release")])
       .match(/"artifact": "([^"]+)"/)?.[1] ?? "";
     if (!artifact) throw new Error("package-release.mjs 未产出 artifact");
   });

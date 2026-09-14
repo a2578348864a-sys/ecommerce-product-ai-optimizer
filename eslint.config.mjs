@@ -27,6 +27,9 @@ export default defineConfig([
     ".next/**",
     "out/**",
     "build/**",
+    // Historical acceptance/experiment scripts are retained for project
+    // history and are not part of the maintained production toolchain.
+    "scripts/archive/**",
     "next-env.d.ts",
   ]),
 ]);

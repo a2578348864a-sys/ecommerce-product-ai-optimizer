@@ -2,7 +2,7 @@
  * Phase Guest-Access.1 — Batch Create Guest Codes
  *
  * Usage:
- *   node scripts/create-guest-codes.mjs
+ *   node scripts/dev/create-guest-codes.mjs
  *
  * Creates 10 guest access codes with:
  *   - No time-based Visitor-code expiry (administrator can still disable it)

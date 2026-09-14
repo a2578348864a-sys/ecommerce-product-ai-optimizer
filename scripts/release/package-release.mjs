@@ -7,7 +7,7 @@
  * - 生成 manifest.json（BUILD_ID、大小、文件数、external modules 清单）；
  * - 打包后本地校验：BUILD_ID 一致 + external modules 存在。
  *
- * 用法：node scripts/package-release.mjs [--out <dir>]
+ * 用法：node scripts/release/package-release.mjs [--out <dir>]
  * 输出：release/next-v<version>-<short-sha>-linux-x64.tar.gz + release-manifest.json
  *
  * 服务器侧解压后校验脚本见 docs/deployment/production-runbook.md。
@@ -27,7 +27,8 @@ function unixPath(p) {
 }
 import { fileURLToPath } from "node:url";
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+// The script lives under scripts/release; the repository root is two levels up.
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const NEXT_DIR = join(ROOT, ".next");
 const OUT_DIR = resolve(process.argv[2] === "--out" ? process.argv[3] : join(ROOT, "release"));
 

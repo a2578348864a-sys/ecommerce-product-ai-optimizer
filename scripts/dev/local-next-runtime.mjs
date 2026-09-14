@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { execFile as execFileCallback, execFileSync, spawn } from "node:child_process";
 import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
@@ -322,8 +321,8 @@ export function matchesRuntimeLauncher(rawCommandLine, repoRoot) {
   const cmd = normalizeCommandLineText(rawCommandLine);
   const repo = normalizePathText(repoRoot);
   if (!repo) return false;
-  // 形态 1：绝对路径 <repo>/scripts/local-next-runtime.mjs
-  const absNeedle = repo + "/scripts/local-next-runtime.mjs";
+  // 形态 1：绝对路径 <repo>/scripts/dev/local-next-runtime.mjs
+  const absNeedle = repo + "/scripts/dev/local-next-runtime.mjs";
   let idx = cmd.indexOf(absNeedle);
   while (idx !== -1) {
     const before = cmd[idx - 1] ?? "";
@@ -333,9 +332,9 @@ export function matchesRuntimeLauncher(rawCommandLine, repoRoot) {
     }
     idx = cmd.indexOf(absNeedle, idx + 1);
   }
-  // 形态 2：相对路径 node.exe scripts/local-next-runtime.mjs start
+  // 形态 2：相对路径 node.exe scripts/dev/local-next-runtime.mjs start
   // （WorkingDirectory 不体现在命令行中，repo 归属由进程链 + 状态文件交叉验证）
-  const relNeedle = "scripts/local-next-runtime.mjs";
+  const relNeedle = "scripts/dev/local-next-runtime.mjs";
   let ridx = cmd.indexOf(relNeedle);
   while (ridx !== -1) {
     const before = cmd[ridx - 1] ?? "";

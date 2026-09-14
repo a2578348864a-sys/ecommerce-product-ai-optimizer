@@ -2,8 +2,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const REGISTER_SCRIPT = resolve("scripts/register-local-autostart.ps1");
-const RUN_SCRIPT = resolve("scripts/run-local-service.ps1");
+const REGISTER_SCRIPT = resolve("scripts/dev/register-local-autostart.ps1");
+const RUN_SCRIPT = resolve("scripts/dev/run-local-service.ps1");
 
 describe("local 3005 autostart", () => {
   it("provides a reversible current-user logon task that runs the guarded local entry", () => {
@@ -12,7 +12,7 @@ describe("local 3005 autostart", () => {
 
     const packageJson = JSON.parse(readFileSync(resolve("package.json"), "utf8"));
     expect(packageJson.scripts["autostart:local"]).toBe(
-      "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/register-local-autostart.ps1 register",
+      "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/register-local-autostart.ps1 register",
     );
     expect(packageJson.scripts["autostart:local:status"]).toContain(" status");
     expect(packageJson.scripts["autostart:local:remove"]).toContain(" remove");

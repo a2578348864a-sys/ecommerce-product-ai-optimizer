@@ -4,10 +4,10 @@
  * DB-Protection.1 — SQLite Deployment Guard
  *
  * Usage:
- *   node scripts/db/protect-sqlite-db.mjs summary
- *   node scripts/db/protect-sqlite-db.mjs backup [--reason predeploy]
- *   node scripts/db/protect-sqlite-db.mjs predeploy
- *   node scripts/db/protect-sqlite-db.mjs postdeploy --baseline <path>
+ *   node scripts/ops/db/protect-sqlite-db.mjs summary
+ *   node scripts/ops/db/protect-sqlite-db.mjs backup [--reason predeploy]
+ *   node scripts/ops/db/protect-sqlite-db.mjs predeploy
+ *   node scripts/ops/db/protect-sqlite-db.mjs postdeploy --baseline <path>
  *
  * Does NOT: print DATABASE_URL, full resultJson, env values, or DB contents.
  */

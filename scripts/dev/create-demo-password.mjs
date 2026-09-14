@@ -2,7 +2,7 @@
  * Phase Demo-Login.1-B — Create Demo Password Script
  *
  * Usage:
- *   node scripts/create-demo-password.mjs --label "Visitor acceptance"
+ *   node scripts/dev/create-demo-password.mjs --label "Visitor acceptance"
  *   npm run demo:create -- --label "Visitor acceptance"
  *
  * Generates a random demo password, hashes it, stores in data/demo-access.json.
@@ -30,7 +30,7 @@ function getArg(name) {
 
 const label = getArg("label");
 if (!label) {
-  console.error("Usage: node scripts/create-demo-password.mjs --label <label>");
+  console.error("Usage: node scripts/dev/create-demo-password.mjs --label <label>");
   console.error("  --label   Label for this Visitor access code");
   process.exit(1);
 }

@@ -1,6 +1,7 @@
 $ErrorActionPreference = "Stop"
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
+# 本脚本位于 scripts/dev/，仓库根是上两级；只用一级会把工作目录/日志落到 scripts/。
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $logRoot = Join-Path $env:LOCALAPPDATA "QingXuanAgent"
 $stdoutPath = Join-Path $logRoot "local-3005.out.log"
 $stderrPath = Join-Path $logRoot "local-3005.err.log"

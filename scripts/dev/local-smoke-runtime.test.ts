@@ -14,7 +14,7 @@ import { PrismaClient } from "@prisma/client";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { findDemoAccessByPassword } from "@/lib/server/demoAccess";
 
-const SCRIPT = resolve("scripts/local-smoke-runtime.mjs");
+const SCRIPT = resolve("scripts/dev/local-smoke-runtime.mjs");
 const TEST_ROOT = mkdtempSync(join(tmpdir(), "qingxuan-smoke-runtime-test-"));
 
 async function loadRuntime() {

@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { PrismaClient } from "@prisma/client";
 
-const SCRIPT = resolve("scripts/db/protect-sqlite-db.mjs");
+const SCRIPT = resolve("scripts/ops/db/protect-sqlite-db.mjs");
 const TEST_ROOT = mkdtempSync(join(tmpdir(), "db-guard-test-"));
 const TEST_DB_PATH = join(TEST_ROOT, "test.db");
 const PRISMA_TEST_DB_URL = `file:${TEST_DB_PATH.replaceAll("\\", "/")}`;

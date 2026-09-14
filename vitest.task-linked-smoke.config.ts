@@ -4,7 +4,7 @@ import path from "path";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["scripts/task-linked-real-ai-listing-smoke.ts"],
+    include: ["scripts/archive/acceptance/task-linked-real-ai-listing-smoke.ts"],
     testTimeout: 120_000,
   },
   resolve: {

@@ -6,7 +6,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 $taskName = "QingXuanAgent-Local-3005"
-$repoRoot = Split-Path -Parent $PSScriptRoot
+# 本脚本位于 scripts/dev/，仓库根是上两级；只用一级会把任务工作目录写成 scripts/。
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $runScript = Join-Path $PSScriptRoot "run-local-service.ps1"
 $userId = "$env:USERDOMAIN\$env:USERNAME"
 
