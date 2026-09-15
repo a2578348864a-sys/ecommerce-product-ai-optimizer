@@ -193,6 +193,13 @@ export function ReferenceListingDraftPanel({
                 >
                   进入文案工作台
                 </Link>
+                <Link
+                  href={`/image-studio?taskId=${encodeURIComponent(taskId)}`}
+                  className="linear-button inline-flex h-8 items-center justify-center px-4 text-xs font-semibold"
+                  data-testid="goto-image-studio-btn"
+                >
+                  进入图片工作台
+                </Link>
                 <button
                   type="button"
                   onClick={() => setDetailsOpen(!detailsOpen)}
