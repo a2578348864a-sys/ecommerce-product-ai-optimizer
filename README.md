@@ -24,9 +24,6 @@
   <a href="#-完整文档导航">文档体系</a>
 </p>
 
-<p align="center">
-  <img src="docs/assets/workbench.png" alt="轻选工作台界面预览" width="920" style="border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.12);" />
-</p>
 
 </div>
 
