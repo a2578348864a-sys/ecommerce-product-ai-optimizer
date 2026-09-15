@@ -8,8 +8,10 @@ import { resolve } from "node:path";
 import {
   ResearchCollectionOrchestratorCard,
   computeSummary,
+  deriveOrchestratorRunFeedback,
   formatBadgeLabel,
   getAmazonFailureReason,
+  getSourceFailureReason,
   normalizeState,
   sanitizeDetail,
   extractDetailFromPayload,
@@ -514,9 +516,10 @@ describe("ResearchCollectionOrchestratorCard (Phase 3 UI / Interaction)", () => 
         }),
       );
 
-      // 卡片结构与标题
+      // 卡片结构与标题（标题语义：数据采集状态；操作按钮仍为「补齐研究资料」）
       expect(html).toContain('data-testid="research-orchestrator-card"');
-      expect(html).toContain("研究资料");
+      expect(html).toContain("数据采集状态");
+      expect(html).not.toContain(">研究资料<");
       expect(html).toContain('data-testid="orchestrator-status-badge"');
       expect(html).toContain("已复用 2 项，待确认 1 项，1 项需人工处理");
 
@@ -669,6 +672,142 @@ describe("ResearchCollectionOrchestratorCard (Phase 3 UI / Interaction)", () => 
       expect(kwBadge?.textContent).toContain("已有");
       expect(vocBadge?.textContent).toContain("已有");
       expect(sourcingBadge?.textContent).toContain("已有");
+    });
+
+    it("orchestrate 返回 mixed 时展示本次运行的成功与失败来源及结构化原因", async () => {
+      const fetchSpy = vi.fn().mockImplementation((_url, opts) => {
+        const body = JSON.parse(opts?.body as string);
+        if (body.action === "inspect") {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              ok: true,
+              data: {
+                sources: {
+                  amazon: { state: "needs_supplement" },
+                  keywords_competitors: { state: "pending" },
+                  voc: { state: "needs_action" },
+                  sourcing_1688: { state: "pending_review" },
+                },
+              },
+            }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            ok: true,
+            data: {
+              overallStatus: "mixed",
+              sources: {
+                amazon: {
+                  status: "failed",
+                  message: "导航被重定向到白名单外地址；该状态不等同于验证码",
+                  error: { code: "navigation_not_allowed" },
+                },
+                keywordCompetitor: { status: "ready" },
+                voc: {
+                  status: "failed",
+                  message: "页面导航被安全白名单阻断",
+                  error: { code: "navigation_not_allowed" },
+                },
+                sourcing1688: { status: "ready" },
+              },
+            },
+          }),
+        });
+      });
+      globalThis.fetch = fetchSpy;
+
+      root = createRoot(container as unknown as Element);
+      await act(async () => {
+        root?.render(
+          createElement(ResearchCollectionOrchestratorCard, {
+            taskId: "task-mixed-feedback",
+          }),
+        );
+      });
+      await flush();
+      await flush();
+
+      await act(async () => {
+        (container.querySelector('[data-testid="btn-orchestrate"]') as unknown as { click: () => void } | null)?.click();
+      });
+      await flush();
+      await flush();
+
+      const feedback = container.querySelector('[data-testid="orchestrator-run-feedback"]');
+      expect(feedback?.textContent).toContain("本次资料整理已完成");
+      expect(feedback?.textContent).toContain("关键词与竞品");
+      expect(feedback?.textContent).toContain("页面导航被安全策略阻断");
+    });
+
+    it("automation_blocked 来源渲染为可人工处理的自动化校验提示（不是失败、不是登录墙）", async () => {
+      const fetchSpy = vi.fn().mockImplementation((_url, opts) => {
+        const body = JSON.parse(opts?.body as string);
+        if (body.action === "inspect") {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              ok: true,
+              data: {
+                sources: {
+                  amazon: { state: "needs_supplement" },
+                  keywords_competitors: { state: "pending" },
+                  voc: { state: "needs_action" },
+                  sourcing_1688: { state: "pending_review" },
+                },
+              },
+            }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            ok: true,
+            data: {
+              overallStatus: "mixed",
+              sources: {
+                amazon: {
+                  status: "needs_user",
+                  message: "Amazon 触发了自动化访问校验（“Continue shopping”中间页）。系统不会绕过该校验：请在本机浏览器手动打开该商品页确认，或稍后重试。",
+                  error: { code: "automation_blocked" },
+                },
+                keywordCompetitor: { status: "ready" },
+                voc: { status: "ready" },
+                sourcing1688: { status: "ready" },
+              },
+            },
+          }),
+        });
+      });
+      globalThis.fetch = fetchSpy;
+
+      root = createRoot(container as unknown as Element);
+      await act(async () => {
+        root?.render(createElement(ResearchCollectionOrchestratorCard, { taskId: "task-automation-blocked" }));
+      });
+      await flush();
+      await act(async () => {
+        (container.querySelector('[data-testid="btn-orchestrate"]') as unknown as { click: () => void } | null)?.click();
+      });
+      await flush();
+      await flush();
+
+      const row = container.querySelector('[data-testid="source-row-amazon"]');
+      // needs_user 行展示状态徽标 + 采集器给出的可操作文案（自动化访问校验）
+      expect(row?.textContent).toContain("自动化访问校验");
+      expect(row?.textContent).not.toContain("需要登录");
+      expect(row?.textContent).not.toContain("验证或登录阻断");
+      expect(row?.textContent).not.toContain("失败");
+      // needs_user → 人工处理入口（不是 failed 的重试入口）
+      expect(container.querySelector('[data-testid="action-handle-amazon"]')).not.toBeNull();
+      expect(container.querySelector('[data-testid="action-retry-amazon"]')).toBeNull();
+      const feedback = container.querySelector('[data-testid="orchestrator-run-feedback"]');
+      // needs_user 既不算失败来源、也不算成功来源：本次运行摘要里不出现"失败来源：Amazon"
+      expect(feedback?.textContent).toContain("本次资料整理已完成");
+      expect(feedback?.textContent).not.toContain("失败来源");
+      expect(feedback?.textContent).not.toContain("Amazon");
     });
 
     it("生成新 Preview 时：触发 onDataChanged，渲染警示栏，绝不替用户自动确认", async () => {
@@ -889,7 +1028,7 @@ describe("ResearchCollectionOrchestratorCard (Phase 3 UI / Interaction)", () => 
       expect(onNavigate).toHaveBeenCalledWith("sourcing", "formal-v2-sourcing-evidence");
     });
 
-    it("inspect 失败时展示克制错误栏，并提供重试检查入口", async () => {
+    it("inspect 失败时展示克制错误栏，并提供重新检查状态入口", async () => {
       const fetchSpy = vi.fn().mockResolvedValue({
         ok: false,
         json: async () => ({
@@ -916,6 +1055,7 @@ describe("ResearchCollectionOrchestratorCard (Phase 3 UI / Interaction)", () => 
 
       const retryBtn = container.querySelector('[data-testid="orchestrator-retry-btn"]');
       expect(retryBtn).toBeTruthy();
+      expect(retryBtn?.textContent).toContain("重新检查状态");
 
       // 点击重试检查，再次发起 inspect
       await act(async () => {
@@ -1237,6 +1377,53 @@ describe("ResearchCollectionOrchestratorCard (Phase 3 UI / Interaction)", () => 
 
         expect(fetchSpy.mock.calls.filter((call) => JSON.parse(call[1]?.body).action === "orchestrate")).toHaveLength(1);
         expect(container.querySelector('[data-testid="badge-sourcing_1688"]')?.textContent).toContain("已有");
+      });
+
+      it("单源重试只请求该来源（sources 白名单），绝不整链重跑覆盖其它来源", async () => {
+        const buildResponse = (orchestrated: boolean) => ({
+          sources: {
+            amazon: { status: "awaiting_confirmation", previewId: "bev-preview-keepme1" },
+            keywordCompetitor: { status: "ready" },
+            voc: { status: "ready" },
+            sourcing1688: orchestrated
+              ? { status: "ready", message: "1688 货源证据已就绪" }
+              : { status: "failed", message: "1688 助手连接中断，请检查 Chrome 窗口与助手状态后重试。" },
+          },
+          ...(orchestrated ? { attemptedSources: ["sourcing1688"] } : {}),
+        });
+        const fetchSpy = vi.fn().mockImplementation((_url, opts) => {
+          const body = JSON.parse(opts?.body as string);
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ ok: true, data: buildResponse(body.action === "orchestrate") }),
+          });
+        });
+        globalThis.fetch = fetchSpy;
+
+        root = createRoot(container as unknown as Element);
+        await act(async () => {
+          root?.render(createElement(ResearchCollectionOrchestratorCard, { taskId: "task-single-retry" }));
+        });
+        await flush();
+        await flush();
+
+        const retryBtn = container.querySelector('[data-testid="action-retry-sourcing_1688"]') as HTMLButtonElement | null;
+        expect(retryBtn).toBeTruthy();
+        await act(async () => {
+          retryBtn?.click();
+        });
+        await flush();
+        await flush();
+
+        const orchestrateCalls = fetchSpy.mock.calls
+          .map((call) => JSON.parse(call[1]?.body))
+          .filter((body) => body.action === "orchestrate");
+        expect(orchestrateCalls).toHaveLength(1);
+        // 关键回归：重试一个失败来源时，必须带上该来源白名单，
+        // 否则服务端会重启整链，把另一个来源刚生成的待确认预览一起重采。
+        expect(orchestrateCalls[0].sources).toEqual(["sourcing_1688"]);
+        // 未重试来源的待确认状态保持可见。
+        expect(container.querySelector('[data-testid="badge-amazon"]')?.textContent).toContain("待确认");
       });
 
       it("后端返回 error.message / message 时，detail 能正确渲染真实脱敏错误信息", async () => {
@@ -1837,6 +2024,49 @@ describe("ResearchCollectionOrchestratorCard (Phase 3 UI / Interaction)", () => 
 
     it("Amazon verification blocker is not presented as an ASIN error", () => {
       expect(getAmazonFailureReason("Amazon验证阻断")).toBe("Amazon验证阻断");
+    });
+
+    it("presents the automation access check as its own reason instead of a login wall", () => {
+      expect(getAmazonFailureReason("Amazon 触发了自动化访问校验", "automation_blocked")).toBe("Amazon自动化访问校验");
+      expect(getSourceFailureReason("amazon", "Amazon 触发了自动化访问校验", "automation_blocked")).toBe("Amazon自动化访问校验");
+      expect(getSourceFailureReason("voc", "Amazon 触发了自动化访问校验", "automation_blocked")).toBe("Amazon自动化访问校验");
+      // 明确不展示为"需要登录"
+      expect(getSourceFailureReason("amazon", "Amazon 触发了自动化访问校验", "automation_blocked")).not.toContain("登录");
+    });
+
+    it("uses structured source error codes before message text", () => {
+      expect(
+        getAmazonFailureReason(
+          "页面导航被重定向到白名单外地址；该状态不等同于验证码",
+          "navigation_not_allowed",
+        ),
+      ).toBe("页面导航被安全策略阻断");
+      expect(getAmazonFailureReason("需要验证码", "captcha_required")).toBe("验证或登录阻断");
+
+      const feedback = deriveOrchestratorRunFeedback({
+        overallStatus: "mixed",
+        sources: {
+          amazon: {
+            status: "failed",
+            message: "页面导航被重定向到白名单外地址；该状态不等同于验证码",
+            error: { code: "navigation_not_allowed" },
+          },
+          keywordCompetitor: { status: "ready" },
+          voc: {
+            status: "failed",
+            message: "页面导航被安全白名单阻断",
+            error: { code: "navigation_not_allowed" },
+          },
+          sourcing1688: { status: "ready" },
+        },
+      });
+      expect(feedback).toEqual({
+        successSources: ["关键词与竞品", "1688 供应链"],
+        failedSources: [
+          { title: "Amazon 商品资料", reason: "页面导航被安全策略阻断" },
+          { title: "买家评论与反馈（VOC）", reason: "页面导航被安全策略阻断" },
+        ],
+      });
     });
 
     it("Amazon 失败时展示 ○ 获取失败徽章、收敛原因与双按钮（重新尝试+人工补充），消除恐慌红字", async () => {

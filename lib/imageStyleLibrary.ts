@@ -188,7 +188,7 @@ const PRESETS: readonly ImageStylePreset[] = [
     label: "家居生活",
     description: "自然窗光与真实家庭场景",
     category: "lifestyle",
-    compatiblePurposes: ["custom", "usage_steps", "packaging_bundle"],
+    compatiblePurposes: ["custom", "usage_steps", "packaging_bundle", "lifestyle_in_use"],
     visualStyle: "home",
     composition: "Believable in-use placement with realistic scale against the surrounding room.",
     lighting: "Natural window light with soft directional falloff and a believable shadow direction.",
@@ -329,6 +329,7 @@ export const DEFAULT_IMAGE_STYLE_PRESET_ID: ImageStylePresetId = "amazon_clean_h
 export const DEFAULT_IMAGE_STYLE_PRESET_BY_PURPOSE: Record<StudioImagePrimaryPurpose, ImageStylePresetId> = {
   white_studio: "amazon_clean_hero",
   selling_point_infographic: "feature_board",
+  lifestyle_in_use: "lifestyle_home",
   dimension_specification: "feature_board",
   detail_closeup: "macro_detail",
   packaging_bundle: "packaging_set",

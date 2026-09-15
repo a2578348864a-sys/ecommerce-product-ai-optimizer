@@ -162,6 +162,16 @@
         ...(found && !(rect !== null && rect.width > 0 && rect.height > 0) ? ["upload_target_not_visible"] : []),
         ...(found && target.disabled ? ["upload_target_disabled"] : []),
       ],
+      // 诊断字段（不含任何图片数据/凭证）：
+      // "找不到上传入口"有两种完全不同的原因——页面上下文准入被拒，或页面里确实
+      // 没有可识别的 file input。不做区分时用户在两端都会看到同一句
+      // "请刷新助手"，无法判断到底该修什么。
+      diagnostic: {
+        strictContext: isStrictImageUploadContext(),
+        fileInputCount: fileInputs.length,
+        readyState: document.readyState,
+        hostname: location.hostname,
+      },
     };
   }
 

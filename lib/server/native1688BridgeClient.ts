@@ -38,7 +38,7 @@ export type BridgeJobMeta = {
   contentType: string;
 };
 
-export type BridgeCommandType = "getState" | "upload" | "submit" | "collect" | "navigateUploadPage";
+export type BridgeCommandType = "getState" | "upload" | "submit" | "collect" | "navigateUploadPage" | "reloadTab";
 
 function fail(code: string, status: number, message: string): never {
   throw new SourcingAcquisitionError(code, status, message);

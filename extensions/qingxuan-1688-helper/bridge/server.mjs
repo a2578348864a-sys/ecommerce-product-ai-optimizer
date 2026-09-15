@@ -27,7 +27,7 @@ const BRIDGE_VERSION = "authenticated-loopback-bridge.v1"; // V3 Final R13：/he
 const JOB_TTL_MS = 10 * 60 * 1000;
 const MAX_COMMAND_BYTES = 6 * 1024 * 1024; // 命令含图片 base64（候选图 ≤4MB 时足够）
 const MAX_IMAGE_BYTES = 30 * 1024 * 1024;
-const ALLOWED_COMMANDS = new Set(["getState", "upload", "submit", "collect", "navigateUploadPage"]);
+const ALLOWED_COMMANDS = new Set(["getState", "upload", "submit", "collect", "navigateUploadPage", "reloadTab"]);
 const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp"]);
 
 const token = parseToken(process.argv);
