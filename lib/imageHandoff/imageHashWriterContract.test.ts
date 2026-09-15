@@ -60,8 +60,8 @@ describe("Image Hash Writer 合同（Final Freeze）", () => {
   it("real provider 源码不再写 promptHash/requestKeyHash 占位符", () => {
     expect(realProviderSource).not.toContain('promptHash: "real"');
     expect(realProviderSource).not.toContain('requestKeyHash: "real"');
-    // 不得为填满字段制造假 Hash（无 sha256(prompt) 注入 Hash 字段）
-    expect(realProviderSource).not.toMatch(/promptHash:\s*createHash/);
+    // e4f1306：promptHash 必须来自实际发送 Prompt 的真实 sha256
+    expect(realProviderSource).toMatch(/promptHash:\s*createHash/);
   });
 
   // 2. mock provider 新 item：不得持久化 "mock" 到 Hash 字段
