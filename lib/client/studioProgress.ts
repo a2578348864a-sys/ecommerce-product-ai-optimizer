@@ -52,31 +52,27 @@ export function deriveImageStudioProgress(input: {
   if (!input.briefReady) {
     return [
       step("brief", "资料确认", "active"),
-      step("strategy", "图片策略", "pending"),
-      step("generate", "生成候选", "pending"),
-      step("select", "人工选择", "pending"),
+      step("generate", "生成图片", "pending"),
+      step("review", "图片候选", "pending"),
     ];
   }
   if (input.candidateCount > 0) {
     return [
       step("brief", "资料确认", "completed"),
-      step("strategy", "图片策略", "completed"),
-      step("generate", "生成候选", "completed"),
-      step("select", "人工选择", input.selectedImageId ? "completed" : "active"),
+      step("generate", "生成图片", "completed"),
+      step("review", "图片候选", input.selectedImageId ? "completed" : "active"),
     ];
   }
   if (input.isGenerating) {
     return [
       step("brief", "资料确认", "completed"),
-      step("strategy", "图片策略", "completed"),
-      step("generate", "生成候选", "active", true),
-      step("select", "人工选择", "pending"),
+      step("generate", "生成图片", "active", true),
+      step("review", "图片候选", "pending"),
     ];
   }
   return [
     step("brief", "资料确认", "completed"),
-    step("strategy", "图片策略", "active"),
-    step("generate", "生成候选", "pending"),
-    step("select", "人工选择", "pending"),
+    step("generate", "生成图片", "active"),
+    step("review", "图片候选", "pending"),
   ];
 }

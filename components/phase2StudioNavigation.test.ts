@@ -15,13 +15,14 @@ describe("Phase 2 Studio entry points", () => {
     expect(page).toContain("基于服务端重新核验的研究事实生成 Listing 草稿");
   });
 
-  it("renders Image Studio in Manual and Task modes instead of redirecting", () => {
+  it("renders task-linked Image Studio and an explicit research-task guidance state", () => {
     const page = source("app/image-studio/page.tsx");
     expect(page).not.toContain("redirect(");
     expect(page).toContain("ImageStudioClient");
     expect(page).toContain("taskId");
-    expect(page).toContain("独立创作");
+    expect(page).toContain("请先选择研究任务");
     expect(page).toContain("来自研究记录");
+    expect(page).toContain("请先从商品研究选择一个任务");
   });
 
   it("groups research and creative tools in desktop and mobile navigation", () => {

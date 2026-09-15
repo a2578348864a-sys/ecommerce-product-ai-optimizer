@@ -10,7 +10,7 @@ export default async function ImageStudioPage({ searchParams }: ImageStudioPageP
   const params = await searchParams;
   const taskIdValue = Array.isArray(params?.taskId) ? params.taskId[0] : params?.taskId;
   const taskId = taskIdValue?.trim().slice(0, 200) || "";
-  const sourceLabel = taskId ? "来自研究记录" : "独立创作";
+  const sourceLabel = taskId ? "来自研究记录" : "请先选择研究任务";
 
   return (
     <main className={`app-shell image-studio-page ${styles.page}`}>
@@ -28,7 +28,7 @@ export default async function ImageStudioPage({ searchParams }: ImageStudioPageP
                 <p className={styles.headerDescription}>
                   {taskId
                     ? "基于服务端核验的研究资料和已批准视觉参考生成候选草稿。"
-                    : "上传并批准参考图，或生成只表示构图与场景方向的概念候选。"}
+                    : "请先从商品研究选择一个任务，再进入图片工作台完成图片候选生成。"}
                 </p>
               </div>
             </div>

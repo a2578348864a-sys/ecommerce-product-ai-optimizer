@@ -296,7 +296,7 @@ describe("GET /api/tasks/[id]/image-handoff", () => {
     expect(body.data.canGenerate).toBe(true);
     expect(body.data.creativeDescriptionContext).toEqual(expect.objectContaining({
       productName: "30oz 黑色不锈钢水杯",
-      confirmedFacts: [{ label: "容量", value: "30oz" }],
+      confirmedFacts: [{ field: "capacity", label: "容量", value: "30oz" }],
       existingVisualRequirements: ["深色背景"],
       hasApprovedReference: false,
     }));

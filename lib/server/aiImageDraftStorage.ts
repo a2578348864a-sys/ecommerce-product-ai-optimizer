@@ -47,7 +47,10 @@ function ensureInsideRoot(target: string): string {
 }
 
 export function resolveAiImageStorageKey(storageKey: string): string {
-  if (!storageKey || storageKey.includes("..") || storageKey.includes("\\") || storageKey.startsWith("/")) {
+  if (!storageKey || storageKey.includes("..") || storageKey.includes("\\") || storageKey.startsWith("/")
+    // V2.1 边界加固：以 `_` 开头的保留目录（含隔离区 `_quarantine`）永不进入公开读取路径，
+    // 即使某个隔离键意外泄漏到读取调用，也无法通过公开接口取回未校验内容。
+    || storageKey.startsWith("_") || storageKey.includes("/_")) {
     throw new Error("AI_IMAGE_INVALID_STORAGE_KEY");
   }
   return ensureInsideRoot(resolve(storageRoot(), storageKey));
@@ -293,6 +296,58 @@ export async function storeAiImage(input: {
     height: validated.height,
     sha256: validated.sha256,
     fileSizeBytes: validated.bytes.length,
+  };
+}
+
+/**
+ * V2.1：**已付费但未通过校验**的图片字节隔离保留区。
+ *
+ * 真实事故背景（run `2026-09-14T20-35-26`）：Provider 已生成图片并计费，但落盘阶段抛错，
+ * 结果被直接丢弃 —— 用户付了钱却什么都没拿到，界面只说「请稍后重试」，再试一次就要**再付一次钱**。
+ * （该次全靠人工从中转站结果 URL 抢救回来。）
+ *
+ * 本函数在**不削弱已校验存储**的前提下把原始字节留档，使「只重试保存、不重新生成」成为可能。
+ * 安全边界：
+ *  - 独立 `_quarantine/` 目录，**不进入任何公开读取路径**（`resolveAiImageStorageKey` 只按 storageKey 取图）；
+ *  - 0o700 目录 / 0o600 文件，与正式资产一致；
+ *  - **不做格式放行**（内容正是校验失败的东西），只做体积上限检查以防磁盘滥用；
+ *  - 失败一律抛错，由调用方决定是否降级（调用方已 try/catch，绝不影响主流程的错误语义）。
+ */
+export async function quarantineAiImage(input: {
+  accessMode: AiImageAccessMode;
+  visitorAccessId?: string;
+  taskId: string;
+  bytes: Buffer;
+  reason?: string;
+}): Promise<{ quarantineKey: string; sha256: string; fileSizeBytes: number }> {
+  const taskId = safeSegment(input.taskId, "task_id");
+  if (!Buffer.isBuffer(input.bytes) || input.bytes.length === 0) throw new Error("AI_IMAGE_EMPTY_FILE");
+  if (input.bytes.length > AI_IMAGE_MAX_FILE_BYTES) throw new Error("AI_IMAGE_FILE_TOO_LARGE");
+  const scope = input.accessMode === "owner"
+    ? "owner"
+    : `visitor/${safeSegment(buildVisitorImageScope(input.visitorAccessId || ""), "visitor_scope")}`;
+  const id = randomUUID();
+  // key 为相对**存储根**的真实路径，含保留目录前缀 —— 因此 resolveAiImageStorageKey 必然拒绝它。
+  const quarantineKey = `_quarantine/${scope}/${taskId}/${id}.bin`;
+  const dir = resolve(storageRoot(), "_quarantine", scope, taskId);
+  const target = ensureInsideRoot(resolve(dir, `${id}.bin`));
+  const temp = ensureInsideRoot(resolve(dir, `${id}.part`));
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  await writeFile(temp, input.bytes, { flag: "wx", mode: 0o600 });
+  await rename(temp, target);
+  await chmod(target, 0o600).catch(() => undefined);
+  if (input.reason) {
+    // 失败原因随留档一起写明，便于事后判因（不写 base64 内容、不写任何凭据）
+    await writeFile(
+      ensureInsideRoot(resolve(dir, `${id}.reason.txt`)),
+      `reason=${input.reason}\nbytes=${input.bytes.length}\n`,
+      { flag: "wx", mode: 0o600 },
+    ).catch(() => undefined);
+  }
+  return {
+    quarantineKey,
+    sha256: createHash("sha256").update(input.bytes).digest("hex"),
+    fileSizeBytes: input.bytes.length,
   };
 }
 

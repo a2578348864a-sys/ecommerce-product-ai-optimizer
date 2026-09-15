@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildV4NavGroups, modeBadgeLabel } from "@/components/WorkspaceSidebar";
+import { buildV4NavGroups, modeBadgeLabel, withTaskContext } from "@/components/WorkspaceSidebar";
 
 function labels(r: Parameters<typeof buildV4NavGroups>[0]) {
   const groups = buildV4NavGroups(r);
@@ -7,6 +7,12 @@ function labels(r: Parameters<typeof buildV4NavGroups>[0]) {
 }
 
 describe("WorkspaceSidebar 导航矩阵（V4.1 C 端）", () => {
+  it("从任务详情进入两个创作工作台时都保留 taskId", () => {
+    expect(withTaskContext("/listing-studio", "task/with spaces")).toBe("/listing-studio?taskId=task%2Fwith%20spaces");
+    expect(withTaskContext("/image-studio", "task/with spaces")).toBe("/image-studio?taskId=task%2Fwith%20spaces");
+    expect(withTaskContext("/research", "task-1")).toBe("/research");
+  });
+
   it("本地：7 项主导航（工作台/发现/待研究/商品研究/研究记录/Listing/Image），无 V4 项/无案例回放", () => {
     const g = labels({ mode: "local_owner", v4Graph: true });
     expect(g[0].label).toBe("工作台");

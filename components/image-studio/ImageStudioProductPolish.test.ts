@@ -114,48 +114,13 @@ const requestSource = readFileSync(
 );
 
 describe("Image Studio product workbench", () => {
-  it("renders product information, image strategy, generation settings, constraints, and mode inputs", () => {
+  it("guides standalone visitors into a research-linked Image Studio task", () => {
     const html = renderToStaticMarkup(createElement(ImageStudioClient));
-
-    for (const heading of ["商品信息", "图片策略", "生成设置", "补充要求"]) {
-      expect(html).toContain(heading);
-    }
-    for (const label of [
-      "商品名称",
-      "创作描述",
-      "图片主用途",
-      "生活场景",
-      "图片数量",
-      "宽高比例",
-      "禁止元素",
-    ]) {
-      expect(html).toContain(label);
-    }
-    for (const option of [
-      "白底主图/棚拍",
-      "卖点信息图",
-      "尺寸规格图",
-      "产品细节特写",
-      "包装/套装展示",
-      "使用步骤图",
-      "家居生活",
-      "办公/通勤",
-      "户外/旅行",
-      "运动/健身",
-      "对比展示",
-      "自定义",
-    ]) {
-      expect(html).toContain(option);
-    }
-    expect(html).toContain("引导生成");
-    expect(html).toContain("自由提示词");
-    expect(html).toContain("Mock 本地预览");
-    expect(html).toContain("本地确定性预览，不调用 Provider");
-    expect(html).toContain("图片工作区");
-    expect(html).toContain("独立创作没有 Task 研究事实，只使用你明确填写并确认的信息。");
-    expect(html).toContain("概念创作模式");
-    expect(html).toContain("当前没有已确认商品参考图。生成结果用于构图、场景和视觉方向参考，不代表真实商品外观。");
-    expect(html).toContain("生成图片");
+    expect(html).toContain("请从商品研究进入图片工作台");
+    expect(html).toContain("商品事实、参考图和创作资料确认");
+    expect(html).toContain("进入商品研究");
+    expect(html).not.toContain("图片主用途");
+    expect(html).not.toContain("自由提示词");
   });
 
   it("renders selectable image cards and a truthful local quality-check workspace", () => {
@@ -179,18 +144,13 @@ describe("Image Studio product workbench", () => {
     expect(html).toContain('data-tone="success"');
   });
 
-  it("keeps four prompt templates as fill-only controls and wires bounded prompt fields", () => {
-    for (const template of ["白底主图", "生活场景", "细节特写", "广告素材"]) {
-      expect(requestSource).toContain(template);
-    }
-    expect(clientSource).toContain('type="button"');
-    expect(clientSource).toContain('role="group"');
-    expect(clientSource).toContain('name="creativePrompt"');
-    expect(clientSource).toContain('maxLength={1200}');
-    expect(clientSource).toContain('name="avoidElements"');
-    expect(clientSource).toContain('maxLength={400}');
-    expect(clientSource).toContain("模板只填充起始内容，不会自动提交");
-    expect(clientSource).toContain("服务端会构造最终权威 Prompt");
+  it("keeps the task-linked Image Studio as the only generation entry", () => {
+    expect(requestSource).toContain("buildStudioImageRequestCore");
+    expect(clientSource).toContain("ImageHandoffSection");
+    expect(clientSource).toContain("TaskStudioPreparation");
+    expect(clientSource).toContain("请从商品研究进入图片工作台");
+    expect(clientSource).not.toContain("ManualImageStudioClient");
+    expect(clientSource).not.toContain("自由提示词");
   });
 
   it("renders Prompt result summary and avoid-elements context without an internal prompt", () => {
@@ -206,7 +166,7 @@ describe("Image Studio product workbench", () => {
     expect(html).toContain("自由提示词方案 · 自定义创意 · 商品主视觉 · 4:5");
     expect(html).toContain("避免元素");
     expect(html).toContain("logos, watermarks");
-    expect(html).toContain('alt="自由提示词方案的本地 Mock 预览 1"');
+    expect(html).toContain('alt="自由提示词方案的本地预览稿 1"');
     expect(html).not.toContain("Untrusted task context");
   });
 
@@ -239,9 +199,12 @@ describe("Image Studio product workbench", () => {
     expect(cssSource.match(/font-size:\s*0\.55rem/g)).toHaveLength(1);
   });
 
-  it("keeps the independent Image Studio page and delegates real progress to the client", () => {
+  it("keeps the Image Studio page and delegates research-linked progress to the client", () => {
     expect(pageSource).not.toContain("redirect(");
     expect(pageSource).toContain("ImageStudioClient");
+    expect(pageSource).toContain("请先选择研究任务");
+    expect(pageSource).toContain("请先从商品研究选择一个任务");
+    expect(pageSource).not.toContain("独立创作");
     expect(pageSource).not.toContain('aria-current={index === 0 ? "step" : undefined}');
   });
 });
