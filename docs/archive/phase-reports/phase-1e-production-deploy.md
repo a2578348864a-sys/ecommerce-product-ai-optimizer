@@ -7,8 +7,8 @@
 - **部署时间**：2026-06-21
 - **部署人**：Claude
 - **部署方式**：SCP（GitHub 从服务器不可达，使用文件直传）
-- **部署前 HEAD**：`7b83cdfc07dc14bb2e3f0b363f41bf575507cdc9`
-- **部署后 origin/main HEAD**：`7c9336e`（本地已 push）
+- **部署前 HEAD**：`<redacted-hash>`
+- **部署后 origin/main HEAD**：`<redacted-hash>`（本地已 push）
 - **服务器运行代码**：Phase 1E 最新（通过 SCP 覆盖 8 个文件）
 
 ## 部署文件清单
@@ -29,7 +29,7 @@
 1. ✅ 本地安全复核：无 AI 调用、无 DB 写入、SSRF 阻断完整
 2. ✅ lint：0 warnings
 3. ✅ build：34/34 pages
-4. ✅ DB 备份：`/www/server-backups/.../2026-06-21-before-phase1e-deploy/prod.db.before-phase1e.bak`
+4. ✅ DB 备份：`/path/to/server-backups/.../2026-06-21-before-phase1e-deploy/prod.db.before-phase1e.bak`
 5. ✅ SCP 8 个文件到服务器
 6. ✅ `npm run build` — 34/34 pages
 7. ✅ `pm2 restart alibaba-ai-assistant` — online
@@ -39,7 +39,7 @@
 
 ### 页面（全部 200）
 
-| 页面 | 本机 3005 | 公网 |
+| 页面 | 本机 <PORT> | 公网 |
 |------|----------|------|
 | `/` | 200 | 200 |
 | `/opportunities` | 200 | 200 |
@@ -89,4 +89,4 @@
 3. **评分规则粗粒度** — 关键词匹配无法替代真实市场数据
 4. **不支持强反爬平台** — TikTok/Amazon/1688 等需要官方 API
 5. **GitHub 不可达** — 服务器无法 git pull，后续部署需用 SCP 或修复网络
-6. **服务器 git 历史落后** — HEAD 仍为 `7b83cdf`，工作区代码为 Phase 1E 最新，下次 git pull 前需先 stash/commit
+6. **服务器 git 历史落后** — HEAD 仍为 `<redacted-hash>`，工作区代码为 Phase 1E 最新，下次 git pull 前需先 stash/commit

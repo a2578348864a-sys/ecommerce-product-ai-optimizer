@@ -1170,7 +1170,7 @@ function LocalWorkspace({ runtime }: { runtime: HomeRuntime }) {
                 />
                 <LocalProductSection
                   title="已完成"
-                  description="研究已正式收口并保存到研究记录（researchCompletion=completed）。"
+                  description="研究已正式收口并保存到研究记录，可查看结论或继续创作。"
                   items={completed}
                   loading={loading}
                   unavailable={unavailable}

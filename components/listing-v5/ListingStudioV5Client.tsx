@@ -29,6 +29,7 @@ import {
   localizeAvoidClaim,
   localizeStrategyList,
   localizeBenefitRole,
+  localizeListingQualityNote,
 } from "@/lib/client/strategyDisplayLocalization";
 
 type V5Data = {
@@ -254,6 +255,9 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
   const snapshot = data?.snapshot;
   const strategy = snapshot?.strategy;
   const listing = snapshot?.listing;
+  // 搜索词展示：草稿未写入后端搜索词时不能显示「0 个词」——那与研究侧「关键词方案已确认」
+  // 冲突，看起来像系统故障。这里只改展示口径，不改任何生成结果。
+  const searchTerms: string[] = listing?.backendSearchTerms ?? [];
   const validation = snapshot?.validation;
   const provider = snapshot?.provider;
   const trace = snapshot?.trace;
@@ -307,8 +311,6 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
   const userFacingError = errorCode === "creative_confirmation_required"
     ? "研究事实已确认，还需完成一次创作资料确认。请先确认创作资料后再生成文案。"
     : error;
-  // The model name is only known after a provider call; it is displayed read-only.
-  const aiModelLabel: string | null = trace?.stages?.writer?.model ?? trace?.stages?.strategy?.model ?? null;
   const traceStages: Array<[string, any]> = trace
     ? [
         ["策略分析 (Strategy)", trace.stages?.strategy],
@@ -392,8 +394,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
             研究事实已确认，还需完成一次创作资料确认
           </h2>
           <p className="mt-1 text-xs leading-5 text-teal-900/80">
-            商品研究已完成。核对下方「当前已确认商品事实」并勾选人工确认后，Listing V5 即可继续生成。关键词方案确认不等于创作资料确认。
-            本步骤只使用研究阶段已人工确认的事实，不会自动创建或伪造任何事实。
+            请在下方「创作资料确认」区核对并勾选人工确认后继续。关键词方案确认不等于创作资料确认。
           </p>
           <div className="mt-3">
             <TaskStudioPreparation taskId={taskId} kind="listing" onCommitted={() => void load()}>
@@ -403,46 +404,51 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
         </section>
       ) : null}
 
-      {/* 模块 1：已确认事实与研究资料摘要 */}
-      <section className="w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+      {/* 模块 1：创作资料摘要（只保留权威计数 + 查看详情入口；统计明细默认折叠，避免与创作资料确认区重复） */}
+      <section className="w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs" data-testid="listing-v5-research-summary">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-md border border-emerald-200/80 bg-emerald-50/80 px-2 py-0.5 text-xs font-bold text-emerald-700">
-              研究依据
+              创作资料
             </span>
-            <span className="text-xs font-medium text-slate-500">
-              来自商品研究确认事实，禁止虚构
-            </span>
+            {data ? (
+              <span className="rounded-md border border-slate-200/80 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700">
+                已确认事实：<strong className="font-mono text-slate-900">{data.context.factCount}</strong> 项
+              </span>
+            ) : null}
+            <Link
+              href={`/tasks/${encodeURIComponent(taskId)}`}
+              className="text-xs font-semibold text-emerald-700 underline"
+              data-testid="listing-v5-research-detail-link"
+            >
+              查看研究记录 →
+            </Link>
           </div>
           <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
-            待人工复核
+            最终人工复核：必须
           </span>
         </div>
 
         {data ? (
-          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-600">
-            <span className="font-semibold text-slate-800">
-              创作资料已确认
-            </span>
-            <span className="rounded-md border border-slate-200/80 bg-slate-50 px-2 py-0.5 font-medium text-slate-700">
-              已确认事实: <strong className="font-mono text-slate-900">{data.context.factCount}</strong>
-            </span>
-            <span className="rounded-md border border-slate-200/80 bg-slate-50 px-2 py-0.5 font-medium text-slate-700">
-              VOC 洞察: <strong className="font-mono text-slate-900">{data.context.referenceCounts.voc}</strong>
-            </span>
-            <span className="rounded-md border border-slate-200/80 bg-slate-50 px-2 py-0.5 font-medium text-slate-700">
-              关键词: <strong className="font-mono text-slate-900">{data.context.referenceCounts.keywords}</strong>
-            </span>
-            <span className="rounded-md border border-slate-200/80 bg-slate-50 px-2 py-0.5 font-medium text-slate-700">
-              竞品参考: <strong className="font-mono text-slate-900">{data.context.referenceCounts.competitors}</strong>
-            </span>
-            <span className="rounded-md border border-slate-200/80 bg-slate-50 px-2 py-0.5 font-medium text-slate-700">
-              1688 货源: <strong className="font-mono text-slate-900">{data.context.referenceCounts.sourcing}</strong>
-            </span>
-            <span className="font-medium text-amber-700">
-              最终人工复核: 必须
-            </span>
-          </div>
+          <details className="mt-3 rounded-xl border border-slate-100 bg-slate-50/60 p-2.5" data-testid="listing-v5-research-stats-details">
+            <summary className="cursor-pointer text-xs font-semibold text-slate-600">
+              查看资料统计
+            </summary>
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-600">
+              <span className="rounded-md border border-slate-200/80 bg-white px-2 py-0.5 font-medium text-slate-700">
+                买家反馈：<strong className="font-mono text-slate-900">{data.context.referenceCounts.voc}</strong>
+              </span>
+              <span className="rounded-md border border-slate-200/80 bg-white px-2 py-0.5 font-medium text-slate-700">
+                关键词: <strong className="font-mono text-slate-900">{data.context.referenceCounts.keywords}</strong>
+              </span>
+              <span className="rounded-md border border-slate-200/80 bg-white px-2 py-0.5 font-medium text-slate-700">
+                竞品参考: <strong className="font-mono text-slate-900">{data.context.referenceCounts.competitors}</strong>
+              </span>
+              <span className="rounded-md border border-slate-200/80 bg-white px-2 py-0.5 font-medium text-slate-700">
+                1688 货源: <strong className="font-mono text-slate-900">{data.context.referenceCounts.sourcing}</strong>
+              </span>
+            </div>
+          </details>
         ) : null}
       </section>
 
@@ -456,7 +462,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
               </span>
             </div>
             <p className="mt-0.5 text-xs text-slate-500">
-              来自 VOC / 关键词 / 竞品研究，仅用于指导表达策略，不属于商品事实。
+              来自买家反馈（VOC）/ 关键词 / 竞品研究，仅用于指导表达策略，不属于商品事实。
             </p>
           </div>
           <button
@@ -492,7 +498,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
           </span>
           <span className="text-[11px] leading-relaxed">
             {realAiEnabled === true
-              ? `已连接智能创作模型${aiModelLabel ? `（${aiModelLabel}）` : ""}，严格基于人工确认事实生成文案，并经事实核验守卫校验。`
+              ? `已连接智能创作模型，严格基于人工确认事实生成文案，并经事实核验守卫校验。`
               : realAiEnabled === false
               ? "当前环境未启用真实 AI 模型，本次生成将使用确定性安全模板（安全回退文案），文案全部来自已确认事实。"
               : "状态来自服务端 realAiEnabled。"}
@@ -688,7 +694,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-100 bg-emerald-50/40 px-3 py-2 text-xs text-slate-700">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-semibold text-slate-800">
-                    本次采用策略:
+                    本次采用策略：
                   </span>
                   <span>{localizePrimaryAngle(strategy.primaryAngle) || "事实优先"}</span>
                   <span className="text-slate-400">·</span>
@@ -841,19 +847,20 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
                     搜索关键词 KEYWORDS
                   </span>
                   <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-600">
-                    {(listing.backendSearchTerms ?? []).length} 个词
+                    {searchTerms.length > 0 ? `${searchTerms.length} 个词` : "本次未写入"}
                   </span>
                 </div>
                 <button
                   type="button"
+                  disabled={searchTerms.length === 0}
                   onClick={() =>
                     void handleCopy(
-                      (listing.backendSearchTerms ?? []).join(", "),
+                      searchTerms.join(", "),
                       "keywords",
                       "搜索词已复制"
                     )
                   }
-                  className="flex items-center gap-1 rounded-md border border-slate-200/80 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
+                  className="flex items-center gap-1 rounded-md border border-slate-200/80 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {copiedKey === "keywords" ? (
                     <Check className="h-3 w-3 text-emerald-600" />
@@ -864,9 +871,9 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
                 </button>
               </div>
               <div className="mt-2.5">
-                {(listing.backendSearchTerms ?? []).length > 0 ? (
+                {searchTerms.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5">
-                    {listing.backendSearchTerms.map((term: string) => (
+                    {searchTerms.map((term: string) => (
                       <span
                         key={term}
                         className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 font-mono text-xs font-medium text-slate-700"
@@ -876,9 +883,16 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-500">
-                    由已确认关键词方案提供。
-                  </p>
+                  <div className="space-y-1 text-xs leading-5 text-slate-600">
+                    <p>
+                      本次 Listing 草稿未包含后端搜索词
+                      {provider?.fallbackUsed ? "（安全回退模板稿不生成搜索词）" : ""}
+                      ；标题、五点描述与商品描述不受影响。
+                    </p>
+                    <p>
+                      已确认的关键词方案仍在研究记录中，可返回研究页查看，或复制上方文案后自行补充搜索词。
+                    </p>
+                  </div>
                 )}
               </div>
             </div>
@@ -934,7 +948,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
               <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-100 text-[10px] text-emerald-700 font-bold">
                 ✓
               </span>
-              <span>Claim / Runtime / Copy 校验</span>
+              <span>事实与文案双重校验</span>
             </div>
             <div className="flex items-center gap-1.5 rounded-lg border border-amber-200/60 bg-white/80 px-3 py-2 text-amber-800">
               <span className="flex h-4 w-4 items-center justify-center rounded-full bg-amber-100 text-[10px] text-amber-700 font-bold">
@@ -992,7 +1006,6 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
         {snapshot?.qualityEvaluation ? (
           <details
             data-testid="listing-v5-quality-evaluation"
-            open
             className="group mt-3 rounded-xl border border-sky-200/60 bg-white/80 p-3 text-xs text-slate-700"
           >
             <summary className="flex cursor-pointer select-none items-center justify-between font-semibold text-slate-800 hover:text-sky-700">
@@ -1020,12 +1033,15 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
               ))}
               {snapshot.qualityEvaluation.notes?.length ? (
                 <ul className="list-disc space-y-1 pl-4 text-slate-500">
-                  {snapshot.qualityEvaluation.notes.map((note: string) => (
-                    <li key={note}>{note}</li>
-                  ))}
+                  {snapshot.qualityEvaluation.notes
+                    .map((note: string) => localizeListingQualityNote(note))
+                    .filter(Boolean)
+                    .map((note: string) => (
+                      <li key={note}>{note}</li>
+                    ))}
                 </ul>
               ) : null}
-              <p className="text-slate-400">评分仅用于展示转化质量，不改变 Validator 的通过或阻断结论。</p>
+              <p className="text-slate-400">评分只反映文案的转化质量，不影响事实校验结果。</p>
             </div>
           </details>
         ) : null}
@@ -1172,16 +1188,23 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
         ) : null}
       </section>
 
-      {/* 模块 5：AI Execution Trace (调试与追踪，低干扰紧凑设计) */}
+      {/* 模块 5：AI Execution Trace（开发信息，默认折叠；普通用户无需展开） */}
       {trace ? (
-        <section
+        <details
           className="w-full min-w-0 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 text-slate-700 shadow-xs sm:p-5"
+          data-testid="listing-v5-trace-details"
+        >
+          <summary className="cursor-pointer select-none text-sm font-bold text-slate-800">
+            开发者信息（可忽略）：AI 调用过程与校验明细
+          </summary>
+          <p className="mt-2 text-xs leading-5 text-slate-500">
+            以下是内部执行细节，仅供排查问题使用，不影响上面的交付结论。
+          </p>
+        <section
+          className="mt-3 w-full min-w-0 border-t border-slate-200/80 pt-3"
           data-testid="listing-v5-trace"
         >
           <div className="border-b border-slate-200/80 pb-2.5">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-              AI 执行轨迹 · 仅开发/测试环境
-            </span>
             <h3 className="mt-0.5 text-sm font-bold text-slate-900">
               AI 调用轨迹
             </h3>
@@ -1313,6 +1336,7 @@ export function ListingStudioV5Client({ taskId }: { taskId: string }) {
             </div>
           </dl>
         </section>
+        </details>
       ) : null}
 
       {userFacingError ? (

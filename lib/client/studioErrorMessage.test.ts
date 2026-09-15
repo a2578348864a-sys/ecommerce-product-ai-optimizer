@@ -20,6 +20,12 @@ describe("studioErrorMessage", () => {
     ["provider_auth_failed", "AI 服务认证失败，请联系管理员检查服务配置。"],
     ["provider_quota", "AI 服务额度不足，请补充额度后重试。"],
     ["provider_timeout", "AI 服务响应超时，请稍后重试。"],
+    // V2.1.2：生图链路的真实超时使用独立码 timeout，文案与其它 studio 超时区分
+    ["timeout", "图片生成请求超时，请稍后重试。"],
+    // V2.1.1/V2.1.2：不再与 provider_unavailable 共用文案
+    ["rate_limited", "请求过于频繁，请稍后再试。"],
+    ["empty_response", "图片生成未返回有效结果，请重新生成。"],
+    ["provider_error", "图片生成服务调用失败，请稍后重试。"],
     ["provider_unavailable", "AI 服务暂时不可用，请稍后重试。"],
     ["image_response_invalid", "图片服务返回的候选结果无效，请使用新的请求重新生成。"],
     ["image_validation_failed", "生成图片未通过格式或内容校验，请重新生成。"],

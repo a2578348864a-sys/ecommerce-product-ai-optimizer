@@ -5,7 +5,7 @@
 - **日期**：2026-06-21
 - **执行人**：Claude
 - **代码 HEAD**：待 commit
-- **前序 Phase**：Phase 1D 已收口 (`bf2462a`)
+- **前序 Phase**：Phase 1D 已收口 (`<redacted-hash>`)
 
 ## 用户反馈摘要
 
@@ -134,7 +134,7 @@
 |--------|------|
 | npm run lint | ✅ No warnings or errors |
 | npm run build | ✅ 34/34 pages generated |
-| SSRF 防护 | ✅ localhost/127.0.0.1/169.254.169.254/192.168.x/10.x/172.16.x 全部阻止 |
+| SSRF 防护 | ✅ localhost/127.0.0.1/your-server-ip/192.168.x/10.x/172.16.x 全部阻止 |
 | TypeScript 编译 | ✅ 通过 |
 
 ## 修改文件列表

@@ -1,9 +1,10 @@
 /**
  * V3 Final Operability Correction — Package C：半自动 Review Collector（Preview 服务端层）
  *
- * 流程：隔离浏览器会话 → 逐 ASIN 导航详情页（?language=en_US）→ 提取公开
- * "Top reviews" 片段（星级/日期/标题）→ 关闭会话 → 返回 Preview（服务端缓存，
- * 客户端不可伪造字段值）→ 人工确认后由 route 层走 importReviews（browser 绑定）。
+ * 流程：隔离浏览器会话（先切美国配送 ZIP + en_US/USD）→ 逐 ASIN 导航详情页
+ * （?language=en_US&currency=USD，保持 amazon.com 市场）→ 提取公开 "Top reviews" 片段
+ * （星级/日期/标题）→ 关闭会话 → 返回 Preview（服务端缓存，客户端不可伪造字段值）
+ * → 人工确认后由 route 层走 importReviews（browser 绑定）。
  *
  * 安全铁律（与 browserEvidenceCollect 一致）：
  * - 只导航明确的 Amazon 零售站点白名单；单页导航，不自动搜索、不批量。
@@ -37,6 +38,35 @@ import type { AccessContext } from "@/lib/server/accessPassword";
 
 export const REVIEW_COLLECTOR_VERSION = "amazon-review-snippet-collector.v1";
 export const REVIEW_COLLECTOR_ALLOWED_ORIGINS = AMAZON_RETAIL_ORIGINS;
+/**
+ * 采集前环境校准用的美国配送 ZIP（与 Amazon 商品资料采集 browserEvidenceCollect 一致）。
+ *
+ * 实测（任务 cmu13dxfa000v9641uqejz0d5 / ASIN B07VBJ5MSH）：不校准的隔离会话访问
+ * `www.amazon.com/dp/...?language=en_US` 会被 Amazon 按访客归属做 marketplace redirect
+ * （`ref_=mr_direct_us_sg_sg`）跳到 `www.amazon.sg`，最终 origin 不在白名单 →
+ * 评论采集必然 blocked_redirect。商品资料链路正因为在导航前设置了美国配送地址
+ * （外加 currency=USD）才停在 amazon.com。
+ */
+export const REVIEW_COLLECT_US_POSTAL_CODE = "10001";
+/** 评论采集的详情页 URL：与商品资料采集同一形态（en_US + 显式 USD，保持 amazon.com 市场）。 */
+export function reviewCollectDetailUrl(asin: string): string {
+  return `https://www.amazon.com/dp/${asin}?language=en_US&currency=USD`;
+}
+
+/**
+ * 请求的市场主机。本采集器只请求 amazon.com；最终落在其它 amazon 市场（实测被
+ * marketplace redirect 跳到 amazon.sg / amazon.co.jp）时，虽然仍在白名单内，但评论
+ * 属于另一个市场，不能当作本次研究（Amazon US）的证据 → 必须 fail-closed。
+ */
+const REVIEW_COLLECT_REQUESTED_HOSTS = new Set(["amazon.com", "www.amazon.com"]);
+
+function finalUrlHost(value: string): string {
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
 /** 单次采集：最多 3 个 ASIN（maxNavigations 预算内） */
 export const REVIEW_COLLECT_MAX_ASINS_PER_RUN = 3;
 /** 单页最多提取条数（详情页 Top Reviews 片段） */
@@ -214,16 +244,20 @@ export function findPendingReviewCollectPreview(query: {
 }
 
 /**
- * 复用判定：只有「用户可操作」的 Pending Preview 才复用（幂等不重复采集）——
- * 已有待确认条目、页面被阻断（登录/验证码/白名单外）、或页面明确无评论。
- * extraction_empty 等瞬时失败不算可操作状态：缓存它会阻塞重试 15 分钟，
- * 与「请重试」的用户承诺矛盾；这类 Preview 不复用，下次 orchestrate/collect 重新采集。
+ * 复用判定：只有「成功待确认」或「用户可操作」的 Pending Preview 才复用（幂等不重复采集）——
+ * 已有待确认条目、页面要求登录/验证（用户可去处理）、页面明确无评论。
+ *
+ * 不复用的两类：
+ * - extraction_empty 等瞬时失败：缓存它会阻塞重试 15 分钟，与「请重试」的承诺矛盾。
+ * - blocked_redirect（编排器报 navigation_not_allowed）：这是"访问方式不对"的失败，
+ *   实测（2026-09-14）缓存它会让用户在 TTL 内每次点「重试」都秒回同一条失败且从不
+ *   重新访问 Amazon，用户无法自救。失败 Preview 仍留在 store 里供诊断（含 finalUrl），
+ *   只是不参与复用判定，下一次 orchestrate 会真正重新采集。
  */
 export function isReusableReviewCollectPreview(pending: ReviewCollectPreview): boolean {
   if (pending.items.length > 0) return true;
   return pending.pageResults.some((page) =>
-    page.status === "blocked_redirect"
-    || page.status === "login_required"
+    page.status === "login_required"
     || page.status === "captcha_required"
     || page.status === "confirmed_no_reviews",
   );
@@ -369,6 +403,45 @@ function parseSnippet(value: unknown): ReviewSnippet | null {
   };
 }
 
+/**
+ * 页面分类 → 评论采集阻断映射（纯函数，便于单测）。
+ *
+ * - captcha：可交互验证码 → captcha_required
+ * - automation_blocked：Amazon 自动化访问校验中间页（/errors_page/validateCaptcha +
+ *   "Continue shopping"）→ 归入 captcha_required 承载（VOC 分支的可选状态集合由 orchestrator
+ *   决定，本次不在授权范围内），但 note 明确写"自动化访问校验"且**不含"登录"**，
+ *   避免 UI 指引用户去登录；真实分类保留在 diagnosticPageStatus。
+ * - login_wall：真实登录墙 → login_required
+ * - error_page：服务错误页 → page_error
+ * - ok / unknown_page / null：不阻断
+ */
+export type ReviewPageBlock = {
+  status: ReviewCollectPageResult["status"];
+  note: string;
+  diagnosticPageStatus: ReviewCollectPageResult["pageStatus"];
+};
+
+export function reviewBlockForPageStatus(
+  pageStatus: "ok" | "captcha" | "automation_blocked" | "login_wall" | "error_page" | "unknown_page" | null | undefined,
+): ReviewPageBlock | null {
+  switch (pageStatus) {
+    case "captcha":
+      return { status: "captcha_required", note: "页面要求完成 CAPTCHA 验证，系统未绕过。", diagnosticPageStatus: "captcha" };
+    case "automation_blocked":
+      return {
+        status: "captcha_required",
+        note: "Amazon 触发了自动化访问校验（“Continue shopping”中间页），系统不会绕过：请在本机浏览器手动打开该商品页确认，或稍后重试。",
+        diagnosticPageStatus: "automation_blocked",
+      };
+    case "login_wall":
+      return { status: "login_required", note: "页面要求登录，系统未自动登录。", diagnosticPageStatus: "login_wall" };
+    case "error_page":
+      return { status: "page_error", note: "Amazon 返回错误页，未提取评论。", diagnosticPageStatus: "error_page" };
+    default:
+      return null;
+  }
+}
+
 /** 执行一次采集（同步阻塞；调用方负责超时与错误归一化） */
 export async function collectReviewSnippets(input: {
   asins: ReviewCollectRequestAsin[];
@@ -385,6 +458,10 @@ export async function collectReviewSnippets(input: {
     allowedOrigins: REVIEW_COLLECTOR_ALLOWED_ORIGINS,
     maxNavigations: input.asins.length,
     headless: input.headless ?? true,
+    // 与商品资料采集一致：导航前先切美国配送 ZIP + en_US/USD 偏好，
+    // 否则 Amazon 会把 US 商品页按访客归属跳转到本地市场（如 amazon.sg），
+    // 最终 origin 不在白名单 → 评论采集永远失败在 blocked_redirect。
+    calibrateEnvironment: { postalCode: REVIEW_COLLECT_US_POSTAL_CODE },
   });
   try {
     for (const { asin, role } of input.asins) {
@@ -400,9 +477,23 @@ export async function collectReviewSnippets(input: {
         pageStatus,
       });
       try {
-        nav = await session.navigate(`https://www.amazon.com/dp/${asin}?language=en_US`);
+        nav = await session.navigate(reviewCollectDetailUrl(asin));
         if (!nav.allowedFinalOrigin) {
           pageResults.push({ asin, status: "blocked_redirect", note: "页面重定向到白名单外，导航被安全白名单阻断；未判定为登录墙。", extractedCount: 0, ...emptyDiagnostics("blocked_redirect") });
+          continue;
+        }
+        // 白名单内但换了市场：Amazon 会按访客归属把 /dp/ 请求 marketplace redirect 到
+        // 区域站点（实测 amazon.sg / amazon.co.jp）。这类页面能提取出评论，但属于另一个
+        // 市场，直接当成本次（amazon.com）证据会造成市场串味 → fail-closed 并记下实际市场。
+        if (!REVIEW_COLLECT_REQUESTED_HOSTS.has(finalUrlHost(nav.finalUrl))) {
+          const host = finalUrlHost(nav.finalUrl) || "未知站点";
+          pageResults.push({
+            asin,
+            status: "blocked_redirect",
+            note: `Amazon 把该商品页重定向到 ${host}（非 amazon.com 市场），已停止采集，避免把其它市场的评论当作本次研究证据。`,
+            extractedCount: 0,
+            ...emptyDiagnostics("blocked_redirect"),
+          });
           continue;
         }
         pageTitle = await session.evaluateDomByValue<string>("document.title || ''").catch(() => "");
@@ -410,7 +501,7 @@ export async function collectReviewSnippets(input: {
         // 不一定表现为跨域跳转，必须先分类再尝试提取评论，避免生成
         // 空的“待确认预览”。该表达式只读 DOM，不读取凭据、不绕过验证。
         const pageExtraction = await session.evaluateDomByValue<{
-          pageStatus?: "ok" | "captcha" | "login_wall" | "error_page" | "unknown_page";
+          pageStatus?: "ok" | "captcha" | "automation_blocked" | "login_wall" | "error_page" | "unknown_page";
         }>(
           buildAmazonDetailPageExtractionExpression({
             expectedAsin: asin,
@@ -418,16 +509,15 @@ export async function collectReviewSnippets(input: {
             collectorVersion: "amazon-review-page-diagnostic.v1",
           }),
         );
-        if (pageExtraction?.pageStatus === "captcha") {
-          pageResults.push({ asin, status: "captcha_required", note: "页面要求完成 CAPTCHA 验证，系统未绕过。", extractedCount: 0, ...emptyDiagnostics("captcha") });
-          continue;
-        }
-        if (pageExtraction?.pageStatus === "login_wall") {
-          pageResults.push({ asin, status: "login_required", note: "页面要求登录，系统未自动登录。", extractedCount: 0, ...emptyDiagnostics("login_wall") });
-          continue;
-        }
-        if (pageExtraction?.pageStatus === "error_page") {
-          pageResults.push({ asin, status: "page_error", note: "Amazon 返回错误页，未提取评论。", extractedCount: 0, ...emptyDiagnostics("error_page") });
+        const pageBlock = reviewBlockForPageStatus(pageExtraction?.pageStatus);
+        if (pageBlock) {
+          pageResults.push({
+            asin,
+            status: pageBlock.status,
+            note: pageBlock.note,
+            extractedCount: 0,
+            ...emptyDiagnostics(pageBlock.diagnosticPageStatus),
+          });
           continue;
         }
         // unknown_page 不单独阻断：部分 Amazon 变体/区域页面缺少标准

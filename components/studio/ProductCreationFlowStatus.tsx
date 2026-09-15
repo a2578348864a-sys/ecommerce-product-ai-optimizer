@@ -25,6 +25,11 @@ type ProductCreationFlowStatusProps = {
   actionHref?: string;
   actionLabel?: string;
   actionDescription?: string;
+  /**
+   * 可选：由调用方接管动作（研究页的 hash 目标需要先展开资料区/切换 tab）。
+   * 提供后动作渲染为按钮而不是裸锚点，重复点击也会重新滚动并聚焦。
+   */
+  onAction?: () => void;
   compact?: boolean;
 };
 
@@ -49,7 +54,9 @@ const STATE_LABELS: Record<ProductCreationFlowStepState, string> = {
   current: "当前步骤",
   pending: "待完成",
   blocked: "需先完成前置步骤",
-  unknown: "未读取",
+  // unknown = 本页没有读取该步骤的状态（例如图片工作台不读关键词/Listing）。
+  // 对普通用户，「未读取」会被误读成"系统没做"，所以改成可执行的下一步提示。
+  unknown: "去对应工作台查看",
 };
 
 const STATE_CLASSES: Record<ProductCreationFlowStepState, string> = {
@@ -74,6 +81,7 @@ export function ProductCreationFlowStatus({
   actionHref,
   actionLabel,
   actionDescription,
+  onAction,
   compact = false,
 }: ProductCreationFlowStatusProps) {
   return (
@@ -89,7 +97,16 @@ export function ProductCreationFlowStatus({
             商品事实确认 → 关键词方案确认 → 创作资料确认 → Listing 生成 → 图片生成
           </p>
         </div>
-        {actionHref && actionLabel ? (
+        {actionLabel && onAction ? (
+          <button
+            type="button"
+            onClick={onAction}
+            className="inline-flex h-8 items-center rounded-lg bg-teal-600 px-3 text-xs font-semibold text-white hover:bg-teal-700"
+            data-testid="product-creation-flow-action"
+          >
+            {actionLabel}
+          </button>
+        ) : actionHref && actionLabel ? (
           <a
             href={actionHref}
             className="inline-flex h-8 items-center rounded-lg bg-teal-600 px-3 text-xs font-semibold text-white hover:bg-teal-700"

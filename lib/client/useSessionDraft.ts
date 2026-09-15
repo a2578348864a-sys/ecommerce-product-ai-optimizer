@@ -42,6 +42,10 @@ export const SESSION_DRAFT_SCHEMA = "qingxuan-workbench:draft:v1";
 export type SessionDraftResult<T> = {
   /** 恢复出的草稿（仅恢复校验通过后非 null） */
   draft: T | null;
+  /** 当前 revision 已完成恢复/失效判定，可以安全决定使用草稿还是默认值 */
+  ready: boolean;
+  /** Hook 当前已经校验的 revision；用于避免新 revision 期间误用旧状态 */
+  activeRevision: string | null;
   /** 是否刚刚恢复了草稿（用于展示"已恢复刷新前的未提交内容"） */
   restored: boolean;
   /** 草稿已保存状态 */
@@ -417,6 +421,8 @@ export function useSessionDraft<T>(options: {
 
   return {
     draft: restored ? draft : null,
+    ready: revision !== null && activeRevision === revision,
+    activeRevision,
     restored,
     saved,
     invalidated,

@@ -13,8 +13,8 @@ import type {
 import type { ImageStylePresetId } from "@/lib/imageStyleLibrary";
 import { buildImageHandoffBinding, parseImageHandoffBinding, computeImageStatus, type ImageHandoffBindingV1, type ImageStatus } from "@/lib/imageHandoff/imageBinding";
 import { createMockImageProvider, type MockImageProvider } from "@/lib/imageHandoff/mockImageProvider";
-import { createImageProviderByMode, realImageProviderEnabled } from "@/lib/imageHandoff/realImageProvider";
-import { buildImagePromptFromInput, assertImagePromptIsSafe } from "@/lib/imageHandoff/imagePrompt";
+import { createImageProviderByMode, buildTaskImagePromptFinal, realImageProviderEnabled } from "@/lib/imageHandoff/realImageProvider";
+import { assertImagePromptIsSafe, CreativeDescriptionProjectionError } from "@/lib/imageHandoff/imagePrompt";
 import { parseProductCreativeHandoff } from "@/lib/productCreativeHandoff";
 import { getProductResearchRecord, getProductResearchVerification, verifyProductResearchHash } from "@/lib/productResearchRecord";
 import { AI_IMAGE_DRAFT_DISCLAIMER, extractAiImageDraftSnapshot, type AiImageDraftSnapshot } from "@/lib/aiImageDraft";
@@ -27,8 +27,22 @@ export class ImageHandoffError extends Error {
   }
 }
 
-/** 将 Provider 故障收敛为稳定且不会泄漏上游原文的公开错误合同。 */
+/**
+ * 将 Provider 故障收敛为稳定且不会泄漏上游原文的公开错误合同。
+ *
+ * V2.1.1 修复（错误信息丢失）：此前把 `rate_limited` / `empty_response` / `provider_error`
+ * 全部合并成 `provider_unavailable`，导致用户无论遇到限流、空响应还是服务真不可用，
+ * 都只看到同一句「AI 服务暂时不可用」，既无法判断能否重试，也无法事后判因。
+ * 现在**保留分类**；上游原文仍然**不进 API 响应**（仅写服务端日志）。
+ */
 export function mapImageHandoffProviderFailure(error: unknown): ImageHandoffError {
+  if (error instanceof CreativeDescriptionProjectionError) {
+    return new ImageHandoffError(
+      "creative_description_projection_unresolved",
+      422,
+      "创作描述包含暂不支持的中文视觉表达，请改写为可识别的视觉短语后重试。",
+    );
+  }
   if (error instanceof Error && error.message.startsWith("real_image_persist_failed:")) {
     return new ImageHandoffError("image_storage_failed", 500, "图片保存或校验失败，请稍后重试。");
   }
@@ -36,7 +50,8 @@ export function mapImageHandoffProviderFailure(error: unknown): ImageHandoffErro
     return new ImageHandoffError("image_response_invalid", 502, "图片服务返回的结果无效，请重新生成。");
   }
   if (!(error instanceof AiImageProviderError)) {
-    return new ImageHandoffError("provider_unavailable", 502, "图片生成服务调用失败，请稍后重试。");
+    // 未知异常：保留为独立兜底分类（不再伪装成「服务不可用」）
+    return new ImageHandoffError("provider_error", 502, "图片生成服务调用失败，请稍后重试。");
   }
 
   switch (error.code) {
@@ -45,18 +60,77 @@ export function mapImageHandoffProviderFailure(error: unknown): ImageHandoffErro
     case "provider_quota":
       return new ImageHandoffError("provider_quota", 503, "图片生成服务额度不足，请补充额度后重试。");
     case "timeout":
-      return new ImageHandoffError("provider_timeout", 504, "图片生成服务响应超时，请稍后重试。");
-    case "provider_unavailable":
+      // V2.1.2：对外使用独立码 `timeout`（504）+ 明确文案。
+      // 注：`provider_timeout` 另有其他功能共用（Amazon 事实补充等），其语义未被改动。
+      return new ImageHandoffError("timeout", 504, "图片生成请求超时，请稍后重试。");
+    // ── 以下四类**不再合并** ──
     case "rate_limited":
-    case "empty_response":
-    case "provider_error":
+      return new ImageHandoffError("rate_limited", 429, "请求过于频繁，请稍后再试。");
+    case "provider_unavailable":
       return new ImageHandoffError("provider_unavailable", 503, "图片生成服务暂时不可用，请稍后重试。");
+    case "empty_response":
+      return new ImageHandoffError("empty_response", 502, "图片生成未返回有效结果，请重新生成。");
+    case "content_blocked":
+      return new ImageHandoffError("content_blocked", 422, "本次图片请求未通过内容安全检查，请调整创作描述后重试。");
     case "configuration_error":
       return new ImageHandoffError("provider_config_invalid", 503, "图片生成服务配置异常，请联系管理员检查配置。");
     case "network_error":
       return new ImageHandoffError("network_error", 502, "图片生成服务网络连接失败，请稍后重试。");
+    case "invalid_request":
+      return new ImageHandoffError("image_provider_rejected", 422, "图片请求未被服务接受，请调整用途或创作描述后重试。");
+    case "image_provider_result_download_failed":
+      return new ImageHandoffError("image_download_failed", 502, "图片结果下载失败，请重新尝试生成。");
+    case "image_provider_result_timeout":
+      return new ImageHandoffError("timeout", 504, "图片结果下载超时，请稍后重试。");
+    case "image_provider_result_dns_rejected":
+      return new ImageHandoffError("network_error", 502, "图片服务地址解析异常，请稍后重试。");
+    case "image_provider_result_too_large":
+      return new ImageHandoffError("image_provider_rejected", 422, "生成图片体积超出限制，请调整生成规格。");
+    case "image_provider_result_invalid_mime":
+    case "image_provider_result_invalid_image":
+      return new ImageHandoffError("image_response_invalid", 502, "图片格式校验失败，请重新尝试生成。");
+    case "image_provider_untrusted_result_url":
+    case "image_provider_result_redirect_rejected":
+    case "image_provider_incompatible_response":
+      return new ImageHandoffError("image_response_invalid", 502, "图片服务返回了不兼容的结果地址，请联系管理员。");
     default:
-      return new ImageHandoffError("image_provider_failed", 422, "图片生成请求未能完成，请检查输入后重试。");
+      // 未知/未分类的上游错误：独立兜底分类
+      return new ImageHandoffError("provider_error", 502, "图片生成服务调用失败，请稍后重试。");
+  }
+}
+
+/**
+ * V2.1.1：Provider 失败的服务端诊断（**仅写控制台，绝不进入 API 响应**）。
+ *
+ * 记录映射后的类别 + 上游错误类型 + requestId。
+ * 上游 HTTP 状态与响应摘要由 `openaiImageClient.mapProviderError` 记录（只有那里拿得到）。
+ * 脱敏：本函数不输出任何凭据、URL 或上游原文全文。
+ */
+function logImageHandoffProviderFailure(
+  requestId: string,
+  raw: unknown,
+  mapped: ImageHandoffError,
+  elapsedMs: number,
+): void {
+  try {
+    const upstreamName = raw instanceof Error ? raw.name : typeof raw;
+    // V2.1.2：SDK 不设置 error.name，真正可靠的是类名
+    const constructorName = raw instanceof Error ? (raw.constructor?.name ?? "") : "";
+    const upstreamField = (raw as { code?: unknown } | null)?.code;
+    const message = raw instanceof Error ? raw.message : "";
+    console.error("[image-provider-failure]", JSON.stringify({
+      requestId,
+      elapsedMs,
+      mappedCode: mapped.code,
+      mappedStatus: mapped.status,
+      upstreamErrorName: upstreamName,
+      upstreamErrorConstructorName: constructorName || null,
+      upstreamClassifiedCode: typeof upstreamField === "string" ? upstreamField : null,
+      // 脱敏：只输出摘要（凭据/URL 由 redactUpstreamText 在客户端层统一处理）
+      upstreamSummary: message.slice(0, 200),
+    }));
+  } catch {
+    // 诊断路径绝不影响主流程
   }
 }
 
@@ -73,6 +147,8 @@ export type ImageGenerateInput = {
   userCreativeDescription?: string;
   /** Image Style Library V1：主链视觉方向（纯视觉表达，永不改变已确认事实）。 */
   stylePresetId?: ImageStylePresetId;
+  /** 视觉资产规划槽位类型 */
+  slotType?: import("@/lib/imageHandoff/visualAssetPlan").VisualAssetSlotType | string;
   confirmed: true;
 };
 
@@ -84,6 +160,16 @@ export type ImageDraftSafeSummary = {
   generatedAt: string | null;
   sourceHandoffRevision: number | null;
   humanReviewRequired: boolean;
+  /**
+   * V2.1 候选级生成依据（安全投影：hash 只给前缀，绝不外泄完整 Prompt）。
+   * 历史 item 缺这些字段时为 null —— UI 需显示「历史生成记录」，不得伪造版本。
+   */
+  slotRecipeId: string | null;
+  recipeVersion: string | null;
+  stylePresetId: string | null;
+  planVersion: string | null;
+  promptHashPrefix: string | null;
+  referenceImageContentHashPrefix: string | null;
 };
 
 export type ImageGenerateResult = {
@@ -142,6 +228,15 @@ export function imageDraftSafeSummary(value: unknown): ImageDraftSafeSummary | n
       ? value.sourceHandoffRevision
       : null,
     humanReviewRequired: true,
+    // V2.1：候选级依据（hash 只给 16 位前缀，与既有指纹脱敏口径一致；完整值仍存于快照/DB）
+    slotRecipeId: safeString(value.slotRecipeId),
+    recipeVersion: safeString(value.recipeVersion),
+    stylePresetId: safeString(value.stylePresetId),
+    planVersion: safeString(value.planVersion),
+    promptHashPrefix: typeof value.promptHash === "string" ? value.promptHash.slice(0, 16) : null,
+    referenceImageContentHashPrefix: typeof value.referenceImageContentHash === "string"
+      ? value.referenceImageContentHash.slice(0, 16)
+      : null,
   };
 }
 
@@ -304,11 +399,6 @@ export async function generateImageDraftFromHandoff(
       ?? "基于已确认商品资料制作清晰、可人工复核的商品图片。",
   };
   const generationInput = applyTaskImageCreativeDirection(buildResult.input, creativeDirection);
-  // Image Style Library V1：主链视觉方向只写入风格通道；productFacts / approvedVisualReferences /
-  // targetProduct 全部保持 gate 投影结果，风格不可能改写已确认事实。
-  if (input.stylePresetId) {
-    generationInput.stylePresetId = input.stylePresetId;
-  }
   // Final Capability: product_visual_draft 真实参考图输入（从 gate 解析的批准参考图片；仅服务端）
   if (input.mode === "product_visual_draft" && gateA.approvedReferenceImageDataUrl) {
     generationInput.referenceImageDataUrl = gateA.approvedReferenceImageDataUrl;
@@ -336,7 +426,6 @@ export async function generateImageDraftFromHandoff(
   const generationRequestFingerprint = sha256([
     buildResult.generationInputFingerprint,
     `creative-direction:${sha256(JSON.stringify(creativeDirection))}`,
-    `style-preset:${input.stylePresetId ?? "none"}`,
     `count:${requestedCount}`,
     selectedVisualReferences.length > 0
       ? `visual-selection:${selectedVisualReferences.map((r) => r.selectionId).sort().join(",")}`
@@ -358,8 +447,13 @@ export async function generateImageDraftFromHandoff(
   }
 
   // ── 阶段B（锁外，不持锁）：Mock Provider（仅非重放请求）──
-  const prompt = buildImagePromptFromInput(generationInput);
-  if (!assertImagePromptIsSafe(prompt)) {
+  // ── V2.1（修复：安全断言必须覆盖实际发送的 Prompt）──
+  // 旧实现用 buildImagePromptFromInput() 构造一份文本做断言，随后丢弃；Provider 内部
+  // 又用另一套 builder 重新拼一份发给上游 —— 被检查的文本不是发出去的文本。
+  // 现在两端都只能调用 buildTaskImagePromptFinal()（纯函数，同输入同输出），
+  // Provider 还会在发送前对同一字符串再断言一次（纵深防御）。
+  const finalPrompt = buildTaskImagePromptFinal(generationInput);
+  if (!assertImagePromptIsSafe(finalPrompt)) {
     throw new ImageHandoffError("image_input_empty", 422, "Prompt 构造安全检查失败。");
   }
   let providerResult: unknown = null;
@@ -370,6 +464,7 @@ export async function generateImageDraftFromHandoff(
       visitorAccessId: (context as unknown as { demoAccessId?: string }).demoAccessId,
       taskId,
     } : undefined;
+    const providerCallStartedAt = Date.now();
     try {
       const generatedCandidates: unknown[] = [];
       for (let index = 0; index < requestedCount; index += 1) {
@@ -385,8 +480,10 @@ export async function generateImageDraftFromHandoff(
       }
       providerResult = requestedCount === 1 ? generatedCandidates[0] : generatedCandidates;
     } catch (providerError) {
-      // 不自动重试；保留认证/额度/超时/可用性/网络的真实类别，同时隐藏上游原文。
-      throw mapImageHandoffProviderFailure(providerError);
+      // 不自动重试；保留分类，同时隐藏上游原文（原文只进服务端日志）。
+      const mapped = mapImageHandoffProviderFailure(providerError);
+      logImageHandoffProviderFailure(input.requestId, providerError, mapped, Date.now() - providerCallStartedAt);
+      throw mapped;
     }
   }
   const rawDrafts = !idempotentPrefetchHit

@@ -60,8 +60,12 @@ describe("Image Hash Writer 合同（Final Freeze）", () => {
   it("real provider 源码不再写 promptHash/requestKeyHash 占位符", () => {
     expect(realProviderSource).not.toContain('promptHash: "real"');
     expect(realProviderSource).not.toContain('requestKeyHash: "real"');
-    // 不得为填满字段制造假 Hash（无 sha256(prompt) 注入 Hash 字段）
-    expect(realProviderSource).not.toMatch(/promptHash:\s*createHash/);
+    // V2.1 起 promptHash 是**强制项**（候选级可追溯），但必须来自**实际发送的完整文本**：
+    // 断言哈希输入被钉在 finalPrompt 上，禁止用 item id / 时间戳等其他来源伪装成 promptHash。
+    expect(realProviderSource).toMatch(/promptHash:\s*createHash\("sha256"\)\.update\(finalPrompt/);
+    expect(realProviderSource).not.toMatch(/promptHash:\s*createHash\("sha256"\)\.update\((?!finalPrompt)/);
+    // 仍然禁止任何占位符式假 Hash
+    expect(realProviderSource).not.toMatch(/promptHash:\s*(?:"(?!")|'(?!')|\d)/);
   });
 
   // 2. mock provider 新 item：不得持久化 "mock" 到 Hash 字段

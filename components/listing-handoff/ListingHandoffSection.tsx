@@ -1381,7 +1381,7 @@ export function ListingHandoffSection({
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-600" data-testid="task-listing-fact-counts">
                   <span className="rounded-md border border-slate-200 bg-slate-100 px-2 py-0.5">已确认事实：{factSummary.confirmedFacts}</span>
-                  <span className="rounded-md border border-slate-200 bg-slate-100 px-2 py-0.5">可用于 Listing：{factSummary.listingEligibleFacts}</span>
+                  <span className="rounded-md border border-slate-200 bg-slate-100 px-2 py-0.5">Listing 可用事实：{factSummary.listingEligibleFacts}</span>
                   <span className={`rounded-md border px-2 py-0.5 ${factSummary.prohibitedClaims > 0 ? "border-amber-200 bg-amber-50 text-amber-800" : "border-slate-200 bg-slate-100"}`}>
                     禁止声明：{factSummary.prohibitedClaims}
                   </span>
@@ -1489,7 +1489,7 @@ export function ListingHandoffSection({
           </header>
           <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-slate-600" data-testid="task-listing-fact-counts">
             <span className="rounded-md border border-slate-200 bg-slate-100 px-2 py-0.5">已确认事实：{factSummary.confirmedFacts}</span>
-            <span className="rounded-md border border-slate-200 bg-slate-100 px-2 py-0.5">可用于 Listing：{factSummary.listingEligibleFacts}</span>
+            <span className="rounded-md border border-slate-200 bg-slate-100 px-2 py-0.5">Listing 可用事实：{factSummary.listingEligibleFacts}</span>
             <span className={`rounded-md border px-2 py-0.5 ${factSummary.prohibitedClaims > 0 ? "border-amber-200 bg-amber-50 text-amber-800" : "border-slate-200 bg-slate-100"}`}>
               禁止声明：{factSummary.prohibitedClaims}
             </span>
@@ -1501,7 +1501,7 @@ export function ListingHandoffSection({
                 ? "创作资料已确认 · 中文事实将在生成时自动英文化 · 可生成 Listing 草稿"
                 : factSummary.listingEligibleFacts > 0
                   ? "创作资料已确认 · 可生成 Listing 草稿"
-                  : "创作资料已确认 · 但缺少可用于 Listing 的商品事实，请先补充并确认商品资料。"}
+                  : "创作资料已确认 · 但缺少 Listing 可用事实，请先补充并确认商品资料。"}
           </p>
           {claimPreflight && !claimPreflight.pass && claimPreflight.reasonCode === "english_rendering_pending" ? (
             <p className="mt-1 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800">

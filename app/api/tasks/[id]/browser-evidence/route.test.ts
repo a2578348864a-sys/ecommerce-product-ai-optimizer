@@ -291,6 +291,24 @@ describe("POST collect (browser navigation)", () => {
     expect(body.error.message).toContain("白名单外");
   });
 
+  it("returns the explicit automation_blocked status for Amazon automation gateways", async () => {
+    vi.mocked(collectBrowserEvidencePreview).mockRejectedValue(
+      new BrowserEvidenceCollectError(
+        "automation_blocked",
+        422,
+        "Amazon 触发了自动化访问校验（“Continue shopping”中间页）。系统不会绕过该校验：请在本机浏览器手动打开该商品页确认，或稍后重试。",
+      ),
+    );
+    const response = await postJson({ action: "collect" }, taskId);
+    expect(response.status).toBe(422);
+    const body = await response.json();
+    expect(body.error.code).toBe("automation_blocked");
+    expect(body.error.message).toContain("自动化访问校验");
+    // 不得被呈现为登录墙
+    expect(body.error.code).not.toBe("page_blocked_login_wall");
+    expect(body.error.message).not.toContain("请确认该商品页可公开访问");
+  });
+
   it("fail-closed for login walls and unknown pages without persisting anything", async () => {
     for (const [code, status] of [
       ["page_blocked_login_wall", 422],

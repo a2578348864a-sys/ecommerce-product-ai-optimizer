@@ -55,7 +55,7 @@ describe("deriveListingV5SafetyDisplay", () => {
     });
     expect(repaired.safeToCallPassed).toBe(false);
     expect(repaired.badge).toContain("已自动修复");
-    expect(repaired.detail).toContain("仍未被判定为 PASS");
+    expect(repaired.detail).toContain("仍未通过校验");
   });
 
   it("没有草稿时是未校验，不是通过", () => {

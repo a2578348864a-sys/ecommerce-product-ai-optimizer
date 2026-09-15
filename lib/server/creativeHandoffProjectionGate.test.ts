@@ -143,6 +143,15 @@ describe("Fix.3 Gate 投影接线", () => {
     const storePath = join(tmpdir(), "fix3-gate-test", "sandbox.json");
     const doc = JSON.parse(researchDoc("candidate-fix3"));
     delete doc.candidateAnalysisContext;
+    const keywordBrief = { primaryKeyword: "keyword B", supportingKeywords: [], backendSearchTerms: [] };
+    const keywordEvidence = {
+      schema: "seller-sprite-keyword-evidence.v1",
+      capturedAt: "2026-08-05T00:00:00.000Z",
+      updatedAt: "2026-08-05T00:01:00.000Z",
+      rows: [{ rowNumber: 1, keyword: "keyword B" }],
+    };
+    doc.listingKeywordBrief = keywordBrief;
+    doc.keywordEvidence = keywordEvidence;
     const task = {
       id: "demo-task-fix3b",
       demoAccessId: DEMO,
@@ -165,6 +174,8 @@ describe("Fix.3 Gate 投影接线", () => {
     const { gate } = await generateCreativeHandoffPreview("demo-task-fix3b", visitorContext());
     expect(gate.allowed).toBe(false);
     expect(gate.reason).toBe("legacy_not_supported");
+    expect(gate.keywordBriefRaw).toEqual(keywordBrief);
+    expect(gate.keywordEvidenceRaw).toEqual(keywordEvidence);
   });
 
   it("28. modern 任务但尚无 researchRecord → research_not_completed（不是旧版任务）", async () => {

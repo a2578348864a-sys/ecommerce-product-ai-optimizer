@@ -140,12 +140,13 @@ function currentProductLabel(productName: string) {
   return productName;
 }
 /**
- * Listing Studio is task-scoped: opening it without a taskId renders an empty
- * page with no usable action, so the sidebar must carry the task the user is
- * already looking at (from /tasks/<id> or from the current ?taskId=).
+ * Task-scoped studios must keep the taskId: opening either one without it
+ * loses the research context and can render the wrong standalone entry. The
+ * sidebar carries the task the user is already looking at (from /tasks/<id>
+ * or from the current ?taskId=).
  */
 export function withTaskContext(href: string, taskId: string | null): string {
-  if (!taskId || href !== "/listing-studio") return href;
+  if (!taskId || (href !== "/listing-studio" && href !== "/image-studio")) return href;
   return `${href}?taskId=${encodeURIComponent(taskId)}`;
 }
 

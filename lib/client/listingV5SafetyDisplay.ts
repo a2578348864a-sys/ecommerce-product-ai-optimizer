@@ -78,10 +78,12 @@ const STALE_DISPLAY: ListingV5SafetyDisplay = {
 export function deriveListingV5SafetyDisplay(input: ListingV5SafetyInput): ListingV5SafetyDisplay {
   const errorCode = typeof input.errorCode === "string" ? input.errorCode.trim() : "";
   if (errorCode) {
+    const knownReason = GATE_REASON_TEXT[errorCode];
     return {
       tone: "blocked",
       badge: "未通过服务端门禁，无法校验",
-      detail: `${GATE_REASON_TEXT[errorCode] ?? "服务端未允许本次校验。"}（错误码：${errorCode}）`,
+      // 已登记的原因已经是人话，不再把内部错误码暴露给普通用户；未登记的码保留原文，便于排查。
+      detail: knownReason ?? `服务端未允许本次校验。（错误码：${errorCode}）`,
       safeToCallPassed: false,
       // 只有登记过的门禁拒绝才锁定按钮；未登记的码（如额度/网络类）应允许用户重试。
       gateBlocked: isGateRefusalCode(errorCode),
@@ -106,7 +108,7 @@ export function deriveListingV5SafetyDisplay(input: ListingV5SafetyInput): Listi
     return {
       tone: "pass",
       badge: "安全检查通过",
-      detail: "Validator 判定 PASS；仍需人工复核后才能发布。",
+      detail: "事实校验已通过；仍需人工复核后才能发布。",
       safeToCallPassed: true,
       gateBlocked: false,
     };
@@ -118,8 +120,8 @@ export function deriveListingV5SafetyDisplay(input: ListingV5SafetyInput): Listi
       tone: "review",
       badge: repaired ? "已自动修复，仍需人工复核" : "存在待修复项，仍需人工复核",
       detail: repaired
-        ? "Validator 判定 REPAIRABLE，已执行一次结构化修复；修复后的文本仍未被判定为 PASS。"
-        : "Validator 判定 REPAIRABLE，且本次没有执行修复；该草稿不能作为通过校验的交付。",
+        ? "事实校验判定为「需要修复」，已自动修复一次；修复后的文案仍未通过校验。"
+        : "事实校验判定为「需要修复」，且本次没有执行修复；该草稿不能作为通过校验的交付。",
       safeToCallPassed: false,
       gateBlocked: false,
     };
@@ -129,7 +131,7 @@ export function deriveListingV5SafetyDisplay(input: ListingV5SafetyInput): Listi
     return {
       tone: "unverified",
       badge: "缺少校验结论",
-      detail: "草稿已存在，但没有读到 Validator 结论，不能视为通过校验。",
+      detail: "草稿已存在，但没有读到校验结论，不能视为通过校验。",
       safeToCallPassed: false,
       gateBlocked: false,
     };
@@ -138,7 +140,7 @@ export function deriveListingV5SafetyDisplay(input: ListingV5SafetyInput): Listi
   return {
     tone: "blocked",
     badge: "安全检查未通过",
-    detail: `Validator 未给出 PASS（当前状态：${status}），该草稿不能作为交付使用。`,
+    detail: `事实校验未通过（当前状态：${status}），该草稿不能作为交付使用。`,
     safeToCallPassed: false,
     gateBlocked: false,
   };

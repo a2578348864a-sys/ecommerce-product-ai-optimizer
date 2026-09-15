@@ -7,7 +7,7 @@
 
 | # | 条件 | 验证方式 |
 |---|------|---------|
-| 1 | origin/main = `2f53c28` 或更新的已验证 commit | `git log -1 --oneline` |
+| 1 | origin/main = `<redacted-hash>` 或更新的已验证 commit | `git log -1 --oneline` |
 | 2 | 本地验证全部通过：lint / test / build / pages 200 / browser 15/15 | 见 Phase 3-B.1.5 记录 |
 | 3 | 生产服务器 GitHub 可达 | `git ls-remote origin main` |
 | 4 | 生产工作区 clean | `git status -sb` → `## main...origin/main` |
@@ -18,11 +18,11 @@
 
 ```bash
 # 1. 进入生产目录
-cd /www/alibaba-ai-assistant
+cd /path/to/project
 
 # 2. 确定当前日期
 DATE=$(date +%Y%m%d-%H%M%S)
-BACKUP_DIR="/www/server-backups/before-phase3b2-deploy-$DATE"
+BACKUP_DIR="/path/to/server-backups/before-phase3b2-deploy-$DATE"
 
 # 3. 创建备份目录
 mkdir -p "$BACKUP_DIR"
@@ -47,7 +47,7 @@ echo "Backup: $BACKUP_DIR"
 ## 3. 生产 migration
 
 ```bash
-cd /www/alibaba-ai-assistant
+cd /path/to/project
 
 # 拉取最新代码
 git pull origin main
@@ -72,7 +72,7 @@ sqlite3 prisma/dev.db ".tables" | grep OpportunityCandidate
 ## 4. 生产构建与重启
 
 ```bash
-cd /www/alibaba-ai-assistant
+cd /path/to/project
 
 # 安装依赖（锁定版本）
 npm ci
@@ -98,9 +98,9 @@ pm2 status
 ### 5.1 代码回滚
 
 ```bash
-cd /www/alibaba-ai-assistant
+cd /path/to/project
 
-# 回滚到部署前 HEAD（例如 c3c881d 或上一个已知稳定 commit）
+# 回滚到部署前 HEAD（例如 <redacted-hash> 或上一个已知稳定 commit）
 git checkout <pre-deploy-commit>
 
 # 或者从备份分支恢复
@@ -114,10 +114,10 @@ pm2 restart alibaba-ai-assistant
 ### 5.2 数据库回滚
 
 ```bash
-cd /www/alibaba-ai-assistant
+cd /path/to/project
 
 # 用备份文件恢复数据库
-cp /www/server-backups/before-phase3b2-deploy-YYYYMMDD-HHMMSS/dev.db prisma/dev.db
+cp /path/to/server-backups/before-phase3b2-deploy-YYYYMMDD-HHMMSS/dev.db prisma/dev.db
 
 # 重启
 pm2 restart alibaba-ai-assistant
@@ -139,16 +139,16 @@ pm2 restart alibaba-ai-assistant
 ```bash
 # 1. 页面 200 检查
 for path in / /opportunities /workflow /tasks /api/health /agent /agent/run /viral; do
-  curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:3005$path"
+  curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:<PORT>$path"
 done
 # 预期：全部 200
 
 # 2. 候选池 API 无密码应 401
-curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:3005/api/opportunity-candidates"
+curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:<PORT>/api/opportunity-candidates"
 # 预期：401
 
 # 3. 候选池 API 有密码应 200
-curl -s -o /dev/null -w "%{http_code}" -H "x-access-password: <your-password>" "http://127.0.0.1:3005/api/opportunity-candidates"
+curl -s -o /dev/null -w "%{http_code}" -H "x-access-password: <your-password>" "http://127.0.0.1:<PORT>/api/opportunity-candidates"
 # 预期：200，返回 {"ok":true,"items":[],...}
 
 # 4. 不调用真实 AI

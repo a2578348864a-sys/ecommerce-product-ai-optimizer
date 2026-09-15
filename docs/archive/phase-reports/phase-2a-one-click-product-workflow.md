@@ -157,7 +157,7 @@ Phase 1E 产品闭环复核结论：功能零件齐全，但缺自动流水线�
 ### 验收环境
 
 - 分支：`main` @ `0143468`
-- 服务：`next dev -p 3005`
+- 服务：`next dev -p <PORT>`
 - 工作区：干净（无未提交改动）
 
 ### 真实 AI 调用
@@ -305,7 +305,7 @@ Phase 2-A 全程复用 `ViralAnalysisRecord`，零 schema 变更：
 
 ## 10. Phase 2-A Final Closure
 
-> 收口日期：2026-06-21 | 最终 commit：`d4c6c57` | origin/main：`d4c6c5795ebb880d770eabbb1437ce321181ba55`
+> 收口日期：2026-06-21 | 最终 commit：`<redacted-hash>` | origin/main：`<redacted-hash>`
 
 ### 阶段结论
 
@@ -379,34 +379,34 @@ Phase 2-A **已完成**。定位为**"单品一键自动分析闭环"**——不
 
 ```
 main / origin/main
-HEAD:  d4c6c57
-Remote: d4c6c5795ebb880d770eabbb1437ce321181ba55
+HEAD:  <redacted-hash>
+Remote: <redacted-hash>
 ```
 
 ---
 
 ## 11. Phase 2-B.1 Production Deployment
 
-> 部署日期：2026-06-21 | 部署 commit：`1dedc41` | 部署人：Claude
+> 部署日期：2026-06-21 | 部署 commit：`<redacted-hash>` | 部署人：Claude
 
 ### 部署概述
 
 Phase 2-B.1 是纯前端展示增强——`/workflow` 页面新增 Workflow Review 人工复核区（StepReviewCard × 4 + 确认门控）。零 API/DB 变更。
 
-部署前生产运行的是 Phase 1E（`0ba2860`），本次 Fast-forward 到 `1dedc41`，累计包含 Phase 2-A ∼ Phase 2-B.1 全部变更。
+部署前生产运行的是 Phase 1E（`<redacted-hash>`），本次 Fast-forward 到 `<redacted-hash>`，累计包含 Phase 2-A ∼ Phase 2-B.1 全部变更。
 
 ### 部署记录
 
 | 项目 | 值 |
 |------|-----|
-| 部署前 HEAD | `0ba2860`（Phase 1E） |
-| 部署后 HEAD | `1dedc41` |
+| 部署前 HEAD | `<redacted-hash>`（Phase 1E） |
+| 部署后 HEAD | `<redacted-hash>` |
 | pull 方式 | `git pull --ff-only origin main` |
-| pull 范围 | `0ba2860..1dedc41`（14 files, +2833/-52） |
+| pull 范围 | `<redacted-hash>..<redacted-hash>`（14 files, +2833/-52） |
 | npm ci | ✅ |
 | build | ✅ 37/37 pages |
 | PM2 | ✅ `alibaba-ai-assistant` online, restart 14→15 |
-| 127.0.0.1:3005 | ✅ 200 |
+| 127.0.0.1:<PORT> | ✅ 200 |
 | /api/health | ✅ `{"ok":true}` |
 
 ### 页面验收
@@ -447,7 +447,7 @@ Phase 2-B.2：review 确认状态持久化 + 决策动作（继续/需补资料/
 
 ## 12. Phase 2-B.1-Fix Closure
 
-> 归档日期：2026-06-22 | commit：`41b36cf3a4a22f792549ccff88252a6fd972f151`
+> 归档日期：2026-06-22 | commit：`<redacted-hash>`
 
 ### 阶段目标
 
@@ -473,7 +473,7 @@ Phase 2-B.2：review 确认状态持久化 + 决策动作（继续/需补资料/
 | 无结果 SSR 状态 | 正常 |
 | lint | 0 warnings |
 | build | 37/37 pages 通过 |
-| origin/main | 已对齐 `41b36cf3a4a22f792549ccff88252a6fd972f151` |
+| origin/main | 已对齐 `<redacted-hash>` |
 
 ### 明确边界
 

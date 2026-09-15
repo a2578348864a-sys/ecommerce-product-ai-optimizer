@@ -7,6 +7,7 @@ import {
   localizeUseCase,
   localizeAvoidClaim,
   localizeStrategyList,
+  localizeListingQualityNote,
 } from "./strategyDisplayLocalization";
 
 describe("strategyDisplayLocalization", () => {
@@ -62,5 +63,32 @@ describe("strategyDisplayLocalization", () => {
   it("localizes lists properly with delimiter", () => {
     const tones = ["clear", "practical", "shopper-focused"];
     expect(localizeStrategyList(tones, localizeTone)).toBe("清晰明确、实用务实、聚焦买家关切");
+  });
+
+  it("去重：多个机器码映射成同一句中文时只显示一次（回归：曾经同一句重复 4 遍）", () => {
+    // 真实数据形态：多路研究给出不同的受众原文，但都落到同一句兜底中文。
+    const audiences = [
+      "shoppers who value everyday practicality",
+      "shoppers who value everyday practicality ",
+      "unknown audience code a",
+      "unknown audience code b",
+    ];
+    const shown = localizeStrategyList(audiences, localizeTargetAudience);
+    expect(shown).toBe("追求日常实用与可靠品质的消费者");
+    expect(shown.split("追求日常实用与可靠品质的消费者")).toHaveLength(2);
+  });
+
+  it("质量提示中文化：英文评估语与机器标记码不直接出现在界面上", () => {
+    expect(
+      localizeListingQualityNote("This listing shipped from the deterministic fallback path and is a quality regression signal, not a factual failure.")
+    ).toContain("安全模板");
+    expect(
+      localizeListingQualityNote("Differentiation could not be measured: no comparable competitor attribute in the research references.")
+    ).toContain("差异化");
+    expect(localizeListingQualityNote("Copy polish needed: repeated_sentence_or_benefit")).toBe("文案可继续打磨：存在重复的句子或卖点");
+    expect(localizeListingQualityNote("Copy polish needed: unknown_future_flag")).toContain("unknown_future_flag");
+    // 未识别的纯英文提示不直接展示；中文提示照常展示。
+    expect(localizeListingQualityNote("Some brand new english note.")).toBe("");
+    expect(localizeListingQualityNote("这条提示已经是中文")).toBe("这条提示已经是中文");
   });
 });

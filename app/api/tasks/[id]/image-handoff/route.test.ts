@@ -296,7 +296,9 @@ describe("GET /api/tasks/[id]/image-handoff", () => {
     expect(body.data.canGenerate).toBe(true);
     expect(body.data.creativeDescriptionContext).toEqual(expect.objectContaining({
       productName: "30oz 黑色不锈钢水杯",
-      confirmedFacts: [{ label: "容量", value: "30oz" }],
+      // V2.1：DTO 必须透出 canonical field（前端就绪度与服务端事实门禁同源的唯一判据）。
+      // 这条断言现在是**更强**的：它同时钉住 field 的取值，防止回退成只有 label。
+      confirmedFacts: [{ field: "capacity", label: "容量", value: "30oz" }],
       existingVisualRequirements: ["深色背景"],
       hasApprovedReference: false,
     }));

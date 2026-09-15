@@ -430,20 +430,28 @@ async function handleAmazonSource(
       const isTypedBlockerOrUnavailable =
         error.code === "browser_unavailable" ||
         error.code === "page_blocked_login_wall" ||
-        error.code === "page_blocked_captcha";
+        error.code === "page_blocked_captcha" ||
+        // Amazon 自动化访问校验（/errors_page/validateCaptcha + "Continue shopping" 中间页）：
+        // 属"需要用户处理"（本机浏览器确认 / 稍后重试），不是系统失败。
+        error.code === "automation_blocked";
       const diagReason =
         error.code === "page_unknown"
           ? "页面无法识别"
-          : error.code === "page_blocked_login_wall" || error.code === "page_blocked_captcha"
-            ? "Amazon验证阻断"
-            : error.code === "asin_mismatch" || error.code === "asin_not_found"
-              ? "ASIN异常"
-              : error.message;
+          : error.code === "automation_blocked"
+            ? "Amazon自动化访问校验"
+            : error.code === "page_blocked_login_wall" || error.code === "page_blocked_captcha"
+              ? "Amazon验证阻断"
+              : error.code === "asin_mismatch" || error.code === "asin_not_found"
+                ? "ASIN异常"
+                : error.message;
       // 统一给前端一个稳定的用户语义：Amazon 的登录墙、验证码和中间验证页
       // 都属于 Amazon 验证阻断，避免错误文本中的 "ASIN" 触发 ASIN 异常展示。
-      const message = error.code === "page_blocked_login_wall" || error.code === "page_blocked_captcha"
-        ? "Amazon验证阻断"
-        : error.message || diagReason;
+      // 自动化访问校验保留可操作的说明文案（明确"不是登录墙"）。
+      const message = error.code === "automation_blocked"
+        ? error.message || "Amazon 触发了自动化访问校验，请在本机浏览器手动打开该商品页确认，或稍后重试。"
+        : error.code === "page_blocked_login_wall" || error.code === "page_blocked_captcha"
+          ? "Amazon验证阻断"
+          : error.message || diagReason;
       return {
         status: isTypedBlockerOrUnavailable ? "needs_user" : "failed",
         hasEvidence: false,
@@ -897,12 +905,18 @@ async function handleVocSource(
   } catch (error) {
     if (error instanceof ReviewCollectorError) {
       // typed collector failures → 按现有分类归入安全状态
-      const needsUser = ["browser_not_available", "login_required", "captcha_required"].includes(error.code);
+      const needsUser = ["browser_not_available", "login_required", "captcha_required", "automation_blocked"].includes(error.code);
+      const blockerMessage = error.code === "automation_blocked"
+        ? "Amazon 触发了自动化访问校验（“Continue shopping”中间页），系统不会绕过：请在本机浏览器手动打开该商品页确认，或稍后重试。"
+        : "Amazon 页面要求登录或验证，系统不会绕过，请完成后重试";
+      const message = needsUser
+        ? (error.code === "browser_not_available" ? "本机未检测到可用的系统浏览器，无法自动采集评论" : blockerMessage)
+        : "买家评论采集失败，可稍后重试或手动导入";
       return {
         status: needsUser ? "needs_user" : "failed",
         hasEvidence: false,
-        message: needsUser ? (error.code === "browser_not_available" ? "本机未检测到可用的系统浏览器，无法自动采集评论" : "Amazon 页面要求登录或验证，系统不会绕过，请完成后重试") : "买家评论采集失败，可稍后重试或手动导入",
-        error: { code: error.code, message: needsUser ? (error.code === "browser_not_available" ? "本机未检测到可用的系统浏览器，无法自动采集评论" : "Amazon 页面要求登录或验证，系统不会绕过，请完成后重试") : "买家评论采集失败" },
+        message,
+        error: { code: error.code, message },
       };
     }
     const sanitized = sanitizeErrorMessage(error);

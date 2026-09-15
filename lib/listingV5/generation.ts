@@ -43,19 +43,115 @@ export function sanitizeStrategyForCopy(strategy: ListingV5Strategy): ListingV5S
   };
 }
 const cleanProductIdentity = (value: string) => {
-  const base = clean(value, 80)
-    .replace(/\s*(?:产品研究|商品研究)\s*$/u, "")
-    .replace(/\s*\uFFFD.*$/u, "")
-    .split(/[,;:|]/)[0]?.trim() || "";
-  return base.slice(0, 45).trim() || "The product";
+  const base = truncateListingV5AtWord(
+    clean(value, 200)
+      .replace(/\s*(?:产品研究|商品研究)\s*$/u, "")
+      .replace(/\s*\uFFFD.*$/u, "")
+      .split(/[,;:|]/)[0]?.trim() || "",
+    45,
+  );
+  return base || "The product";
 };
+
+/**
+ * 词边界截断（2026-09 展示收口）。
+ *
+ * 旧实现是 `slice(0, max)`，会把商品身份/标题切成 "…Aesthetic Modern L"、把数值切成
+ * 半个计量单位，交付出去的文案带着明显残片。这里改为：
+ * 1) 只在词边界截断；
+ * 2) 丢弃截断后失去意义的裸数字或孤立计量单位（例如 "…Water Bottle 24"）。
+ * 只影响文本长度，不新增、不推断任何事实。
+ */
+const MEASURE_UNIT_TOKENS = new Set([
+  "oz", "fl", "ml", "cl", "l", "g", "kg", "mg", "lb", "lbs", "in", "inch", "inches",
+  "ft", "cm", "mm", "pack", "packs", "pc", "pcs", "count", "ct", "w", "v", "wh", "mah",
+]);
+
+function truncateListingV5AtWord(value: string, max: number): string {
+  const text = value.replace(/\s+/g, " ").trim();
+  if (text.length <= max) return text;
+  const clipped = text.slice(0, max);
+  const boundary = clipped.lastIndexOf(" ");
+  const tokens = (boundary > 0 ? clipped.slice(0, boundary) : clipped).split(" ").filter(Boolean);
+  const isBareNumber = (token: string) => /^\d+(?:[.,]\d+)?$/.test(token);
+  const isUnitToken = (token: string) => MEASURE_UNIT_TOKENS.has(token.toLowerCase().replace(/[^a-z]/g, ""));
+  while (tokens.length > 1 && (isBareNumber(tokens[tokens.length - 1]!) || isUnitToken(tokens[tokens.length - 1]!))) {
+    tokens.pop();
+  }
+  return tokens.join(" ").replace(/[\s,;:·•|/\-–—]+$/, "").trim();
+}
 
 const compactFactValue = (value: string) => {
   const normalized = value.replace(/^click\s+to\s+play\s+video\s*/i, "").trim();
   const beforeColon = normalized.split(/\s*:\s*/, 2)[0]?.trim() || normalized;
   const beforeSentence = beforeColon.length > 80 ? beforeColon.split(/[.!?]/, 1)[0]?.trim() || beforeColon : beforeColon;
-  return beforeSentence.slice(0, 80).trim() || "the confirmed product detail";
+  return truncateListingV5AtWord(beforeSentence, 80) || "the confirmed product detail";
 };
+
+/** 名词短语加冠词，避免 "includes carrying loop" 这类缺冠词的句子。 */
+function nounPhrase(value: string): string {
+  if (/^(?:a|an|the|\d)/i.test(value)) return value;
+  if (value.includes(",") || /\band\b/i.test(value) || /s$/i.test(value)) return value;
+  return `${/^[aeiou]/i.test(value) ? "an" : "a"} ${value}`;
+}
+
+/**
+ * 事实从句（确定性回退专用）。
+ *
+ * 旧实现按“第几条事实”选句子模板，于是颜色被写成 "provides Red"、型号被写成
+ * "includes 1"、"Built with Light" —— 同一批事实，只是落到了不合适的句式里。
+ * 这里改为按事实字段选从句，值本身保持原样（Claim Evidence 仍按原值可核验），
+ * 未知字段退回中性表述，不新增任何事实或卖点。
+ */
+function factClause(field: string, value: string): string {
+  switch (field) {
+    case "material":
+    case "construction":
+      return `is made with ${value}`;
+    case "brand":
+      return `is from ${value}`;
+    case "color":
+    case "color_or_variant":
+      return `is available in ${value}`;
+    case "capacity":
+      return `offers ${value} of capacity`;
+    case "quantity":
+    case "quantity_or_pack_size":
+      return `comes as a ${value} option`;
+    case "dimensions":
+    case "dimension":
+    case "size":
+      return `measures ${value}`;
+    case "weight":
+      return `weighs ${value}`;
+    case "series_or_model":
+    case "model":
+      return `is listed under the model reference ${value}`;
+    case "product_type":
+    case "type":
+    case "category":
+      return `belongs to the ${value} category`;
+    case "feature":
+    case "features":
+    case "functional_feature":
+      return `includes ${nounPhrase(value)}`;
+    case "included_components":
+    case "included_component":
+      return `comes with ${nounPhrase(value)}`;
+    case "use_scenario":
+      return `is intended for ${value}`;
+    default:
+      // 中性兜底：只用 Validator 允许的系动词补语（listed），不引入新的属性断言。
+      return `is listed with ${value}`;
+  }
+}
+
+/** 可以安全拼进标题的事实字段：读起来像标题成分，而不是规格数字或整句说明。 */
+const TITLE_FACT_FIELDS = new Set([
+  "brand", "product_type", "type", "category", "color", "color_or_variant",
+  "capacity", "material", "dimensions", "dimension", "size", "weight",
+  "quantity", "quantity_or_pack_size",
+]);
 
 function fallback(context: ListingV5Context, strategy: ListingV5Strategy): ListingV5WriterDraft {
   const facts = context.confirmedFacts;
@@ -67,46 +163,48 @@ function fallback(context: ListingV5Context, strategy: ListingV5Strategy): Listi
     // be copied into product copy when the provider is unavailable.
     const field = fact.canonicalField.toLowerCase();
     const value = compactFactValue(fact.value);
-    const factPhrase = field === "material" || field === "construction"
-      ? `${product} is made with ${value}`
-      : field === "quantity_or_pack_size" || field === "quantity"
-        ? `${product} comes as a ${value} option`
-        : field === "capacity"
-          ? `${product} offers a ${value} capacity`
-          : field === "color_or_variant" || field === "color"
-            ? `${product} is available in ${value}`
-            : field === "brand"
-              ? `${product} is from ${value}`
-            : `${product} includes ${value}`;
-    const hooks = [
-      "【CORE BENEFIT】",
-      "【DAILY CONVENIENCE】",
-      "【PRACTICAL DESIGN】",
-      "【RELIABLE UTILITY】",
-      "【PRODUCT SPECIFICATION】",
-    ];
-    const hook = hooks[index % hooks.length];
-    const frames = [
-      `${hook}: ${factPhrase} to support everyday convenience.`,
-      `${hook}: Featuring ${value}, designed for practical everyday use.`,
-      `${hook}: For everyday routines, ${product} provides ${value}.`,
-      `${hook}: ${product} includes ${value} for straightforward daily routines.`,
-      `${hook}: Built with ${value} to fit smoothly into your everyday schedule.`,
-    ];
-    return { text: frames[index % frames.length], factIds: [fact.id], strategyRole: role };
+    // 第一句用完整商品名，其余用短主语：既好读，也避免每条五点重复同一段四词短语。
+    // 不再加 【HOOK】 抬头：抬头里的 "IS CONFIRMED" 这类字样会被 Validator 读成
+    // 无事实支撑的属性断言，且交付文案本身不该带模板标记。
+    const subject = index === 0 ? product : index % 2 === 1 ? "It" : "This product";
+    return { text: `${subject} ${factClause(field, value)}.`, factIds: [fact.id], strategyRole: role };
   });
   const selected = bullets.slice(0, 5);
   const titleKey = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "");
   const productKey = titleKey(product);
-  const titleFacts = facts.slice(0, 3).map((fact) => fact.value).filter((value) => !productKey.includes(titleKey(value)));
-  const title = clean([product, ...titleFacts].filter(Boolean).join(" "), 180) || product;
-  const descriptionFacts = facts.slice(0, 2).map((fact) => fact.value).join(" and ");
-  const description = clean(`${product} brings together ${descriptionFacts || "confirmed product details"} for shoppers comparing practical options. It fits ${strategy.useCases[0] || "everyday routines"} where clear product information helps guide a purchase.`, 1200);
+  const titleFacts = facts
+    .filter((fact) => TITLE_FACT_FIELDS.has(fact.canonicalField.toLowerCase()))
+    .map((fact) => fact.value)
+    .filter((value) => !productKey.includes(titleKey(value)))
+    // 整句说明、护理说明和裸编号不是标题成分，跳过而不是硬拼。
+    .filter((value) => value.length <= 40 && !/[.!?]/.test(value))
+    .slice(0, 3);
+  const title = truncateListingV5AtWord(clean([product, ...titleFacts].filter(Boolean).join(" "), 180), 180) || product;
+  // 描述同样只陈述已确认事实：两句、值原样保留，措辞与五点不同，避免出现
+  // "brings together Lotus Atelier and Light" 这类把品牌和类型硬拼的名词堆叠，
+  // 也避免把研究侧一句完整句子塞进从句（旧的 "It fits Placing the lamp…" 就来自这里）。
+  const descriptionFacts = facts.slice(0, 3);
+  const descriptionClauses = descriptionFacts.map((fact) => factClause(fact.canonicalField.toLowerCase(), compactFactValue(fact.value)));
+  const description = truncateListingV5AtWord(
+    clean(
+      [
+        descriptionClauses.length > 0
+          ? `${product} ${descriptionClauses.slice(0, 2).join(" and ")}.`
+          : `${product} is prepared for this listing from the product details confirmed during research.`,
+        // 绝对量词（every/all）会被 Validator 当作范围性硬声明，这里只做中性陈述。
+        descriptionClauses.length > 2
+          ? `It ${descriptionClauses[2]}.`
+          : "The details above come from the product information confirmed during research.",
+      ].join(" "),
+      1200,
+    ),
+    1200,
+  );
   // backendOnly terms come from keyword reference data, not from confirmed facts.
   // They must pass the same hard-claim boundary the rewrite path applies before
   // they can reach the shipped field, otherwise the one field no Validator rule
   // inspects becomes a way around the copy rules.
-  return filterListingV5BackendSearchTerms({ version: "listing-v5.writer-draft.v1", title: { text: title, factIds: facts.slice(0, 3).map((fact) => fact.id) }, bullets: selected, description: { text: description, factIds: facts.slice(0, 2).map((fact) => fact.id) }, backendSearchTerms: strategy.keywordIntent.backendOnly.slice(0, 8), humanReviewRequired: true });
+  return filterListingV5BackendSearchTerms({ version: "listing-v5.writer-draft.v1", title: { text: title, factIds: facts.slice(0, 3).map((fact) => fact.id) }, bullets: selected, description: { text: description, factIds: descriptionFacts.map((fact) => fact.id) }, backendSearchTerms: strategy.keywordIntent.backendOnly.slice(0, 8), humanReviewRequired: true });
 }
 
 function normalize(value: unknown, context: ListingV5Context, strategy: ListingV5Strategy): ListingV5WriterDraft | null {

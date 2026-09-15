@@ -50,6 +50,8 @@ export function KeywordStrategyCard({
   const [backendTerms, setBackendTerms] = useState("");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
+  // 保存成功的即时反馈（确认前没有任何提示，用户会以为按钮没反应）。
+  const [savedNotice, setSavedNotice] = useState<string | null>(null);
 
   const buttonText = briefPrimary
     ? "调整关键词方案"
@@ -72,6 +74,7 @@ export function KeywordStrategyCard({
     setSupporting((recommended?.supportingKeywords ?? []).slice(0, 5));
     setBackendTerms("");
     setConfirmed(false);
+    setSavedNotice(null);
     setEditing(true);
   };
 
@@ -93,6 +96,7 @@ export function KeywordStrategyCard({
     setSaveError(null);
     setEditing(false);
     setConfirmed(false);
+    setSavedNotice("关键词方案已保存，商品创作流程第 02 步已同步为已完成。");
     onSaved?.();
   };
 
@@ -116,6 +120,11 @@ export function KeywordStrategyCard({
           <p className="mt-1 text-[11px] leading-5 text-amber-700" data-testid="kw-listing-confirmation-note">
             关键词方案确认不等于创作资料确认。确认关键词后，还需进入 Listing Studio 完成创作资料确认。
           </p>
+          {savedNotice ? (
+            <p className="mt-1 text-[11px] font-semibold leading-5 text-emerald-700" role="status" data-testid="kw-saved-notice">
+              {savedNotice}
+            </p>
+          ) : null}
         </div>
         <button
           type="button"

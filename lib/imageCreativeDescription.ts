@@ -2,9 +2,6 @@ import {
   isStudioImageLifestyleScene,
   isStudioImagePrimaryPurpose,
   inferStudioImageCreativeIntentFromPreferences,
-  lifestyleSceneLabel,
-  primaryPurposeLabel,
-  resolveStudioImageCreativeIntent,
   type StudioImageCreativeIntent,
   type StudioImageLifestyleScene,
   type StudioImagePrimaryPurpose,
@@ -17,7 +14,14 @@ export const TASK_IMAGE_CUSTOM_PURPOSE_MAX_LENGTH = 160;
 
 export type TaskImageCreativeDescriptionContext = {
   productName: string;
-  confirmedFacts: Array<{ label: string; value: string }>;
+  /**
+   * 可见安全资料投影。`field` = Handoff confirmedFacts[].field 的 canonical 字段名。
+   *
+   * V2.1 修复（前后端事实门禁同源）：此前 DTO 只带 label，前端只能用 label 做就绪度判定，
+   * 与服务端 `evaluatePurposeRequirements` 的 canonical field 判据可能不一致。
+   * 这里补上 canonical field，使两侧输入完全相同；缺失时为空字符串（历史兼容，不猜测放行）。
+   */
+  confirmedFacts: Array<{ field: string; label: string; value: string }>;
   existingVisualRequirements: string[];
   hasApprovedReference: boolean;
   suggestedCreativeIntent?: StudioImageCreativeIntent;
@@ -86,6 +90,9 @@ export function buildTaskImageCreativeDescriptionContext(
     confirmedFacts: (version?.confirmedFacts ?? [])
       .filter((fact) => fact.usageScopes.includes("image"))
       .map((fact) => ({
+        // canonical 字段名原样透出（仅做长度与字符规范化，不改写取值）；
+        // 历史数据缺失时保留空串，由消费方按「资料不足」处理，绝不用 label 猜测补齐。
+        field: normalizeText(String(fact.field ?? ""), 64),
         label: normalizeText(fact.label, 80),
         value: textValue(fact.value),
       }))
@@ -105,11 +112,6 @@ export function buildTaskImageCreativeDescription(
   lifestyleScene: StudioImageLifestyleScene,
   customImagePurpose = "",
 ) {
-  const intent = resolveStudioImageCreativeIntent({
-    primaryImagePurpose,
-    lifestyleScene,
-    customImagePurpose,
-  });
   const productName = normalizeText(context.productName, 200) || "本商品";
   const facts = context.confirmedFacts
     .map((fact) => ({
@@ -125,10 +127,12 @@ export function buildTaskImageCreativeDescription(
     .slice(0, 8);
 
   const parts = [
-    `为“${productName}”制作${intent.label || primaryPurposeLabel(primaryImagePurpose)}图片。`,
-    lifestyleScene !== "none" ? `生活场景：${lifestyleSceneLabel(lifestyleScene)}。` : "",
+    `为“${productName}”制作图片。`,
+    primaryImagePurpose === "custom" && customImagePurpose
+      ? `创作方向：${normalizeText(customImagePurpose, TASK_IMAGE_CUSTOM_PURPOSE_MAX_LENGTH)}。`
+      : "",
+    lifestyleScene !== "none" ? "用户可在创作描述中补充场景。" : "",
     facts.length > 0 ? `画面仅依据已确认信息：${facts.join("；")}。` : "当前没有更多已确认规格，不补充或猜测商品事实。",
-    `${intent.direction}。`,
     requirements.length > 0 ? `现有视觉要求：${requirements.join("；")}。` : "",
     context.hasApprovedReference
       ? "商品外观以已批准参考图为视觉依据，结果仍需人工检查商品外观和文字。"
@@ -201,7 +205,10 @@ export function applyTaskImageCreativeDirection(
   input: ImageGenerationInput,
   direction: TaskImageCreativeDirection,
 ): ImageGenerationInput {
-  const intent = resolveStudioImageCreativeIntent(direction);
+  const userDescription = normalizeText(
+    direction.userCreativeDescription,
+    TASK_IMAGE_CREATIVE_DESCRIPTION_MAX_LENGTH,
+  );
   return {
     ...input,
     productFacts: input.productFacts.map((fact) => ({ ...fact })),
@@ -215,17 +222,8 @@ export function applyTaskImageCreativeDirection(
     ...(direction.primaryImagePurpose === "custom" && direction.customImagePurpose
       ? { customPurposeText: direction.customImagePurpose }
       : {}),
-    creativePreferences: {
-      ...input.creativePreferences,
-      imageStyle: intent.visualStyle,
-      backgroundPreference: intent.background,
-      compositionPreference: intent.composition,
-      additionalRequirements: [
-        `图片用途：${intent.label}。${intent.direction}。`,
-        direction.userCreativeDescription
-          ? `用户可编辑创作描述（仅作为视觉偏好，不改变已确认事实、禁用声明或参考图安全状态）：${direction.userCreativeDescription}`
-          : "用户已清空创作描述；仅使用服务端已确认事实、场景和安全限制。",
-      ].join(" ").slice(0, 1_600),
-    },
+    // MVP 只把用户输入作为创作描述传给生成链；用途/场景仍保留在 typed
+    // 字段供服务端门禁使用，但不再自动展开为视觉策略或模板 Prompt。
+    creativePreferences: userDescription ? { additionalRequirements: userDescription } : {},
   };
 }
