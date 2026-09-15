@@ -144,7 +144,9 @@ function sanitizeHookText(hook: string, confirmedTokens: Set<string>): string {
     }
     return true;
   });
-  return safeWords.join(" ") || "FEATURE OVERVIEW";
+  // 空/纯空白 hook 必须落到兜底值：空词会被 filter 保留，join 结果是 " "（真值），
+  // 会让 `|| "FEATURE OVERVIEW"` 永不触发，进而产出 "[ ]:" 这种空 label 前缀。
+  return safeWords.join(" ").trim() || "FEATURE OVERVIEW";
 }
 
 /**
@@ -350,7 +352,12 @@ function buildBulletBlueprints(
     const field = fact ? fieldOf(fact) : "product_type";
     const val = fact ? fact.value : "quality construction";
     const approvedBenefit = fact ? buildApprovedFactBenefit(fact) : null;
-    const benefitClause = approvedBenefit ? approvedBenefit.text : `${val} — states the product detail`;
+    // 安全失败路径：缺少 approvedBenefit 时不得伪造受益文案。
+    // 旧行为会产出 "<value> — states the product detail" 这类占位句，被当成可用的
+    // shopper benefit 传给 Writer。改为留空后，Writer 侧没有可用受益投影，
+    // 该条 bullet 会在既有 validation（受益必须来自 approvedBenefits）中被判为
+    // 可修复问题，从而进入既有 repair ≤1 → 确定性 fallback 流程，不新增状态。
+    const benefitClause = approvedBenefit ? approvedBenefit.text : "";
     const reasonToBelieve = `Anchored to verified ${fact?.label || field} specification: ${val}`;
 
     let rawHook = "PRODUCT DETAIL";

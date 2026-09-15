@@ -40,6 +40,35 @@ function draftWith(overrides: Partial<ListingV5WriterDraft> & { description?: { 
   } as ListingV5WriterDraft;
 }
 
+it("flags the real empty-hook + empty-slot bullet and routes it into the existing repair flow", () => {
+  const ctx = context(baseFacts);
+  const strategy = buildListingV5Strategy(ctx);
+  // 浏览器真实重新生成产出的原句（Writer 自由输出的 bracket 文本 + 空槽）
+  const brokenBullet =
+    "[]: This Owala water bottle is , a detail that answers a common question shoppers ask before choosing a bottle.";
+
+  const report = validateListingV5Draft(
+    ctx,
+    strategy,
+    draftWith({
+      bullets: [
+        { text: brokenBullet, factIds: ["brand-1"], strategyRole: "core_outcome" },
+        { text: "Dishwasher-safe bottle and lid support everyday cleanup.", factIds: ["care-1"], strategyRole: "pain_relief" },
+      ],
+    }),
+  );
+
+  // 新增结构规则必须命中
+  expect(report.bullets[0]!.valid).toBe(false);
+  expect(report.bullets[0]!.issues).toContain("empty_hook_prefix");
+  expect(report.bullets[0]!.issues).toContain("empty_slot_structure");
+  // 复用既有 invalid → repair → fallback 流程（未新增状态）
+  expect(report.repair.targets).toContain("bullets[0]");
+  // 正常 bullet 不受新增规则影响
+  expect(report.bullets[1]!.issues).not.toContain("empty_hook_prefix");
+  expect(report.bullets[1]!.issues).not.toContain("empty_slot_structure");
+});
+
 function strategyWithKeyword(primary: string[]): ListingV5Strategy {
   const base = buildListingV5Strategy(context(baseFacts));
   return { ...base, keywordIntent: { primary, secondary: [], backendOnly: [] } };
