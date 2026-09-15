@@ -163,7 +163,16 @@ async function handleRequest(req, res) {
     if (path === "/pending-command" && req.method === "GET") {
       lastExtensionSeenAt = Date.now();
       const next = pendingCommands.shift();
-      if (!next) return res.writeHead(204).end();
+      // 无待执行命令的 204 也必须带 CORS 头：扩展 SW 是以跨源 fetch 轮询本端点的，
+      // 缺 access-control-allow-origin 会让"无命令"被浏览器判为 CORS 失败，
+      // 正常轮询因此持续产生运行时错误，且"桥不可达"与"无命令"无法区分。
+      if (!next) {
+        res.writeHead(204, {
+          "access-control-allow-origin": "*",
+          "access-control-allow-private-network": "true",
+        });
+        return res.end();
+      }
       return json(res, 200, { jobId: next.jobId, command: next.command, commandNonce: next.nonce });
     }
     if (path === "/results" && req.method === "POST") {
