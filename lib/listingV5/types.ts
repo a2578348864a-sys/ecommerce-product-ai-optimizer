@@ -45,8 +45,12 @@ export const LISTING_V5_STRATEGY_PROMPT_VERSION = "listing-v5-strategy.v6" as co
  * positioningAngle / bulletPlan) so the Writer can execute one stable shopper-value plan.
  * v9 makes rating, review count and customer-feedback observations display-only social proof;
  * they cannot be converted into recommendation, trust, ranking or product-quality language.
+ * v10 adds the marketing-reasoning execution rules: marketingBrief stays reference-only and may
+ * only supply scenario selection, fact-backed pain mapping, positioning direction and shopper
+ * perspective; generic motivations, hardcoded framing, unsupported benefits and reference wording
+ * must not become product claims, and every bullet stays anchored to approvedBenefits.
  */
-export const LISTING_V5_WRITER_PROMPT_VERSION = "listing-v5-writer.v9" as const;
+export const LISTING_V5_WRITER_PROMPT_VERSION = "listing-v5-writer.v10" as const;
 export const LISTING_V5_REPAIR_PROMPT_VERSION = "listing-v5-repair.v3" as const;
 
 export type ListingV5Reference = {

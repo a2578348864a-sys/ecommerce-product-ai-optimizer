@@ -151,6 +151,26 @@ describe("Listing Decision Engine", () => {
     }
   });
 
+  it("uses a safe-failure path instead of fabricating a benefit when approvedBenefit is missing", () => {
+    // 无可用已确认事实 ⇒ 每条 bullet 都没有 approvedBenefit（旧行为会伪造
+    // "<value> — states the product detail" 这类占位 benefit 文案）
+    const noFactsContext: ListingV5Context = { ...mockContext, confirmedFacts: [] };
+    const brief = buildListingDecisionEngine(noFactsContext, mockStrategy);
+
+    expect(brief.bulletBlueprints.length).toBeGreaterThan(0);
+    for (const bullet of brief.bulletBlueprints) {
+      expect(bullet.persuasionBlueprint.shopperBenefitClause).toBe("");
+      expect(bullet.persuasionBlueprint.shopperBenefitClause).not.toContain("states the product detail");
+    }
+
+    // 正常路径（approvedBenefit 存在）行为完全不变
+    const normal = buildListingDecisionEngine(mockContext, mockStrategy);
+    for (const bullet of normal.bulletBlueprints) {
+      expect(bullet.persuasionBlueprint.shopperBenefitClause).toBeTruthy();
+      expect(bullet.persuasionBlueprint.shopperBenefitClause).not.toBe("");
+    }
+  });
+
   it("generates brand and formula guided title blueprint", () => {
     const brief = buildListingDecisionEngine(mockContext, mockStrategy);
 

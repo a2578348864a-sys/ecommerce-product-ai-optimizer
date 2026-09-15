@@ -814,6 +814,18 @@ const MAX_UNSUPPORTED_DETAILS = 10;
  */
 const VAGUE_BENEFIT_FILLER = /\b(?:it'?s the (?:little )?details?|details? that matters?|makes? a difference|designed with you in mind|quality you can (?:feel|trust)|you can trust)\b/i;
 
+/**
+ * 空钩子结构：Writer 会自由输出 bracket 文本，可能自行产出 "[]:" / "[ ]:" 前缀
+ * （不依赖 decision engine 的 bracketHookDirective，故必须在输出侧做结构校验）。
+ */
+const EMPTY_HOOK_PREFIX = /^\[\s*\]\s*:/;
+
+/**
+ * 明显空槽结构：模板或模型漏填导致的残缺句式（如 "is ,"）。
+ * 只匹配系动词后紧跟逗号这一类确定性残缺，不做泛化语义判断。
+ */
+const EMPTY_SLOT_STRUCTURE = /\b(?:is|are|was|were)\s*,/i;
+
 export function validateListingV5Draft(
   context: ListingV5Context,
   strategy: ListingV5Strategy,
@@ -832,6 +844,8 @@ export function validateListingV5Draft(
     if (index > 0 && strategy.bulletAngles[index - 1]?.shopperValue === strategy.bulletAngles[index]?.shopperValue) issues.push("repeated_shopper_value");
     if (/\b(?:brand|material|color|quantity|product type)\s*:/i.test(bullet.text)) issues.push("field_label_stacking");
     if (VAGUE_BENEFIT_FILLER.test(bullet.text)) issues.push("vague_benefit_filler");
+    if (EMPTY_HOOK_PREFIX.test(bullet.text)) issues.push("empty_hook_prefix");
+    if (EMPTY_SLOT_STRUCTURE.test(bullet.text)) issues.push("empty_slot_structure");
     return { valid: issues.length === 0, factIds: bullet.factIds, strategyRole: bullet.strategyRole, issues };
   });
   const descriptionIssues: string[] = [];
