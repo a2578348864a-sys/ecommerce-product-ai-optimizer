@@ -144,7 +144,9 @@ function sanitizeHookText(hook: string, confirmedTokens: Set<string>): string {
     }
     return true;
   });
-  return safeWords.join(" ") || "FEATURE OVERVIEW";
+  // 空/纯空白 hook 必须落到兜底值：空词会被 filter 保留，join 结果是 " "（真值），
+  // 会让 `|| "FEATURE OVERVIEW"` 永不触发，进而产出 "[ ]:" 这种空 label 前缀。
+  return safeWords.join(" ").trim() || "FEATURE OVERVIEW";
 }
 
 /**

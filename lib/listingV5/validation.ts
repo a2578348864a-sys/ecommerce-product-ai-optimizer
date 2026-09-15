@@ -807,6 +807,13 @@ const MAX_REPAIR_TARGETS = 3;
 /** Bound on the reported violation evidence, resolver-derived and scanned alike. */
 const MAX_UNSUPPORTED_DETAILS = 10;
 
+/**
+ * 空泛受益套话（没有事实锚点的营销填充语）。
+ * 只做质量问题识别：不改动 claim 校验、事实判定或门禁；命中会让该条 bullet 进入
+ * 既有的 REPAIRABLE → repair ≤1 → 确定性 fallback 流程，不新增状态与分支。
+ */
+const VAGUE_BENEFIT_FILLER = /\b(?:it'?s the (?:little )?details?|details? that matters?|makes? a difference|designed with you in mind|quality you can (?:feel|trust)|you can trust)\b/i;
+
 export function validateListingV5Draft(
   context: ListingV5Context,
   strategy: ListingV5Strategy,
@@ -824,6 +831,7 @@ export function validateListingV5Draft(
     if (bullet.factIds.some((id) => !allowed.has(id))) issues.push("bullet_fact_id_not_allowed");
     if (index > 0 && strategy.bulletAngles[index - 1]?.shopperValue === strategy.bulletAngles[index]?.shopperValue) issues.push("repeated_shopper_value");
     if (/\b(?:brand|material|color|quantity|product type)\s*:/i.test(bullet.text)) issues.push("field_label_stacking");
+    if (VAGUE_BENEFIT_FILLER.test(bullet.text)) issues.push("vague_benefit_filler");
     return { valid: issues.length === 0, factIds: bullet.factIds, strategyRole: bullet.strategyRole, issues };
   });
   const descriptionIssues: string[] = [];

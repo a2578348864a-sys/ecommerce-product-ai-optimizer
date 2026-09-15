@@ -129,6 +129,28 @@ describe("Listing Decision Engine", () => {
     expect(allHooks).toContain("VACUUM INSULATED");
   });
 
+  it("never emits an empty-label hook directive ([ ]: ) even when fact values are blank", () => {
+    const blankFacts: ListingV5Fact[] = [
+      { id: "f-brand", canonicalField: "brand", label: "Brand", value: "   ", sourceRefs: [] },
+      { id: "f-mat", canonicalField: "material", label: "Material", value: "", sourceRefs: [] },
+      { id: "f-cap", canonicalField: "capacity", label: "Capacity", value: "10 oz", sourceRefs: [] },
+      { id: "f-feat", canonicalField: "functional_feature", label: "Feature", value: "Vacuum Insulated", sourceRefs: [] },
+      { id: "f-comp", canonicalField: "included_components", label: "Components", value: "Food Jar with Unfolding Spoon", sourceRefs: [] },
+      { id: "f-op", canonicalField: "operation", label: "Operation", value: "Push-button latch lid", sourceRefs: [] },
+    ];
+    const brief = buildListingDecisionEngine(
+      { ...mockContext, productIdentity: "Blank Value Food Jar", confirmedFacts: blankFacts },
+      mockStrategy,
+    );
+
+    expect(brief.bulletBlueprints.length).toBeGreaterThan(0);
+    for (const bullet of brief.bulletBlueprints) {
+      // 空 label 前缀必须被兜底，不得出现 "[ ]:" 或 "[]:"
+      expect(bullet.bracketHookDirective).not.toMatch(/^\[\s*\]/);
+      expect(bullet.bracketHookDirective).toMatch(/^\[.+\]:$/);
+    }
+  });
+
   it("generates brand and formula guided title blueprint", () => {
     const brief = buildListingDecisionEngine(mockContext, mockStrategy);
 
@@ -186,6 +208,56 @@ describe("Listing Decision Engine", () => {
     expect(report.bullets.every((b) => b.valid)).toBe(true);
     expect(report.description.valid).toBe(true);
     expect(report.claims.allHaveEvidence).toBe(true);
+  });
+
+  it("flags the real-world vague filler bullets (a detail that matters / details that matter) as repairable", () => {
+    const draftWith = (vagueText: string): ListingV5WriterDraft => ({
+      version: "listing-v5.writer-draft.v1",
+      title: {
+        text: "THERMOS FUNTAINER Kids Insulated Food Jar 10 oz Stainless Steel with Unfolding Spoon",
+        factIds: ["f-brand", "f-mat", "f-cap"],
+      },
+      bullets: [
+        { text: vagueText, factIds: ["f-feat"], strategyRole: "core_outcome" },
+        {
+          text: "[DISHWASHER SAFE CARE]: Dishwasher Safe care simplifies daily cleaning routines after school.",
+          factIds: ["f-care"],
+          strategyRole: "pain_relief",
+        },
+        {
+          text: '[MEASURED DIMENSIONS]: At 3.5"L x 3.5"W x 5.3"H, it provides verified dimensions for everyday lunch bags.',
+          factIds: ["f-dims"],
+          strategyRole: "use_scenario",
+        },
+      ],
+      description: {
+        text: "The THERMOS FUNTAINER 10 oz food jar brings together stainless steel construction and vacuum insulated technology for dependable everyday school lunch packing. Dishwasher Safe care simplifies cleanup after daily routines, while the compact 3.5\"L x 3.5\"W x 5.3\"H size fits easily into lunch bags.",
+        factIds: ["f-brand", "f-mat", "f-cap"],
+      },
+      backendSearchTerms: ["soup thermos"],
+      humanReviewRequired: true,
+    });
+
+    // 两类真实问题原句：单数 + 复数
+    const realWorldSentences = [
+      "This Owala water bottle is a detail that matters when you reach for the same bottle through daily hydration.",
+      "This Owala water bottle has details that matter when you reach for the same bottle through daily hydration.",
+    ];
+
+    for (const vagueText of realWorldSentences) {
+      const report = validateListingV5Draft(mockContext, mockStrategy, draftWith(vagueText));
+      // 必须命中，从而进入既有 REPAIRABLE → repair ≤1 → 确定性 fallback
+      expect(report.bullets[0]!.valid).toBe(false);
+      expect(report.bullets[0]!.issues).toContain("vague_benefit_filler");
+      // confirmedFacts / factIds / claim 校验逻辑不变：事实锚点原样保留
+      expect(report.bullets[0]!.factIds).toEqual(["f-feat"]);
+      // 真实原句含未确认品牌 "Owala"：既有 claim 校验照旧拦截
+      // ⇒ 证明 claim 校验逻辑未被本规则改动或削弱
+      expect(report.claims.allHaveEvidence).toBe(false);
+      // 该规则只针对空泛填充语：事实锚定良好的其它 bullet 不受影响
+      expect(report.bullets[1]!.issues).not.toContain("vague_benefit_filler");
+      expect(report.bullets[2]!.issues).not.toContain("vague_benefit_filler");
+    }
   });
 
   it("rejects unsupported semantic extensions such as unconfirmed component expansion, spatial crowding claims, and circular closure guarantees", () => {
