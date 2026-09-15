@@ -139,7 +139,7 @@ export function buildVisualAssetPlan(input: BuildVisualAssetPlanInput): VisualAs
       title: "真实生活使用场景图",
       categoryLabel: "使用场景",
       purposeSummary: "放进真实生活场景，帮助买家代入使用。",
-      suggestedPurpose: "selling_point_infographic",
+      suggestedPurpose: "lifestyle_in_use",
       suggestedScene: "home_lifestyle",
       suggestedStylePresetId: "lifestyle_home",
       readiness: "ready",

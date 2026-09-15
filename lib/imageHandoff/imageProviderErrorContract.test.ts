@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildImageHandoffDraftSnapshot, mapImageHandoffProviderFailure } from "@/lib/imageHandoff/imageGenerationService";
 import { AiImageProviderError, mapProviderError } from "@/lib/server/openaiImageClient";
 import { normalizeAiImageDraftSnapshot } from "@/lib/aiImageDraft";
+import { CreativeDescriptionProjectionError } from "@/lib/imageHandoff/imagePrompt";
 
 /**
  * V2.1.2：复刻 OpenAI SDK 错误的**真实形态** ——
@@ -16,6 +17,13 @@ class APIConnectionTimeoutError extends Error {
 }
 
 describe("V2.1.6 Image Provider error contract", () => {
+  it("中文视觉描述无法可靠投影时返回可恢复的明确错误", () => {
+    const mapped = mapImageHandoffProviderFailure(new CreativeDescriptionProjectionError("特殊视觉要求"));
+    expect(mapped).toMatchObject({ code: "creative_description_projection_unresolved", status: 422 });
+    expect(mapped.message).toContain("改写");
+    expect(mapped.message).not.toContain("特殊视觉要求");
+  });
+
   it.each([
     ["provider_auth_failed", "provider_auth_failed", 502],
     ["provider_quota", "provider_quota", 503],
@@ -117,6 +125,27 @@ describe("V2.1.6 Image Provider error contract", () => {
     const mapped = mapImageHandoffProviderFailure(new Error(raw));
     expect(mapped).toMatchObject({ code, status });
     expect(mapped.message).not.toContain(raw);
+  });
+
+  it("V2.1.4：图片下载与校验阶段错误精确分类，不塌缩为 provider_error", () => {
+    const downloadCases = [
+      ["image_provider_result_download_failed", "image_download_failed", 502],
+      ["image_provider_result_timeout", "timeout", 504],
+      ["image_provider_result_dns_rejected", "network_error", 502],
+      ["image_provider_result_too_large", "image_provider_rejected", 422],
+      ["image_provider_result_invalid_mime", "image_response_invalid", 502],
+      ["image_provider_result_invalid_image", "image_response_invalid", 502],
+      ["image_provider_untrusted_result_url", "image_response_invalid", 502],
+      ["image_provider_result_redirect_rejected", "image_response_invalid", 502],
+      ["image_provider_incompatible_response", "image_response_invalid", 502],
+    ] as const;
+
+    for (const [upstream, expectedCode, expectedStatus] of downloadCases) {
+      const mapped = mapImageHandoffProviderFailure(new AiImageProviderError(upstream, "internal details", false));
+      expect(mapped).toMatchObject({ code: expectedCode, status: expectedStatus });
+      expect(mapped.code).not.toBe("provider_error");
+      expect(mapped.message).not.toContain("internal details");
+    }
   });
 
   it("writes a complete canonical snapshot for a valid persisted Image Handoff item", () => {

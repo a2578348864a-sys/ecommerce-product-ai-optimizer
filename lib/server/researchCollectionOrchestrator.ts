@@ -94,6 +94,7 @@ import {
   getSourcingEvidence,
   findPendingSourcingPreview,
   createSourcingPreview,
+  sourcingPreviewSubjectKey,
 } from "@/lib/server/sourcingEvidence";
 import {
   acquireByImage,
@@ -117,6 +118,25 @@ export type SourceStatus =
   | "failed";
 
 export type OrchestratorAction = "inspect" | "orchestrate";
+
+/** 四个来源的稳定 key（API/前端共用；顺序即展示顺序） */
+export const ORCHESTRATOR_SOURCE_KEYS = [
+  "amazon",
+  "keywordCompetitor",
+  "voc",
+  "sourcing1688",
+] as const;
+
+export type OrchestratorSourceKey = (typeof ORCHESTRATOR_SOURCE_KEYS)[number];
+
+/**
+ * 单源采集意图：
+ * - probe：只读探测，绝不采集（inspect，或本轮未列入重试范围的来源）
+ * - collect：仅在"该来源确实还没有任何可交付状态"时采集（缺省一键补齐）
+ * - refresh：显式单源重试，即使已有 Pending 预览也必须重新采集一次
+ *   （用于"预览已生成但用户无法确认"或"上次结果不可用"的恢复路径）
+ */
+export type OrchestratorCollectMode = "probe" | "collect" | "refresh";
 
 export type OrchestratorSourceDetail = {
   status: SourceStatus;
@@ -146,6 +166,8 @@ export type ResearchOrchestratorResult = {
   action: OrchestratorAction;
   overallStatus: SourceStatus | "mixed";
   sources: ResearchOrchestratorSources;
+  /** 本轮真正被采集的来源；未列出即表示本轮只做了只读探测。 */
+  attemptedSources: OrchestratorSourceKey[];
   updatedAt: string;
 };
 
@@ -161,6 +183,19 @@ export class ResearchOrchestratorError extends Error {
 }
 
 /* ── 错误脱敏 ──────────────────────────────────────────────────────────── */
+
+/**
+ * 生成编排器侧的 Amazon 预览 ID。
+ *
+ * 必须与保存路由的格式校验一致（`/^[a-z0-9-]{8,64}$/i`，见
+ * app/api/tasks/[id]/browser-evidence/route.ts）。历史实现用下划线
+ * （`bev_preview_xxxxxxxxxx`），导致该预览虽然生成了却永远无法通过
+ * action=save 保存，用户点「查看并确认」后只能走事实确认分支。
+ */
+function buildBrowserEvidencePreviewId(): string {
+  const entropy = Math.random().toString(36).slice(2, 12).padEnd(10, "0");
+  return `bev-preview-${entropy}`;
+}
 
 export function sanitizeErrorMessage(error: unknown): string {
   if (!error) return "未知错误";
@@ -188,8 +223,43 @@ type LastOrchestrationCacheEntry = {
   sources: ResearchOrchestratorSources;
   timestamp: number;
 };
+/**
+ * 每任务的"最近一次采集尝试账本"（进程内）。
+ *
+ * 它只承担一个职责：在只读 inspect 探测到**信息量更弱**的结果时，
+ * 保住刚刚真实发生过的失败/待确认状态，避免前端把一次真实失败刷成
+ * 模糊的“待补齐”。
+ *
+ * 严格边界（避免制造脏状态）：
+ * - 只允许把 failed / awaiting_confirmation 这类"确定性结论"回填；
+ * - 绝不回填 ready —— ready 必须永远由当前真实证据推导；
+ * - 只读 inspect 绝不写账本，账本只记录真实发生过的采集。
+ */
 const RECENT_ORCHESTRATION_CACHE = new Map<string, LastOrchestrationCacheEntry>();
 const ORCHESTRATION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** 这些状态是"确定性结论"，在只读探测退化为 needs_user 时允许保留。 */
+const STICKY_CONCLUSION_STATUSES: ReadonlySet<SourceStatus> = new Set<SourceStatus>([
+  "failed",
+  "awaiting_confirmation",
+]);
+
+/**
+ * 只读探测退化为弱状态时，用最近一次真实采集结论兜底。
+ * 返回 null 表示应直接采用探测结果。
+ */
+function preserveStickyConclusion(
+  probe: OrchestratorSourceDetail,
+  cached: OrchestratorSourceDetail | undefined,
+): OrchestratorSourceDetail | null {
+  if (!cached) return null;
+  // 只读探测退化成"信息量更弱"的状态时才兜底：
+  // 探测结果如果已经带来证据/预览/明确错误，就以探测为准。
+  if (probe.status !== "needs_user" && probe.status !== "ready_to_search") return null;
+  if (!STICKY_CONCLUSION_STATUSES.has(cached.status)) return null;
+  if (probe.status === "needs_user" && probe.error) return null;
+  return { ...cached, hasEvidence: probe.hasEvidence ?? cached.hasEvidence };
+}
 
 export function isOrchestrationRunning(taskId: string): boolean {
   const startedAt = RUNNING_ORCHESTRATIONS.get(taskId);
@@ -209,10 +279,20 @@ type ActiveSourcingJob = {
   previewId?: string;
   itemCount?: number;
   startedAt: number;
+  /** 后台 run 已确认结束（成功或失败），可安全重启 */
+  finished?: boolean;
+  /** 因超过 SOURCING_JOB_TIMEOUT_MS 被判超时；旧 run 可能仍在执行，禁止隐式重启 */
+  timedOut?: boolean;
 };
 
 const ACTIVE_SOURCING_JOBS = new Map<string, ActiveSourcingJob>();
-const SOURCING_JOB_TIMEOUT_MS = 2 * 60 * 1000;
+/**
+ * 后台任务的"展示层"自愈上限。注意：acquireByImage 的内部步骤超时加总最坏约 10 分钟，
+ * 因此这个值**不是**用来中止真实采集的，只用于把长时间无回报的任务标成可操作失败态。
+ */
+const SOURCING_JOB_TIMEOUT_MS = 10 * 60 * 1000;
+const SOURCING_TIMEOUT_MESSAGE =
+  "1688 图搜执行时间超出预期，已在后台停止等待。请确认 1688 页面可正常打开后点「重试」。";
 
 export function _clearSourcingJobsForTests(): void {
   ACTIVE_SOURCING_JOBS.clear();
@@ -290,7 +370,7 @@ function parseJsonSafe(value: string): Record<string, unknown> | null {
 async function handleAmazonSource(
   context: AccessContext,
   taskId: string,
-  action: OrchestratorAction,
+  mode: OrchestratorCollectMode,
 ): Promise<OrchestratorSourceDetail> {
   try {
     // 1. 检查已保存的正式证据
@@ -339,8 +419,11 @@ async function handleAmazonSource(
 
     // 5. Pending Preview 必须有真实的用户确认动作，不能因为 canonical
     //    field 已有同值事实就由 Orchestrator 直接推导为 ready。
+    //    refresh（显式单源重试）例外：用户明确要求重采时不再复用旧预览，
+    //    否则失败源会长期卡在同一个用户无法确认的预览上。旧预览仍留在 Store 中
+    //    到期自然失效，不会覆盖任何已确认数据。
     const pending = findPendingBrowserEvidencePreview({ subjectKey, taskId, asin });
-    if (pending !== null) {
+    if (pending !== null && mode !== "refresh") {
       return {
         status: "awaiting_confirmation",
         hasEvidence: false,
@@ -353,7 +436,7 @@ async function handleAmazonSource(
     // 6. Fact Candidate 确认闭环：Preview 已按 taskId/ASIN/主体/previewId/
     // candidate source identity 完成处理并被消费后，事实确认本身就是该来源的
     // 可追溯完成凭据；不能因为内存 Preview 已消费就再次启动采集。
-    if (hasLegacyAmazonFactClosure(parsedTaskResult)) {
+    if (hasLegacyAmazonFactClosure(parsedTaskResult) && mode !== "refresh") {
       return {
         status: "ready",
         hasEvidence: false,
@@ -361,8 +444,8 @@ async function handleAmazonSource(
       };
     }
 
-    // 7. inspect 模式仅检查状态，不执行采集
-    if (action === "inspect") {
+    // 7. probe 模式仅检查状态，不执行采集
+    if (mode === "probe") {
       return {
         status: "needs_user",
         hasEvidence: false,
@@ -370,7 +453,7 @@ async function handleAmazonSource(
       };
     }
 
-    // 8. orchestrate 模式：尝试采集 Preview（严格不自动确认入库）
+    // 8. collect / refresh：尝试采集 Preview（严格不自动确认入库）
     if (context.mode === "demo") {
       // Demo 模式回放预置 preview
       const preview = buildDemoBrowserCollectPreview(asin);
@@ -407,7 +490,7 @@ async function handleAmazonSource(
       asin,
       capturedAt: new Date().toISOString(),
     });
-    const evidenceId = `bev_preview_${Math.random().toString(36).slice(2, 12)}`;
+    const evidenceId = buildBrowserEvidencePreviewId();
     storeBrowserEvidencePreview({
       evidenceId,
       preview,
@@ -478,7 +561,7 @@ async function handleKeywordCompetitorSource(
   context: AccessContext,
   taskId: string,
   taskResultJson: string,
-  action: OrchestratorAction,
+  mode: OrchestratorCollectMode,
 ): Promise<OrchestratorSourceDetail> {
   try {
     // 1. 检查已保存的正式证据：竞品与关键词
@@ -516,7 +599,7 @@ async function handleKeywordCompetitorSource(
     const kwNeedsConfirm = !hasKw && pendingKw !== null;
     const compNeedsConfirm = !hasComp && pendingComp !== null;
 
-    if (kwNeedsConfirm || compNeedsConfirm) {
+    if ((kwNeedsConfirm || compNeedsConfirm) && mode !== "refresh") {
       const kwCount = kwNeedsConfirm && Array.isArray(pendingKw.preview.results) ? pendingKw.preview.results.length : 0;
       const compCount = compNeedsConfirm && Array.isArray(pendingComp.preview.results) ? pendingComp.preview.results.length : 0;
       let msg = "";
@@ -538,8 +621,8 @@ async function handleKeywordCompetitorSource(
       };
     }
 
-    // 4. inspect 模式仅检查状态，不执行采集
-    if (action === "inspect") {
+    // 4. probe 模式仅检查状态，不执行采集
+    if (mode === "probe") {
       return {
         status: "needs_user",
         hasEvidence: false,
@@ -547,7 +630,7 @@ async function handleKeywordCompetitorSource(
       };
     }
 
-    // 5. orchestrate 模式：执行采集（Failure Isolation 重点保护）
+    // 5. collect / refresh：执行采集（Failure Isolation 重点保护）
     // 必须限本机 Owner 环境使用
     if (context.mode !== "owner" || getRuntimeMode() !== "local_owner") {
       return {
@@ -717,7 +800,7 @@ async function handleKeywordCompetitorSource(
 async function handleVocSource(
   context: AccessContext,
   taskId: string,
-  action: OrchestratorAction,
+  mode: OrchestratorCollectMode,
 ): Promise<OrchestratorSourceDetail> {
   try {
     // 1. 已有正式 Review Evidence → ready（collector calls = 0）
@@ -747,7 +830,9 @@ async function handleVocSource(
     //    会在 TTL 内把所有「补齐研究资料」点击都挡在同一个失败上。
     const subjectKey = reviewCollectSubjectKey(context);
     const pending = findPendingReviewCollectPreview({ subjectKey, taskId, asin });
-    if (pending !== null && isReusableReviewCollectPreview(pending)) {
+    // refresh（显式单源重试）时不复用任何 Pending：用户已明确要求重采，
+    // 继续复用同一个失败/空预览会让"重试"永远停在原地。
+    if (pending !== null && isReusableReviewCollectPreview(pending) && mode !== "refresh") {
       const pendingItems = pending.items.length;
       const blockingPage = pending.pageResults.find((page) =>
         page.status === "blocked_redirect" || page.status === "login_required" || page.status === "captcha_required",
@@ -796,8 +881,8 @@ async function handleVocSource(
       };
     }
 
-    // 4. inspect 模式仅返回状态，绝不采集
-    if (action === "inspect") {
+    // 4. probe 模式仅返回状态，绝不采集
+    if (mode === "probe") {
       return {
         status: "needs_user",
         hasEvidence: false,
@@ -805,7 +890,7 @@ async function handleVocSource(
       };
     }
 
-    // 5. orchestrate：Demo 模式回放预置 Preview（与 review-evidence route 行为一致）
+    // 5. collect / refresh：Demo 模式回放预置 Preview（与 review-evidence route 行为一致）
     const capability = resolveBrowserAcquisitionCapability();
     if (capability.state === "local_env_required" && context.mode === "demo") {
       const items = buildDemoReviewCollectPreviewItems().map((item) => ({ ...item, duplicate: false }));
@@ -836,7 +921,7 @@ async function handleVocSource(
       };
     }
 
-    // 7. orchestrate：调用现有 Review Collector（V1 仅 current_candidate 单 ASIN）
+    // 7. collect / refresh：调用现有 Review Collector（V1 仅 current_candidate 单 ASIN）
     //    只创建 Preview，绝不 collect-confirm / analyze / importReviews
     const preview = await createReviewCollectPreview({
       context,
@@ -1100,10 +1185,15 @@ async function runSourcingJobAsync(
       const job = ACTIVE_SOURCING_JOBS.get(taskId);
       if (job) {
         job.status = "done";
+        job.finished = true;
         job.previewId = preview.previewId;
         job.itemCount = candidates.length;
         job.message = `1688 图搜完成，生成 ${candidates.length} 条待确认候选`;
       }
+      // 任务已完成：从在途账本移除，否则同一个请求内的后续来源处理
+      // （以及下一次 inspect）会先命中"在途 job"分支，把已经产出预览的任务
+      // 误报成 failed/awaiting，而真正的待确认预览要等下一轮才可见。
+      ACTIVE_SOURCING_JOBS.delete(taskId);
     } finally {
       if (tempDirToClean) {
         await rm(tempDirToClean, { recursive: true, force: true }).catch(() => undefined);
@@ -1111,20 +1201,31 @@ async function runSourcingJobAsync(
     }
   } catch (error) {
     const normalized = normalizeImageAcquisitionError(error);
+    // 错误码 → 可操作中文文案。这里必须覆盖 acquireByImage 真实产出的全部错误码，
+    // 否则用户会看到内部兜底文案而不知道下一步该做什么。
     const userFriendlyMessage =
       normalized.code === "auth_required"
-        ? "1688 未登录，请在普通 Chrome 中登录 1688 后重试"
+        ? "1688 未登录，请在普通 Chrome 中登录 1688 后重试。"
         : normalized.code === "no_1688_tab"
-          ? "未检测到 1688 标签页，请在普通 Chrome 中打开 1688 页面"
+          ? "普通 Chrome 中没有可用的 1688 页面，请先打开 1688 网站后重试。"
           : normalized.code === "extension_not_installed"
-            ? "未检测到 1688 助手扩展，请先加载扩展"
+            ? "未检测到轻选 1688 助手，请先在普通 Chrome 中安装并启用助手后重试。"
             : normalized.code === "extension_disconnected"
-              ? "1688 助手连接中断，请检查 Chrome 窗口与助手状态后重试"
-              : (normalized.message || "1688 图搜未成功，请重试");
+              ? "1688 助手连接中断，请检查 Chrome 窗口与助手状态后重试。"
+              : normalized.code === "risk_control_required"
+                ? "1688 触发了安全验证，请在 1688 页面完成验证后重试（系统不会绕过）。"
+                : normalized.code === "page_identity_unknown"
+                  ? "无法识别当前 1688 图搜页面（页面结构已变化或助手与页面不同步）。请刷新 1688 页面后重试；若仍失败，请改用人工粘贴 1688 商品链接。"
+                  : normalized.code === "timeout"
+                    ? "1688 图搜超时，请确认网络与 1688 页面状态后重试。"
+                    : normalized.code === "extension_bridge_not_available"
+                      ? "1688 助手桥接服务未就绪，请确认助手已启用后重试。"
+                      : (normalized.message || "1688 图搜未成功，请重试。");
 
     const job = ACTIVE_SOURCING_JOBS.get(taskId);
     if (job) {
       job.status = "failed";
+      job.finished = true;
       job.message = userFriendlyMessage;
       job.error = {
         code: normalized.code,
@@ -1139,7 +1240,7 @@ async function handleSourcingSource(
   context: AccessContext,
   taskId: string,
   taskResultJson: string,
-  action: OrchestratorAction,
+  mode: OrchestratorCollectMode,
 ): Promise<OrchestratorSourceDetail> {
   try {
     // 1. 检查已保存的正式货源证据
@@ -1154,9 +1255,9 @@ async function handleSourcingSource(
       };
     }
 
-    // 2. 检查是否有待确认的货源预览（无副作用只读检测）
-    const pending = findPendingSourcingPreview(taskId);
-    if (pending !== null) {
+    // 2. 检查是否有待确认的货源预览（无副作用只读检测；按主体隔离）
+    const pending = findPendingSourcingPreview(taskId, sourcingPreviewSubjectKey(context));
+    if (pending !== null && mode !== "refresh") {
       ACTIVE_SOURCING_JOBS.delete(taskId);
       return {
         status: "awaiting_confirmation",
@@ -1177,14 +1278,26 @@ async function handleSourcingSource(
             hasEvidence: false,
             message: activeJob.message || "1688 图片找货执行中...",
           };
-        } else {
-          ACTIVE_SOURCING_JOBS.delete(taskId);
         }
-      } else if (activeJob.status === "failed") {
-        // 失败任务只应在只读检查时保留给用户查看；下一次统一编排必须
-        // 清除旧的失败占位，重新进入 acquireByImage，避免“重试”永远
-        // 返回同一条失败记录而没有真实发起新采集。
-        if (action === "inspect") {
+        // 超时自愈：任务已超过上限仍未回报。这里**不能**直接删除记录再放行，
+        // 否则旧 run 仍在执行（acquireByImage 内部最坏可达约 10 分钟）时会与
+        // 新 run 共用同一个 bridge 与同一个 1688 页面，造成双上传/双提交。
+        // 保留记录并标记为超时占位，只有显式 refresh 才允许重启（见第 6 步）。
+        activeJob.status = "failed";
+        activeJob.finished = true;
+        activeJob.timedOut = true;
+        activeJob.message = SOURCING_TIMEOUT_MESSAGE;
+        activeJob.error = { code: "sourcing_job_timeout", message: SOURCING_TIMEOUT_MESSAGE };
+      }
+      if (activeJob.status === "failed") {
+        // 失败任务在只读检查与普通编排时都保留给用户查看。
+        // 但"任务已确认结束（含真实失败）"的旧失败占位必须在普通编排时清除，
+        // 否则“重试”永远返回同一条失败记录而没有真实发起新采集。
+        // 只有"超时但旧 run 可能仍在跑"这一种情况禁止隐式重启 —— 那会与旧 run
+        // 共用同一个 bridge 与同一个 1688 页面，造成双上传/双提交；此时必须由
+        // 用户显式 refresh（单源重试）才重启。
+        const blockImplicitRestart = activeJob.timedOut === true && mode !== "refresh";
+        if (mode === "probe" || blockImplicitRestart) {
           return {
             status: "failed",
             hasEvidence: false,
@@ -1212,8 +1325,8 @@ async function handleSourcingSource(
       };
     }
 
-    // 5. 只读检查（action === "inspect"）：不触发外部搜索，返回准备就绪
-    if (action === "inspect") {
+    // 5. 只读检查（probe）：不触发外部搜索，返回准备就绪
+    if (mode === "probe") {
       return {
         status: "ready_to_search",
         hasEvidence: false,
@@ -1221,7 +1334,7 @@ async function handleSourcingSource(
       };
     }
 
-    // 6. 编排采集模式（action === "orchestrate"）：启动非阻塞后台任务并立即返回 running
+    // 6. collect / refresh：启动非阻塞后台任务并立即返回 running
     if (!hasImageMaterial) {
       return {
         status: "needs_user",
@@ -1265,9 +1378,30 @@ export async function orchestrateResearchCollection(options: {
   context: AccessContext;
   taskId: string;
   action?: OrchestratorAction;
+  /** 仅对这些来源执行采集；缺省表示所有仍可采集的来源。只读探测始终覆盖全部来源。 */
+  sources?: OrchestratorSourceKey[];
 }): Promise<ResearchOrchestratorResult> {
   const taskId = options.taskId.trim();
   const action: OrchestratorAction = options.action === "inspect" ? "inspect" : "orchestrate";
+
+  // 单源重试的意图白名单：非法/为空一律视为"未限定"（路由层已做严格校验）。
+  const requestedSources: OrchestratorSourceKey[] | null =
+    Array.isArray(options.sources) && options.sources.length > 0
+      ? ORCHESTRATOR_SOURCE_KEYS.filter((key) => options.sources!.includes(key))
+      : null;
+  const isSingleSourceRetry = requestedSources !== null && requestedSources.length < ORCHESTRATOR_SOURCE_KEYS.length;
+
+  const modeFor = (key: OrchestratorSourceKey): OrchestratorCollectMode => {
+    if (action === "inspect") return "probe";
+    if (requestedSources === null) return "collect";
+    // 客户端显式限定来源 = 用户点了某一个来源的「重试」，
+    // 语义是"我要这个来源产生一份新的采集结果"，因此允许突破既有 Pending 预览；
+    // 未列出的来源退回只读探测，绝不重新采集。
+    return requestedSources.includes(key) ? "refresh" : "probe";
+  };
+
+  const attemptedSources: OrchestratorSourceKey[] =
+    action === "inspect" ? [] : (requestedSources ?? [...ORCHESTRATOR_SOURCE_KEYS]);
 
   // 1. 并发保护（同步先查先锁，杜绝 await 间隙并发穿透）
   if (action === "orchestrate") {
@@ -1282,6 +1416,7 @@ export async function orchestrateResearchCollection(options: {
           voc: { status: "running", message: "采集正在执行中" },
           sourcing1688: { status: "running", message: "采集正在执行中" },
         },
+        attemptedSources: [],
         updatedAt: new Date().toISOString(),
       };
     }
@@ -1292,64 +1427,51 @@ export async function orchestrateResearchCollection(options: {
     // 2. 读取任务快照，校验任务存在性
     const task = await getTaskSnapshot(options.context, taskId);
 
-    // 3. 并行执行 4 大来源的状态检测与采集（各源内部自包含 failure isolation）
+    // 3. 并行执行 4 大来源的状态检测（+ 被本轮授权的采集）；各源内部自包含 failure isolation
     const [rawAmazon, rawKeywordCompetitor, rawVoc, rawSourcing1688] = await Promise.all([
-      handleAmazonSource(options.context, taskId, action),
-      handleKeywordCompetitorSource(options.context, taskId, task.resultJson, action),
-      handleVocSource(options.context, taskId, action),
-      handleSourcingSource(options.context, taskId, task.resultJson, action),
+      handleAmazonSource(options.context, taskId, modeFor("amazon")),
+      handleKeywordCompetitorSource(options.context, taskId, task.resultJson, modeFor("keywordCompetitor")),
+      handleVocSource(options.context, taskId, modeFor("voc")),
+      handleSourcingSource(options.context, taskId, task.resultJson, modeFor("sourcing1688")),
     ]);
 
-    let amazon = rawAmazon;
-    let keywordCompetitor = rawKeywordCompetitor;
-    let voc = rawVoc;
-    let sourcing1688 = rawSourcing1688;
-
-    if (action === "orchestrate") {
-      // 记录最新主动 orchestrate 结果缓存，供后续只读 inspect 保持状态延续
-      RECENT_ORCHESTRATION_CACHE.set(taskId, {
-        sources: { amazon, keywordCompetitor, voc, sourcing1688 },
-        timestamp: Date.now(),
-      });
-    } else {
-      // action === "inspect"
-      const cached = RECENT_ORCHESTRATION_CACHE.get(taskId);
-      if (cached && Date.now() - cached.timestamp <= ORCHESTRATION_CACHE_TTL_MS) {
-        // 如果 inspect 探测为弱状态 needs_user（未生成新 evidence 也无新 preview），
-        // 但最近主动 orchestrate 产生了真实状态（如 failed, ready_to_search, 或带具体错误的 needs_user），
-        // 则予以保留，防止只读探测瞬间抹白刚刚执行的失败状态！
-        if (amazon.status === "needs_user" && (cached.sources.amazon.status === "failed" || cached.sources.amazon.status === "ready")) {
-          amazon = { ...cached.sources.amazon };
-        }
-        if (voc.status === "needs_user" && (cached.sources.voc.status === "failed" || cached.sources.voc.status === "ready" || cached.sources.voc.error)) {
-          voc = { ...cached.sources.voc };
-        }
-        if (
-          (sourcing1688.status === "needs_user" || sourcing1688.status === "ready_to_search") &&
-          (cached.sources.sourcing1688.status === "awaiting_confirmation" || cached.sources.sourcing1688.status === "failed")
-        ) {
-          sourcing1688 = { ...cached.sources.sourcing1688 };
-        }
-        if (keywordCompetitor.status === "needs_user" && (cached.sources.keywordCompetitor.status === "failed" || cached.sources.keywordCompetitor.status === "awaiting_confirmation")) {
-          keywordCompetitor = { ...cached.sources.keywordCompetitor };
-        }
-      }
-    }
-
-    const sources: ResearchOrchestratorSources = {
-      amazon,
-      keywordCompetitor,
-      voc,
-      sourcing1688,
+    const probeSources: ResearchOrchestratorSources = {
+      amazon: rawAmazon,
+      keywordCompetitor: rawKeywordCompetitor,
+      voc: rawVoc,
+      sourcing1688: rawSourcing1688,
     };
 
-    const overallStatus = computeOverallStatus(sources);
+    const cached = RECENT_ORCHESTRATION_CACHE.get(taskId);
+    const cacheAlive = cached !== undefined && Date.now() - cached.timestamp <= ORCHESTRATION_CACHE_TTL_MS;
+    const cachedSources = cacheAlive ? cached!.sources : undefined;
+
+    const sources: ResearchOrchestratorSources = {
+      amazon: preserveStickyConclusion(probeSources.amazon, cachedSources?.amazon) ?? probeSources.amazon,
+      keywordCompetitor: preserveStickyConclusion(probeSources.keywordCompetitor, cachedSources?.keywordCompetitor) ?? probeSources.keywordCompetitor,
+      voc: preserveStickyConclusion(probeSources.voc, cachedSources?.voc) ?? probeSources.voc,
+      sourcing1688: preserveStickyConclusion(probeSources.sourcing1688, cachedSources?.sourcing1688) ?? probeSources.sourcing1688,
+    };
+
+    // 账本只记录真实发生过的采集（orchestrate），只读 inspect 绝不写入。
+    if (action === "orchestrate") {
+      const nextSources: ResearchOrchestratorSources = cachedSources
+        ? {
+            amazon: attemptedSources.includes("amazon") ? sources.amazon : (cachedSources.amazon ?? sources.amazon),
+            keywordCompetitor: attemptedSources.includes("keywordCompetitor") ? sources.keywordCompetitor : (cachedSources.keywordCompetitor ?? sources.keywordCompetitor),
+            voc: attemptedSources.includes("voc") ? sources.voc : (cachedSources.voc ?? sources.voc),
+            sourcing1688: attemptedSources.includes("sourcing1688") ? sources.sourcing1688 : (cachedSources.sourcing1688 ?? sources.sourcing1688),
+          }
+        : sources;
+      RECENT_ORCHESTRATION_CACHE.set(taskId, { sources: nextSources, timestamp: Date.now() });
+    }
 
     return {
       taskId,
       action,
-      overallStatus,
+      overallStatus: computeOverallStatus(sources),
       sources,
+      attemptedSources,
       updatedAt: new Date().toISOString(),
     };
   } finally {

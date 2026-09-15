@@ -901,10 +901,14 @@ export function ResearchCollectionOrchestratorCard({
       if (hasPreview) {
         setHasNewPreviewAlert(true);
       }
-      if (
+      const sourcesChanged =
         (hasPreview && previousFingerprint === null) ||
-        (previousFingerprint !== null && previousFingerprint !== fingerprint)
-      ) {
+        (previousFingerprint !== null && previousFingerprint !== fingerprint);
+      if (sourcesChanged) {
+        // 运行反馈必须跟随真实终态更新：整链编排首次返回 running 时没有结论，
+        // 后台任务真正失败/完成是在后续轮询里才出现的。只在状态发生实质变化时
+        // 重算，避免每次轮询都重写同一份反馈。
+        setRunFeedback(deriveOrchestratorRunFeedback(d));
         onDataChanged?.();
       }
     },
@@ -980,8 +984,9 @@ export function ResearchCollectionOrchestratorCard({
     return () => clearInterval(timer);
   }, [hasRunningSource, executeInspect]);
 
-  // 点击「补齐研究资料」
-  const handleOrchestrate = useCallback(async () => {
+  // 点击「补齐研究资料」/ 单源重试
+  // retrySourceKey 为 null 时执行整链编排；否则只重采该来源（服务端仍会探测其余来源的真实状态，但不会重新采集它们）。
+  const handleOrchestrate = useCallback(async (retrySourceKey: OrchestratorSourceKey | null = null) => {
     if (isOrchestrating || isOrchestratingRef.current) return;
     isOrchestratingRef.current = true;
     setIsOrchestrating(true);
@@ -996,7 +1001,9 @@ export function ResearchCollectionOrchestratorCard({
             ...buildAccessHeaders(),
             "content-type": "application/json",
           },
-          body: JSON.stringify({ action: "orchestrate" }),
+          body: JSON.stringify(
+            retrySourceKey ? { action: "orchestrate", sources: [retrySourceKey] } : { action: "orchestrate" },
+          ),
         },
       );
       const json = (await res.json().catch(() => null)) as {
@@ -1022,13 +1029,13 @@ export function ResearchCollectionOrchestratorCard({
     }
   }, [taskId, isOrchestrating, applyApiResponse]);
 
-  // 点击关键词重试
-  const handleRetryKeywords = useCallback(() => {
+  // 点击单源重试
+  const handleRetrySource = useCallback((key: OrchestratorSourceKey) => {
     if (isOrchestrating || retryingSource !== null || isOrchestratingRef.current) {
       return;
     }
-    setRetryingSource("keywords_competitors");
-    void handleOrchestrate();
+    setRetryingSource(key);
+    void handleOrchestrate(key);
   }, [isOrchestrating, retryingSource, handleOrchestrate]);
 
   return (
@@ -1077,7 +1084,7 @@ export function ResearchCollectionOrchestratorCard({
           <button
             type="button"
             data-testid="btn-orchestrate"
-            onClick={handleOrchestrate}
+            onClick={() => void handleOrchestrate(null)}
             disabled={isOrchestrating || retryingSource !== null}
             className="inline-flex h-9 w-full sm:w-auto items-center justify-center gap-1.5 rounded-xl bg-slate-900 px-4 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-slate-800 active:bg-slate-950 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
           >
@@ -1293,10 +1300,7 @@ export function ResearchCollectionOrchestratorCard({
                     <button
                       type="button"
                       data-testid="action-retry-amazon"
-                      onClick={() => {
-                        setRetryingSource("amazon");
-                        void handleOrchestrate();
-                      }}
+                      onClick={() => handleRetrySource("amazon")}
                       disabled={isOrchestrating || retryingSource !== null}
                       className="inline-flex items-center justify-center gap-1 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 px-2.5 py-1.5 text-xs font-semibold shadow-sm transition-colors disabled:opacity-50"
                     >
@@ -1321,14 +1325,7 @@ export function ResearchCollectionOrchestratorCard({
                         ? "action-retry-keywords"
                         : `action-retry-${item.key}`
                     }
-                    onClick={() => {
-                      if (item.key === "keywords_competitors") {
-                        handleRetryKeywords();
-                      } else {
-                        setRetryingSource(item.key);
-                        void handleOrchestrate();
-                      }
-                    }}
+                    onClick={() => handleRetrySource(item.key)}
                     disabled={isOrchestrating || retryingSource !== null}
                     className="inline-flex items-center justify-center gap-1 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 px-3 py-1.5 text-xs font-semibold shadow-sm transition-colors disabled:opacity-50"
                   >

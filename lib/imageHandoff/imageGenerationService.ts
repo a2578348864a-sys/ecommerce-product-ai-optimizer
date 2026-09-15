@@ -399,6 +399,13 @@ export async function generateImageDraftFromHandoff(
       ?? "基于已确认商品资料制作清晰、可人工复核的商品图片。",
   };
   const generationInput = applyTaskImageCreativeDirection(buildResult.input, creativeDirection);
+  // Image Style Library V1：调用方显式选择的视觉方向（主链风格预设）必须在此附加。
+  // generationInput 由 Handoff 重建，不含调用方字段；若此处不附加，风格预设会在主链
+  // 静默丢失（Provider 收到的输入与 Prompt 都不带风格）。该字段只追加风格段 Prompt，
+  // 不参与 productFacts / approvedVisualReferences / targetProduct，事实层逐字节不变。
+  if (input.stylePresetId) {
+    generationInput.stylePresetId = input.stylePresetId;
+  }
   // Final Capability: product_visual_draft 真实参考图输入（从 gate 解析的批准参考图片；仅服务端）
   if (input.mode === "product_visual_draft" && gateA.approvedReferenceImageDataUrl) {
     generationInput.referenceImageDataUrl = gateA.approvedReferenceImageDataUrl;

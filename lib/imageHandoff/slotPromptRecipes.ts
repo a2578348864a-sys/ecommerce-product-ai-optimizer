@@ -255,17 +255,16 @@ const RECIPE_DEFINITIONS: Record<SlotPromptRecipeId, SlotPromptRecipeContent> = 
     id: "dimension_specs",
     name: "尺寸规格与空间图",
     businessGoal: "Clear spatial scale and physical proportion reference to eliminate buyer size confusion and prevent returns.",
-    composition: "Intuitive scale-comparison composition: stage the product naturally alongside a recognized, standard everyday physical object (such as a standard smartphone, coffee mug, pen, or human hand placed next to the base) to clearly demonstrate truthful human-scale volume, height and depth, while maintaining generous negative space around the silhouette for post-production graphic annotations.",
+    composition: "Clear dimension-guide composition: present the product alone in a truthful orthographic or isometric view with generous negative space reserved for post-production graphic annotations; only confirmed measurements may be added during human review.",
     cameraLanguage: "Orthographic straight-on or standard isometric perspective with zero wide-angle perspective distortion so physical proportions and relative scale remain truthful.",
-    lighting: "Crisp architectural studio lighting that defines exact silhouette edges and vertical/horizontal volume contours against the reference object.",
-    environment: "Clean, contemporary neutral tabletop or studio surface with clear spatial boundaries, subtle natural contact shadows and truthful depth reference.",
+    lighting: "Crisp architectural studio lighting that defines exact silhouette edges and vertical/horizontal volume contours against a neutral background.",
+    environment: "Clean, contemporary neutral studio surface with clear spatial boundaries, subtle natural contact shadows and no surrounding props or scale references.",
     textPolicy: "CLEAN SCALE TEMPLATE: Do NOT render dimension numbers (e.g. cm, inches), rulers, measurement tape, callout arrows or specification text. Provide an pristine commercial base image ready for vector overlays.",
     negativeConstraints: [
       "no rendered dimension numbers, measurement lines or arrow indicators",
       "no distorted perspective or fish-eye lens curvature",
       "no cropped product edges or clipped silhouette",
-      "no misleading reference objects with non-standard or deceptive scale",
-      "no plain isolated product on blank white background without scale reference context",
+      "no smartphone, phone, person, hand, furniture, plant, random prop or any other scale reference object",
     ],
     buyerQuestion: "帮助用户了解商品的实际尺寸、体积与占用空间大概有多大。",
     // environment: Clean, contemporary neutral tabletop or studio surface → neutral
@@ -443,7 +442,7 @@ export function resolveSlotRecipe(input: ResolveSlotRecipeInput): SlotPromptReci
   if (purpose === "usage_steps") {
     return SLOT_PROMPT_RECIPES.usage_steps;
   }
-  if (scene && scene !== "none") {
+  if (purpose === "lifestyle_in_use" || (scene && scene !== "none")) {
     return SLOT_PROMPT_RECIPES.lifestyle_in_use;
   }
   if (purpose === "selling_point_infographic") {

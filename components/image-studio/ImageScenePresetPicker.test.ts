@@ -29,6 +29,17 @@ describe("ImageScenePresetPicker lifestyle state contract", () => {
     expect(html).toContain("切换到其他图片用途后即可选择。");
   });
 
+  it("使用场景模板写入独立主用途并选中对应入口", () => {
+    const html = renderToStaticMarkup(createElement(ImageScenePresetPicker, {
+      value: { primaryImagePurpose: "lifestyle_in_use", lifestyleScene: "home_lifestyle", customImagePurpose: "" },
+      onChange: () => undefined,
+    }));
+
+    expect(html).toContain('data-template-id="lifestyle_in_use" data-selected="true"');
+    expect(html).toContain('value="lifestyle_in_use"');
+    expect(html).not.toContain('data-template-id="selling_points" data-selected="true"');
+  });
+
   it("白底到细节图可选择户外场景，再切回白底会重置且禁用", () => {
     const detail = normalizeStudioImageCreativeIntent({
       primaryImagePurpose: "detail_closeup",

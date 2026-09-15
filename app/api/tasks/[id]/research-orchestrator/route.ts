@@ -6,6 +6,10 @@
  * 请求体 Body (POST):
  * - { action: "inspect" }：只读状态检查，不触发任何采集
  * - { action: "orchestrate" }：触发采集编排（缺省默认）
+ * - { action: "orchestrate", sources: ["sourcing1688"] }：
+ *   单源重试。四个来源的状态照常探测与回报，但只有列出的来源会真正执行采集。
+ *   未列出的来源绝不重新采集（尤其是已经 awaiting_confirmation 或 ready 的来源），
+ *   避免"重试一个失败源"顺手重启整条链路、覆盖待确认预览。
  *
  * 响应契约：
  * - 始终返回统一规范：{ ok: true, data: ResearchOrchestratorResult }
@@ -21,7 +25,9 @@ import {
   orchestrateResearchCollection,
   ResearchOrchestratorError,
   sanitizeErrorMessage,
+  ORCHESTRATOR_SOURCE_KEYS,
   type OrchestratorAction,
+  type OrchestratorSourceKey,
   type ResearchOrchestratorResult,
 } from "@/lib/server/researchCollectionOrchestrator";
 
@@ -33,6 +39,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function asString(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value.trim() : fallback;
+}
+
+/**
+ * 解析 sources 白名单（单源重试）。
+ * - 缺省 / null → undefined（编排全部阻塞来源，保持原有语义）
+ * - 数组且元素全部合法且非空 → 去重后的 key 列表
+ * - 其它（非法类型 / 空数组 / 未知 key）→ null 表示请求非法，路由返回 400
+ */
+function parseRequestedSources(value: unknown): OrchestratorSourceKey[] | null | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value)) return null;
+  if (value.length === 0) return null;
+  const out: OrchestratorSourceKey[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") return null;
+    const key = item.trim();
+    if (!(ORCHESTRATOR_SOURCE_KEYS as readonly string[]).includes(key)) return null;
+    if (!out.includes(key as OrchestratorSourceKey)) out.push(key as OrchestratorSourceKey);
+  }
+  return out.length > 0 ? out : null;
 }
 
 async function getId(context: { params: Promise<{ id: string }> }): Promise<string | null> {
@@ -165,11 +191,26 @@ export async function POST(
     }
   }
 
+  const requestedSources = parseRequestedSources(bodyRecord.sources);
+  if (requestedSources === null) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: {
+          code: "invalid_sources",
+          message: `非法的 sources 列表，仅支持非空的 ${ORCHESTRATOR_SOURCE_KEYS.join(" / ")} 子集。`,
+        },
+      },
+      { status: 400 },
+    );
+  }
+
   try {
     const result = await orchestrateResearchCollection({
       context: resolved.context,
       taskId: id,
       action,
+      ...(requestedSources ? { sources: requestedSources } : {}),
     });
     return NextResponse.json({ ok: true, data: result }, { status: 200 });
   } catch (error) {

@@ -1379,6 +1379,53 @@ describe("ResearchCollectionOrchestratorCard (Phase 3 UI / Interaction)", () => 
         expect(container.querySelector('[data-testid="badge-sourcing_1688"]')?.textContent).toContain("已有");
       });
 
+      it("单源重试只请求该来源（sources 白名单），绝不整链重跑覆盖其它来源", async () => {
+        const buildResponse = (orchestrated: boolean) => ({
+          sources: {
+            amazon: { status: "awaiting_confirmation", previewId: "bev-preview-keepme1" },
+            keywordCompetitor: { status: "ready" },
+            voc: { status: "ready" },
+            sourcing1688: orchestrated
+              ? { status: "ready", message: "1688 货源证据已就绪" }
+              : { status: "failed", message: "1688 助手连接中断，请检查 Chrome 窗口与助手状态后重试。" },
+          },
+          ...(orchestrated ? { attemptedSources: ["sourcing1688"] } : {}),
+        });
+        const fetchSpy = vi.fn().mockImplementation((_url, opts) => {
+          const body = JSON.parse(opts?.body as string);
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ ok: true, data: buildResponse(body.action === "orchestrate") }),
+          });
+        });
+        globalThis.fetch = fetchSpy;
+
+        root = createRoot(container as unknown as Element);
+        await act(async () => {
+          root?.render(createElement(ResearchCollectionOrchestratorCard, { taskId: "task-single-retry" }));
+        });
+        await flush();
+        await flush();
+
+        const retryBtn = container.querySelector('[data-testid="action-retry-sourcing_1688"]') as HTMLButtonElement | null;
+        expect(retryBtn).toBeTruthy();
+        await act(async () => {
+          retryBtn?.click();
+        });
+        await flush();
+        await flush();
+
+        const orchestrateCalls = fetchSpy.mock.calls
+          .map((call) => JSON.parse(call[1]?.body))
+          .filter((body) => body.action === "orchestrate");
+        expect(orchestrateCalls).toHaveLength(1);
+        // 关键回归：重试一个失败来源时，必须带上该来源白名单，
+        // 否则服务端会重启整链，把另一个来源刚生成的待确认预览一起重采。
+        expect(orchestrateCalls[0].sources).toEqual(["sourcing_1688"]);
+        // 未重试来源的待确认状态保持可见。
+        expect(container.querySelector('[data-testid="badge-amazon"]')?.textContent).toContain("待确认");
+      });
+
       it("后端返回 error.message / message 时，detail 能正确渲染真实脱敏错误信息", async () => {
         const fetchSpy = vi.fn().mockImplementation((_url, opts) => {
           const body = JSON.parse(opts?.body as string);

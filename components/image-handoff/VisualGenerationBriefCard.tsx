@@ -328,324 +328,343 @@ export function VisualGenerationBriefCard({
               <PreviewItem index={3} title="要回答的购买疑问">
                 <p>{previewData.buyerQuestion || "配方未提供购买疑问"}</p>
               </PreviewItem>
-
-              <PreviewItem index={4} title="本次使用的已确认事实">
-                {previewData.factsUsed.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {previewData.factsUsed.slice(0, 8).map((fact, idx) => (
-                      <span
-                        key={`${fact.field ?? ""}-${fact.label}-${idx}`}
-                        className="inline-flex items-center gap-1 rounded-md border border-emerald-100 bg-emerald-50/60 px-2 py-1 text-[11px] font-medium text-emerald-900"
-                      >
-                        <strong>{fact.label}:</strong> {fact.value}
-                      </span>
-                    ))}
-                    {previewData.factsUsed.length > 8 ? (
-                      <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-500">
-                        +{previewData.factsUsed.length - 8} 更多事实
-                      </span>
-                    ) : null}
-                  </div>
-                ) : (
-                  <p className="text-[11px] text-slate-500">
-                    当前槽位未绑定已确认事实，生成只使用商品基础信息。
-                  </p>
-                )}
-                {previewData.requiredFactKinds.length > 0 ? (
-                  <p className="text-[11px] text-slate-500">
-                    本次槽位所需事实字段：{previewData.requiredFactKinds.map((kind) => factKindLabel(kind)).join("、")}
-                  </p>
-                ) : null}
-              </PreviewItem>
-
-              <PreviewItem index={5} title="构图、背景与风格方向">
-                <p>
-                  <span className="text-slate-500">构图：</span>
-                  <span className="break-words">{previewData.compositionLabel || "配方未标注构图方向"}</span>
-                </p>
-                {previewData.composition ? (
-                  <details className="text-[11px] text-slate-500">
-                    <summary className="cursor-pointer">查看配方原文（英文，仅供核对）</summary>
-                    <p className="mt-0.5 break-words">{previewData.composition}</p>
-                  </details>
-                ) : null}
-                <p>
-                  <span className="text-slate-500">背景：</span>
-                  {backgroundPolicyLabel(previewData.backgroundPolicy)}
-                </p>
-                <p>
-                  <span className="text-slate-500">风格方向：</span>
-                  {previewData.styleLabel}
-                </p>
-              </PreviewItem>
-
-              <PreviewItem index={6} title="允许文字与禁止内容">
-                <p>
-                  <span className="text-slate-500">允许文字：</span>
-                  {previewData.textAllowed === true
-                    ? "允许画面内出现必要文字，文字内容仍须人工核对"
-                    : previewData.textAllowed === false
-                      ? "不允许画面内出现文字、标签、角标或说明排版"
-                      : "配方未标注文字策略，按默认不允许画面内文字处理"}
-                </p>
-                {previewData.textPolicy ? (
-                  <details className="text-[11px] text-slate-500">
-                    <summary className="cursor-pointer">查看配方文字策略原文（英文，仅供核对）</summary>
-                    <p className="mt-0.5 break-words">{previewData.textPolicy}</p>
-                  </details>
-                ) : null}
-                {previewData.negativeConstraints.length > 0 ? (
-                  <div>
-                    <span className="text-slate-500">禁止内容：</span>
-                    <ul className="mt-0.5 space-y-0.5 pl-4 text-[11px] text-slate-600">
-                      {previewData.negativeConstraints.map((constraint, idx) => (
-                        <li key={idx} className="list-disc">{constraint}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-              </PreviewItem>
-
-              <PreviewItem index={7} title="生成类型（二选一）">
-                <div
-                  className="grid gap-1.5 sm:grid-cols-2"
-                  data-testid="brief-preview-generation-type"
-                  data-active={previewData.generationType ?? "none"}
-                >
-                  {(["product_visual_draft", "composition_concept"] as const).map((option) => {
-                    const active = previewData.generationType === option;
-                    return (
-                      <span
-                        key={option}
-                        data-option={option}
-                        data-active={active ? "true" : "false"}
-                        className={`rounded-lg border px-2 py-1.5 text-[11px] font-semibold ${
-                          active
-                            ? "border-teal-500 bg-teal-50 text-teal-900 ring-1 ring-teal-500"
-                            : "border-slate-200 bg-slate-50 text-slate-500"
-                        }`}
-                      >
-                        <span aria-hidden="true">{active ? "● " : "○ "}</span>
-                        {GENERATION_TYPE_LABELS[option]}
-                      </span>
-                    );
-                  })}
-                </div>
-                <p className="text-[11px] text-slate-600">
-                  本次实际使用：<strong className="text-slate-800">{generationTypeLabel(previewData.generationType)}</strong>
-                </p>
-              </PreviewItem>
-
-              <PreviewItem index={8} title="尚缺资料与下一步">
-                {previewData.gaps.length > 0 ? (
-                  <ul className="space-y-1">
-                    {previewData.gaps.map((gap, idx) => (
-                      <li key={idx} className="rounded-md border border-amber-200/70 bg-amber-50/70 px-2 py-1 text-[11px] text-amber-900">
-                        <strong>{gap.label}</strong>
-                        <span className="mx-1" aria-hidden="true">→</span>
-                        <span>{gap.nextStep}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-[11px] text-emerald-700">
-                    当前用途所需事实与商品参考图均已确认，可以直接生成。
-                  </p>
-                )}
-              </PreviewItem>
             </ol>
 
-            {/* 商品身份可见性：只说「要求保持这些特征」，不做任何一致性承诺。 */}
-            <div
-              className="mt-3 rounded-xl border border-slate-200 bg-slate-50/70 p-2.5"
-              data-testid="brief-preview-product-identity"
+            <details
+              className="mt-3 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 text-xs group/advanced-brief"
+              data-testid="brief-advanced-details"
             >
-              <p className="text-xs font-bold text-slate-800">本次生成要求保持这些商品特征。</p>
-              <p className="mt-1 text-[11px] text-slate-600">
-                <span className="text-slate-500">商品：</span>
-                <span className="font-semibold text-slate-800">{productNameText}</span>
-              </p>
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {previewData.identity.map((item) => (
-                  <span
-                    key={item.key}
-                    data-identity={item.key}
-                    data-confirmed={item.value ? "true" : "false"}
-                    className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] ${
-                      item.value
-                        ? "border-slate-200 bg-white text-slate-800"
-                        : "border-amber-200 bg-amber-50/70 text-amber-900"
-                    }`}
-                  >
-                    <span className="text-slate-500">{item.label}：</span>
-                    <strong>{item.value ?? "未确认"}</strong>
+              <summary className="flex cursor-pointer items-center justify-between font-bold text-slate-700 hover:text-slate-900 select-none py-1">
+                <div className="flex items-center gap-2">
+                  <span>高级方案规格与生成约束 (04 ~ 08)</span>
+                  <span className="rounded-full bg-slate-200/70 px-2 py-0.5 text-[10px] font-normal text-slate-600">
+                    Prompt规则 · 构图细节 · 变化约束
                   </span>
-                ))}
+                </div>
+                <span className="text-xs font-normal text-teal-700">展开规格详情 ↓</span>
+              </summary>
+              <div className="mt-3 space-y-3 border-t border-slate-200/70 pt-3">
+                <ol start={4} className="space-y-2.5">
+                  <PreviewItem index={4} title="本次使用的已确认事实">
+                    {previewData.factsUsed.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {previewData.factsUsed.slice(0, 8).map((fact, idx) => (
+                          <span
+                            key={`${fact.field ?? ""}-${fact.label}-${idx}`}
+                            className="inline-flex items-center gap-1 rounded-md border border-emerald-100 bg-emerald-50/60 px-2 py-1 text-[11px] font-medium text-emerald-900"
+                          >
+                            <strong>{fact.label}:</strong> {fact.value}
+                          </span>
+                        ))}
+                        {previewData.factsUsed.length > 8 ? (
+                          <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-500">
+                            +{previewData.factsUsed.length - 8} 更多事实
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-slate-500">
+                        当前槽位未绑定已确认事实，生成只使用商品基础信息。
+                      </p>
+                    )}
+                    {previewData.requiredFactKinds.length > 0 ? (
+                      <p className="text-[11px] text-slate-500">
+                        本次槽位所需事实字段：{previewData.requiredFactKinds.map((kind) => factKindLabel(kind)).join("、")}
+                      </p>
+                    ) : null}
+                  </PreviewItem>
+
+                  <PreviewItem index={5} title="构图、背景与风格方向">
+                    <p>
+                      <span className="text-slate-500">构图：</span>
+                      <span className="break-words">{previewData.compositionLabel || "配方未标注构图方向"}</span>
+                    </p>
+                    {previewData.composition ? (
+                      <details className="text-[11px] text-slate-500">
+                        <summary className="cursor-pointer">查看配方原文（英文，仅供核对）</summary>
+                        <p className="mt-0.5 break-words">{previewData.composition}</p>
+                      </details>
+                    ) : null}
+                    <p>
+                      <span className="text-slate-500">背景：</span>
+                      {backgroundPolicyLabel(previewData.backgroundPolicy)}
+                    </p>
+                    <p>
+                      <span className="text-slate-500">风格方向：</span>
+                      {previewData.styleLabel}
+                    </p>
+                  </PreviewItem>
+
+                  <PreviewItem index={6} title="允许文字与禁止内容">
+                    <p>
+                      <span className="text-slate-500">允许文字：</span>
+                      {previewData.textAllowed === true
+                        ? "允许画面内出现必要文字，文字内容仍须人工核对"
+                        : previewData.textAllowed === false
+                          ? "不允许画面内出现文字、标签、角标或说明排版"
+                          : "配方未标注文字策略，按默认不允许画面内文字处理"}
+                    </p>
+                    {previewData.textPolicy ? (
+                      <details className="text-[11px] text-slate-500">
+                        <summary className="cursor-pointer">查看配方文字策略原文（英文，仅供核对）</summary>
+                        <p className="mt-0.5 break-words">{previewData.textPolicy}</p>
+                      </details>
+                    ) : null}
+                    {previewData.negativeConstraints.length > 0 ? (
+                      <div>
+                        <span className="text-slate-500">禁止内容：</span>
+                        <ul className="mt-0.5 space-y-0.5 pl-4 text-[11px] text-slate-600">
+                          {previewData.negativeConstraints.map((constraint, idx) => (
+                            <li key={idx} className="list-disc">{constraint}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </PreviewItem>
+
+                  <PreviewItem index={7} title="生成类型（二选一）">
+                    <div
+                      className="grid gap-1.5 sm:grid-cols-2"
+                      data-testid="brief-preview-generation-type"
+                      data-active={previewData.generationType ?? "none"}
+                    >
+                      {(["product_visual_draft", "composition_concept"] as const).map((option) => {
+                        const active = previewData.generationType === option;
+                        return (
+                          <span
+                            key={option}
+                            data-option={option}
+                            data-active={active ? "true" : "false"}
+                            className={`rounded-lg border px-2 py-1.5 text-[11px] font-semibold ${
+                              active
+                                ? "border-teal-500 bg-teal-50 text-teal-900 ring-1 ring-teal-500"
+                                : "border-slate-200 bg-slate-50 text-slate-500"
+                            }`}
+                          >
+                            <span aria-hidden="true">{active ? "● " : "○ "}</span>
+                            {GENERATION_TYPE_LABELS[option]}
+                          </span>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[11px] text-slate-600">
+                      本次实际使用：<strong className="text-slate-800">{generationTypeLabel(previewData.generationType)}</strong>
+                    </p>
+                  </PreviewItem>
+
+                  <PreviewItem index={8} title="尚缺资料与下一步">
+                    {previewData.gaps.length > 0 ? (
+                      <ul className="space-y-1">
+                        {previewData.gaps.map((gap, idx) => (
+                          <li key={idx} className="rounded-md border border-amber-200/70 bg-amber-50/70 px-2 py-1 text-[11px] text-amber-900">
+                            <strong>{gap.label}</strong>
+                            <span className="mx-1" aria-hidden="true">→</span>
+                            <span>{gap.nextStep}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-[11px] text-emerald-700">
+                        当前用途所需事实与商品参考图均已确认，可以直接生成。
+                      </p>
+                    )}
+                  </PreviewItem>
+                </ol>
+
+                {/* 商品身份可见性：只说「要求保持这些特征」，不做任何一致性承诺。 */}
+                <div
+                  className="rounded-xl border border-slate-200 bg-white p-2.5"
+                  data-testid="brief-preview-product-identity"
+                >
+                  <p className="text-xs font-bold text-slate-800">本次生成要求保持这些商品特征。</p>
+                  <p className="mt-1 text-[11px] text-slate-600">
+                    <span className="text-slate-500">商品：</span>
+                    <span className="font-semibold text-slate-800">{productNameText}</span>
+                  </p>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {previewData.identity.map((item) => (
+                      <span
+                        key={item.key}
+                        data-identity={item.key}
+                        data-confirmed={item.value ? "true" : "false"}
+                        className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] ${
+                          item.value
+                            ? "border-slate-200 bg-white text-slate-800"
+                            : "border-amber-200 bg-amber-50/70 text-amber-900"
+                        }`}
+                      >
+                        <span className="text-slate-500">{item.label}：</span>
+                        <strong>{item.value ?? "未确认"}</strong>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="mt-2 grid gap-1 text-[11px] sm:grid-cols-2">
+                    <p>
+                      <span className="font-semibold text-teal-700">允许变化：</span>
+                      <span className="text-slate-600">背景、光影、构图与画面氛围</span>
+                    </p>
+                    <p>
+                      <span className="font-semibold text-amber-700">禁止变化：</span>
+                      <span className="text-slate-600">未授权颜色、结构、数量与配件</span>
+                    </p>
+                  </div>
+                </div>
               </div>
-              <div className="mt-2 grid gap-1 text-[11px] sm:grid-cols-2">
-                <p>
-                  <span className="font-semibold text-teal-700">允许变化：</span>
-                  <span className="text-slate-600">背景、光影、构图与画面氛围</span>
-                </p>
-                <p>
-                  <span className="font-semibold text-amber-700">禁止变化：</span>
-                  <span className="text-slate-600">未授权颜色、结构、数量与配件</span>
-                </p>
-              </div>
-            </div>
+            </details>
           </section>
         ) : null}
 
-        {/* 移动端折叠/展开按钮 */}
-        <button
-          type="button"
-          onClick={() => setMobileExpanded(!mobileExpanded)}
-          className="md:hidden flex w-full items-center justify-between rounded-xl border border-teal-200/80 bg-teal-50/70 px-3 py-2 text-xs font-bold text-teal-800 transition hover:bg-teal-100/80"
+        {/* 02 ~ 04 详细内容（折叠收纳在高级依据抽屉中，保持主界面清爽） */}
+        <details
+          className="rounded-xl border border-slate-200/80 bg-white p-3 shadow-2xs text-xs group/strategy-details"
+          data-testid="brief-strategy-details"
         >
-          <span>{mobileExpanded ? "收起详细依据与策略 ↑" : "展开商品事实与视觉策略 (02 ~ 04) ↓"}</span>
-          <span className="text-[11px] font-normal text-teal-700">
-            {isTask ? `${displayFacts.length} 项事实` : "免责说明"} · 策略与约束
-          </span>
-        </button>
-
-        {/* 02 ~ 04 详细内容（桌面端始终展开，移动端受折叠状态控制） */}
-        <div className={`space-y-3.5 ${mobileExpanded ? "block" : "hidden md:block"}`}>
-
-        {/* 3: 事实依据（主链展示 Confirmed Facts，独立模式展示诚实免责） */}
-        <div className="rounded-xl border border-slate-200/80 bg-white p-3 shadow-2xs">
-          <div className="flex items-center justify-between gap-2">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-              02 商品事实依据
-            </h4>
-            <span
-              className={`rounded px-2 py-0.5 text-[11px] font-semibold ${
-                isTask
-                  ? "bg-emerald-50 text-emerald-700"
-                  : "bg-amber-50 text-amber-700"
-              }`}
-            >
-              {isTask ? `已绑定 ${displayFacts.length} 项事实` : "无研究事实"}
-            </span>
-          </div>
-
-          {isTask ? (
-            displayFacts.length > 0 ? (
-              <div className="mt-2">
-                <div className="flex flex-wrap gap-1.5">
-                  {displayFacts.slice(0, 6).map((fact, idx) => (
-                    <span
-                      key={idx}
-                      className="inline-flex items-center gap-1 rounded-md border border-emerald-100 bg-emerald-50/60 px-2 py-1 text-[11px] font-medium text-emerald-900"
-                    >
-                      <svg
-                        className="h-3 w-3 text-emerald-600 shrink-0"
-                        viewBox="0 0 20 20"
-                        fill="currentColor"
-                        aria-hidden="true"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                      <strong>{fact.label}:</strong> {fact.value}
-                    </span>
-                  ))}
-                  {displayFacts.length > 6 ? (
-                    <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-500">
-                      +{displayFacts.length - 6} 更多事实
-                    </span>
-                  ) : null}
-                </div>
-                <p className="mt-2 text-[11px] text-slate-500">
-                  ✓ 生成指令严格锚定上述已确认商品事实，杜绝虚构未证实参数或篡改商品外观。
-                </p>
+          <summary className="flex cursor-pointer items-center justify-between font-bold text-slate-700 hover:text-slate-900 select-none py-1">
+            <div className="flex items-center gap-2">
+              <span>查看商品事实依据与策略红线 (02 ~ 04)</span>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-normal text-slate-600">
+                {isTask ? `${displayFacts.length} 项事实` : "免责说明"} · 策略与约束
+              </span>
+            </div>
+            <span className="text-xs font-normal text-teal-700">展开详情 ↓</span>
+          </summary>
+          <div className="mt-3 space-y-3.5 border-t border-slate-200/70 pt-3">
+            {/* 3: 事实依据（主链展示 Confirmed Facts，独立模式展示诚实免责） */}
+            <div className="rounded-xl border border-slate-200/80 bg-white p-3 shadow-2xs">
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                  02 商品事实依据
+                </h4>
+                <span
+                  className={`rounded px-2 py-0.5 text-[11px] font-semibold ${
+                    isTask
+                      ? "bg-emerald-50 text-emerald-700"
+                      : "bg-amber-50 text-amber-700"
+                  }`}
+                >
+                  {isTask ? `已绑定 ${displayFacts.length} 项事实` : "无研究事实"}
+                </span>
               </div>
-            ) : (
-              <p className="mt-1.5 text-xs text-slate-500">
-                暂无已确认事实，生成将基于商品基础信息。
-              </p>
-            )
-          ) : (
-            <div className="mt-2 rounded-lg border border-amber-200/80 bg-amber-50/60 p-2.5 text-[11px] text-amber-900">
-              <p className="font-bold">
-                ⚠ 独立创作未绑定商品研究任务
-              </p>
-              <p className="mt-0.5">
-                用户提供内容由你自行输入，未经商品研究验证，不属于商品事实。生成结果仅供概念与构图参考。
-              </p>
-            </div>
-          )}
-        </div>
 
-        {/* 4: 视觉策略 (Visual Strategy) */}
-        <div className="rounded-xl border border-slate-200/80 bg-white p-3 shadow-2xs">
-          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-            03 视觉策略组合
-          </h4>
-          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <div className="rounded-lg border border-slate-100 bg-slate-50/70 p-2">
-              <span className="text-[10px] text-slate-500">素材用途</span>
-              <p className="mt-0.5 font-bold text-slate-800">
-                {strategy.purposeLabel}
-              </p>
+              {isTask ? (
+                displayFacts.length > 0 ? (
+                  <div className="mt-2">
+                    <div className="flex flex-wrap gap-1.5">
+                      {displayFacts.slice(0, 6).map((fact, idx) => (
+                        <span
+                          key={idx}
+                          className="inline-flex items-center gap-1 rounded-md border border-emerald-100 bg-emerald-50/60 px-2 py-1 text-[11px] font-medium text-emerald-900"
+                        >
+                          <svg
+                            className="h-3 w-3 text-emerald-600 shrink-0"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                            aria-hidden="true"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                          <strong>{fact.label}:</strong> {fact.value}
+                        </span>
+                      ))}
+                      {displayFacts.length > 6 ? (
+                        <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-500">
+                          +{displayFacts.length - 6} 更多事实
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-2 text-[11px] text-slate-500">
+                      ✓ 生成指令严格锚定上述已确认商品事实，杜绝虚构未证实参数或篡改商品外观。
+                    </p>
+                  </div>
+                ) : (
+                  <p className="mt-1.5 text-xs text-slate-500">
+                    暂无已确认事实，生成将基于商品基础信息。
+                  </p>
+                )
+              ) : (
+                <div className="mt-2 rounded-lg border border-amber-200/80 bg-amber-50/60 p-2.5 text-[11px] text-amber-900">
+                  <p className="font-bold">
+                    ⚠ 独立创作未绑定商品研究任务
+                  </p>
+                  <p className="mt-0.5">
+                    用户提供内容由你自行输入，未经商品研究验证，不属于商品事实。生成结果仅供概念与构图参考。
+                  </p>
+                </div>
+              )}
             </div>
-            <div className="rounded-lg border border-slate-100 bg-slate-50/70 p-2">
-              <span className="text-[10px] text-slate-500">场景设定</span>
-              <p className="mt-0.5 font-bold text-slate-800">
-                {strategy.sceneLabel || "无背景干扰 (纯色)"}
-              </p>
+
+            {/* 4: 视觉策略 (Visual Strategy) */}
+            <div className="rounded-xl border border-slate-200/80 bg-white p-3 shadow-2xs">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                03 视觉策略组合
+              </h4>
+              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div className="rounded-lg border border-slate-100 bg-slate-50/70 p-2">
+                  <span className="text-[10px] text-slate-500">素材用途</span>
+                  <p className="mt-0.5 font-bold text-slate-800">
+                    {strategy.purposeLabel}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-slate-100 bg-slate-50/70 p-2">
+                  <span className="text-[10px] text-slate-500">场景设定</span>
+                  <p className="mt-0.5 font-bold text-slate-800">
+                    {strategy.sceneLabel || "无背景干扰 (纯色)"}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-slate-100 bg-slate-50/70 p-2">
+                  <span className="text-[10px] text-slate-500">视觉风格</span>
+                  <p className="mt-0.5 font-bold text-slate-800">
+                    {strategy.styleLabel}
+                  </p>
+                </div>
+              </div>
+              {strategy.rationale ? (
+                <p className="mt-2 text-[11px] text-slate-600">
+                  <strong className="text-slate-700">策略考量：</strong>
+                  {strategy.rationale}
+                </p>
+              ) : null}
             </div>
-            <div className="rounded-lg border border-slate-100 bg-slate-50/70 p-2">
-              <span className="text-[10px] text-slate-500">视觉风格</span>
-              <p className="mt-0.5 font-bold text-slate-800">
-                {strategy.styleLabel}
-              </p>
+
+            {/* 5: 生成约束与安全红线 (Constraints & Safety Guardrails) */}
+            <div className="rounded-xl border border-slate-200/80 bg-white p-3 shadow-2xs">
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                  04 生成约束与安全底线
+                </h4>
+                <span
+                  className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                    referenceNotice.isComposition
+                      ? "bg-amber-100 text-amber-800"
+                      : "bg-teal-100 text-teal-800"
+                  }`}
+                >
+                  {referenceNotice.title}
+                </span>
+              </div>
+              <ul className="mt-2 space-y-1 text-[11px] text-slate-600">
+                {constraints.map((constraint, idx) => (
+                  <li key={idx} className="flex items-start gap-1.5">
+                    <span className="text-teal-600 font-bold shrink-0">•</span>
+                    <span>{constraint}</span>
+                  </li>
+                ))}
+                <li className="flex items-start gap-1.5">
+                  <span className="text-slate-400 font-bold shrink-0">•</span>
+                  <span className="text-slate-500">{referenceNotice.description}</span>
+                </li>
+              </ul>
             </div>
           </div>
-          {strategy.rationale ? (
-            <p className="mt-2 text-[11px] text-slate-600">
-              <strong className="text-slate-700">策略考量：</strong>
-              {strategy.rationale}
-            </p>
-          ) : null}
-        </div>
-
-        {/* 5: 生成约束与安全红线 (Constraints & Safety Guardrails) */}
-        <div className="rounded-xl border border-slate-200/80 bg-white p-3 shadow-2xs">
-          <div className="flex items-center justify-between gap-2">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-              04 生成约束与安全底线
-            </h4>
-            <span
-              className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                referenceNotice.isComposition
-                  ? "bg-amber-100 text-amber-800"
-                  : "bg-teal-100 text-teal-800"
-              }`}
-            >
-              {referenceNotice.title}
-            </span>
-          </div>
-          <ul className="mt-2 space-y-1 text-[11px] text-slate-600">
-            {constraints.map((constraint, idx) => (
-              <li key={idx} className="flex items-start gap-1.5">
-                <span className="text-teal-600 font-bold shrink-0">•</span>
-                <span>{constraint}</span>
-              </li>
-            ))}
-            <li className="flex items-start gap-1.5">
-              <span className="text-slate-400 font-bold shrink-0">•</span>
-              <span className="text-slate-500">{referenceNotice.description}</span>
-            </li>
-          </ul>
-        </div>
-        </div>
+        </details>
 
         {customPromptSummary ? (
           <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 p-2.5 text-[11px] text-slate-500">
-            <span className="font-semibold text-slate-700">用户自定义意图：</span>
+            <span className="font-semibold text-slate-700">本次创作描述摘要：</span>
             <span className="italic">{customPromptSummary}</span>
           </div>
         ) : null}

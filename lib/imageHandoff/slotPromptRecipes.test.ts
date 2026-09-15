@@ -68,7 +68,7 @@ describe("Slot Prompt Recipes Specification", () => {
     }
   });
 
-  it("Slot 2 (核心卖点图) 与 Slot 3 (尺寸规格图) 明确要求排版留白，Slot 3 引入真实感知参照物且严禁直接绘制文字与假标尺", () => {
+  it("Slot 2 (核心卖点图) 与 Slot 3 (尺寸规格图) 明确要求排版留白，并禁止未经确认的参照物、文字与假标尺", () => {
     const slot2 = SLOT_PROMPT_RECIPES.selling_points;
     expect(slot2.textPolicy).toContain("RESERVED LAYOUT SPACE");
     expect(slot2.textPolicy).toContain("Do NOT generate simulated text");
@@ -78,9 +78,8 @@ describe("Slot Prompt Recipes Specification", () => {
     expect(slot3.textPolicy).toContain("CLEAN SCALE TEMPLATE");
     expect(slot3.textPolicy).toContain("Do NOT render dimension numbers");
     expect(slot3.textPolicy).toContain("ready for vector overlays");
-    expect(slot3.composition).toContain("recognized, standard everyday physical object");
-    expect(slot3.composition).toContain("standard smartphone");
-    expect(slot3.negativeConstraints).toContain("no plain isolated product on blank white background without scale reference context");
+    expect(slot3.composition).toContain("present the product alone");
+    expect(slot3.negativeConstraints).toContain("no smartphone, phone, person, hand, furniture, plant, random prop or any other scale reference object");
   });
 
   it("Slot 7 (使用步骤与操作指引) 明确要求分步流程、留白标注区域与手部安全负面规则，绝不退化为白底主图", () => {
@@ -118,6 +117,7 @@ describe("Slot Prompt Recipes Specification", () => {
     expect(resolveSlotRecipe({ primaryPurpose: "detail_closeup" }).id).toBe("detail_closeup");
     expect(resolveSlotRecipe({ primaryPurpose: "packaging_bundle" }).id).toBe("packaging_bundle");
     expect(resolveSlotRecipe({ primaryPurpose: "usage_steps" }).id).toBe("usage_steps");
+    expect(resolveSlotRecipe({ primaryPurpose: "lifestyle_in_use", lifestyleScene: "home_lifestyle" }).id).toBe("lifestyle_in_use");
     expect(resolveSlotRecipe({ primaryPurpose: "selling_point_infographic", lifestyleScene: "none" }).id).toBe("selling_points");
     expect(resolveSlotRecipe({ primaryPurpose: "selling_point_infographic", lifestyleScene: "home_lifestyle" }).id).toBe("lifestyle_in_use");
   });
@@ -267,9 +267,8 @@ describe("Slot Prompt Recipes Specification", () => {
       expect(prompt).toContain("CURRENT VISUAL SLOT: 尺寸规格与空间图 (dimension_specs)");
       expect(prompt).toContain("CLEAN SCALE TEMPLATE");
       expect(prompt).toContain("Do NOT render dimension numbers, measurement lines, rulers or arrows");
-      expect(prompt).toContain("recognized, standard everyday physical object");
-      expect(prompt).toContain("standard smartphone");
-      expect(prompt).toContain("no plain isolated product on blank white background without scale reference context");
+      expect(prompt).toContain("present the product alone");
+      expect(prompt).toContain("no smartphone, phone, person, hand, furniture, plant, random prop or any other scale reference object");
       expect(prompt).toContain("Style preset: 卖点视觉 (feature_board)");
     });
 

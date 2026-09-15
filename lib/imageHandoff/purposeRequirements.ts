@@ -46,6 +46,7 @@ export const PURPOSE_REQUIREMENTS: Record<StudioImagePrimaryPurpose, PurposeRequ
     blockedCode: "image_purpose_requires_confirmed_claims",
     blockedMessage: "卖点信息图需要已确认的卖点事实；当前没有可安全展示的已确认卖点。",
   },
+  lifestyle_in_use: { requiresEvidence: false },
   dimension_specification: {
     requiresEvidence: true,
     blockedCode: "image_purpose_requires_dimensions",
@@ -76,6 +77,13 @@ export const PURPOSE_SCENE_COMPATIBILITY: Record<StudioImagePrimaryPurpose, Reco
     sports_fitness: "CONFLICT",
   },
   selling_point_infographic: {
+    none: "ALLOWED",
+    home_lifestyle: "ALLOWED",
+    office_commute: "ALLOWED",
+    outdoor_travel: "ALLOWED",
+    sports_fitness: "ALLOWED",
+  },
+  lifestyle_in_use: {
     none: "ALLOWED",
     home_lifestyle: "ALLOWED",
     office_commute: "ALLOWED",

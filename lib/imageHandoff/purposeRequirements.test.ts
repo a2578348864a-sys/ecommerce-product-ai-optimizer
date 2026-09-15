@@ -75,7 +75,7 @@ describe("evaluatePurposeRequirements", () => {
 
 describe("Purpose 需求矩阵与场景兼容性", () => {
   it("矩阵覆盖全部 UI 主用途", () => {
-    const purposes = ["white_studio", "selling_point_infographic", "dimension_specification", "detail_closeup", "packaging_bundle", "usage_steps", "comparison", "custom"] as const;
+    const purposes = ["white_studio", "selling_point_infographic", "lifestyle_in_use", "dimension_specification", "detail_closeup", "packaging_bundle", "usage_steps", "comparison", "custom"] as const;
     for (const purpose of purposes) {
       expect(PURPOSE_REQUIREMENTS[purpose]).toBeDefined();
     }
@@ -84,6 +84,11 @@ describe("Purpose 需求矩阵与场景兼容性", () => {
   it("white_studio × 生活场景 = CONFLICT（场景必须忽略/禁用）", () => {
     expect(PURPOSE_SCENE_COMPATIBILITY.white_studio.outdoor_travel).toBe("CONFLICT");
     expect(PURPOSE_SCENE_COMPATIBILITY.white_studio.none).toBe("ALLOWED");
+  });
+
+  it("lifestyle_in_use 是独立主用途且允许场景辅助", () => {
+    expect(PURPOSE_REQUIREMENTS.lifestyle_in_use.requiresEvidence).toBe(false);
+    expect(PURPOSE_SCENE_COMPATIBILITY.lifestyle_in_use.home_lifestyle).toBe("ALLOWED");
   });
 
   it("packaging_bundle × outdoor_travel = ALLOWED（需包装证据）", () => {

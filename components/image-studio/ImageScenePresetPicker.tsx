@@ -17,10 +17,15 @@ export function ImageScenePresetPicker({
 }) {
   const sceneDisabled = value.primaryImagePurpose === "white_studio";
   const update = (next: StudioImageCreativeIntent) => onChange(normalizeStudioImageCreativeIntent(next));
-  const isTemplateSelected = (template: (typeof IMAGE_STUDIO_TEMPLATE_OPTIONS)[number]) => (
-    value.primaryImagePurpose === template.primaryImagePurpose
-    && value.lifestyleScene === template.lifestyleScene
-  );
+  const isTemplateSelected = (template: (typeof IMAGE_STUDIO_TEMPLATE_OPTIONS)[number]) => {
+    if (template.templateId === "lifestyle_in_use") {
+      return value.primaryImagePurpose === "lifestyle_in_use" && value.lifestyleScene === "home_lifestyle";
+    }
+    if (template.templateId === "selling_points") {
+      return value.primaryImagePurpose === "selling_point_infographic" && value.lifestyleScene === "none";
+    }
+    return value.primaryImagePurpose === template.primaryImagePurpose;
+  };
 
   return (
     <div className="grid gap-4" data-testid="image-creative-intent-picker">

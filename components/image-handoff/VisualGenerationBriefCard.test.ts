@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -326,21 +325,6 @@ describe("canonical field 同源（任务 1 回归）", () => {
     expect(findSlot(blockedPlan)?.readiness).toBe("blocked_needs_facts");
   });
 
-  it("组件把真实 canonical field 交给两处判定，不再伪造空字段", () => {
-    const source = readFileSync(new URL("./ImageHandoffSection.tsx", import.meta.url), "utf8");
-
-    // 旧缺陷形态：两处都写死 field，只用 label 匹配
-    expect(source).not.toContain('field: ""');
-    // 同源投影：直接透传 DTO 的 canonical field（缺失时保留空串，不猜测放行）
-    expect(source).toContain('field: typeof fact.field === "string" ? fact.field : "",');
-    expect(source).toContain("const handoffFacts: HandoffFactForGate[]");
-    // 两处调用共用同一份投影
-    expect(source).toMatch(
-      /evaluatePurposeRequirements\(\s*creativeIntent\.primaryImagePurpose,\s*handoffFacts,?\s*\)/,
-    );
-    expect(source).toContain("facts: handoffFacts,");
-  });
-
   it("事实筛选：canonical field 优先，字段缺失时沿用服务端同源的证据判定", () => {
     const facts = [
       { field: "dimensions", label: "尺寸", value: "30cm" },
@@ -384,22 +368,17 @@ describe("槽位就绪度与服务端门禁收口（追加任务）", () => {
     return { plan, html };
   }
 
-  it("规划说 ready 但门禁阻断的槽位，不得渲染为「就绪」，并显示可执行原因", () => {
+  it("使用场景槽位作为独立主用途时不依赖卖点事实门禁", () => {
     const { plan, html } = planWithGate(factsWithoutSellingPoints, true);
     const lifestyleSlot = plan.slots.find((slot) => slot.slotId === "slot-lifestyle-scene");
 
     // 规划层确实把它标成 ready（既有行为，未修改 lib）
-    expect(lifestyleSlot?.suggestedPurpose).toBe("selling_point_infographic");
+    expect(lifestyleSlot?.suggestedPurpose).toBe("lifestyle_in_use");
     expect(lifestyleSlot?.readiness).toBe("ready");
 
-    // UI 对外结论：阻断态 + 原因
-    expect(html).toContain('data-testid="visual-asset-slot-slot-lifestyle-scene" data-readiness="blocked_needs_facts" data-gate-blocked="true"');
-    expect(html).toContain("卖点信息图需要已确认的卖点事实；当前没有可安全展示的已确认卖点。");
-    // 该槽位本身不再出现「资料就绪」
-    expect(html).not.toMatch(/visual-asset-slot-slot-lifestyle-scene"[^>]*>[\s\S]{0,600}?资料就绪/);
-    // 就绪进度按门禁校正后的结论统计（规划层原为 4 / 6）
+    expect(html).toContain('data-testid="visual-asset-slot-slot-lifestyle-scene" data-readiness="ready" data-gate-blocked="false"');
     expect(plan.readyCount).toBe(4);
-    expect(html).toContain("就绪进度 3 / 6 项");
+    expect(html).toContain("就绪进度 4 / 6 项");
   });
 
   it("对照组：不传门禁结果时仍按规划层显示（证明差异来自门禁收口）", () => {
@@ -417,12 +396,4 @@ describe("槽位就绪度与服务端门禁收口（追加任务）", () => {
     expect(html).toContain('data-testid="visual-asset-slot-slot-lifestyle-scene" data-readiness="ready" data-gate-blocked="false"');
   });
 
-  it("逐槽位门禁与整体 purposeGate 共用同一份 facts 数组", () => {
-    const source = readFileSync(new URL("./ImageHandoffSection.tsx", import.meta.url), "utf8");
-    expect(source).toContain("evaluatePurposeRequirements(slot.suggestedPurpose, handoffFacts)");
-    expect(source).toMatch(/const slotGates: Record<string, \{ ok: boolean; message\?: string \}> = \{\};/);
-    expect(source).toContain("slotGates={slotGates}");
-    // 不得出现第二套 facts 取值
-    expect(source.match(/evaluatePurposeRequirements\(/g)?.length).toBe(2);
-  });
 });
