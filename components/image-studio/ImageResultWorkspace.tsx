@@ -99,9 +99,9 @@ export function ImageResultWorkspace({
   const downloadKind = meta.creationMode === "prompt" ? "prompt" : meta.input.imageType;
   const productAltName = input.productName.trim() || (isPrompt ? "自由提示词方案" : "未命名商品");
   const localCheckText = isMock ? {
-    logo: "Mock 模板未添加 Logo",
-    text: isPrompt ? "仅展示整理摘要与 Mock 标识" : "仅含商品名与 Mock 标识",
-    watermark: "Mock 模板未添加水印",
+    logo: "本地预览模板未添加 Logo",
+    text: isPrompt ? "仅展示整理摘要与本地预览标识" : "仅含商品名与本地预览标识",
+    watermark: "本地预览模板未添加水印",
     description: "请求上下文已写入预览",
   } : {
     logo: "未自动检查，请人工查看",
@@ -133,14 +133,14 @@ export function ImageResultWorkspace({
               <div className={styles.imageStage} data-aspect={input.aspectRatio}>
                 <Image
                   src={image.base64}
-                  alt={`${productAltName}的${isMock ? "本地 Mock 预览" : "AI 概念草稿"} ${index + 1}`}
+                  alt={`${productAltName}的${isMock ? "本地预览稿" : "AI 概念草稿"} ${index + 1}`}
                   width={image.width || 800}
                   height={image.height || 800}
                   unoptimized
                   className={styles.previewImage}
                 />
                 <span className={styles.mockWaterline}>
-                  {isMock ? "本地 MOCK" : "真实 AI 草稿"}
+                  {isMock ? "本地预览" : "真实 AI 草稿"}
                 </span>
               </div>
               <figcaption className={styles.imageCaption}>

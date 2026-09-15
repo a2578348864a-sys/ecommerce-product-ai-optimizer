@@ -61,6 +61,8 @@ export type ImageGenerationInput = {
    * 永不改变 productFacts、approvedVisualReferences 或 targetProduct。
    */
   stylePresetId?: import("@/lib/imageStyleLibrary").ImageStylePresetId;
+  /** 视觉资产规划槽位类型（由 UI 显式传递，如 main_white_studio, dimension_specs, usage_steps 等） */
+  slotType?: import("@/lib/imageHandoff/visualAssetPlan").VisualAssetSlotType | string;
   compositionReferences: string[];
   creativePreferences: Record<string, string>;
   prohibitedVisualClaims: string[];
