@@ -192,6 +192,75 @@ describe("POST /api/tasks/[id]/research-orchestrator", () => {
         action: "inspect",
       });
     });
+
+    it("显式 sources 白名单透传（单源重试）", async () => {
+      mocks.orchestrateResearchCollection.mockResolvedValue({
+        taskId: "task-001",
+        action: "orchestrate",
+        overallStatus: "mixed",
+        sources: {
+          amazon: { status: "ready" },
+          keywordCompetitor: { status: "ready" },
+          voc: { status: "ready" },
+          sourcing1688: { status: "running" },
+        },
+        attemptedSources: ["sourcing1688"],
+        updatedAt: new Date().toISOString(),
+      });
+
+      const req = createRequest({ body: { action: "orchestrate", sources: ["sourcing1688"] } });
+      const res = await POST(req, createContext("task-001"));
+
+      expect(res.status).toBe(200);
+      expect(mocks.orchestrateResearchCollection).toHaveBeenCalledWith({
+        context: { mode: "owner" },
+        taskId: "task-001",
+        action: "orchestrate",
+        sources: ["sourcing1688"],
+      });
+    });
+
+    it("非法 sources（未知 key / 空数组 / 非数组）一律 400，绝不静默降级为整链重跑", async () => {
+      const cases: unknown[] = [["not_a_source"], [], "sourcing1688", [123]];
+      for (const sources of cases) {
+        const req = createRequest({ body: { action: "orchestrate", sources } });
+        const res = await POST(req, createContext("task-001"));
+        const json = await res.json();
+        expect(res.status).toBe(400);
+        expect(json.ok).toBe(false);
+        expect(json.error.code).toBe("invalid_sources");
+      }
+      expect(mocks.orchestrateResearchCollection).not.toHaveBeenCalled();
+    });
+
+    it("sources 去重且顺序无关：重复 key 只采集一次", async () => {
+      mocks.orchestrateResearchCollection.mockResolvedValue({
+        taskId: "task-001",
+        action: "orchestrate",
+        overallStatus: "mixed",
+        sources: {
+          amazon: { status: "needs_user" },
+          keywordCompetitor: { status: "ready" },
+          voc: { status: "ready" },
+          sourcing1688: { status: "ready" },
+        },
+        attemptedSources: ["sourcing1688", "amazon"],
+        updatedAt: new Date().toISOString(),
+      });
+
+      const req = createRequest({
+        body: { action: "orchestrate", sources: ["sourcing1688", "amazon", "sourcing1688"] },
+      });
+      const res = await POST(req, createContext("task-001"));
+
+      expect(res.status).toBe(200);
+      expect(mocks.orchestrateResearchCollection).toHaveBeenCalledWith({
+        context: { mode: "owner" },
+        taskId: "task-001",
+        action: "orchestrate",
+        sources: ["sourcing1688", "amazon"],
+      });
+    });
   });
 
   describe("Failure Isolation Contract", () => {

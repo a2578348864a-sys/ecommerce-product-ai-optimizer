@@ -44,7 +44,18 @@ const APPROVED_LOCAL_IMAGE_TEMP_PREFIXES = [
   "v35-driver-test-",
 ] as const;
 
-type ImageAcquisitionDiagnostic = "submit_trigger_failed" | "result_page_proof_failed" | "extension_not_ready";
+type ImageAcquisitionDiagnostic =
+  | "submit_trigger_failed"
+  | "result_page_proof_failed"
+  | "extension_not_ready"
+  /** 助手在线，但 Chrome 里没有可用的 1688 页面（与"未安装助手"是两件事） */
+  | "extension_ready_no_tab"
+  /** 1688 页面已打开但助手脚本无响应（页面在助手之后打开 / 脚本上下文失效） */
+  | "content_script_unreachable"
+  /** 助手找不到上传控件；已尝试自动刷新页面一次 */
+  | "upload_target_not_found"
+  /** 自动刷新后仍找不到上传控件（页面结构确定不兼容） */
+  | "upload_target_not_found_after_reload";
 
 function fail(code: string, status: number, message: string, diagnosticCode?: ImageAcquisitionDiagnostic): never {
   const error = new SourcingAcquisitionError(code, status, message) as SourcingAcquisitionError & {
@@ -191,6 +202,21 @@ function mapBridgeFailure(code: string, status: { extensionSeen: boolean; lastEx
   // P1-B：内部码不进用户文案（只进日志）
    
   console.error("[1688-image] extension disconnected", { detail: code });
+
+  // 助手在线但拿不到 1688 页面：这两个门禁必须与"助手连接中断"分开表达，
+  // 否则用户会被指引去重装助手，而真实下一步只是"打开一个 1688 页面"。
+  if (code === "no_1688_tab") {
+    fail("no_1688_tab", 409, "1688 助手已连接，但普通 Chrome 里没有可用的 1688 页面。请打开 1688 网站后重试。", "extension_ready_no_tab");
+  }
+  if (code === "content_script_unreachable") {
+    fail(
+      "page_identity_unknown",
+      422,
+      "1688 页面已打开，但助手脚本没有响应（通常是页面在助手之后才打开）。请刷新该 1688 页面后重试。",
+      "content_script_unreachable",
+    );
+  }
+
   fail("extension_disconnected", 503, "1688 图片助手连接中断，请检查 Chrome 窗口与助手状态后重试。");
 }
 
@@ -203,6 +229,8 @@ type PageState = {
   uploadTarget?: { found?: boolean; unique?: boolean };
   preview?: { confirmed?: boolean; srcLength?: number };
   resultPage?: { resultsReady?: boolean };
+  /** 助手侧诊断字段（严格白名单，仅结构性信息；用于区分"上下文被拒"与"页面无入口"） */
+  diagnostic?: { strictContext?: boolean; fileInputCount?: number; readyState?: string; hostname?: string };
   code?: string;
 };
 
@@ -216,6 +244,9 @@ function parsePageState(value: Record<string, unknown>): PageState {
     uploadTarget: isRecord(value.uploadTarget) ? value.uploadTarget as PageState["uploadTarget"] : undefined,
     preview: isRecord(value.preview) ? value.preview as PageState["preview"] : undefined,
     resultPage: isRecord(value.resultPage) ? value.resultPage as PageState["resultPage"] : undefined,
+    diagnostic: isRecord(value.uploadTarget) && isRecord((value.uploadTarget as Record<string, unknown>).diagnostic)
+      ? (value.uploadTarget as Record<string, unknown>).diagnostic as PageState["diagnostic"]
+      : undefined,
     code: typeof value.code === "string" ? value.code : undefined,
   };
 }
@@ -298,6 +329,51 @@ export async function acquireByImage(input: {
       s.ok && s.pageKind === "upload_page" && s.uploadTarget?.found === true && s.uploadTarget?.unique === true;
     let state = parsePageState({ ok: false });
     let pageReady = false;
+    // 页面"结构未识别"时的自救：助手 content script 与页面不同步时
+    // （页面在助手之后才打开、或 SPA 换页后脚本上下文失效），刷新一次通常即可恢复。
+    // 只允许一次；刷新必须由助手在它自己持有的 1688 tab 上执行（服务端无法定位该 tab）。
+    let reloadRecoveryUsed = false;
+    /**
+     * 采集失败时必须可在服务端日志里复盘：助手实际看到的页面身份与结构诊断。
+     * 只记录结构性字段，不含图片/页面内容/任何凭证。
+     */
+    const pageIdentityDiagnostic = (source: PageState) => ({
+      pageKind: source.pageKind ?? null,
+      hostname: source.diagnostic?.hostname ?? null,
+      readyState: source.diagnostic?.readyState ?? source.documentReadyState ?? null,
+      strictContext: source.diagnostic?.strictContext ?? null,
+      fileInputCount: source.diagnostic?.fileInputCount ?? null,
+      uploadTargetFound: source.uploadTarget?.found ?? null,
+      uploadTargetUnique: source.uploadTarget?.unique ?? null,
+      reloadRecoveryUsed,
+    });
+    const failPageIdentity = (source: PageState) => {
+      console.error("[1688-image] page identity not recognized", pageIdentityDiagnostic(source));
+      if (reloadRecoveryUsed) {
+        fail(
+          "page_identity_unknown",
+          422,
+          "无法识别 1688 图搜上传入口：已刷新 1688 页面一次，助手仍然找不到上传控件。请确认该 1688 页面可以正常上传图片（页面结构可能已改版），或改用手动粘贴 1688 商品链接；若刚更新过助手，请在 chrome://extensions 重新加载助手后重试。",
+          "upload_target_not_found_after_reload",
+        );
+      }
+      fail(
+        "page_identity_unknown",
+        422,
+        "无法识别 1688 图搜上传入口：页面已加载完成，但助手找不到上传控件（页面结构可能已改版，或助手与页面不同步）。已尝试刷新 1688 页面；若仍失败，请确认该 1688 页面可以正常上传图片，或改用手动粘贴 1688 商品链接。",
+        "upload_target_not_found",
+      );
+    };
+    const startReloadRecovery = async (): Promise<boolean> => {
+      if (reloadRecoveryUsed) return false;
+      reloadRecoveryUsed = true;
+      // 必须 await 入队：命令真正到达 bridge 的 pending 队列后，助手 SW 才会取走执行。
+      await bridge.enqueue(jobId, { type: "reloadTab" });
+      // 给浏览器真正开始导航与重新注入 content script 留出时间，
+      // 否则下一轮 getState 很可能还落在旧文档上，导致误判为"刷新无效"。
+      await sleep(4_000, signal);
+      return true;
+    };
     for (let pageAttempt = 0; pageAttempt < 2 && !pageReady; pageAttempt++) {
       assertNotAborted(signal);
       await bridge.enqueue(jobId, { type: "getState" });
@@ -348,8 +424,14 @@ export async function acquireByImage(input: {
           recheck.documentReadyState === "complete" &&
           recheck.uploadTarget?.found === false
         ) {
-          fail("page_identity_unknown", 422, "1688 图搜页面未就绪，请确认已打开图搜页且助手已刷新后重试。");
+          // 结构确定性不兼容（非 hydration 延迟）：先尝试一次页面刷新自救，
+          // 刷新后由外层循环重新探测；helper 返回 false 表示自救机会已用完。
+          if (await startReloadRecovery()) {
+            continue;
+          }
+          failPageIdentity(recheck);
         }
+        // 复核后页面已不在上传页（如被跳到结果页）→ 交给下方导航分支
       }
 
       // 非上传页（如停留在结果页）→ 自动导航回上传页（固定能力）
@@ -380,7 +462,10 @@ export async function acquireByImage(input: {
         if (state.pageKind === "upload_page" && state.documentReadyState === "complete" && state.uploadTarget?.found === false) {
           completeNotFoundStreak++;
           if (completeNotFoundStreak >= 2) {
-            fail("page_identity_unknown", 422, "1688 图搜页面未就绪，请确认已打开图搜页且助手已刷新后重试。");
+            if (await startReloadRecovery()) {
+              break;
+            }
+            failPageIdentity(state);
           }
         } else {
           completeNotFoundStreak = 0;
@@ -388,7 +473,27 @@ export async function acquireByImage(input: {
       }
     }
     if (!pageReady) {
-      fail("page_identity_unknown", 422, "1688 图搜页面未就绪，请确认已打开图搜页且助手已刷新后重试。");
+      // 导航重试已用尽。若助手明确报告"页面是上传页、文档已 complete、但没有上传控件"，
+      // 这不是加载慢，而是助手脚本与页面不同步：先做一次刷新自救（重新注入 content
+      // script），再探测一轮；否则直接失败。绝不无限刷新。
+      const targetMissing =
+        state.ok &&
+        state.pageKind === "upload_page" &&
+        state.documentReadyState === "complete" &&
+        state.uploadTarget?.found === false;
+      if (targetMissing && (await startReloadRecovery())) {
+        await bridge.enqueue(jobId, { type: "getState" });
+        const afterReload = parsePageState(await bridge.waitResult(jobId, 20_000));
+        if (uploadPageReady(afterReload)) {
+          pageReady = true;
+          state = afterReload;
+        } else {
+          state = afterReload;
+        }
+      }
+    }
+    if (!pageReady) {
+      failPageIdentity(state);
     }
 
     // 5) upload + Upload Identity Proof（§15；重试 ≤3）

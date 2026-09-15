@@ -71,6 +71,19 @@ function capture(promise: Promise<unknown>): Promise<string> {
   );
 }
 
+/** 同 capture，但保留结构化错误详情（用于断言 code/message/diagnosticCode 三件事一致） */
+function captureDetailed(
+  promise: Promise<unknown>,
+): Promise<{ code: string; message: string; diagnosticCode?: string }> {
+  return promise.then(
+    () => ({ code: "NO_ERROR", message: "" }),
+    (error) => {
+      const normalized = normalizeImageAcquisitionError(error);
+      return normalized;
+    },
+  );
+}
+
 describe("Native1688ExtensionDriver 编排错误映射", () => {
   it("本地图片必须位于受批准的服务端临时目录", async () => {
     const { dir, path } = temporaryImagePath("unapproved-image-");
@@ -215,7 +228,7 @@ describe("Native1688ExtensionDriver 编排错误映射", () => {
     }
   });
 
-  it("页面非上传页（两次自动导航+轮询后仍非上传页）→ PAGE_IDENTITY_UNKNOWN", { timeout: 90_000 }, async () => {
+  it("页面非上传页（两次自动导航+轮询后仍非上传页）→ PAGE_IDENTITY_UNKNOWN", { timeout: 150_000 }, async () => {
     const path = tinyPngFile();
     try {
       const unknownState = () => ({ ok: true, pageKind: "unknown", uploadTarget: { found: false } });
@@ -244,7 +257,7 @@ describe("Native1688ExtensionDriver 编排错误映射", () => {
     }
   });
 
-  it("确定性不支持 DOM（已在上传页但 documentReadyState=complete 且找不到 uploadTarget）→ 快速失败为 page_identity_unknown（零 30s 导航重试）", async () => {
+  it("确定性不支持 DOM（已在上传页但 documentReadyState=complete 且找不到 uploadTarget）→ 自动刷新一次页面自救 → 仍失败则 page_identity_unknown（零 30s 导航重试）", async () => {
     const path = tinyPngFile();
     try {
       const state = () => ({
@@ -257,9 +270,14 @@ describe("Native1688ExtensionDriver 编排错误映射", () => {
       const fb = fakeBridge({
         onEnqueue: (c) => enqueuedCommands.push(c.type),
         commands: [
-          // 初始 getState + 1 次短时复核 getState
+          // 第 1 轮：初始 getState + 1 次短时复核 getState
+          // 第 2 轮（刷新页面后重新探测）：getState + 1 次短时复核 getState
           { type: "getState", respond: state },
           { type: "getState", respond: state },
+          { type: "getState", respond: state },
+          { type: "getState", respond: state },
+          // 刷新命令本身由助手执行，结果不影响 driver 判定
+          { type: "reloadTab", respond: () => ({ ok: true }) },
         ],
       });
       const code = await capture(acquireByImage({
@@ -269,13 +287,15 @@ describe("Native1688ExtensionDriver 编排错误映射", () => {
         bridgeFactory: () => fb,
       }));
       expect(code).toBe("page_identity_unknown");
+      // 刷新自救只允许一次（禁止无限刷新循环）
+      expect(enqueuedCommands.filter((c) => c === "reloadTab")).toHaveLength(1);
       // 确认未进行任何无意义的 navigateUploadPage 命令下发
       expect(enqueuedCommands).not.toContain("navigateUploadPage");
-      expect(enqueuedCommands).toEqual(["getState", "getState"]);
+      expect(enqueuedCommands).toEqual(["getState", "getState", "reloadTab", "getState", "getState"]);
     } finally {
       rmSync(join(path, ".."), { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it("结果页 → 第 1 次导航轮询超时 → 第 2 次导航成功 → 全链正常", { timeout: 90_000 }, async () => {
     const path = tinyPngFile();
@@ -390,7 +410,7 @@ describe("Native1688ExtensionDriver 编排错误映射", () => {
     }
   });
 
-  it("扩展 idle（SW 在但无 1688 页面 tab）→ EXTENSION_DISCONNECTED（no_1688_tab）", async () => {
+  it("扩展在线但没有 1688 页面 tab → no_1688_tab（不再误报为助手连接中断）", async () => {
     const path = tinyPngFile();
     try {
       const fb = fakeBridge({
@@ -398,19 +418,23 @@ describe("Native1688ExtensionDriver 编排错误映射", () => {
           { type: "getState", respond: () => ({ ok: false, code: "no_1688_tab" }) },
         ],
       });
-      const code = await capture(acquireByImage({
+      const result = await captureDetailed(acquireByImage({
         localImagePath: path,
         taskId: "t1",
         candidateId: "c1",
         bridgeFactory: () => fb,
       }));
-      expect(code).toBe("extension_disconnected");
+      // 助手是好的，缺的只是一个 1688 页面：必须与"未安装助手/助手断开"区分开，
+      // 否则用户会被指引去重装助手，而真实下一步只是打开 1688。
+      expect(result.code).toBe("no_1688_tab");
+      expect(result.message).toContain("1688");
+      expect(result.diagnosticCode).toBe("extension_ready_no_tab");
     } finally {
       rmSync(join(path, ".."), { recursive: true, force: true });
     }
   });
 
-  it("扩展已加载但 content script 不可达 → EXTENSION_DISCONNECTED", async () => {
+  it("扩展已加载但 content script 不可达 → page_identity_unknown（指向刷新页面，而非重装助手）", async () => {
     const path = tinyPngFile();
     try {
       const fb = fakeBridge({
@@ -418,13 +442,15 @@ describe("Native1688ExtensionDriver 编排错误映射", () => {
           { type: "getState", respond: () => ({ ok: false, code: "content_script_unreachable" }) },
         ],
       });
-      const code = await capture(acquireByImage({
+      const result = await captureDetailed(acquireByImage({
         localImagePath: path,
         taskId: "t1",
         candidateId: "c1",
         bridgeFactory: () => fb,
       }));
-      expect(code).toBe("extension_disconnected");
+      expect(result.code).toBe("page_identity_unknown");
+      expect(result.diagnosticCode).toBe("content_script_unreachable");
+      expect(result.message).toContain("刷新");
     } finally {
       rmSync(join(path, ".."), { recursive: true, force: true });
     }

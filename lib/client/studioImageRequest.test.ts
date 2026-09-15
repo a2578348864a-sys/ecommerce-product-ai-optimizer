@@ -124,6 +124,7 @@ describe("buildStudioImageRequestCore", () => {
     expect(STUDIO_IMAGE_PRIMARY_PURPOSES.map((purpose) => purpose.label)).toEqual([
       "白底主图/棚拍",
       "卖点信息图",
+      "使用场景图",
       "尺寸规格图",
       "产品细节特写",
       "包装/套装展示",

@@ -606,6 +606,35 @@ describe("researchCollectionOrchestrator", () => {
       expect(mocks.collectBrowserEvidencePreview).toHaveBeenCalledTimes(1); // delta = 0
     });
 
+    it("Amazon 自动化访问校验 → needs_user（可重试/人工处理），不是 failed", async () => {
+      const { BrowserEvidenceCollectError } = await import("@/lib/server/browserEvidenceCollect");
+      mocks.collectBrowserEvidencePreview.mockRejectedValueOnce(
+        new BrowserEvidenceCollectError(
+          "automation_blocked",
+          422,
+          "Amazon 触发了自动化访问校验（“Continue shopping”中间页）。系统不会绕过该校验：请在本机浏览器手动打开该商品页确认，或稍后重试。",
+        ),
+      );
+      const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+      expect(result.sources.amazon.status).toBe("needs_user");
+      expect(result.sources.amazon.status).not.toBe("failed");
+      expect(result.sources.amazon.error?.code).toBe("automation_blocked");
+      expect(result.sources.amazon.message).toContain("自动化访问校验");
+      // 不得被当成登录墙文案
+      expect(result.sources.amazon.message).not.toContain("请确认该商品页可公开访问");
+      expect(result.sources.amazon.previewId).toBeUndefined();
+    });
+
+    it("Amazon 自动化访问校验且 collector 未带文案时，仍给出可操作说明", async () => {
+      const { BrowserEvidenceCollectError } = await import("@/lib/server/browserEvidenceCollect");
+      mocks.collectBrowserEvidencePreview.mockRejectedValueOnce(
+        new BrowserEvidenceCollectError("automation_blocked", 422, ""),
+      );
+      const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+      expect(result.sources.amazon.status).toBe("needs_user");
+      expect(result.sources.amazon.message).toContain("自动化访问校验");
+    });
+
     it("Amazon 登录墙/验证码等 typed blocker → needs_user，不伪造 awaiting_confirmation", async () => {
       const { BrowserEvidenceCollectError } = await import("@/lib/server/browserEvidenceCollect");
       mocks.collectBrowserEvidencePreview.mockRejectedValueOnce(
@@ -1399,6 +1428,7 @@ describe("VOC auto collection contract (v11)", { timeout: 30000 }, () => {
   it.each([
     ["login_required", "页面要求登录，系统未自动登录。"],
     ["captcha_required", "页面要求完成 CAPTCHA 验证，系统未绕过。"],
+    ["captcha_required", "Amazon 触发了自动化访问校验（“Continue shopping”中间页），系统不会绕过：请在本机浏览器手动打开该商品页确认，或稍后重试。"],
   ] as const)("VOC 真实页面阻断 %s → needs_user 且保留精确分类", async (status, note) => {
     mocks.createReviewCollectPreview.mockResolvedValue({
       previewId: `rcp_${status}`,
@@ -1409,7 +1439,21 @@ describe("VOC auto collection contract (v11)", { timeout: 30000 }, () => {
     });
     const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
     expect(result.sources.voc.status).toBe("needs_user");
+    expect(result.sources.voc.status).not.toBe("failed");
     expect(result.sources.voc.error?.code).toBe(status);
+    expect(result.sources.voc.message).toContain(note.slice(0, 12));
+  });
+
+  it("VOC 自动化访问校验（collector 抛出）→ needs_user，不是 failed", async () => {
+    const { ReviewCollectorError } = await import("@/lib/server/reviewCollector");
+    mocks.createReviewCollectPreview.mockRejectedValueOnce(
+      new ReviewCollectorError("automation_blocked", 422, "Amazon 触发了自动化访问校验。"),
+    );
+    const result = await orchestrateResearchCollection({ context: ownerContext, taskId: "task-001", action: "orchestrate" });
+    expect(result.sources.voc.status).toBe("needs_user");
+    expect(result.sources.voc.status).not.toBe("failed");
+    expect(result.sources.voc.error?.code).toBe("automation_blocked");
+    expect(result.sources.voc.message).toContain("自动化访问校验");
   });
 
   it("V5 无权威 ASIN → needs_user 且 collector 不被调用", async () => {
@@ -1817,6 +1861,140 @@ describe("VOC auto collection contract (v11)", { timeout: 30000 }, () => {
       });
       expect(retry.sources.sourcing1688.status).toBe("running");
       expect(mocks.acquireByImage).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("单源重试（sources 白名单）", () => {
+    it("只重采指定来源：其余来源只做只读探测，绝不重新采集", async () => {
+      // 第一轮：整链编排，Amazon 与 1688 都真实采集一次。
+      const first = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "orchestrate",
+      });
+      expect(first.attemptedSources).toEqual([
+        "amazon",
+        "keywordCompetitor",
+        "voc",
+        "sourcing1688",
+      ]);
+      const amazonCallsAfterFullRun = mocks.collectBrowserEvidencePreview.mock.calls.length;
+
+      // 第二轮：只重试 1688。
+      const retry = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "orchestrate",
+        sources: ["sourcing1688"],
+      });
+
+      expect(retry.attemptedSources).toEqual(["sourcing1688"]);
+      // 关键回归：重试一个来源不得顺手重启其它来源的采集。
+      expect(mocks.collectBrowserEvidencePreview.mock.calls.length).toBe(amazonCallsAfterFullRun);
+      // 未列入白名单的来源状态照常回报（Amazon 仍是待确认，不因重试被抹成待采集）。
+      expect(retry.sources.amazon.status).toBe("awaiting_confirmation");
+    });
+
+    it("重试只影响被重试来源的状态：其余来源的失败结论不被覆盖", async () => {
+      const { BrowserEvidenceCollectError } = await import("@/lib/server/browserEvidenceCollect");
+      mocks.collectBrowserEvidencePreview.mockRejectedValueOnce(
+        new BrowserEvidenceCollectError("page_unknown", 500, "页面未识别"),
+      );
+
+      const first = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "orchestrate",
+      });
+      expect(first.sources.amazon.status).toBe("failed");
+
+      const retry = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "orchestrate",
+        sources: ["voc"],
+      });
+
+      expect(retry.attemptedSources).toEqual(["voc"]);
+      // Amazon 本轮未被授权采集：必须保持上一轮的真实失败结论，
+      // 而不是被只读探测刷成"待采集"（否则用户会以为之前没失败过）。
+      expect(retry.sources.amazon.status).toBe("failed");
+      expect(retry.sources.amazon.message).toBe("页面未识别");
+      expect(mocks.collectBrowserEvidencePreview).toHaveBeenCalledTimes(1);
+    });
+
+    it("refresh：显式单源重试不受已有 Pending 预览拦截（否则永远卡在同一个预览上）", async () => {
+      // 预置一个 Amazon Pending 预览（模拟"预览已生成但用户无法确认/已失效"）。
+      storeBrowserEvidencePreview({
+        evidenceId: "bev-preview-existing1",
+        preview: buildSampleBrowserCollectPreview("B0SAMPLE01"),
+        capturedAt: new Date().toISOString(),
+        expiresAt: Date.now() + 15 * 60 * 1000,
+        subjectKey: "owner:v1",
+        taskId: "task-001",
+        asin: "B0SAMPLE01",
+      });
+
+      // inspect（只读探测）：必须如实报告"已有待确认预览"，不触发采集。
+      const inspect = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "inspect",
+      });
+      expect(inspect.sources.amazon.status).toBe("awaiting_confirmation");
+      expect(inspect.sources.amazon.previewId).toBe("bev-preview-existing1");
+      expect(mocks.collectBrowserEvidencePreview).not.toHaveBeenCalled();
+      expect(inspect.attemptedSources).toEqual([]);
+
+      // 单源重试（refresh）：必须突破 Pending，重新采集一次并给出新预览。
+      const refresh = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "orchestrate",
+        sources: ["amazon"],
+      });
+      expect(refresh.sources.amazon.status).toBe("awaiting_confirmation");
+      expect(refresh.sources.amazon.previewId).not.toBe("bev-preview-existing1");
+      expect(mocks.collectBrowserEvidencePreview).toHaveBeenCalledTimes(1);
+    });
+
+    it("编排器生成的 Amazon 预览 ID 必须符合保存路由格式（否则预览永远无法保存）", async () => {
+      const result = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "orchestrate",
+        sources: ["amazon"],
+      });
+      const previewId = result.sources.amazon.previewId ?? "";
+      // app/api/tasks/[id]/browser-evidence/route.ts 的校验正则
+      expect(previewId).toMatch(/^[a-z0-9-]{8,64}$/i);
+      const pending = findPendingBrowserEvidencePreview({
+        subjectKey: "owner:v1",
+        taskId: "task-001",
+        asin: "B0SAMPLE01",
+      });
+      expect(pending?.evidenceId).toBe(previewId);
+    });
+
+    it("一键补齐（未限定 sources）：已有同 ASIN Pending 预览时复用，不重复采集", async () => {
+      storeBrowserEvidencePreview({
+        evidenceId: "bev-preview-existing2",
+        preview: buildSampleBrowserCollectPreview("B0SAMPLE01"),
+        capturedAt: new Date().toISOString(),
+        expiresAt: Date.now() + 15 * 60 * 1000,
+        subjectKey: "owner:v1",
+        taskId: "task-001",
+        asin: "B0SAMPLE01",
+      });
+
+      const collect = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "orchestrate",
+      });
+      expect(collect.sources.amazon.status).toBe("awaiting_confirmation");
+      expect(collect.sources.amazon.previewId).toBe("bev-preview-existing2");
+      expect(mocks.collectBrowserEvidencePreview).not.toHaveBeenCalled();
     });
   });
 });

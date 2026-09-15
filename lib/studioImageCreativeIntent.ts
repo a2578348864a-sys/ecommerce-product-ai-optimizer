@@ -8,6 +8,7 @@ import {
 export const STUDIO_IMAGE_PRIMARY_PURPOSES = [
   { id: "white_studio", label: "白底主图/棚拍" },
   { id: "selling_point_infographic", label: "卖点信息图" },
+  { id: "lifestyle_in_use", label: "使用场景图" },
   { id: "dimension_specification", label: "尺寸规格图" },
   { id: "detail_closeup", label: "产品细节特写" },
   { id: "packaging_bundle", label: "包装/套装展示" },
@@ -26,6 +27,25 @@ export const STUDIO_IMAGE_LIFESTYLE_SCENES = [
 
 export type StudioImagePrimaryPurpose = (typeof STUDIO_IMAGE_PRIMARY_PURPOSES)[number]["id"];
 export type StudioImageLifestyleScene = (typeof STUDIO_IMAGE_LIFESTYLE_SCENES)[number]["id"];
+
+/**
+ * Image Studio 对用户展示的七套电商模板入口。
+ *
+ * comparison/custom 仍保留在旧 creative-intent 合同中用于历史数据读取，
+ * 但不再作为标准模板入口展示。使用场景模板复用既有
+ * lifestyle_in_use 使用独立主用途值；lifestyleScene 仍用于选择具体环境。
+ */
+export const IMAGE_STUDIO_TEMPLATE_OPTIONS = [
+  { templateId: "main_white_studio", label: "白底主图", primaryImagePurpose: "white_studio", lifestyleScene: "none" },
+  { templateId: "selling_points", label: "卖点展示", primaryImagePurpose: "selling_point_infographic", lifestyleScene: "none" },
+  { templateId: "dimension_specs", label: "尺寸规格", primaryImagePurpose: "dimension_specification", lifestyleScene: "none" },
+  { templateId: "detail_closeup", label: "细节特写", primaryImagePurpose: "detail_closeup", lifestyleScene: "none" },
+  { templateId: "lifestyle_in_use", label: "使用场景", primaryImagePurpose: "lifestyle_in_use", lifestyleScene: "home_lifestyle" },
+  { templateId: "packaging_bundle", label: "包装清单", primaryImagePurpose: "packaging_bundle", lifestyleScene: "none" },
+  { templateId: "usage_steps", label: "使用步骤", primaryImagePurpose: "usage_steps", lifestyleScene: "none" },
+] as const;
+
+export type ImageStudioTemplateOption = (typeof IMAGE_STUDIO_TEMPLATE_OPTIONS)[number];
 
 export type StudioImageCreativeIntent = {
   primaryImagePurpose: StudioImagePrimaryPurpose;
@@ -125,6 +145,13 @@ export function resolveStudioImageCreativeIntent(intent: StudioImageCreativeInte
       composition: "Product-led layout with restrained callout zones; do not invent factual labels.",
       direction: "使用清晰的信息图构图并预留可复核的卖点文字区域，不添加未经确认的标签",
     },
+    lifestyle_in_use: {
+      imageType: "lifestyle_scene" as const,
+      visualStyle: "home" as const,
+      background: "Believable lifestyle environment with the product as the clear subject.",
+      composition: "Natural in-use composition with clear product scale and restrained supporting context.",
+      direction: "使用可信的生活场景突出商品主体，保持商品尺度清楚并预留适量留白",
+    },
     dimension_specification: {
       imageType: "selling_point_display" as const,
       visualStyle: "tech" as const,
@@ -203,6 +230,9 @@ export function resolveStudioImageCreativeIntent(intent: StudioImageCreativeInte
       ? normalized.customImagePurpose
       : primaryPurposeLabel(normalized.primaryImagePurpose),
     stylePresetLabel: getImageStylePreset(normalized.stylePresetId).label,
+    // imageType 只由主用途决定，生活场景只做视觉修饰（visualStyle/background/composition）。
+    // 使用场景的主用途已在 purposeDirections 内自带 lifestyle_scene，无需按场景二次改写；
+    // 否则 detail_closeup + outdoor_travel 等既有用途会被错误降级为 lifestyle_scene。
     imageType: purposeDirections.imageType,
     visualStyle: sceneDirections?.visualStyle ?? purposeDirections.visualStyle,
     background: sceneDirections?.background ?? purposeDirections.background,
