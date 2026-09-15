@@ -2,9 +2,6 @@ import {
   isStudioImageLifestyleScene,
   isStudioImagePrimaryPurpose,
   inferStudioImageCreativeIntentFromPreferences,
-  lifestyleSceneLabel,
-  primaryPurposeLabel,
-  resolveStudioImageCreativeIntent,
   type StudioImageCreativeIntent,
   type StudioImageLifestyleScene,
   type StudioImagePrimaryPurpose,
@@ -115,11 +112,6 @@ export function buildTaskImageCreativeDescription(
   lifestyleScene: StudioImageLifestyleScene,
   customImagePurpose = "",
 ) {
-  const intent = resolveStudioImageCreativeIntent({
-    primaryImagePurpose,
-    lifestyleScene,
-    customImagePurpose,
-  });
   const productName = normalizeText(context.productName, 200) || "本商品";
   const facts = context.confirmedFacts
     .map((fact) => ({
@@ -135,10 +127,12 @@ export function buildTaskImageCreativeDescription(
     .slice(0, 8);
 
   const parts = [
-    `为“${productName}”制作${intent.label || primaryPurposeLabel(primaryImagePurpose)}图片。`,
-    lifestyleScene !== "none" ? `生活场景：${lifestyleSceneLabel(lifestyleScene)}。` : "",
+    `为“${productName}”制作图片。`,
+    primaryImagePurpose === "custom" && customImagePurpose
+      ? `创作方向：${normalizeText(customImagePurpose, TASK_IMAGE_CUSTOM_PURPOSE_MAX_LENGTH)}。`
+      : "",
+    lifestyleScene !== "none" ? "用户可在创作描述中补充场景。" : "",
     facts.length > 0 ? `画面仅依据已确认信息：${facts.join("；")}。` : "当前没有更多已确认规格，不补充或猜测商品事实。",
-    `${intent.direction}。`,
     requirements.length > 0 ? `现有视觉要求：${requirements.join("；")}。` : "",
     context.hasApprovedReference
       ? "商品外观以已批准参考图为视觉依据，结果仍需人工检查商品外观和文字。"
@@ -211,7 +205,10 @@ export function applyTaskImageCreativeDirection(
   input: ImageGenerationInput,
   direction: TaskImageCreativeDirection,
 ): ImageGenerationInput {
-  const intent = resolveStudioImageCreativeIntent(direction);
+  const userDescription = normalizeText(
+    direction.userCreativeDescription,
+    TASK_IMAGE_CREATIVE_DESCRIPTION_MAX_LENGTH,
+  );
   return {
     ...input,
     productFacts: input.productFacts.map((fact) => ({ ...fact })),
@@ -225,17 +222,8 @@ export function applyTaskImageCreativeDirection(
     ...(direction.primaryImagePurpose === "custom" && direction.customImagePurpose
       ? { customPurposeText: direction.customImagePurpose }
       : {}),
-    creativePreferences: {
-      ...input.creativePreferences,
-      imageStyle: intent.visualStyle,
-      backgroundPreference: intent.background,
-      compositionPreference: intent.composition,
-      additionalRequirements: [
-        `图片用途：${intent.label}。${intent.direction}。`,
-        direction.userCreativeDescription
-          ? `用户可编辑创作描述（仅作为视觉偏好，不改变已确认事实、禁用声明或参考图安全状态）：${direction.userCreativeDescription}`
-          : "用户已清空创作描述；仅使用服务端已确认事实、场景和安全限制。",
-      ].join(" ").slice(0, 1_600),
-    },
+    // MVP 只把用户输入作为创作描述传给生成链；用途/场景仍保留在 typed
+    // 字段供服务端门禁使用，但不再自动展开为视觉策略或模板 Prompt。
+    creativePreferences: userDescription ? { additionalRequirements: userDescription } : {},
   };
 }

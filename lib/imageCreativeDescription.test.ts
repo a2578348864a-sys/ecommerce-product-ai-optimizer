@@ -90,15 +90,34 @@ describe("Task Image creative description", () => {
     expect(first).not.toContain("system prompt");
   });
 
-  it("links the outdoor / travel scene to portable context and whitespace without inventing functions", () => {
+  it("不会把旧模板、策略或 Prompt 规则展开到 MVP 创作描述", () => {
+    const description = buildTaskImageCreativeDescription(context, "white_studio", "none");
+    expect(description).toContain("为“30oz 黑色不锈钢水杯”制作图片");
+    expect(description).not.toContain("模板");
+    expect(description).not.toContain("生成指令");
+    expect(description).not.toContain("必须保留");
+  });
+
+  it("创作描述只保留已确认事实，不自动加入尺寸参照策略", () => {
+    const description = buildTaskImageCreativeDescription({
+      ...context,
+      confirmedFacts: [
+        ...context.confirmedFacts,
+        { field: "dimensions", label: "商品尺寸", value: "35 × 25 × 15 cm" },
+      ],
+    }, "dimension_specification", "none");
+
+    expect(description).toContain("商品尺寸：35 × 25 × 15 cm");
+    expect(description).not.toContain("手机");
+    expect(description).not.toContain("其他比例参照物");
+  });
+
+  it("不自动推导生活场景策略，要求用户在创作描述中明确表达", () => {
     const description = buildTaskImageCreativeDescription(context, "detail_closeup", "outdoor_travel");
 
-    expect(description).toContain("户外");
-    expect(description).toContain("便携");
-    expect(description).toContain("留白");
-    expect(description).toContain("不要推断未确认功能");
-    expect(description).not.toContain("防漏");
-    expect(description).not.toContain("保温");
+    expect(description).toContain("用户可在创作描述中补充场景");
+    expect(description).not.toContain("便携");
+    expect(description).not.toContain("留白");
   });
 
   it("treats the editable description as an untrusted visual preference", () => {
@@ -117,7 +136,7 @@ describe("Task Image creative description", () => {
     expect(merged.productFacts).toEqual(authoritative.productFacts);
     expect(merged.prohibitedVisualClaims).toEqual(authoritative.prohibitedVisualClaims);
     expect(merged.unknowns).toEqual(authoritative.unknowns);
-    expect(merged.creativePreferences.additionalRequirements).toContain("仅作为视觉偏好");
+    expect(merged.creativePreferences.additionalRequirements).toBe("商品居中，使用可信的户外旅行环境并预留文字区域。");
     expect(merged.creativePreferences.additionalRequirements).toContain("商品居中");
   });
 
@@ -150,7 +169,7 @@ describe("Task Image creative description", () => {
 
     const merged = applyTaskImageCreativeDirection(generationInput(), parsed.data);
     expect(merged.productFacts).toEqual(generationInput().productFacts);
-    expect(merged.creativePreferences.additionalRequirements).toContain("仅使用服务端已确认事实");
+    expect(merged.creativePreferences.additionalRequirements).toBeUndefined();
   });
 
   it("rejects a lifestyle scene for white background and requires custom purpose copy", () => {

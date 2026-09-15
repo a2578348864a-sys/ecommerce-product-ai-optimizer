@@ -39,6 +39,7 @@ const STUDIO_ERROR_MESSAGES: Record<string, string> = {
   image_schema_invalid: "图片服务返回的候选结果无效，请使用新的请求重新生成。",
   image_validation_failed: "生成图片未通过格式或内容校验，请重新生成。",
   image_provider_result_download_failed: "生成图片未通过格式或内容校验，请重新生成。",
+  image_download_failed: "图片结果下载失败，请重新尝试生成。",
   image_storage_failed: "图片保存失败，请稍后重试。",
   image_snapshot_save_failed: "图片保存失败，请稍后重试。",
 };

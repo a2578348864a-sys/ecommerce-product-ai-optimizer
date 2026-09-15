@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { createBrowserUuid } from "@/lib/browserUuid";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
@@ -11,7 +11,6 @@ import {
   ApiError,
   CreativeHandoffPreview,
 } from "@/components/creative-handoff/types";
-import { ImageScenePresetPicker } from "@/components/image-studio/ImageScenePresetPicker";
 import { ListingFactSupplementPanel } from "@/components/studio/ListingFactSupplementPanel";
 import { MarketingIntelligencePanel } from "@/components/listing-handoff/MarketingIntelligencePanel";
 import { marketingReferenceFromSummary } from "@/components/listing-handoff/MarketingIntelligencePanel";
@@ -21,12 +20,7 @@ import { ListingCopyStrategyCard } from "@/components/listing-handoff/ListingCop
 import { analyzeMarketingIntelligence } from "@/lib/listingHandoff/marketingIntelligence/analyzer";
 import { buildCopyStrategy } from "@/lib/listingHandoff/copyStrategy/analyzer";
 import { buildCopyStrategyPlannerSuggestion } from "@/lib/listingHandoff/copyStrategy/plannerSuggestion";
-import { useSessionDraft } from "@/lib/client/useSessionDraft";
 import { authorityCounts } from "@/lib/productCreativeHandoffFactAuthority";
-import {
-  DEFAULT_STUDIO_IMAGE_CREATIVE_INTENT,
-  resolveStudioImageCreativeIntent,
-} from "@/lib/studioImageCreativeIntent";
 
 export type PreparationKind = "listing" | "image";
 
@@ -220,8 +214,6 @@ export function TaskStudioPreparation({
   const [confirmed, setConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState("");
-  const [sceneSelection, setSceneSelection] = useState(DEFAULT_STUDIO_IMAGE_CREATIVE_INTENT);
-  const restoredSceneRef = useRef(false);
   const [visualNotice, setVisualNotice] = useState("");
 
   useEffect(() => {
@@ -250,25 +242,6 @@ export function TaskStudioPreparation({
     [copyStrategy],
   );
   const isActive = detail?.effectiveStatus === "active" && detail.controlState === "active";
-  const sceneDraft = useSessionDraft({
-    pageKind: "image-studio-task-scene",
-    entityId: taskId,
-    revision: kind === "image" && preview?.expectedResearchRevision
-      ? String(preview.expectedResearchRevision)
-      : null,
-    initial: DEFAULT_STUDIO_IMAGE_CREATIVE_INTENT,
-  });
-
-  useEffect(() => {
-    if (kind !== "image" || !sceneDraft.draft || restoredSceneRef.current) return;
-    restoredSceneRef.current = true;
-    setSceneSelection(sceneDraft.draft);
-  }, [kind, sceneDraft.draft]);
-
-  useEffect(() => {
-    if (kind === "image") sceneDraft.save(sceneSelection);
-  }, [kind, sceneDraft, sceneSelection]);
-
   useEffect(() => {
     onReadyChange?.(isActive);
   }, [isActive, onReadyChange]);
@@ -696,7 +669,6 @@ export function TaskStudioPreparation({
     setSubmitting(true);
     setNotice("");
     try {
-      const scene = resolveStudioImageCreativeIntent(sceneSelection);
       await api.create({
         requestId: createBrowserUuid(),
         selectedFactCandidateIds: selectedFacts,
@@ -708,16 +680,10 @@ export function TaskStudioPreparation({
         expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision!,
         creativePreferences: buildPreparationPreferences(
           preview.creativePreferences,
-          kind === "image" ? {
-            imageStyle: scene.visualStyle,
-            backgroundPreference: scene.background,
-            compositionPreference: scene.composition,
-            additionalRequirements: `图片用途：${scene.label}。${scene.direction}。`,
-          } : undefined,
+          undefined,
         ),
       });
       setConfirmed(false);
-      if (kind === "image") sceneDraft.clear();
       await api.refresh();
       // 确认成功后必须通知父级：Listing Studio / Image Studio 的下游状态（门禁、生成按钮）
       // 依赖父级重新读取服务端状态；缺少这一步时父页面会停在确认前的门禁提示上。
@@ -761,7 +727,7 @@ export function TaskStudioPreparation({
       ) : null}
 
       {/* V3 Evidence → Creative Context Bridge：创作参考资料摘要（§51 Context Visibility） */}
-      {preview?.creativeContextSummary ? (
+      {kind === "listing" && preview?.creativeContextSummary ? (
         <div className="mt-4 rounded-xl border border-teal-100 bg-teal-50/50 p-3" data-testid="creative-context-summary">
           <p className="text-sm font-bold text-teal-900">创作参考资料（研究证据已载入）</p>
           <p className="mt-1 text-xs leading-5 text-slate-500">
@@ -961,24 +927,7 @@ export function TaskStudioPreparation({
         </div>
       ) : null}
 
-      {kind === "image" ? (
-        <div className="mt-5 rounded-2xl border border-cyan-100 bg-cyan-50/30 p-4" data-testid="task-image-scene-selection">
-          <p className="mb-3 text-sm font-bold text-slate-900">图片用途与场景</p>
-          <ImageScenePresetPicker
-            value={sceneSelection}
-            name="task-image-preparation"
-            onChange={(nextSelection) => {
-              setSceneSelection(nextSelection);
-              setConfirmed(false);
-            }}
-          />
-          {sceneDraft.restored ? (
-            <p className="mt-2 text-xs font-semibold text-cyan-800">已恢复刷新前未提交的场景选择。</p>
-          ) : null}
-        </div>
-      ) : null}
-
-      {preview?.creativePreferences ? (
+      {kind === "listing" && preview?.creativePreferences ? (
         <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3 text-sm leading-6 text-slate-600">
           <p className="font-bold text-slate-900">创作偏好</p>
           <p className="mt-1">
@@ -992,7 +941,11 @@ export function TaskStudioPreparation({
 
       <label className="mt-5 flex gap-3 rounded-xl border border-teal-200 bg-teal-50/60 p-3 text-sm leading-6 text-teal-900">
         <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
-        <span>我已核对以上商品事实、禁止声明与创作偏好；生成结果仅作为草稿，最终仍需人工复核。</span>
+        <span>
+          {kind === "image"
+            ? "我已核对以上商品事实与商品参考图；生成结果仅作为图片草稿，最终仍需人工复核。"
+            : "我已核对以上商品事实、禁止声明与创作偏好；生成结果仅作为草稿，最终仍需人工复核。"}
+        </span>
       </label>
 
       {kind === "listing" && !hasListingFactBasis ? (

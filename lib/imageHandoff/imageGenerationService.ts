@@ -14,7 +14,7 @@ import type { ImageStylePresetId } from "@/lib/imageStyleLibrary";
 import { buildImageHandoffBinding, parseImageHandoffBinding, computeImageStatus, type ImageHandoffBindingV1, type ImageStatus } from "@/lib/imageHandoff/imageBinding";
 import { createMockImageProvider, type MockImageProvider } from "@/lib/imageHandoff/mockImageProvider";
 import { createImageProviderByMode, buildTaskImagePromptFinal, realImageProviderEnabled } from "@/lib/imageHandoff/realImageProvider";
-import { assertImagePromptIsSafe } from "@/lib/imageHandoff/imagePrompt";
+import { assertImagePromptIsSafe, CreativeDescriptionProjectionError } from "@/lib/imageHandoff/imagePrompt";
 import { parseProductCreativeHandoff } from "@/lib/productCreativeHandoff";
 import { getProductResearchRecord, getProductResearchVerification, verifyProductResearchHash } from "@/lib/productResearchRecord";
 import { AI_IMAGE_DRAFT_DISCLAIMER, extractAiImageDraftSnapshot, type AiImageDraftSnapshot } from "@/lib/aiImageDraft";
@@ -36,6 +36,13 @@ export class ImageHandoffError extends Error {
  * 现在**保留分类**；上游原文仍然**不进 API 响应**（仅写服务端日志）。
  */
 export function mapImageHandoffProviderFailure(error: unknown): ImageHandoffError {
+  if (error instanceof CreativeDescriptionProjectionError) {
+    return new ImageHandoffError(
+      "creative_description_projection_unresolved",
+      422,
+      "创作描述包含暂不支持的中文视觉表达，请改写为可识别的视觉短语后重试。",
+    );
+  }
   if (error instanceof Error && error.message.startsWith("real_image_persist_failed:")) {
     return new ImageHandoffError("image_storage_failed", 500, "图片保存或校验失败，请稍后重试。");
   }
@@ -71,6 +78,21 @@ export function mapImageHandoffProviderFailure(error: unknown): ImageHandoffErro
       return new ImageHandoffError("network_error", 502, "图片生成服务网络连接失败，请稍后重试。");
     case "invalid_request":
       return new ImageHandoffError("image_provider_rejected", 422, "图片请求未被服务接受，请调整用途或创作描述后重试。");
+    case "image_provider_result_download_failed":
+      return new ImageHandoffError("image_download_failed", 502, "图片结果下载失败，请重新尝试生成。");
+    case "image_provider_result_timeout":
+      return new ImageHandoffError("timeout", 504, "图片结果下载超时，请稍后重试。");
+    case "image_provider_result_dns_rejected":
+      return new ImageHandoffError("network_error", 502, "图片服务地址解析异常，请稍后重试。");
+    case "image_provider_result_too_large":
+      return new ImageHandoffError("image_provider_rejected", 422, "生成图片体积超出限制，请调整生成规格。");
+    case "image_provider_result_invalid_mime":
+    case "image_provider_result_invalid_image":
+      return new ImageHandoffError("image_response_invalid", 502, "图片格式校验失败，请重新尝试生成。");
+    case "image_provider_untrusted_result_url":
+    case "image_provider_result_redirect_rejected":
+    case "image_provider_incompatible_response":
+      return new ImageHandoffError("image_response_invalid", 502, "图片服务返回了不兼容的结果地址，请联系管理员。");
     default:
       // 未知/未分类的上游错误：独立兜底分类
       return new ImageHandoffError("provider_error", 502, "图片生成服务调用失败，请稍后重试。");
@@ -377,14 +399,6 @@ export async function generateImageDraftFromHandoff(
       ?? "基于已确认商品资料制作清晰、可人工复核的商品图片。",
   };
   const generationInput = applyTaskImageCreativeDirection(buildResult.input, creativeDirection);
-  // Image Style Library V1：主链视觉方向只写入风格通道；productFacts / approvedVisualReferences /
-  // targetProduct 全部保持 gate 投影结果，风格不可能改写已确认事实。
-  if (input.stylePresetId) {
-    generationInput.stylePresetId = input.stylePresetId;
-  }
-  if (input.slotType) {
-    generationInput.slotType = input.slotType;
-  }
   // Final Capability: product_visual_draft 真实参考图输入（从 gate 解析的批准参考图片；仅服务端）
   if (input.mode === "product_visual_draft" && gateA.approvedReferenceImageDataUrl) {
     generationInput.referenceImageDataUrl = gateA.approvedReferenceImageDataUrl;
@@ -412,8 +426,6 @@ export async function generateImageDraftFromHandoff(
   const generationRequestFingerprint = sha256([
     buildResult.generationInputFingerprint,
     `creative-direction:${sha256(JSON.stringify(creativeDirection))}`,
-    `style-preset:${input.stylePresetId ?? "none"}`,
-    `slot-type:${input.slotType ?? "none"}`,
     `count:${requestedCount}`,
     selectedVisualReferences.length > 0
       ? `visual-selection:${selectedVisualReferences.map((r) => r.selectionId).sort().join(",")}`

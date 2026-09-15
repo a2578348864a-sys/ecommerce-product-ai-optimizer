@@ -33,8 +33,10 @@ import {
   assertImagePromptIsSafe,
   buildCreativeIntentBlock,
   buildResearchReferenceLayers,
+  buildMvpImagePrompt,
   buildTargetProductIdentityBlock,
   buildTaskImageStyleBlock,
+  translateCreativeDescriptionToEnglish,
 } from "@/lib/imageHandoff/imagePrompt";
 
 /**
@@ -50,6 +52,19 @@ function researchReferenceSection(input: ImageGenerationInput): string[] {
     "Never let any reference change the target product category.",
     buildResearchReferenceLayers(input.creativeContext),
   ];
+}
+
+/**
+ * Provider 只接收英文的用户视觉方向。
+ * `applyTaskImageCreativeDirection` 会把用户文本包在中文说明前缀中；
+ * 这里只取该段之后的用户内容，避免把 UI 标签当成执行指令。
+ * 未知中文由 translateCreativeDescriptionToEnglish 显式阻断，绝不静默丢弃。
+ */
+function creativePreferenceForProvider(value: string): string {
+  const marker = "用户可编辑创作描述（仅作为视觉偏好，不改变已确认事实、禁用声明或参考图安全状态）：";
+  const markerIndex = value.indexOf(marker);
+  const userText = markerIndex >= 0 ? value.slice(markerIndex + marker.length).trim() : value;
+  return translateCreativeDescriptionToEnglish(userText);
 }
 import {
   formatSlotRecipeBlock,
@@ -127,7 +142,7 @@ export function buildProductVisualPrompt(input: ImageGenerationInput): string {
     "",
     // 6. User Custom Description / Preferences
     input.creativePreferences.additionalRequirements
-      ? `USER CREATIVE PREFERENCE (untrusted visual direction): ${input.creativePreferences.additionalRequirements}`
+      ? `USER CREATIVE PREFERENCE (untrusted visual direction): ${creativePreferenceForProvider(input.creativePreferences.additionalRequirements)}`
       : "",
     "",
     // 6.5 Research reference layers（V2.1 补齐：此前从未真正发送；标注 NOT FACTS，不得覆盖身份与事实）
@@ -195,7 +210,7 @@ export function buildRealImageInput(input: ImageGenerationInput) {
     // V2.1 修复：构图概念路径此前**静默丢弃**用户创作描述（只有参考图编辑路径带它），
     // 用户在界面上填写的描述对模型无效。这里按同一 untrusted 口径补回。
     ...(input.creativePreferences.additionalRequirements
-      ? [`USER CREATIVE PREFERENCE (untrusted visual direction): ${input.creativePreferences.additionalRequirements}`]
+      ? [`USER CREATIVE PREFERENCE (untrusted visual direction): ${creativePreferenceForProvider(input.creativePreferences.additionalRequirements)}`]
       : []),
     "",
     // 6.5 Research reference layers（同上，标注 NOT FACTS）
@@ -229,9 +244,7 @@ export function buildRealImageInput(input: ImageGenerationInput) {
  * 纯函数：同输入同输出，因此服务层的断言结果对 Provider 实发文本同样成立。
  */
 export function buildTaskImagePromptFinal(input: ImageGenerationInput): string {
-  return input.mode === "product_visual_draft"
-    ? buildProductVisualPrompt(input)
-    : buildRealImageInput(input).prompt;
+  return buildMvpImagePrompt(input);
 }
 
 /**
@@ -239,14 +252,6 @@ export function buildTaskImagePromptFinal(input: ImageGenerationInput): string {
  * `promptHash` 必须对**最终实际发送的完整文本**计算——不允许对 UI 摘要或截断文本计算。
  */
 function buildCandidateTrace(input: ImageGenerationInput, finalPrompt: string) {
-  const recipe = resolveSlotRecipe({
-    slotType: input.slotType,
-    primaryPurpose: input.primaryPurpose,
-    lifestyleScene: input.lifestyleScene,
-    stylePresetId: input.stylePresetId,
-  });
-  // recipeVersion 由 Recipe 内容确定性派生（另一改动项负责落地）；未落地时省略而不是伪造。
-  const recipeVersion = (recipe as { recipeVersion?: unknown }).recipeVersion;
   const referenceDataUrl = typeof input.referenceImageDataUrl === "string" ? input.referenceImageDataUrl : "";
   const referenceBase64 = referenceDataUrl.startsWith("data:") && referenceDataUrl.includes(",")
     ? referenceDataUrl.slice(referenceDataUrl.indexOf(",") + 1)
@@ -261,10 +266,6 @@ function buildCandidateTrace(input: ImageGenerationInput, finalPrompt: string) {
   }
   return {
     promptHash: createHash("sha256").update(finalPrompt, "utf8").digest("hex"),
-    slotRecipeId: recipe.id,
-    ...(typeof recipeVersion === "string" && recipeVersion ? { recipeVersion } : {}),
-    ...(input.stylePresetId ? { stylePresetId: input.stylePresetId } : {}),
-    planVersion: "visual-asset-plan.v1",
     ...(referenceImageContentHash ? { referenceImageContentHash } : {}),
   };
 }
@@ -446,12 +447,12 @@ export function createRealImageProvider(): RealImageProvider {
         };
       }
       const { generateOpenAiImage } = await import("@/lib/server/openaiImageClient") as typeof import("@/lib/server/openaiImageClient");
-      // V2.1：同一权威入口；构图概念模式复用 buildRealImageInput 的 providerInput，但 prompt 必须来自唯一构建器。
+      // MVP：构图概念模式只传基础 Provider 参数；Prompt 与安全断言使用同一个字符串。
       const finalPrompt = buildTaskImagePromptFinal(input);
       if (!assertImagePromptIsSafe(finalPrompt)) {
         throw new Error("real_image_provider_prompt_unsafe: Prompt 安全检查未通过。");
       }
-      const providerInput = { ...buildRealImageInput(input), prompt: finalPrompt };
+      const providerInput = { imageType: "lifestyle_scene" as const, count: 1 as const, prompt: finalPrompt };
       const output = await generateOpenAiImage(providerInput as never);
       const first = output.images[0];
       if (!first?.base64) {

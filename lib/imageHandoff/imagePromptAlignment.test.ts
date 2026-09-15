@@ -109,14 +109,14 @@ describe("V2.1: 安全断言 = 实际发送的 Prompt = promptHash 来源", () =
     expect(item.promptHash).toBe(createHash("sha256").update(fixture.prompts[0], "utf8").digest("hex"));
   });
 
-  it("候选级生成依据被写入 item：槽位 / 风格 / 计划版本 / 参考图内容 hash / 请求格式 vs 实际格式", async () => {
+  it("候选级依据只保留 Prompt / 参考图 hash 与实际格式，不再写入槽位规划元数据", async () => {
     const input = baseInput({ mode: "product_visual_draft", referenceImageDataUrl: REFERENCE_DATA_URL });
     const provider = createRealImageProvider();
     const item = await provider.generate(input, {}) as Record<string, unknown>;
 
-    expect(item.slotRecipeId).toBe("detail_closeup");
-    expect(item.stylePresetId).toBe("macro_detail");
-    expect(item.planVersion).toBe("visual-asset-plan.v1");
+    expect(item.slotRecipeId).toBeUndefined();
+    expect(item.stylePresetId).toBeUndefined();
+    expect(item.planVersion).toBeUndefined();
     expect(item.referenceImageContentHash).toBe(createHash("sha256").update(Buffer.from(fixture.png, "base64")).digest("hex"));
     // 服务商可能忽略请求参数：请求 webp，实际落盘格式另记
     expect(item.requestedFormat).toBe("webp");
@@ -128,12 +128,16 @@ describe("V2.1: 安全断言 = 实际发送的 Prompt = promptHash 来源", () =
     const concept = buildTaskImagePromptFinal(baseInput({ mode: "composition_concept" }));
     expect(visual).not.toBe(concept);
     // 构图概念：明确要求不描绘真实商品外观
-    expect(concept).toContain("MODE: composition_concept only.");
-    expect(concept).toContain("Do NOT depict the specific product shape");
+    expect(concept).toContain("MODE: composition concept.");
+    expect(concept).toContain("do not depict a specific real product appearance");
     // 参考图编辑：明确要求以批准参考图为唯一形态来源，且不得降级为纯文本描述
-    expect(visual).toContain("Edit the attached approved product reference image");
-    expect(visual).toContain("Keep the product shape, structure, materials and packaging text exactly as shown in the reference image.");
-    expect(visual).not.toContain("MODE: composition_concept only.");
+    expect(visual).toContain("MODE: product visual draft.");
+    expect(visual).toContain("Use the attached approved reference image as the only source of the product's appearance.");
+    expect(visual).not.toContain("MODE: composition concept.");
+    for (const obsoleteSection of ["CURRENT VISUAL SLOT", "Slot Recipe", "Style Preset", "PRIMARY CREATIVE PURPOSE", "Research reference layers"]) {
+      expect(visual).not.toContain(obsoleteSection);
+      expect(concept).not.toContain(obsoleteSection);
+    }
   });
 
   it("用户自由文本不能进入已确认事实段（两种模式都必须成立）", () => {
@@ -146,9 +150,9 @@ describe("V2.1: 安全断言 = 实际发送的 Prompt = promptHash 来源", () =
         creativeContext: { vocInsights: ["用户抱怨漏水"], aiReferences: [], competitiveContext: [] },
       });
       const prompt = buildTaskImagePromptFinal(input);
-      const factsLine = prompt.split("\n")[0];
-      expect(factsLine.startsWith("Confirmed facts for context only:")).toBe(true);
-      expect(factsLine).not.toContain(forged);
+      const factsSection = prompt.slice(prompt.indexOf("CONFIRMED PRODUCT FACTS"), prompt.indexOf("APPROVED PRODUCT REFERENCE"));
+      expect(factsSection).not.toContain(forged);
+      expect(prompt).toContain(forged);
       expect(assertImagePromptIsSafe(prompt)).toBe(true);
     }
   });
@@ -189,19 +193,20 @@ describe("V2.1: 安全断言 = 实际发送的 Prompt = promptHash 来源", () =
     expect(block).toContain("HARD CONSTRAINT");
   });
 
-  it("V2.1 修复②：构图概念路径也必须携带用户创作描述（此前被静默丢弃）", () => {
+  it("MVP：构图概念路径携带用户创作描述，但不自动翻译或展开策略", () => {
     const forged = "放大拉链与面料细节";
     const prompt = buildTaskImagePromptFinal(baseInput({
       mode: "composition_concept",
       creativePreferences: { additionalRequirements: forged },
     }));
-    expect(prompt).toContain("USER CREATIVE PREFERENCE (untrusted visual direction)");
+    expect(prompt).toContain("USER CREATIVE DESCRIPTION (untrusted visual direction only):");
     expect(prompt).toContain(forged);
-    // 不可信文本必须排在负面约束段之前，不得排在最后被当成权威指令
-    expect(prompt.indexOf(forged)).toBeLessThan(prompt.indexOf("NEGATIVE CONSTRAINTS"));
+    expect(prompt).not.toContain("emphasize zipper and fabric details");
+    // 不可信文本必须排在基础安全约束之前，不得被解释为权威指令
+    expect(prompt.indexOf(forged)).toBeLessThan(prompt.indexOf("BASIC SAFETY CONSTRAINTS"));
   });
 
-  it("V2.1 修复①：研究参考层（VOC/AI/竞品）必须真正进入实发 Prompt，且标注 NOT FACTS", () => {
+  it("MVP：研究参考层不进入最小任务 Prompt，避免把非事实策略混入生成链", () => {
     const ctx = {
       vocInsights: ["VOC: 装不下 — 用户抱怨高度不足 (13 reviews)"],
       aiReferences: ["AI REFERENCE (NOT FACT): 深色背景更显高级"],
@@ -213,11 +218,9 @@ describe("V2.1: 安全断言 = 实际发送的 Prompt = promptHash 来源", () =
         ...(mode === "product_visual_draft" ? { referenceImageDataUrl: REFERENCE_DATA_URL } : {}),
         creativeContext: ctx,
       }));
-      expect(prompt).toContain("=== 研究参考层（Research reference layers — NOT FACTS）===");
-      expect(prompt).toContain("Never let any reference change the target product category.");
-      expect(prompt).toContain("装不下");
-      // 参考层绝不允许进入已确认事实段
-      expect(prompt.split("\n")[0]).not.toContain("装不下");
+      expect(prompt).not.toContain("研究参考层");
+      expect(prompt).not.toContain("Never let any reference change the target product category.");
+      expect(prompt).not.toContain("装不下");
     }
   });
 
@@ -233,10 +236,20 @@ describe("V2.1: 安全断言 = 实际发送的 Prompt = promptHash 来源", () =
       referenceImageDataUrl: REFERENCE_DATA_URL,
       creativePreferences: { additionalRequirements: forged },
     }));
-    const markerIndex = prompt.indexOf("untrusted visual direction");
+    const markerIndex = prompt.indexOf("USER CREATIVE DESCRIPTION (untrusted visual direction only)");
     expect(markerIndex).toBeGreaterThan(-1);
-    expect(prompt.indexOf(forged)).toBeGreaterThan(markerIndex);
-    // 不可信文本必须排在负面约束段之前，不得排在最后被当成权威指令
-    expect(prompt.indexOf(forged)).toBeLessThan(prompt.indexOf("NEGATIVE CONSTRAINTS"));
+    expect(prompt).toContain(forged);
+    // 不可信文本必须排在基础安全约束之前，不得排在最后被当成权威指令
+    expect(prompt.indexOf(forged)).toBeLessThan(prompt.indexOf("BASIC SAFETY CONSTRAINTS"));
+  });
+
+  it("中文创作描述作为用户视觉方向保留，不触发额外的 Prompt 转换层", () => {
+    const prompt = buildTaskImagePromptFinal(baseInput({
+      mode: "product_visual_draft",
+      referenceImageDataUrl: REFERENCE_DATA_URL,
+      creativePreferences: { additionalRequirements: "加入未收录的特殊视觉要求" },
+    }));
+    expect(prompt).toContain("加入未收录的特殊视觉要求");
+    expect(assertImagePromptIsSafe(prompt)).toBe(true);
   });
 });
