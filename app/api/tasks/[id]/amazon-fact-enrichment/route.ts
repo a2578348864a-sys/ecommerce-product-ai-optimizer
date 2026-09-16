@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuthenticated } from "@/lib/server/demoGuard";
+import { requireAuthenticated } from "@/lib/server/accessContext";
 import { readBrowserEvidenceTaskAsin } from "@/lib/server/browserEvidence";
 import { browserEvidenceSubjectKey, collectBrowserEvidencePreview } from "@/lib/server/browserEvidenceCollect";
 import { buildAmazonFactEnrichmentPreview } from "@/lib/server/amazonFactEnrichment/service";

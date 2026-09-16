@@ -8,7 +8,7 @@ import { productBatchResponseShape } from "@/lib/productBatchStore";
 import {
   ACTIVE_PRODUCTION_MARKET_SCREENING_REGISTRATION_ID,
 } from "@/lib/marketScreeningProductionRegistry";
-import { requireAuthenticated } from "@/lib/server/demoGuard";
+import { requireAuthenticated } from "@/lib/server/accessContext";
 import {
   ProductBatchImportError,
   importSellerSpriteProductBatch,

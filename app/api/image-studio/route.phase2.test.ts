@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   generateRealStudioImage: vi.fn(),
 }));
 
-vi.mock("@/lib/server/demoGuard", () => ({ requireAuthenticated: mocks.requireAuthenticated }));
+vi.mock("@/lib/server/accessContext", () => ({ requireAuthenticated: mocks.requireAuthenticated }));
 vi.mock("@/lib/server/realAiImageGate", () => ({
   isRealAiImageEnabled: () => mocks.imageEnabled,
   isRealAiVisitorImageEnabled: () => mocks.visitorImageEnabled,

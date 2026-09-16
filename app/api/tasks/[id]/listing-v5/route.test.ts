@@ -50,7 +50,7 @@ vi.mock("@/lib/server/demoSandbox", () => ({
   getSandboxTask: mocks.getSandboxTask,
 }));
 
-vi.mock("@/lib/server/demoGuard", () => ({
+vi.mock("@/lib/server/accessContext", () => ({
   requireAuthenticated: mocks.requireAuthenticated,
   reserveDemoAiCalls: mocks.reserveDemoAiCalls,
   markDemoAiProviderCallStarted: mocks.markDemoAiProviderCallStarted,

@@ -14,7 +14,7 @@
  */
 import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { consumeDemoAiCalls, ensureDemoAiQuota, requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
+import { consumeDemoAiCalls, ensureDemoAiQuota, requireAuthenticated, requireOwnerOnly } from "@/lib/server/accessContext";
 import { isSandboxTaskId } from "@/lib/server/demoSandbox";
 import {
   clearReviews,
@@ -52,7 +52,7 @@ import {
   type PendingReviewCollectPreviewDto,
 } from "@/lib/server/reviewCollector";
 import { readBrowserEvidenceTaskAsin } from "@/lib/server/browserEvidence";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import {
   acquisitionGateError,
   REVIEW_LOCAL_ENV_REQUIRED_MESSAGE,
@@ -60,14 +60,6 @@ import {
   resolveBrowserAcquisitionCapability,
   type AcquisitionCapability,
 } from "@/lib/server/acquisitionCapability";
-import {
-  DEMO_ACQUISITION_EVIDENCE_ID,
-  DEMO_SAMPLE_VOC_ID,
-  DEMO_VOC_ANALYSIS_SAMPLE,
-  DEMO_SAMPLE_VERSION,
-  buildDemoReviewCollectPageResults,
-  buildDemoReviewCollectPreviewItems,
-} from "@/lib/server/demoAcquisitionSamples";
 import { mutateTaskResultJson, TaskResultJsonMutationError } from "@/lib/server/taskResultJsonMutation";
 
 export const runtime = "nodejs";
@@ -356,41 +348,7 @@ async function analyzeAction(
     }, 400);
   }
   // Visitor AI 配额门禁（Owner 直通）；VOC 不新增独立额度
-  // Demo 模式（公网演示环境，本地采集能力不可用）：不调用真实 AI，
-  // 回放预置真实 VOC 分析样本（明确 demo 标记；不消耗配额）。
-  const demoCapability = resolveBrowserAcquisitionCapability();
-  if (demoCapability.state === "local_env_required" && context.mode === "demo") {
-    try {
-      const snapshotBefore = await readReviewEvidenceSnapshot(context, taskId);
-      const mutation = await mutateTaskResultJson({
-        context,
-        taskId,
-        writer: "review-evidence",
-        expectedStorageVersion,
-        mutate: (current) => ({
-          result: { ...current, vocAnalysis: DEMO_VOC_ANALYSIS_SAMPLE },
-          value: { written: true },
-        }),
-      });
-      void mutation;
-      const snapshotAfter = await readReviewEvidenceSnapshot(context, taskId);
-      return jsonResponse({
-        ok: true,
-        data: {
-          analysis: DEMO_VOC_ANALYSIS_SAMPLE,
-          unverified: DEMO_VOC_ANALYSIS_SAMPLE.unverified.length,
-          gateResult: DEMO_VOC_ANALYSIS_SAMPLE.gateResult,
-          storageVersion: toStorageVersion(snapshotAfter),
-          demo: true,
-        },
-      });
-    } catch (error) {
-      if (error instanceof VocAnalysisError || error instanceof ReviewEvidenceError || error instanceof TaskResultJsonMutationError) {
-        return errorResponse(error);
-      }
-      throw error;
-    }
-  }
+
   const quota = ensureDemoAiQuota(context, 1);
   if (!quota.ok) {
     return jsonResponse({ ok: false, error: { code: quota.code, message: quota.message } }, quota.status);
@@ -445,36 +403,7 @@ async function collectAction(
 ): Promise<NextResponse> {
   // Acquisition Capability Gate（§30/§43）：VOC 自动采集复用 Amazon 浏览器采集能力
   const capability = resolveBrowserAcquisitionCapability();
-  // Demo 模式（公网 Visitor 采集体验回放）：能力属本地环境时，用预置真实采集样本
-  // 回放评论采集流程（collect → collect-confirm 全链可用），结果标注“演示数据”。
-  if (capability.state === "local_env_required" && context.mode === "demo") {
-    try {
-      const items = buildDemoReviewCollectPreviewItems()
-        .map((item) => ({ ...item, duplicate: false }));
-      const pageResults = buildDemoReviewCollectPageResults();
-      const capturedAt = new Date().toISOString();
-      storeReviewCollectPreview({
-        previewId: DEMO_ACQUISITION_EVIDENCE_ID,
-        items,
-        pageResults,
-        capturedAt,
-        expiresAt: Date.now() + 15 * 60 * 1000,
-        subjectKey: reviewCollectSubjectKey(context),
-        taskId,
-      });
-      const snapshot = await readReviewEvidenceSnapshot(context, taskId);
-      return jsonResponse({
-        ok: true,
-        data: {
-          preview: { previewId: DEMO_ACQUISITION_EVIDENCE_ID, items, pageResults, capturedAt },
-          storageVersion: toStorageVersion(snapshot),
-          demo: true,
-        },
-      });
-    } catch (error) {
-      return errorResponse(error);
-    }
-  }
+
   const gate = acquisitionGateError(capability, browserUnavailableMessage(capability.reasonCategory));
   if (gate) {
     const message = capability.state === "local_env_required"

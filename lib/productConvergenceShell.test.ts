@@ -39,7 +39,6 @@ describe("Product Architecture Convergence shell", () => {
     expect(sidebarSource).toMatch(/\/opportunity-candidates/);
     expect(sidebarSource).toMatch(/\/research/);
     expect(sidebarSource).toMatch(/\/tasks/);
-    expect(sidebarSource).toMatch(/\/replay/);
     expect(sidebarSource).toMatch(/\/listing-studio/);
     expect(sidebarSource).toMatch(/\/image-studio/);
   });

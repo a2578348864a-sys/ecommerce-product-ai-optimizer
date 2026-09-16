@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
+import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/accessContext";
 import { isSandboxTaskId } from "@/lib/server/demoSandbox";
 import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPreview";
 import { parseListingHandoffBinding } from "@/lib/listingHandoff/listingBinding";

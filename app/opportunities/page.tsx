@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { ProductBatchManager } from "@/components/cross-border/ProductBatchManager";
+import { OpportunityAnalysisPanel } from "@/components/cross-border/OpportunityAnalysisPanel";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "发现商品 - 轻选工作台",
-  description: "上传卖家精灵报表、查看导入的商品并决定下一步研究哪些商品。",
+  description: "用商品机会分析实验入口生成待研究的候选方向，或上传卖家精灵报表导入商品。",
 };
 
 export default function OpportunitiesPage() {
@@ -26,6 +27,10 @@ export default function OpportunitiesPage() {
               </div>
             </header>
             <WorkspaceMobileNav />
+          </div>
+          {/* 实验模式入口：商品机会分析（Spike，V0 不接外部数据源，只生成待验证候选方向） */}
+          <div className="mt-4">
+            <OpportunityAnalysisPanel />
           </div>
           <div className="mt-4">
             <ProductBatchManager />

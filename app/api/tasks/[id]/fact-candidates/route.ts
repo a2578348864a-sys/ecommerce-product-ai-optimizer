@@ -11,7 +11,7 @@
  */
 import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuthenticated } from "@/lib/server/demoGuard";
+import { requireAuthenticated } from "@/lib/server/accessContext";
 import { isSandboxTaskId, getSandboxTask } from "@/lib/server/demoSandbox";
 import { prisma } from "@/lib/server/db";
 import { mutateTaskResultJson, TaskResultJsonMutationError } from "@/lib/server/taskResultJsonMutation";
@@ -34,7 +34,7 @@ import {
   consumeBrowserEvidencePreview,
   findPendingBrowserEvidencePreview,
 } from "@/lib/server/browserEvidenceCollect";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import {
   classifyAmazonPreviewAgainstConfirmedFacts,
   confirmedFactCoversAmazonPreviewCandidate,

@@ -337,20 +337,6 @@ describe("TaskRecordDetail operation overview", () => {
   });
 });
 
-// ── HR demo banner regression ─────────────────────
-
-describe("visitor experience copy", () => {
-  const bannerSource = readComponentSource("components/DemoAccessBanner.tsx");
-  const loginSource = readComponentSource("components/LoginPage.tsx");
-
-  it("keeps the sandbox isolation message", () => {
-    expect(bannerSource).toMatch(/访客体验/);
-    expect(bannerSource).not.toMatch(/HR 演示/);
-    expect(bannerSource).toMatch(/已有研究记录仍可查看/);
-    expect(loginSource).toMatch(/访客体验/);
-    expect(loginSource).not.toMatch(/HR 演示/);
-  });
-});
 
 describe("screening preview is internal-only", () => {
   const sidebarSource = readComponentSource("components/WorkspaceSidebar.tsx");

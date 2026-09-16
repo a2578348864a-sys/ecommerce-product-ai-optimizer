@@ -33,7 +33,7 @@ import {
   type ReviewSourceProductRole,
   type ReviewEvidenceV1,
 } from "@/lib/server/reviewEvidence";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 
 export const REVIEW_COLLECTOR_VERSION = "amazon-review-snippet-collector.v1";
 export const REVIEW_COLLECTOR_ALLOWED_ORIGINS = AMAZON_RETAIL_ORIGINS;

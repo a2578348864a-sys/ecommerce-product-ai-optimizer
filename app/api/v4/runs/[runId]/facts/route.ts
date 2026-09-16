@@ -34,7 +34,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ru
   if (!offerIdentity || !variantKey || !field || !["confirmed", "rejected", "unknown", "conflict"].includes(status)) {
     return jsonError("invalid_input", "缺少 offerIdentity/variantKey/field/status。", 400);
   }
-  const actor = gate.ctx.mode === "demo" ? gate.ctx.demoAccessId : "owner";
+  const actor = "owner";
   const candidateId = run.candidateId;
   const input = {
     runId, candidateId, offerIdentity, variantKey, field, value,

@@ -23,7 +23,7 @@ export default defineConfig({
     include: ["**/*.test.ts"],
     // 依赖外部项目材料（../06_测试与验证/）的集成测试，默认排除。
     // 独立运行：npm run test:project-materials
-    exclude: [...PROJECT_MATERIALS_TEST_FILES, ...CI_EXCLUDED_TESTS, "node_modules/**"],
+    exclude: [...PROJECT_MATERIALS_TEST_FILES, ...CI_EXCLUDED_TESTS, "node_modules/**", "archive/**"],
   },
   resolve: {
     alias: {

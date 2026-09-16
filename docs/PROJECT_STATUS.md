@@ -1,67 +1,90 @@
 # 项目当前状态（单一权威状态页）
 
-> 本页是仓库**唯一**的当前状态说明。历史冻结记录不再堆在本页，统一归档于 [HISTORY.md](HISTORY.md)。
-> 最后核验：`main` @ `cb9166882e4e2bcf28d4c724285f23768a105197`（本地 `main` == `origin/main`，工作区 clean）。
+> 本页是仓库**唯一**的当前状态说明。历史记录见 [HISTORY.md](HISTORY.md)。  
+> 当前版本：**轻选工作台 单用户本地工作台收敛与新稳定基线**。  
+> 权威 HEAD：`f2a8d7277a91642b9adc7febdfa584e990951e7f`（待提交单用户本地工作台收口变更）。  
+> 运行模式：唯一恒定模式 **`local_single_user`**（完全无登录、无密码拦截、无 Owner/Guest 区分）。
+
+---
 
 ## 1. 一句话状态
 
-**代码与运行基线已冻结（FROZEN）**，可交付、可复现；仅剩 1 项**人工验收待办**（见 §5）。
+**单用户本地工作台收敛完成，全门禁（TSC/Lint/Build/Test/真实浏览器）100% 绿灯，建立新稳定冻结基线。**
+
+---
 
 ## 2. 版本与运行基线
 
-| 项 | 值 |
-| --- | --- |
-| 主分支 | `main` |
-| 基线提交 | `cb9166882e4e2bcf28d4c724285f23768a105197` |
-| 本地 `main` / `origin/main` | 同一 SHA（同步，ahead/behind `0/0`） |
-| 工作区 | clean（无未提交、无未跟踪） |
-| 正式运行目录 | 仓库根（本工作树）；本机 3005 由计划任务 `QingXuanAgent-Local-3005` 管理 |
-| 运行入口 | `npm run check:local` → `npm run start:local`（`http://127.0.0.1:3005`） |
-| 构建 | `npm run build`（`next build --webpack`）通过 |
-| 健康检查 | `GET /api/health` → 200 |
+| 维度 | 当前权威状态与配置 | 状态核验 |
+| :--- | :--- | :---: |
+| **主分支** | `main` | 跟踪 `origin/main` |
+| **当前 HEAD** | `f2a8d7277a91642b9adc7febdfa584e990951e7f` | 同步对齐 |
+| **工作区定位** | `ecommerce-clean-main`（单用户本地产品工作台） | 活跃开发与运行基线 |
+| **运行时模式** | `local_single_user`（恒定单用户无鉴权） | `GET /api/runtime-mode` → HTTP 200 |
+| **服务运行端口** | `127.0.0.1:3005`（Next.js Production Build） | 监听中 (HTTP 200) |
+| **数据库** | 本地 SQLite (`prisma/dev.db`) | 零迁移风险，完全隔离保护 |
+| **类型检查** | `npx tsc --noEmit` | ✅ 0 errors |
+| **代码规范** | `npm run lint` | ✅ 0 errors, 8 warnings |
+| **应用构建** | `npm run build` | ✅ 59 页面生成通过 |
+| **全量测试** | `npx vitest run` | ✅ 570 passed, 60 skipped, 0 failed (6635 tests passed) |
+| **浏览器验收** | 真实 Google Chrome 桌面 (1440×900) + 移动 (390×844) | ✅ Page Errors 0, Console Errors 0, 无横向溢出 |
 
-## 3. 当前稳定主链（唯一正式链路）
+---
 
+## 3. 核心产品主链路（唯一单用户链路）
+
+```text
+[ 01. 机会发现与导入 ] ──> SellerSprite 数据导入 / 机会分析 (OpportunityAnalysis Spike)
+          │
+[ 02. 商品研究与取证 ] ──> 关键词 + 竞品证据 + 买家评论 (VOC) + 1688 货源
+          │
+[ 03. 人工决策与确认 ] ──> 审核候选事实 ──> 确认商品事实 (Human Confirmed Facts)
+          │
+[ 04. 受控创作准备 ]   ──> 创作资料交接 (Creative Handoff) ──> 事实与视觉上下文冻结
+          │
+[ 05. 双工作台交付 ]   ──> Listing Studio V5 文案草稿 + Image Studio 视觉图生成
+          │
+[ 06. 人工复核交付 ]   ──> 免密直接查看与保存快照，下一步由用户决定
 ```
-采集证据（Amazon / Keyword / VOC / 1688）
-  → AI 整理与结构化
-  → 人工确认事实（confirmedFacts：唯一事实权威）
-  → 研究结论记录（/tasks 研究记录）
-  → 下游产出：Listing 素材草稿 · 图片工作台候选
-  → 人工复核后使用
-```
 
-- **事实权威**：只有人工确认的 `confirmedFacts` 能成为事实；VOC / 关键词 / 竞品 / 采集原文一律是 `UNTRUSTED_REFERENCE_DATA`，只影响表达与构图，**永不升级为事实**。
-- **人工边界**：自动化保留人工确认、证据门禁、权限边界与失败路径；AI 不替代人工决定。
-- **失败可见**：失败路径返回分类错误码，不伪装成功（旧版"统一报 AI 服务不可用"已移除）。
+- **单用户本地直通**：所有页面彻底移除登录弹窗、密码输入框与拦截蒙层；所有 API 恒定返回单用户有效上下文，无 401 权限阻断。
+- **历史 Auth 安全归档**：历史 `authGuard`, `demoGuard`, `session`, `LoginPage`, `DemoAccessBanner` 等全部完整保留并迁移至 `archive/auth-system/`，物理无损，业务代码引用完全解耦清理。
+- **事实与证据边界**：只有人工确认的 `confirmedFacts` 是事实真理源；未确认的参考数据、VOC 评价、竞品信息永不越权升级为产品事实。
 
-## 4. 已验收证据（最近一轮）
+---
 
-| 验收项 | 结果 |
-| --- | --- |
-| `main` 基线（本地/远端/HEAD 四路 SHA 一致、clean） | ✅ |
-| 运行来源唯一（BUILD_ID 静态资产指纹 + 任务工作目录 + 运行时状态文件） | ✅ |
-| 无旧进程/旧工作树抢占 3005 | ✅ |
-| `/image-studio`（独立图片工具）真实浏览器可用 | ✅ Console Error 0 / 网络 5xx 0 |
-| `/image-studio?taskId=…`（研究驱动）真实浏览器可用：商品事实 + 参考图 + 生成入口 | ✅ Console Error 0 / 网络 5xx 0 |
-| `npm run build` | ✅ 通过 |
+## 4. 真实浏览器端到端验收证据
 
-## 5. 未闭环事项（不阻塞代码冻结）
+于 2026-09-16 18:33 在本地 `http://127.0.0.1:3005` 使用真实 Google Chrome 验证：
 
-| 事项 | 说明 | 需要谁 |
-| --- | --- | --- |
-| **采集链展示人工验收** | Amazon / Keyword / VOC / 1688 的采集状态展示与真实一致性尚未验收：研究记录页 `(/tasks)` 受访问密码门禁保护，未认证状态无法查看 | Owner 登录后人工验收 |
-| Visitor sandbox 数据存储 | 正式运行目录缺少 `data/demo-sandbox.json`（`recoverBackup()` 会优雅降级、不会崩溃）；影响范围为 Visitor sandbox：既有 Visitor 数据不会被正式运行读取 | Owner 决定是否以共享链接方式补齐 |
+1. **桌面首页 (`/`)**：
+   - 登录与密码入口存在性检查：**False**（完全无登录遮罩）；
+   - 主标题为“轻选工作台”；
+   - 状态栏显示“本地工作台已就绪 · 数据已同步”；
+   - 页面截图：`output/browser-evidence/01_desktop_home.png`。
+2. **待研究商品池 (`/opportunity-candidates`)**：
+   - 正常加载候选项，直通无拦截；
+   - 页面截图：`output/browser-evidence/02_desktop_candidates.png`。
+3. **真实任务详情 (`/tasks/cmu0zrjjg000l9641b2a57bti`)**：
+   - THERMOS FUNTAINER 真实商品研究数据完整渲染；
+   - 页面截图：`output/browser-evidence/03_desktop_task_detail.png`。
+4. **文案工作台 (`/listing-studio`)**：
+   - 正常直通访问，页面截图：`output/browser-evidence/04_desktop_listing_studio.png`。
+5. **图片工作台 (`/image-studio`)**：
+   - 正常直通访问，页面截图：`output/browser-evidence/05_desktop_image_studio.png`。
+6. **移动端自适应 (390×844)**：
+   - 首页横向溢出：**False**（`scrollWidth <= window.innerWidth`）；
+   - 详情页横向溢出：**False**；
+   - 页面截图：`output/browser-evidence/06_mobile_home.png`, `07_mobile_task_detail.png`。
+7. **控制台与报错统计**：
+   - Page Errors: `0`
+   - Console Errors: `0`
 
-## 6. 明确不做的事（产品边界）
+---
 
-- 不宣称无人值守自动选品 / 自动采购 / 自动上架 / 已验证商业成功；
-- 缺少证据的真实销量、成本、物流、费用、利润、合规与经营结果一律保留为**未知**，不由 AI 猜测补齐；
-- 不提供公网公开 Demo（依赖本地 SQLite、服务端开关与真实付费 Provider）。
+## 5. 明确不做的事（产品边界）
 
-## 7. 相关文档
+- 保持单用户本地工作台，不重新引入多租户、密码保护或公开 Showcase 演示模式；
+- 不自动采购、不自动上架、不自动投放广告；
+- 缺少客观证据的数据一律诚实保留为未知，不让 AI 幻觉编造。
 
-- 架构说明：[ARCHITECTURE.md](ARCHITECTURE.md)
-- 历史归档索引：[HISTORY.md](HISTORY.md)
-- 文档中心：[docs/README.md](README.md)
-- 冻结声明（历史里程碑，正文以本页为准）：[../FINAL_FREEZE.md](../FINAL_FREEZE.md)

@@ -33,7 +33,7 @@ import {
   releaseVisitorStandaloneStudioQuota,
   reserveVisitorStandaloneStudioQuota,
   type DemoAccessSnapshot,
-} from "@/lib/server/demoGuard";
+} from "@/lib/server/accessContext";
 import {
   AiImageProviderError,
   getAiImageProvider,

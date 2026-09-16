@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   findFirst: vi.fn(),
 }));
 
-vi.mock("@/lib/server/demoGuard", () => ({
+vi.mock("@/lib/server/accessContext", () => ({
   requireOwnerOnly: mocks.requireOwnerOnly,
   requireAuthenticated: mocks.requireOwnerOnly,
 }));

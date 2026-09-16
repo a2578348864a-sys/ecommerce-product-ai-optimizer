@@ -1,16 +1,10 @@
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
-import { checkAccessPassword, getAccessContext } from "@/lib/server/accessPassword";
-import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
+import { checkAccessPassword, getAccessContext } from "@/lib/server/accessContext";
+import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/accessContext";
 import { isDecisionStatus, normalizeDecisionStatus, type DecisionStatus } from "@/lib/tasks/decisionStatus";
-import {
-  getSandboxTask,
-  getSandboxCandidate,
-  deleteSandboxTask,
-  sandboxTaskToDetail,
-  isSandboxTaskId,
-} from "@/lib/server/demoSandbox";
+import { isSandboxTaskId } from "@/lib/server/demoSandbox";
 import { cleanupAiImageTask } from "@/lib/server/aiImageDraftStorage";
 import {
   getResearchTaskCandidateId,
@@ -230,38 +224,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
   const id = await getId(context);
   if (!id) return invalidIdResponse();
 
-  // Demo-Sandbox.1-B: handle sandbox task IDs
   if (isSandboxTaskId(id)) {
-    const ctx = getAccessContext(request);
-    if (!ctx || ctx.mode !== "demo") return notFoundResponse();
-    const task = getSandboxTask(ctx.demoAccessId, id);
-    if (!task) return notFoundResponse();
-    const result = safeParseJson(task.resultJson);
-    const publicResult = projectTaskResultForBrowser(result, "detail");
-    const candidateId = getResearchTaskCandidateId(result);
-    const candidate = candidateId
-      ? getSandboxCandidate(ctx.demoAccessId, candidateId)
-      : null;
-    const researchStale = getResearchStaleState(result).stale;
-    const evidenceChangesSinceCompletion = describeEvidenceChangesSinceCompletion(result);
-    const data = {
-        ...sandboxTaskToDetail(task),
-      resultJson: publicResult,
-      result: publicResult,
-      researchStale,
-      evidenceChangesSinceCompletion,
-      productImage: resolveResearchTaskProductImage({
-        taskResult: result,
-        candidates: candidate ? [candidate] : [],
-      }),
-    } as unknown as ViralTaskItem;
-    return jsonResponse({ ok: true, data });
+    return notFoundResponse();
   }
-
-  // Access-Control-Fix.1: Demo users cannot read official (Owner) task details.
-  // Check after sandbox ID path so sandbox tasks still work for Demo users.
-  const accessCtx = getAccessContext(request);
-  if (accessCtx?.mode === "demo") return notFoundResponse();
 
   try {
     const record = await prisma.viralAnalysisRecord.findFirst({
@@ -287,21 +252,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   const id = await getId(context);
   if (!id) return invalidIdResponse();
 
-  // Demo-Sandbox.1-B: allow sandbox delete for demo, block official
   if (isSandboxTaskId(id)) {
-    const auth = requireAuthenticated(request);
-    if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
-    if (auth.context.mode === "demo") {
-      const deleted = await deleteSandboxTask(auth.context.demoAccessId, id);
-      if (!deleted) return notFoundResponse();
-      await cleanupTaskImages({
-        accessMode: "visitor",
-        visitorAccessId: auth.context.demoAccessId,
-        taskId: id,
-      });
-      return jsonResponse({ ok: true, data: { id } });
-    }
-    // Non-demo user with sandbox ID — not found
     return notFoundResponse();
   }
 
@@ -350,38 +301,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   const id = await getId(context);
   if (!id) return invalidIdResponse();
 
-  // Demo-Sandbox.1-B: allow sandbox PATCH for demo, block official
   if (isSandboxTaskId(id)) {
-    const auth = requireAuthenticated(request, bodyRecord);
-    if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
-    if (auth.context.mode === "demo") {
-      const decisionStatus = bodyRecord.decisionStatus;
-      if (!isDecisionStatus(decisionStatus)) return invalidDecisionStatusResponse();
-      const current = getSandboxTask(auth.context.demoAccessId, id);
-      if (!current) return notFoundResponse();
-      const currentResult = safeParseJson(current.resultJson);
-      if (!isRecord(currentResult)) return invalidStoredResultResponse();
-      if (Object.prototype.hasOwnProperty.call(currentResult, "researchRecord")
-        || hasProductResearchRecordNamespace(currentResult)) {
-        return versionedDecisionRouteRequiredResponse();
-      }
-      try {
-        await updateLegacySandboxTaskDecisionStatusAtomic({
-          context: auth.context,
-          taskId: id,
-          decisionStatus: decisionStatus as string,
-        });
-      } catch (error) {
-        if (error instanceof TaskResultJsonMutationError) {
-          if (error.code === "not_found") return notFoundResponse();
-          if (error.code === "versioned_research_decision_route_required") {
-            return versionedDecisionRouteRequiredResponse();
-          }
-        }
-        throw error;
-      }
-      return jsonResponse({ ok: true, data: { id, decisionStatus: decisionStatus as DecisionStatus } });
-    }
     return notFoundResponse();
   }
 

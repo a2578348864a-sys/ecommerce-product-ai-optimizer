@@ -6,7 +6,7 @@
  * 6 字段上限；ASIN mismatch hard reject；Wrong Entity = 0 硬门禁。
  */
 import { randomUUID } from "node:crypto";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import {
   TaskResultJsonMutationError,
   mutateTaskResultJson,

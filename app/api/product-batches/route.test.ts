@@ -22,7 +22,7 @@ const mocks = vi.hoisted(() => ({
   inspectSellerSpriteProductBatch: vi.fn(),
 }));
 
-vi.mock("@/lib/server/demoGuard", () => ({
+vi.mock("@/lib/server/accessContext", () => ({
   requireAuthenticated: () => ({
     ok: true,
     context: mocks.context,

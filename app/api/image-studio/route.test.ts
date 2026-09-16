@@ -27,7 +27,7 @@ const mocks = vi.hoisted(() => ({
   sandboxUpdate: vi.fn(),
 }));
 
-vi.mock("@/lib/server/demoGuard", () => ({
+vi.mock("@/lib/server/accessContext", () => ({
   requireAuthenticated: mocks.requireAuthenticated,
   reserveVisitorImageAiCalls: mocks.reserveVisitorImageAiCalls,
   markVisitorImageAiProviderStarted: mocks.markVisitorImageAiProviderStarted,

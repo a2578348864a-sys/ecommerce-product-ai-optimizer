@@ -5,7 +5,7 @@ import {
   radarJsonSchema,
 } from "@/lib/prompt";
 import { callAiText, getAiConfig, getSafeAiClientErrorMessage } from "@/lib/server/aiClient";
-import { requireAuthenticated, ensureDemoAiQuota, consumeDemoAiCalls, type DemoAccessSnapshot } from "@/lib/server/demoGuard";
+import { requireAuthenticated, ensureDemoAiQuota, consumeDemoAiCalls, type DemoAccessSnapshot } from "@/lib/server/accessContext";
 import {
   defaultPlatformStatus,
   inputLimits,

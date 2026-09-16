@@ -4,7 +4,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { computeSellerSpriteRowHash } from "@/lib/server/sellerSpriteImportContract";
 import type { SellerSpriteImportRow } from "@/lib/server/sellerSpriteImportContract";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 
 // ── Owner path: mock Prisma ──────────────────────
 const mocks = vi.hoisted(() => {
@@ -155,75 +155,4 @@ describe("SellerSprite Candidate Authority", () => {
     });
   });
 
-  describe("Visitor authority", () => {
-    it("creates on first import and isolates by demoAccessId", async () => {
-      const a = await importSellerSpriteCandidates({ context: visitorA, rows: [makeRow("B0TEST0001")], sourceFileSha256: FILE_HASH, importedAt });
-      const b = await importSellerSpriteCandidates({ context: visitorB, rows: [makeRow("B0TEST0001")], sourceFileSha256: FILE_HASH, importedAt });
-      expect(a.created).toHaveLength(1);
-      expect(b.created).toHaveLength(1);
-      expect(a.created[0].candidateId).not.toBe(b.created[0].candidateId);
-    });
-
-    it("skips the same snapshot on retry", async () => {
-      const first = await importSellerSpriteCandidates({ context: visitorA, rows: [makeRow("B0TEST0001")], sourceFileSha256: FILE_HASH, importedAt });
-      const second = await importSellerSpriteCandidates({ context: visitorA, rows: [makeRow("B0TEST0001")], sourceFileSha256: FILE_HASH, importedAt });
-      expect(first.created).toHaveLength(1);
-      expect(second.skipped).toHaveLength(1);
-      expect(second.skipped[0].candidateId).toBe(first.created[0].candidateId);
-    });
-
-    it("conflicts on a different snapshot", async () => {
-      const first = await importSellerSpriteCandidates({ context: visitorA, rows: [makeRow("B0TEST0001")], sourceFileSha256: FILE_HASH, importedAt });
-      const second = await importSellerSpriteCandidates({ context: visitorA, rows: [makeRow("B0TEST0001")], sourceFileSha256: OTHER_HASH, importedAt });
-      expect(second.conflicts).toHaveLength(1);
-      expect(second.conflicts[0].candidateId).toBe(first.created[0].candidateId);
-    });
-
-    it("serializes concurrent same-subject imports into one created + one skipped", async () => {
-      const results = await Promise.all([
-        importSellerSpriteCandidates({ context: visitorA, rows: [makeRow("B0TEST0001")], sourceFileSha256: FILE_HASH, importedAt }),
-        importSellerSpriteCandidates({ context: visitorA, rows: [makeRow("B0TEST0001")], sourceFileSha256: FILE_HASH, importedAt }),
-      ]);
-      const created = results.flatMap((r) => r.created);
-      const skipped = results.flatMap((r) => r.skipped);
-      expect(created).toHaveLength(1);
-      expect(skipped).toHaveLength(1);
-    });
-
-    it("does not let a visitor see another visitor's candidate", async () => {
-      await importSellerSpriteCandidates({ context: visitorA, rows: [makeRow("B0TEST0001")], sourceFileSha256: FILE_HASH, importedAt });
-      // Importing the same row for a different visitor must be a fresh created, not skipped.
-      const b = await importSellerSpriteCandidates({ context: visitorB, rows: [makeRow("B0TEST0001")], sourceFileSha256: FILE_HASH, importedAt });
-      expect(b.created).toHaveLength(1);
-      expect(b.skipped).toHaveLength(0);
-    });
-
-    it("stores the expected frozen fields in the sandbox candidate", async () => {
-      await importSellerSpriteCandidates({ context: visitorA, rows: [makeRow("B0TEST0001")], sourceFileSha256: FILE_HASH, importedAt });
-      const { loadDemoSandboxStore } = await import("@/lib/server/demoSandbox");
-      const store = loadDemoSandboxStore();
-      const candidate = store.candidates.find((c) => c.demoAccessId === "visitor-a");
-      expect(candidate).toBeDefined();
-      expect(candidate!.score).toBe(0);
-      expect(candidate!.riskLevel).toBe("");
-      expect(candidate!.analysisJson).toBe("{}");
-      expect(candidate!.source).toBe("SellerSprite");
-      expect(candidate!.status).toBe("pending");
-      const meta = JSON.parse(candidate!.sourceMetaJson);
-      expect(meta.schema).toBe("sellersprite_candidate_source_v1");
-    });
-  });
-
-  describe("Owner vs Visitor response shape parity", () => {
-    it("returns the exact same DTO shape from both authorities", async () => {
-      const ownerResult = await importSellerSpriteCandidates({ context: ownerCtx, rows: [makeRow("B0TEST0001")], sourceFileSha256: FILE_HASH, importedAt });
-      const visitorResult = await importSellerSpriteCandidates({ context: visitorA, rows: [makeRow("B0TEST0001")], sourceFileSha256: FILE_HASH, importedAt });
-      expect(Object.keys(ownerResult).sort()).toEqual(["conflicts", "created", "skipped"]);
-      expect(Object.keys(visitorResult).sort()).toEqual(["conflicts", "created", "skipped"]);
-      expect(ownerResult.created[0]).toMatchObject({ rowHash: makeRow("B0TEST0001").rowHash });
-      expect(visitorResult.created[0]).toMatchObject({ rowHash: makeRow("B0TEST0001").rowHash });
-      expect(ownerResult.created[0]).toHaveProperty("candidateId");
-      expect(visitorResult.created[0]).toHaveProperty("candidateId");
-    });
-  });
 });

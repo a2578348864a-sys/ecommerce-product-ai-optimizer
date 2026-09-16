@@ -1,7 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/server/db";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import { getSandboxCandidate, isSandboxTaskId } from "@/lib/server/demoSandbox";
 
 type JsonRecord = Record<string, unknown>;

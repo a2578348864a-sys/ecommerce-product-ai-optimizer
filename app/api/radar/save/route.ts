@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwnerOnly } from "@/lib/server/demoGuard";
+import { requireOwnerOnly } from "@/lib/server/accessContext";
 
 export const runtime = "nodejs";
 

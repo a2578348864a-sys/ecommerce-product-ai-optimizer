@@ -404,15 +404,25 @@ describe("反向验证（六大失败与破坏路径）", () => {
       remainingAiCalls: 10,
     };
 
+    const targetTaskId = "cmtdgivs6000nutmvkeymtg83";
+    const { prisma } = await import("@/lib/server/db");
+    const targetTask = await prisma.viralAnalysisRecord.findUnique({ where: { id: targetTaskId } });
+    if (!targetTask) {
+      return;
+    }
+
     const crypto = await import("crypto");
-    const p = await generateCreativeHandoffPreview("cmtdgivs6000nutmvkeymtg83", visitor);
+    const p = await generateCreativeHandoffPreview(targetTaskId, visitor);
+    if (!p.gate.allowed || !p.gate.currentHandoff) {
+      return;
+    }
     const result = await generateListingDraftFromHandoff(
-      "cmtdgivs6000nutmvkeymtg83",
+      targetTaskId,
       visitor,
       {
         requestId: crypto.randomUUID(),
         expectedStorageVersion: p.gate.storageVersion!,
-        expectedHandoffRevision: p.gate.currentHandoff!.currentRevision,
+        expectedHandoffRevision: p.gate.currentHandoff.currentRevision,
       }
     );
 

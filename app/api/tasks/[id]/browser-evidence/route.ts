@@ -9,7 +9,7 @@
  */
 import { createHash, randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
+import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/accessContext";
 import { isSandboxTaskId } from "@/lib/server/demoSandbox";
 import {
   BrowserEvidenceError,
@@ -29,7 +29,7 @@ import {
   storeBrowserEvidencePreview,
   type BrowserEvidenceCollectPreview,
 } from "@/lib/server/browserEvidenceCollect";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import {
   acquisitionGateError,
   BROWSER_LOCAL_ENV_REQUIRED_MESSAGE,
@@ -37,14 +37,6 @@ import {
   resolveBrowserAcquisitionCapability,
   type AcquisitionCapability,
 } from "@/lib/server/acquisitionCapability";
-import {
-  DEMO_ACQUISITION_EVIDENCE_ID,
-  DEMO_BROWSER_EVIDENCE_SAMPLE,
-  DEMO_SAMPLE_AMAZON_ID,
-  DEMO_SAMPLE_VERSION,
-  buildDemoBrowserCollectPreview,
-} from "@/lib/server/demoAcquisitionSamples";
-
 export const runtime = "nodejs";
 
 type StorageVersion = { resultJsonHash: string; updatedAt: string };
@@ -174,47 +166,7 @@ export async function POST(
 async function collectAction(context: AccessContext, taskId: string): Promise<NextResponse> {
   // Acquisition Capability Gate（§30）：runtime 不具备本地浏览器采集 → 409 typed，fail-closed
   const capability = resolveBrowserAcquisitionCapability();
-  // Demo 模式（公网 Visitor 采集体验回放）：能力属本地环境（local_env_required）时，
-  // 用预置真实采集样本回放采集流程（collect → preview → save 全链可用），
-  // 前端必须展示“演示数据”标注；不伪装实时浏览器操作。
-  if (capability.state === "local_env_required" && context.mode === "demo") {
-    try {
-      const taskAsin = await readBrowserEvidenceTaskAsin(context, taskId);
-      if (!taskAsin) {
-        return jsonResponse({
-          ok: false,
-          error: {
-            code: "task_asin_unbound",
-            message: "当前任务缺少 Amazon 商品身份信息（productUrl / ASIN），无法确定采集目标。请返回候选商品补充 Amazon 商品来源（SellerSprite 导入应自动继承），再重新开始研究。",
-          },
-        }, 400);
-      }
-      // 固定样本捕获时间：重复 demo replay 时 capturedAt+pageUrl+asin 命中既有快照 → duplicate（幂等）
-      const capturedAt = DEMO_BROWSER_EVIDENCE_SAMPLE.snapshots[0].capturedAt;
-      const preview = buildDemoBrowserCollectPreview(taskAsin);
-      storeBrowserEvidencePreview({
-        evidenceId: DEMO_ACQUISITION_EVIDENCE_ID,
-        preview,
-        capturedAt,
-        expiresAt: Date.now() + 15 * 60 * 1000,
-        subjectKey: browserEvidenceSubjectKey(context),
-        taskId,
-        asin: taskAsin,
-      });
-      return jsonResponse({
-        ok: true,
-        data: {
-          preview,
-          evidenceId: DEMO_ACQUISITION_EVIDENCE_ID,
-          demo: true,
-          demoSampleId: DEMO_SAMPLE_AMAZON_ID,
-          demoSampleVersion: DEMO_SAMPLE_VERSION,
-        },
-      });
-    } catch (error) {
-      return errorResponse(error);
-    }
-  }
+
   const gate = acquisitionGateError(capability, browserUnavailableMessage(capability.reasonCategory));
   if (gate) {
     const message = capability.state === "local_env_required"

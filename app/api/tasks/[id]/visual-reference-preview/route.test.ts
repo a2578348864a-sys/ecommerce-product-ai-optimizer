@@ -65,7 +65,7 @@ vi.mock("@/lib/server/db", () => ({
   },
 }));
 
-vi.mock("@/lib/server/demoGuard", () => ({
+vi.mock("@/lib/server/accessContext", () => ({
   requireAuthenticated: vi.fn(async (request: Request) => {
     const token = request.headers.get("x-access-token");
     if (!token) return { ok: false, status: 401, code: "invalid_access", message: "请先登录后再操作。" };

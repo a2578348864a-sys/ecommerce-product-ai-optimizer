@@ -9,7 +9,7 @@ import { DEFAULT_SELLERSPRITE_PREVIEW_XLSX_LIMITS } from "@/lib/upstream/sellers
 
 const auth = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/server/demoGuard", () => ({
+vi.mock("@/lib/server/accessContext", () => ({
   requireAuthenticated: auth,
 }));
 

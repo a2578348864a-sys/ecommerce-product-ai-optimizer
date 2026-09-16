@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { checkAccessPassword, getAccessContext } from "@/lib/server/accessPassword";
-import { requireAuthenticated } from "@/lib/server/demoGuard";
-import {
-  listSandboxCandidates,
-  saveLegacySandboxCandidates,
-  saveSignedSandboxCandidates,
-  sandboxCandidateToListItem,
-} from "@/lib/server/demoSandbox";
+import { checkAccessPassword, getAccessContext } from "@/lib/server/accessContext";
+import { requireAuthenticated } from "@/lib/server/accessContext";
 import {
   isValidCandidateStatus,
   listCandidates,
@@ -22,7 +16,7 @@ import { toPublicOpportunityCandidate } from "@/lib/server/candidateEvidenceRevi
 import {
   getCandidateResearchDecisionProjections,
 } from "@/lib/server/productResearchRecordStore";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 
 export const runtime = "nodejs";
 
@@ -113,30 +107,6 @@ export async function GET(request: NextRequest) {
   const offset = Number(request.nextUrl.searchParams.get("offset")) || 0;
 
   try {
-    if (ctx.mode === "demo") {
-      const normalizedQuery = q?.toLowerCase();
-      const normalizedLimit = Math.min(Math.max(1, limit), 100);
-      const normalizedOffset = Math.max(0, offset);
-      const sandboxItems = listSandboxCandidates(ctx.demoAccessId)
-        .filter((candidate) => status || candidate.status !== "rejected" || !candidate.convertedTaskId)
-        .filter((candidate) => !isValidCandidateStatus(status) || candidate.status === status)
-        .filter((candidate) => !normalizedQuery || candidate.name.toLowerCase().includes(normalizedQuery))
-        .sort((a, b) => sort === "score" ? b.score - a.score : 0);
-      const pagedCandidates = sandboxItems
-        .slice(normalizedOffset, normalizedOffset + normalizedLimit)
-        .map((candidate) => sandboxCandidateToListItem(candidate));
-      const pagedItems = await projectCandidateItems(ctx, pagedCandidates);
-      const nextOffset = normalizedOffset + pagedItems.length;
-
-      return json({
-        ok: true,
-        items: pagedItems,
-        total: sandboxItems.length,
-        hasMore: nextOffset < sandboxItems.length,
-        nextOffset: nextOffset < sandboxItems.length ? nextOffset : null,
-      });
-    }
-
     const result = await listCandidates({
       status,
       q,
@@ -200,19 +170,6 @@ export async function POST(request: NextRequest) {
 
   if (preflight.mode === "signed_source_v2") {
     try {
-      if (auth.context.mode === "demo") {
-        const result = await saveSignedSandboxCandidates(auth.context.demoAccessId, preflight.items);
-        return json({
-          ok: true,
-          items: result.items.map((item) => toPublicOpportunityCandidate(sandboxCandidateToListItem(item))),
-          created: result.created,
-          updated: 0,
-          unchanged: result.unchanged,
-          isSandbox: true,
-          sourceMode: "signed_source_v2",
-        });
-      }
-
       const result = await saveSignedCandidates(preflight.items);
       return json({
         ok: true,
@@ -221,26 +178,6 @@ export async function POST(request: NextRequest) {
         updated: result.updated,
         unchanged: result.unchanged,
         sourceMode: "signed_source_v2",
-      });
-    } catch (error) {
-      return candidateSaveErrorResponse(error) ?? json({
-        ok: false,
-        error: { code: "server_error", message: "候选品保存失败，请稍后重试。" },
-      }, 500);
-    }
-  }
-
-  // Demo-Sandbox.1-C: Demo writes to sandbox
-  if (auth.context.mode === "demo") {
-    try {
-      const result = await saveLegacySandboxCandidates(auth.context.demoAccessId, preflight.items);
-      return json({
-        ok: true,
-        items: result.items.map((item) => toPublicOpportunityCandidate(sandboxCandidateToListItem(item))),
-        created: result.created,
-        updated: 0,
-        isSandbox: true,
-        sourceMode: "legacy_unverified",
       });
     } catch (error) {
       return candidateSaveErrorResponse(error) ?? json({

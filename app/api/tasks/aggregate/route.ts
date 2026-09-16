@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
-import { checkAccessPassword, getAccessContext } from "@/lib/server/accessPassword";
+import { checkAccessPassword, getAccessContext } from "@/lib/server/accessContext";
 import { listSandboxTasks } from "@/lib/server/demoSandbox";
 
 export const runtime = "nodejs";

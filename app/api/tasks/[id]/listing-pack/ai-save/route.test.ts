@@ -12,7 +12,7 @@ vi.mock("@/lib/server/db", () => ({
   prisma: { viralAnalysisRecord: { findUnique: mocks.findUnique, updateMany: mocks.updateMany } },
 }));
 
-vi.mock("@/lib/server/demoGuard", () => ({
+vi.mock("@/lib/server/accessContext", () => ({
   requireAuthenticated: mocks.requireAuthenticated,
   requireOwnerOnly: mocks.requireOwnerOnly,
 }));

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callAiJson, getSafeAiClientErrorMessage } from "@/lib/server/aiClient";
 import { buildSourcingPrompt, type SourcingPromptInput } from "@/lib/cross-border/prompts";
-import { requireAuthenticated, ensureDemoAiQuota, consumeDemoAiCalls, type DemoAccessSnapshot } from "@/lib/server/demoGuard";
+import { requireAuthenticated, ensureDemoAiQuota, consumeDemoAiCalls, type DemoAccessSnapshot } from "@/lib/server/accessContext";
 
 export const runtime = "nodejs";
 export const maxDuration = 45;

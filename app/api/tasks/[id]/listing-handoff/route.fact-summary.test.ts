@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/server/demoSandbox", () => ({
   isSandboxTaskId: () => false,
 }));
-vi.mock("@/lib/server/demoGuard", () => ({
+vi.mock("@/lib/server/accessContext", () => ({
   requireAuthenticated: vi.fn(),
   requireOwnerOnly: () => ({ ok: true, context: { mode: "owner", token: "owner" } }),
 }));

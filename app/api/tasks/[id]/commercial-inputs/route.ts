@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
-import { getAccessContext, checkAccessPassword } from "@/lib/server/accessPassword";
+import { getAccessContext, checkAccessPassword } from "@/lib/server/accessContext";
 import { getSandboxTask } from "@/lib/server/demoSandbox";
 import { prisma } from "@/lib/server/db";
 import { parseCommercialInputs, readCommercialInputs, type CommercialInputs } from "@/lib/server/commercialInputs";

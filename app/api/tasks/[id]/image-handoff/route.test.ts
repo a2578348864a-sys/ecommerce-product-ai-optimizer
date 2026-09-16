@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   mutateTaskResultJson: vi.fn(),
 }));
 
-vi.mock("@/lib/server/demoGuard", () => ({
+vi.mock("@/lib/server/accessContext", () => ({
   requireAuthenticated: mocks.requireAuthenticated,
   requireOwnerOnly: mocks.requireOwnerOnly,
 }));

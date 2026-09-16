@@ -29,7 +29,7 @@ const mocks = vi.hoisted(() => ({
   productBatchGetItems: vi.fn(),
 }));
 
-vi.mock("@/lib/server/demoGuard", () => ({
+vi.mock("@/lib/server/accessContext", () => ({
   requireAuthenticated: () => ({ ok: true, context: authState.context }),
 }));
 

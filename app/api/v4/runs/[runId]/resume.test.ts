@@ -17,7 +17,7 @@ vi.mock("@/lib/v4/featureFlag", () => ({
   V4_GRAPH_FEATURE_FLAG: "QX_V4_GRAPH_ENABLED",
 }));
 
-vi.mock("@/lib/server/demoGuard", () => ({
+vi.mock("@/lib/server/accessContext", () => ({
   requireAuthenticated: () => (mocks.authOk ? { ok: true, context: mocks.authCtx } : { ok: false, status: 401, code: "invalid_access", message: "未登录" }),
   requireOwnerOnly: () => (mocks.authOk ? { ok: true, context: mocks.authCtx } : { ok: false, status: 401, code: "invalid_access", message: "未登录" }),
 }));
@@ -61,7 +61,7 @@ describe("/api/v4/runs/[runId]/resume", () => {
     expect(res.status).toBe(404);
   });
 
-  it("scope mismatch (demo tries owner run) → 404 run_not_found", async () => {
+  it.skip("scope mismatch (demo tries owner run) → 404 run_not_found [单用户模式已无 demo scope 隔离，此测试场景不再适用]", async () => {
     mocks.authCtx = { mode: "demo", token: "t", demoAccessId: "visitor-1", isActive: true, isExpired: false, remainingAiCalls: 5 };
     const res = await resumePOST(req({ expectedRevision: 3, payload: { kind: "retry" } }), { params: Promise.resolve({ runId: "r1" }) });
     expect(res.status).toBe(404);

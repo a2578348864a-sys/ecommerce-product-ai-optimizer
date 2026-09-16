@@ -1,13 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
-import { requireAuthenticated } from "@/lib/server/demoGuard";
-import {
-  createTrustedSandboxTask,
-  createSandboxTaskAndLinkCandidateAtomic,
-  getSandboxTask,
-  updateSandboxTask,
-  SandboxCandidateTaskLinkError,
-} from "@/lib/server/demoSandbox";
+import { requireAuthenticated } from "@/lib/server/accessContext";
 import {
   TaskResultJsonMutationError,
   mutateTaskResultJson,
@@ -966,103 +959,7 @@ export async function POST(request: NextRequest) {
     ...(listingPrepSnapshot ? { listingPrepSnapshot } : {}),
   };
 
-  // Demo-Sandbox.1-B: Demo writes to sandbox, Owner writes to Prisma
-  if (auth.context.mode === "demo") {
-    try {
-      // F1：update 模式——研究骨架任务已由 start-research 创建，研究执行后经 mutation layer 回写（CAS + namespace 保护）
-      if (targetTaskId) {
-        const existing = getSandboxTask(auth.context.demoAccessId, targetTaskId);
-        if (!existing) {
-          return jsonResponse({ ok: false, error: { code: "task_not_found", message: "研究任务不存在或不属于当前访问主体。" } }, 404);
-        }
-        const existingResult = safeParseJson(existing.resultJson);
-        const existingCandidateId = existingResult && isRecord(existingResult.candidateToTask)
-          ? existingResult.candidateToTask.candidateId
-          : null;
-        if (typeof existingCandidateId !== "string" || existingCandidateId !== workflowInput.candidateId) {
-          return jsonResponse({ ok: false, error: { code: "task_candidate_mismatch", message: "研究任务与候选商品绑定不一致，无法保存。" } }, 409);
-        }
-        if (existingResult
-          && (Object.prototype.hasOwnProperty.call(existingResult, "researchRecord")
-            || hasProductResearchRecordNamespace(existingResult))) {
-          return jsonResponse({ ok: false, error: { code: "task_already_researched", message: "该研究任务已保存过研究结果，请直接在研究记录中维护。" } }, 409);
-        }
-        const mutation = await mutateTaskResultJson({
-          context: auth.context,
-          taskId: targetTaskId,
-          writer: "research-save",
-          mutate: () => ({
-            result: taskResult as Record<string, unknown>,
-            decisionStatus: normalizeDecisionStatus(decisionStatus),
-            value: { saved: true },
-          }),
-        });
-        return jsonResponse({
-          ok: true,
-          data: {
-            id: targetTaskId,
-            title: existing.title || productName,
-            type: "workflow",
-            isSandbox: true,
-            sourceMode: "demo_sandbox",
-            allReviewed: taskResult.reviewState.allReviewed,
-          },
-        });
-      }
-      const sandboxInput = {
-        type: "workflow",
-        title: `${productName} 一键分析`,
-        platform: "manual",
-        source: typeof body.source === "string" ? body.source : "ai",
-        score,
-        level: riskLevel,
-        oneLineSummary: finalVerdict,
-        decisionStatus: normalizeDecisionStatus(decisionStatus),
-        resultJson: JSON.stringify(taskResult),
-        productLifecycle: JSON.stringify(body.productLifecycle || createInitialProductLifecycle()),
-      };
-      const sandboxTask = workflowInput.candidateId
-        ? await createSandboxTaskAndLinkCandidateAtomic(
-          auth.context.demoAccessId,
-          workflowInput.candidateId,
-          sandboxInput,
-          {
-            expectedProductName: workflowInput.productName,
-            expectedContextHash: workflowInput.contextHash!,
-          },
-        )
-        : await createTrustedSandboxTask(auth.context.demoAccessId, sandboxInput);
 
-      return jsonResponse({
-        ok: true,
-        data: {
-          id: sandboxTask.id,
-          title: sandboxTask.title || productName,
-          type: "workflow",
-          isSandbox: true,
-          sourceMode: "demo_sandbox",
-          allReviewed: taskResult.reviewState.allReviewed,
-        },
-      });
-    } catch (error) {
-      if (error instanceof SandboxCandidateTaskLinkError) {
-        return jsonResponse({
-          ok: false,
-          error: { code: error.code, message: error.message },
-        }, candidateConversionStatus(error.code));
-      }
-      if (error instanceof TaskResultJsonMutationError) {
-        return jsonResponse({
-          ok: false,
-          error: { code: error.code, message: error.message },
-        }, error.status);
-      }
-      return jsonResponse({
-        ok: false,
-        error: { code: "sandbox_write_error", message: "访客任务保存失败，请稍后重试。" },
-      }, 500);
-    }
-  }
 
   const ownerTaskData = {
     type: "workflow",

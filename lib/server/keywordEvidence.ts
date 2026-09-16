@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import {
   TaskResultJsonMutationError,
   mutateTaskResultJson,

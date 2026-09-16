@@ -11,7 +11,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/server/db";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import { isSandboxTaskId, getSandboxCandidate, createSandboxTaskAndLinkCandidateAtomic } from "@/lib/server/demoSandbox";
 import { resolveTaskProductUrlFromCandidate } from "@/lib/server/taskIdentityInheritance";
 import { buildCandidateAnalysisContext } from "@/lib/server/candidateAnalysisContext";

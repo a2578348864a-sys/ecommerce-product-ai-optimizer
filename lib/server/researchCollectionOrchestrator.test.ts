@@ -145,7 +145,7 @@ import {
   findPendingBrowserEvidencePreview,
   resetBrowserEvidencePreviewStoreForTests,
 } from "./browserEvidenceCollect";
-import type { AccessContext } from "./accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import { getPendingAmazonPreviewCandidates } from "./amazonPreviewClosure";
 
 // ── 测试辅助数据 ─────────────────────────────────────────────────────────

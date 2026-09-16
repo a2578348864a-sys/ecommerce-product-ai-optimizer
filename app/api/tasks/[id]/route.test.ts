@@ -159,7 +159,7 @@ describe("GET /api/tasks/[id]", () => {
     expect(mockPrisma.opportunityCandidate.findFirst).not.toHaveBeenCalled();
   });
 
-  it("无密码 → 返回 401", async () => {
+  it.skip("无密码 → 返回 401 [单用户模式已无密码验证，此场景不再适用]", async () => {
     const request = createRequest({});
     const response = await GET(request, createContext("task-001"));
     const { status, body } = await getJsonStatus(response);
@@ -167,7 +167,7 @@ describe("GET /api/tasks/[id]", () => {
     expect(body.error).toContain("访问密码错误");
   });
 
-  it("错误密码 → 返回 401", async () => {
+  it.skip("错误密码 → 返回 401 [单用户模式已无密码验证，此场景不再适用]", async () => {
     const request = createRequest({
       headers: { "x-access-password": "wrong-password" },
     });
@@ -201,7 +201,7 @@ describe("GET /api/tasks/[id]", () => {
     expect(responseStr).not.toContain(CORRECT_PASSWORD);
   });
 
-  it("缺少 id → 密码也需校验（安全优先）", async () => {
+  it.skip("缺少 id → 密码也需校验（安全优先） [单用户模式已无密码验证，此场景不再适用]", async () => {
     const request = createRequest({});
     const response = await GET(request, createContext(""));
     const { status } = await getJsonStatus(response);
@@ -209,7 +209,7 @@ describe("GET /api/tasks/[id]", () => {
     expect(status).toBe(401);
   });
 
-  it("服务端未配置密码 → 返回 500", async () => {
+  it.skip("服务端未配置密码 → 返回 500 [单用户模式已无密码验证，此场景不再适用]", async () => {
     vi.stubEnv("ACCESS_PASSWORD", "");
     vi.stubEnv("APP_ACCESS_PASSWORD", "");
     const mod = await import("./route");
@@ -262,7 +262,7 @@ describe("GET /api/tasks/[id]", () => {
 });
 
 describe("DELETE /api/tasks/[id]", () => {
-  it("无密码 → 返回 401", async () => {
+  it.skip("无密码 → 返回 401 [单用户模式已无密码验证，此场景不再适用]", async () => {
     const request = createRequest({ method: "DELETE" });
     const response = await DELETE(request, createContext("task-001"));
     const { status, body } = await getJsonStatus(response);
@@ -270,7 +270,7 @@ describe("DELETE /api/tasks/[id]", () => {
     expect(body.error?.code || body.error).toBeTruthy();
   });
 
-  it("错误密码 → 返回 401", async () => {
+  it.skip("错误密码 → 返回 401 [单用户模式已无密码验证，此场景不再适用]", async () => {
     const request = createRequest({
       method: "DELETE",
       headers: { "x-access-password": "wrong-password" },
@@ -281,10 +281,9 @@ describe("DELETE /api/tasks/[id]", () => {
     expect(body.error?.code || body.error).toBeTruthy();
   });
 
-  it("正确密码 → 返回 200 并正常删除", async () => {
+  it("单用户模式 → DELETE 无需密码直接返回 200 并正常删除", async () => {
     const request = createRequest({
       method: "DELETE",
-      headers: { "x-access-password": CORRECT_PASSWORD },
     });
     const response = await DELETE(request, createContext("task-001"));
     const { status, body } = await getJsonStatus(response);
@@ -299,7 +298,7 @@ describe("DELETE /api/tasks/[id]", () => {
     });
   });
 
-  it("服务端未配置密码 → DELETE 返回 401", async () => {
+  it.skip("服务端未配置密码 → DELETE 返回 401 [单用户模式已无密码验证，此场景不再适用]", async () => {
     vi.stubEnv("ACCESS_PASSWORD", "");
     vi.stubEnv("APP_ACCESS_PASSWORD", "");
     const mod = await import("./route");
@@ -312,7 +311,7 @@ describe("DELETE /api/tasks/[id]", () => {
 });
 
 describe("PATCH /api/tasks/[id]", () => {
-  it("无密码 → 返回 401", async () => {
+  it.skip("无密码 → 返回 401 [单用户模式已无密码验证，此场景不再适用]", async () => {
     const request = createRequest({
       method: "PATCH",
       body: { decisionStatus: "continue" },

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import { mutateTaskResultJson, TaskResultJsonMutationError, type TaskResultJsonStorageVersionHash } from "@/lib/server/taskResultJsonMutation";
 import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPreview";
 import { buildImageInputFromCreativeHandoff, validateApprovedVisualSelection, type ImageGenerationInput, type ImageVisualMode } from "@/lib/imageHandoff/imageGenerationInput";

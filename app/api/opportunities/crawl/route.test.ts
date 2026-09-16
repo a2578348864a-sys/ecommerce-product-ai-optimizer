@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   scoreCandidates: vi.fn(),
 }));
 
-vi.mock("@/lib/server/demoGuard", () => ({
+vi.mock("@/lib/server/accessContext", () => ({
   requireAuthenticated: () => ({ ok: true, context: { mode: "owner" } }),
 }));
 vi.mock("@/lib/server/radarCrawler", () => ({ crawlUrls: mocks.crawlUrls }));

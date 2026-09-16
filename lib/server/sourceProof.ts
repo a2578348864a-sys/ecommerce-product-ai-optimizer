@@ -96,9 +96,9 @@ function normalizeBindings(input: SourceProofBindings): SourceProofBindings | nu
 }
 
 export function buildSourceProofSubject(
-  context: { mode: "owner" } | { mode: "demo"; demoAccessId: string },
+  context: { mode: "owner" | "local_single_user" } | { mode: "demo"; demoAccessId: string } | any,
 ): string {
-  const subject = context.mode === "owner" ? "owner" : `demo:${context.demoAccessId}`;
+  const subject = (context.mode === "owner" || context.mode === "local_single_user") ? "owner" : `demo:${context.demoAccessId}`;
   if (!isValidSubject(subject)) throw new Error("SOURCE_PROOF_SUBJECT_INVALID");
   return subject;
 }

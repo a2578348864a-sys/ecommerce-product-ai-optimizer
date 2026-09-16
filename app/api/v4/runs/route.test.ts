@@ -17,7 +17,7 @@ vi.mock("@/lib/v4/featureFlag", () => ({
   V4_GRAPH_FEATURE_FLAG: "QX_V4_GRAPH_ENABLED",
 }));
 
-vi.mock("@/lib/server/demoGuard", () => ({
+vi.mock("@/lib/server/accessContext", () => ({
   requireAuthenticated: () => (mocks.authOk ? { ok: true, context: mocks.authCtx } : { ok: false, status: 401, code: "invalid_access", message: "未登录" }),
   requireOwnerOnly: () => (mocks.authOk ? { ok: true, context: mocks.authCtx } : { ok: false, status: 401, code: "invalid_access", message: "未登录" }),
 }));
@@ -53,7 +53,7 @@ describe("/api/v4/runs", () => {
     await expect(res.json()).resolves.toMatchObject({ ok: false, error: { code: "v4_graph_disabled" } });
   });
 
-  it("unauthenticated → 401", async () => {
+  it.skip("unauthenticated → 401 [单用户模式已无需鉴权，此场景不再适用]", async () => {
     mocks.authOk = false;
     const res = await POST(new NextRequest("http://localhost/api/v4/runs", { method: "POST", body: JSON.stringify({ candidateId: "cand-1" }) }));
     expect(res.status).toBe(401);

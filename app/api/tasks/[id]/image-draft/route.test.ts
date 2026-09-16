@@ -17,7 +17,7 @@ vi.mock("@/lib/server/realAiImageGate", () => ({
   isRealAiImageEnabled: () => mocks.enabled,
   isRealAiVisitorImageEnabled: () => mocks.visitorEnabled,
 }));
-vi.mock("@/lib/server/demoGuard", () => ({
+vi.mock("@/lib/server/accessContext", () => ({
   getLatestDemoSnapshot: () => ({ maxAiCalls: 5, usedAiCalls: 2, remainingAiCalls: 3 }),
 }));
 

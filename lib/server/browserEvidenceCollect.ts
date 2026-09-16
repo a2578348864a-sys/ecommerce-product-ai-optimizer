@@ -23,7 +23,7 @@ import {
 } from "@/tools/collectors/amazon/detail-page-extract";
 import { AMAZON_RETAIL_ORIGINS } from "@/tools/collectors/amazon/page-diagnostics";
 import { BrowserEvidenceError, type BrowserEvidenceSnapshot } from "@/lib/server/browserEvidence";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import { buildAmazonSellerContentExtractionExpression } from "@/tools/collectors/amazon/seller-content-expression-source";
 import { normalizeSellerBlocks } from "@/lib/server/amazonFactEnrichment/mapping";
 import type { AmazonSellerContentBlockV1 } from "@/lib/server/amazonFactEnrichment/contract";

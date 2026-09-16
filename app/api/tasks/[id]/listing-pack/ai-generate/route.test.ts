@@ -24,7 +24,7 @@ vi.mock("@/lib/server/db", () => ({
   },
 }));
 
-vi.mock("@/lib/server/demoGuard", () => ({
+vi.mock("@/lib/server/accessContext", () => ({
   requireAuthenticated: mocks.requireAuthenticated,
   requireOwnerOnly: mocks.requireOwnerOnly,
   ensureDemoAiQuota: vi.fn(() => ({ ok: true })),

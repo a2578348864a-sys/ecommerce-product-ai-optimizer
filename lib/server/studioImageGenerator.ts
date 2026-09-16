@@ -11,8 +11,8 @@ import {
   type StudioImageType,
   type StudioImageVisualStyle,
 } from "@/lib/studioImageInput";
-import type { AccessContext } from "@/lib/server/accessPassword";
-import type { DemoAccessSnapshot } from "@/lib/server/demoGuard";
+import type { AccessContext } from "@/lib/server/accessContext";
+import type { DemoAccessSnapshot } from "@/lib/server/accessContext";
 import { getImageStylePreset, type ImageStylePresetId } from "@/lib/imageStyleLibrary";
 import { resolveStudioImageCreativeIntent } from "@/lib/studioImageCreativeIntent";
 import { resolveImageAuthorityMode } from "@/lib/imagePromptComposer";

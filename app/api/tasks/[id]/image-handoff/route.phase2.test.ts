@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   markVisitorStandaloneStudioProviderStarted: vi.fn(),
 }));
 
-vi.mock("@/lib/server/demoGuard", () => ({
+vi.mock("@/lib/server/accessContext", () => ({
   requireAuthenticated: mocks.requireAuthenticated,
   requireOwnerOnly: mocks.requireOwnerOnly,
   guardDemoProviderAction: mocks.guardDemoProviderAction,

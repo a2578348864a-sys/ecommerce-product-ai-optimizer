@@ -3,15 +3,8 @@ import {
   CandidateSourcePolicyError,
   type CandidateSourcePolicyErrorCode,
 } from "@/lib/candidateSourceIntegrity";
-import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
-import {
-  isSandboxCandidateId,
-  getSandboxCandidate,
-  updateSandboxCandidate,
-  deleteSandboxCandidate,
-  removeSandboxCandidateFromResearchPool,
-  sandboxCandidateToListItem,
-} from "@/lib/server/demoSandbox";
+import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/accessContext";
+import { isSandboxCandidateId } from "@/lib/server/demoSandbox";
 import {
   isValidCandidateStatus,
   deleteCandidate,
@@ -117,38 +110,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     return json({ ok: false, error: { code: "invalid_payload", message: "移出研究池请求包含无关字段。" } }, 400);
   }
 
-  // Demo-Sandbox.1-C: allow sandbox candidate PATCH for demo
   if (isSandboxCandidateId(id)) {
-    const auth = requireAuthenticated(request, body);
-    if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
-    if (auth.context.mode === "demo") {
-      if (removeFromPool) {
-        const result = await removeSandboxCandidateFromResearchPool(auth.context.demoAccessId, id);
-        return candidatePoolRemovalResponse(result, id);
-      }
-      const taskLinkResponse = candidateTaskLinkLockedResponse(body);
-      if (taskLinkResponse) return taskLinkResponse;
-      const update: Record<string, unknown> = {};
-      if (typeof body.status === "string" && isValidCandidateStatus(body.status)) update.status = body.status;
-      if (typeof body.score === "number") update.score = body.score;
-      if (typeof body.name === "string") update.name = body.name;
-      if (body.link !== undefined) update.link = typeof body.link === "string" ? body.link : null;
-      try {
-        const updated = await updateSandboxCandidate(auth.context.demoAccessId, id, update, {
-          sourceReviewAcknowledged: body.sourceReviewAcknowledged === true ? true : undefined,
-          requestedFields: Object.keys(body),
-        });
-        if (!updated) return json({ ok: false, error: { code: "not_found", message: "未找到该候选。" } }, 404);
-        return json({
-          ok: true,
-          candidate: toPublicOpportunityCandidate(sandboxCandidateToListItem(updated)),
-        });
-      } catch (error) {
-        const policyResponse = sourcePolicyErrorResponse(error);
-        if (policyResponse) return policyResponse;
-        return json({ ok: false, error: { code: "server_error", message: "更新失败，请稍后重试。" } }, 500);
-      }
-    }
     return json({ ok: false, error: { code: "not_found", message: "未找到该候选。" } }, 404);
   }
 
@@ -209,14 +171,7 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
   const { id } = await params;
   if (!id) return json({ ok: false, error: { code: "not_found", message: "缺少候选品 ID。" } }, 400);
 
-  // Demo-Sandbox.1-C: allow sandbox candidate DELETE for demo
   if (isSandboxCandidateId(id)) {
-    const auth = requireAuthenticated(request);
-    if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
-    if (auth.context.mode === "demo") {
-      const result = await deleteSandboxCandidate(auth.context.demoAccessId, id);
-      return candidateDeleteResponse(result, id, "未找到该候选。");
-    }
     return json({ ok: false, error: { code: "not_found", message: "未找到该候选。" } }, 404);
   }
 

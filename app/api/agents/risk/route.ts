@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { callAiJson, getSafeAiClientErrorMessage } from "@/lib/server/aiClient";
 import { buildRiskCheckPrompt, type RiskCheckPromptInput } from "@/lib/cross-border/prompts";
 import { classifyKeywordFallbackRisk, isHumanFoodContactProduct, isPetFoodContactProduct, sanitizeStringArray, sanitizeUnsupportedCertificationClaims } from "@/lib/server/alphaSafety";
-import { requireAuthenticated, ensureDemoAiQuota, consumeDemoAiCalls, type DemoAccessSnapshot } from "@/lib/server/demoGuard";
+import { requireAuthenticated, ensureDemoAiQuota, consumeDemoAiCalls, type DemoAccessSnapshot } from "@/lib/server/accessContext";
 
 export const runtime = "nodejs";
 export const maxDuration = 45;

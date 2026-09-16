@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "accesses": [
+    {
+      "id": "demo_67dff45735aee684",
+      "label": "Core-Smoke-Fix.1 visitor acceptance",
+      "passwordHash": "sha256:9e3f2a4700adfda79a354b52e43fc59bc80077a97a9ceddbae2851e46b9c2cca",
+      "salt": "2e3f7cb2913a2a89a1bb7c757acfb32a",
+      "expiresAt": null,
+      "maxAiCalls": 0,
+      "usedAiCalls": 0,
+      "isActive": true,
+      "createdAt": "2026-08-15T07:04:51.235Z",
+      "lastUsedAt": null,
+      "notes": "",
+      "productJourneyReservations": {},
+      "productJourneyMigration": {
+        "version": "sandbox-product-journeys-v1",
+        "migratedAt": "2026-08-15T07:07:03.977Z",
+        "sourceTaskCount": 0,
+        "sourceCandidateCount": 0
+      }
+    },
+    {
+      "id": "demo_0a77612ee5b5355d",
+      "label": "final-playwright-acceptance-visitor",
+      "passwordHash": "sha256:a1de6a21b8efa554c449f408a623812eabf9acd59aeb7910b9080aa5f9508cde",
+      "salt": "f0c5d85ad5a446c18ce998733a1d4f41",
+      "expiresAt": null,
+      "maxAiCalls": 0,
+      "usedAiCalls": 0,
+      "isActive": true,
+      "createdAt": "2026-08-16T16:02:27.373Z",
+      "lastUsedAt": null,
+      "notes": ""
+    },
+    {
+      "id": "demo_7d2ef4a8f54083f6",
+      "label": "V3 Showcase Local Acceptance",
+      "passwordHash": "sha256:c275bc2a1f330393015007afe0da962f13cd82917c7057db34c84abcaeeeaffa",
+      "salt": "eb1cbca6cfa2c964727e0dd4712e5aad",
+      "expiresAt": null,
+      "maxAiCalls": 0,
+      "usedAiCalls": 0,
+      "isActive": true,
+      "createdAt": "2026-08-20T08:34:04.422Z",
+      "lastUsedAt": null,
+      "notes": ""
+    },
+    {
+      "id": "demo_0e328dde473569d3",
+      "label": "公开访客",
+      "expiresAt": null,
+      "maxAiCalls": 0,
+      "usedAiCalls": 0,
+      "isActive": true,
+      "createdAt": "2026-08-21T20:16:29.502Z",
+      "lastUsedAt": null,
+      "notes": "",
+      "credentialKind": "anonymous"
+    }
+  ]
+}

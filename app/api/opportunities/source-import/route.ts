@@ -6,7 +6,7 @@
 
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuthenticated } from "@/lib/server/demoGuard";
+import { requireAuthenticated } from "@/lib/server/accessContext";
 import { crawlUrls } from "@/lib/server/radarCrawler";
 import { normalizeResults, type CandidateItem } from "@/lib/server/radarNormalize";
 import { assessSourceEvidenceV2 } from "@/lib/server/sourceEvidenceAssessment";

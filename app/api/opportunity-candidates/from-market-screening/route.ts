@@ -20,13 +20,8 @@ import {
   type MarketScreeningItemView,
   type MarketScreeningWorkbenchView,
 } from "@/lib/marketScreeningWorkbench";
-import { requireAuthenticated } from "@/lib/server/demoGuard";
-import {
-  listSandboxCandidates,
-  saveLegacySandboxCandidates,
-  sandboxCandidateToListItem,
-  updateSandboxCandidate,
-} from "@/lib/server/demoSandbox";
+import { requireAuthenticated } from "@/lib/server/accessContext";
+
 import {
   buildMarketScreeningCandidateIdentity,
   MarketScreeningCandidateError,
@@ -274,85 +269,7 @@ async function selectOwnerCandidate(
   );
 }
 
-async function selectSandboxCandidate(
-  demoAccessId: string,
-  input: CandidateSaveItem,
-  identity: MarketScreeningCandidateIdentity,
-  explicitMarketWatchReview: boolean,
-) {
-  const listed = listSandboxCandidates(demoAccessId).map(sandboxCandidateToListItem);
-  const resolution = resolveMarketScreeningCandidate(listed, input.name, identity);
-  let candidate = resolution.kind === "reuse"
-    ? resolution.candidate as CandidateRecord
-    : null;
-  let created = false;
 
-  if (!candidate) {
-    const saved = await saveLegacySandboxCandidates(demoAccessId, [input]);
-    const sandboxCandidate = saved.items[0] ?? null;
-    candidate = sandboxCandidate ? sandboxCandidateToListItem(sandboxCandidate) as CandidateRecord : null;
-    created = saved.created > 0;
-    if (candidate) {
-      const createdResolution = resolveMarketScreeningCandidate([candidate], input.name, identity);
-      if (createdResolution.kind !== "reuse") candidate = null;
-    }
-  }
-  if (!candidate) {
-    throw new CandidateSelectionError(
-      "candidate_create_failed",
-      409,
-      "Candidate 未能安全创建，已停止进入研究。",
-    );
-  }
-
-  assertCandidateCanEnterResearch(candidate);
-  buildHandoff(candidate, explicitMarketWatchReview);
-  let mergedProductImage: { changed: boolean; sourceMetaJson: string };
-  try {
-    mergedProductImage = mergeCandidateProductImageSnapshot(
-      candidate.sourceMetaJson,
-      readCandidateProductImageSnapshot(input.sourceMetaJson),
-    );
-  } catch (error) {
-    if (error instanceof ProductResearchImageConflictError) {
-      throw new MarketScreeningCandidateError(
-        "candidate_evidence_conflict",
-        "同一市场商品身份的商品图片 Hash 冲突。",
-      );
-    }
-    throw error;
-  }
-  const shouldPromote = candidate.status === "pending";
-  if (shouldPromote || mergedProductImage.changed) {
-    const updated = await updateSandboxCandidate(
-      demoAccessId,
-      candidate.id,
-      {
-        ...(shouldPromote ? { status: "worth_analyzing" as const } : {}),
-        ...(mergedProductImage.changed
-          ? { sourceMetaJson: mergedProductImage.sourceMetaJson }
-          : {}),
-      },
-      {
-        sourceReviewAcknowledged: true,
-        requestedFields: [
-          ...(shouldPromote ? ["status"] : []),
-          ...(mergedProductImage.changed ? ["sourceMetaJson"] : []),
-        ],
-      },
-    );
-    candidate = updated ? sandboxCandidateToListItem(updated) as CandidateRecord : null;
-  }
-  if (!candidate || (candidate.status !== "worth_analyzing" && candidate.status !== "analyzed")) {
-    throw new CandidateSelectionError(
-      "candidate_not_ready",
-      409,
-      "该 Candidate 当前状态不可研究。",
-    );
-  }
-
-  return { candidate, created };
-}
 
 function buildHandoff(candidate: CandidateRecord, explicitMarketWatchReview: boolean) {
   const item = toPublicOpportunityCandidate(candidate);
@@ -468,28 +385,14 @@ export async function POST(request: NextRequest) {
 
     const selection = buildCandidateInput(model.view, item, productionRegistration);
     const explicitMarketWatchReview = item.status === "watch";
-    let selected: { candidate: CandidateRecord; created: boolean };
-    if (auth.context.mode === "demo") {
-      const demoAccessId = auth.context.demoAccessId;
-      selected = await withSelectionLock(
-        `visitor:${demoAccessId}:${selection.identity.identityHash}`,
-        () => selectSandboxCandidate(
-          demoAccessId,
-          selection.input,
-          selection.identity,
-          explicitMarketWatchReview,
-        ),
-      );
-    } else {
-      selected = await withSelectionLock(
-        `owner:${selection.identity.identityHash}`,
-        () => selectOwnerCandidate(
-          selection.input,
-          selection.identity,
-          explicitMarketWatchReview,
-        ),
-      );
-    }
+    const selected = await withSelectionLock(
+      `owner:${selection.identity.identityHash}`,
+      () => selectOwnerCandidate(
+        selection.input,
+        selection.identity,
+        explicitMarketWatchReview,
+      ),
+    );
     const handoff = buildHandoff(selected.candidate, explicitMarketWatchReview);
 
     return json({
@@ -497,7 +400,6 @@ export async function POST(request: NextRequest) {
       item: handoff.item,
       href: handoff.href,
       created: selected.created,
-      ...(auth.context.mode === "demo" ? { isSandbox: true } : {}),
     });
   } catch (error) {
     if (error instanceof MarketScreeningCandidateError) {

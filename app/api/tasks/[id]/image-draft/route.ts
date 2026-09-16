@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { extractAiImageDraftSnapshot, validateAiImageGenerateRequest } from "@/lib/aiImageDraft";
 import { generateAiImageDraft } from "@/lib/server/aiImageDraftService";
 import { loadAiImageTask } from "@/lib/server/aiImageTaskAccess";
-import { getLatestDemoSnapshot } from "@/lib/server/demoGuard";
+import { getLatestDemoSnapshot } from "@/lib/server/accessContext";
 import { isRealAiImageEnabled, isRealAiVisitorImageEnabled } from "@/lib/server/realAiImageGate";
 
 export const runtime = "nodejs";

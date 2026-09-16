@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import { prisma } from "@/lib/server/db";
 import {
   createOrReuseSandboxProductBatchCandidate,
@@ -302,7 +302,7 @@ export async function convertProductBatchItemToCandidate(
     fail("product_batch_not_ready", "当前 ProductBatch 尚不可研究。");
   }
   const item = (await store.getBatchItems(batch.id)).find(
-    (candidateItem) => candidateItem.id === productBatchItemId,
+    (candidateItem: any) => candidateItem.id === productBatchItemId,
   );
   if (!item) {
     fail("product_batch_item_not_found", "商品不在当前 ProductBatch 中。");
@@ -312,7 +312,7 @@ export async function convertProductBatchItemToCandidate(
     source = buildProductBatchCandidateSource({
       batch,
       item,
-      serverIdentityScope: context.mode === "owner" ? "owner:v1" : "visitor:sandbox",
+      serverIdentityScope: (context.mode === "owner" || (context.mode as string) === "local_single_user") ? "owner:v1" : "visitor:sandbox",
     });
   } catch {
     fail(
@@ -321,26 +321,29 @@ export async function convertProductBatchItemToCandidate(
     );
   }
 
-  if (context.mode === "owner") {
+  if (context.mode === "owner" || (context.mode as string) === "local_single_user") {
     const result = await createOrReuseOwnerCandidate(source);
     return conversionResult({
       id: result.candidate.id,
       convertedTaskId: result.candidate.convertedTaskId ?? null,
     }, result.created, source);
   }
-  try {
-    const result = await createOrReuseSandboxProductBatchCandidate(
-      context.demoAccessId,
-      candidateInput(source),
-    );
-    return conversionResult({
-      id: result.candidate.id,
-      convertedTaskId: result.candidate.convertedTaskId ?? null,
-    }, result.created, source);
-  } catch (error) {
-    if (error instanceof SandboxProductBatchCandidateError) {
-      fail("product_batch_candidate_source_conflict", error.message);
+  if (context.mode === "demo") {
+    try {
+      const result = await createOrReuseSandboxProductBatchCandidate(
+        context.demoAccessId,
+        candidateInput(source),
+      );
+      return conversionResult({
+        id: result.candidate.id,
+        convertedTaskId: result.candidate.convertedTaskId ?? null,
+      }, result.created, source);
+    } catch (error) {
+      if (error instanceof SandboxProductBatchCandidateError) {
+        fail("product_batch_candidate_source_conflict", error.message);
+      }
+      throw error;
     }
-    throw error;
   }
+  fail("product_batch_candidate_not_researchable", "当前访问模式不受支持。");
 }

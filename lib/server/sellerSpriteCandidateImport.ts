@@ -8,9 +8,8 @@
  * Both paths return the exact same result DTO and never receive client
  * candidate data — they only trust server re-parsed rows.
  */
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import { importOwnerSellerSpriteCandidates } from "@/lib/server/opportunityCandidateService";
-import { importSellerSpriteCandidatesForVisitor } from "@/lib/server/demoSandbox";
 import type {
   SellerSpriteImportRow,
   SellerSpriteImportSummary,
@@ -27,12 +26,5 @@ export async function importSellerSpriteCandidates(
   input: SellerSpriteCandidateImportInput,
 ): Promise<SellerSpriteImportSummary> {
   const { rows, sourceFileSha256, importedAt } = input;
-  if (input.context.mode === "owner") {
-    return importOwnerSellerSpriteCandidates({ rows, sourceFileSha256, importedAt });
-  }
-  return importSellerSpriteCandidatesForVisitor(input.context.demoAccessId, {
-    rows,
-    sourceFileSha256,
-    importedAt,
-  });
+  return importOwnerSellerSpriteCandidates({ rows, sourceFileSha256, importedAt });
 }

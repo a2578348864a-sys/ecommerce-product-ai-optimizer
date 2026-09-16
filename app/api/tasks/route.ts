@@ -7,14 +7,9 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/server/db";
 import { ALL_KNOWN_PLATFORMS } from "@/lib/types";
 import { normalizeTaskRecord } from "@/lib/tasks/normalizeTaskRecord";
-import { checkAccessPassword, getAccessContext } from "@/lib/server/accessPassword";
-import { requireAuthenticated } from "@/lib/server/demoGuard";
-import {
-  listSandboxCandidates,
-  listSandboxTasks,
-  createGenericSandboxTask,
-  sandboxTaskToListItem,
-} from "@/lib/server/demoSandbox";
+import { checkAccessPassword, getAccessContext } from "@/lib/server/accessContext";
+import { requireAuthenticated } from "@/lib/server/accessContext";
+
 import { isDecisionStatus, normalizeDecisionStatus, type DecisionStatus } from "@/lib/tasks/decisionStatus";
 import { SEARCHABLE_TASK_TYPES } from "@/lib/taskConcepts";
 import {
@@ -499,96 +494,21 @@ export async function GET(request: NextRequest) {
   const ctx = getAccessContext(request);
 
   if (ctx && ctx.mode === "demo") {
-    try {
-      const subject = accessSubject(ctx);
-      const formalScope = effectiveScope === "product-research";
-      let sandboxTasks = listSandboxTasks(ctx.demoAccessId);
-      // §2.2：正式工作台数据域（沙箱侧同样只放行正式商品研究任务）
-      if (formalScope) {
-        sandboxTasks = sandboxTasks.filter((task) => task.type === "workflow" && task.source !== "mock");
-      }
-      // scope（R5：research=active 全集 / historical=rejected+legacy；旧 Tab 语义保留）——sandbox 用 JS 侧同语义过滤
-      if (effectiveScope) {
-        sandboxTasks = sandboxTasks.filter((task) => {
-          const parsed = safeParseJson(task.resultJson);
-          const hasResearchRecord = parsed !== null && (
-            Object.prototype.hasOwnProperty.call(parsed, "researchRecord")
-            || Object.prototype.hasOwnProperty.call(parsed, "researchVerification")
-          );
-          // V3 Current Research Normalization：完成标记（researchCompletion）与放弃（rejected）均属研究记录
-          const hasResearchCompletion = parsed !== null
-            && isRecord(parsed.researchCompletion)
-            && parsed.researchCompletion.schema === "research-completion.v1";
-          const status = normalizeDecisionStatus(task.decisionStatus);
-          if (effectiveScope === "active" || effectiveScope === "research") {
-            return !hasResearchRecord ? (status === "pending" || status === "continue" || status === "need_info") : status !== "rejected" && !hasResearchCompletion;
-          }
-          if (effectiveScope === "historical") return status === "rejected" || hasResearchCompletion;
-          if (effectiveScope === "need_info") return status === "need_info";
-          if (effectiveScope === "completed") return hasResearchCompletion && status === "continue";
-          if (effectiveScope === "abandoned") return status === "rejected";
-          return true;
-        });
-      }
-      const sandboxCandidates = listSandboxCandidates(ctx.demoAccessId);
-      const sandboxCandidateIds = Array.from(new Set(
-        sandboxTasks
-          .map((task) => getResearchTaskCandidateId(safeParseJson(task.resultJson)))
-          .filter((id): id is string => Boolean(id)),
-      ));
-      // §2.3 Sandbox 真实最新 run 投影（ownerScope+sandboxId = demoAccessId；Visitor 隔离）
-      const sandboxStatusByCandidate = await loadLatestRunStatusByCandidate(ctx, sandboxCandidateIds, formalScope);
-      const sandboxItems = sandboxTasks.map((task) => {
-        const rawResult = safeParseJson(task.resultJson);
-        const listedTask = sandboxTaskToListItem(task);
-        const result = projectTaskResultForBrowser(rawResult, "list", {
-          id: listedTask.id,
-          type: listedTask.type,
-          title: listedTask.title,
-          materialText: listedTask.materialText,
-          oneLineSummary: listedTask.oneLineSummary,
-          level: listedTask.level,
-          decisionStatus: normalizeDecisionStatus(listedTask.decisionStatus),
-        });
-        const stale = getResearchStaleState(isRecord(rawResult) ? rawResult : null).stale;
-        const candidateId = getResearchTaskCandidateId(rawResult);
-        const runRow = candidateId ? sandboxStatusByCandidate.get(candidateId) ?? null : null;
-        const item = {
-          ...listedTask,
-          result: stripRawProjectedStatus(formalScope, result as Record<string, unknown>, rawResult),
-          productImage: null,
-          productProjectKey: productProjectKey(listedTask.id, rawResult, subject, sandboxCandidates),
-          researchLifecycle: projectResearchLifecycleForList(
-            rawResult,
-            normalizeDecisionStatus(listedTask.decisionStatus),
-            listedTask.type,
-          ),
-          aiRunStatus: formalScope ? (stale ? "research_stale" as const : deriveSafeAiRunStatus(runRow?.status ?? null)) : undefined,
-          runUpdatedAt: formalScope && runRow ? runRow.updatedAt : undefined,
-        } as unknown as ViralTaskItem;
-        return addProductImage(item, rawResult, subject, sandboxCandidates);
-      });
-      const total = sandboxItems.length;
-      const paged = sandboxItems.slice(offset, offset + limit);
-
-      return jsonResponse({
-        ok: true,
-        records: paged as unknown as ViralTaskItem[],
-        data: { items: paged as unknown as ViralTaskItem[] },
-        page: {
-          type: effectiveType,
-          q,
-          limit,
-          offset,
-          total,
-          hasMore: offset + limit < total,
-          nextOffset: offset + limit < total ? offset + paged.length : null,
-          decisionStatus: effectiveDecisionStatus,
-        },
-      });
-    } catch (error) {
-      return isDatabaseError(error) ? databaseError() : serverError();
-    }
+    return jsonResponse({
+      ok: true,
+      records: [],
+      data: { items: [] },
+      page: {
+        type: effectiveType,
+        q,
+        limit,
+        offset,
+        total: 0,
+        hasMore: false,
+        nextOffset: null,
+        decisionStatus: effectiveDecisionStatus,
+      },
+    });
   }
 
   try {
@@ -773,40 +693,11 @@ export async function POST(request: NextRequest) {
 
   const resultSummary = getResultSummary(body.result);
 
-  // Demo-Sandbox.1-B: Demo writes to sandbox
   if (auth.context.mode === "demo") {
-    const sandboxTask = await createGenericSandboxTask(auth.context.demoAccessId, {
-      type: taskType,
-      title: asOptionalString(body.title) || asOptionalString(body.productName),
-      platform: platform || "manual",
-      source,
-      score: resultSummary.score,
-      level: resultSummary.level,
-      oneLineSummary: resultSummary.oneLineSummary,
-      resultJson: JSON.stringify(body.result),
-    });
     return jsonResponse({
-      ok: true,
-      data: {
-        ...sandboxTaskToListItem(sandboxTask),
-        result: projectTaskResultForBrowser(body.result, "list", {
-          id: sandboxTask.id,
-          type: sandboxTask.type,
-          title: sandboxTask.title,
-          materialText: sandboxTask.materialText,
-          oneLineSummary: sandboxTask.oneLineSummary,
-          level: sandboxTask.level,
-          decisionStatus: normalizeDecisionStatus(sandboxTask.decisionStatus),
-        }),
-        productImage: null,
-        productProjectKey: productProjectKey(sandboxTask.id, body.result, accessSubject(auth.context)),
-        researchLifecycle: projectResearchLifecycleForList(
-          body.result,
-          normalizeDecisionStatus(sandboxTask.decisionStatus),
-          sandboxTask.type,
-        ),
-      } as unknown as ViralTaskItem,
-    });
+      ok: false,
+      error: { code: "demo_mode_deprecated", message: "访客沙箱模式已下线。" },
+    }, 403);
   }
 
   // Owner: write to Prisma DB

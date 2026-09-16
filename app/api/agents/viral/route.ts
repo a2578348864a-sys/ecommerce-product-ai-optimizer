@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { callAiJson, getSafeAiClientErrorMessage } from "@/lib/server/aiClient";
 import { allPlatformLabels, platformLabels, platformOptions } from "@/lib/types";
 import type { EvidenceCard, MaterialAgentResult, MaterialInput, Platform, ViralAgentResult, ViralLevel } from "@/lib/types";
-import { requireAuthenticated, ensureDemoAiQuota, consumeDemoAiCalls, type DemoAccessSnapshot } from "@/lib/server/demoGuard";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import { requireAuthenticated, ensureDemoAiQuota, consumeDemoAiCalls, type DemoAccessSnapshot } from "@/lib/server/accessContext";
+import type { AccessContext } from "@/lib/server/accessContext";
 
 export const runtime = "nodejs";
 export const maxDuration = 45;

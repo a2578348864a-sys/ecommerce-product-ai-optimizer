@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { checkAccessPassword, getAccessContext } from "@/lib/server/accessPassword";
+import { checkAccessPassword, getAccessContext } from "@/lib/server/accessContext";
 import { getAuthoritativeCandidate } from "@/lib/server/candidateAuthority";
 import { readCandidateProductImageSnapshot } from "@/lib/productResearchImage";
 

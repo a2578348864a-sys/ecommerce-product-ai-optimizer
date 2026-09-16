@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { isSandboxTaskId } from "@/lib/server/demoSandbox";
-import { getDemoAccessById } from "@/lib/server/demoAccess";
 import {
   requireAuthenticated,
   requireOwnerOnly,
@@ -10,9 +9,9 @@ import {
   markVisitorStandaloneStudioProviderStarted,
   buildDemoAccessSnapshot,
   type DemoProviderActionToken,
-} from "@/lib/server/demoGuard";
+} from "@/lib/server/accessContext";
 import { bindProviderCallStartBoundary } from "@/lib/server/aiClient";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import { generateListingDraftFromHandoff, ListingHandoffError, draftSafeSummary, deriveKeywordPolicyInputForRead, type ListingDraftSafeSummary, type HistoricalKeywordReadContext } from "@/lib/listingHandoff/listingGenerationService";
 import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPreview";
 import { computeListingStatus, parseListingHandoffBinding, type ListingStatus } from "@/lib/listingHandoff/listingBinding";
@@ -25,11 +24,8 @@ import { buildListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBri
 import { buildListingBrief } from "@/lib/listingHandoff/listingBrief";
 import { mutateTaskResultJson } from "@/lib/server/taskResultJsonMutation";
 
-/** Guest 权威配额快照（响应体随生成/配额拒绝返回，供客户端横幅实时更新；Owner 不返回） */
-function demoAccessSnapshotFor(ctx: AccessContext): Record<string, unknown> | undefined {
-  if (ctx.mode !== "demo") return undefined;
-  const record = getDemoAccessById(ctx.demoAccessId);
-  return record ? (buildDemoAccessSnapshot(record) as unknown as Record<string, unknown>) : undefined;
+function demoAccessSnapshotFor(_ctx: AccessContext): Record<string, unknown> | undefined {
+  return undefined;
 }
 
 const ALLOWED_GENERATE_FIELDS = new Set([

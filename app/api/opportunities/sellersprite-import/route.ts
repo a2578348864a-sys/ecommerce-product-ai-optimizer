@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { requireAuthenticated } from "@/lib/server/demoGuard";
+import { requireAuthenticated } from "@/lib/server/accessContext";
 import { hasSellerSpritePreviewSameOrigin } from "@/lib/server/sellerSpritePreviewOrigin";
 import {
   DEFAULT_SELLERSPRITE_PREVIEW_XLSX_LIMITS,

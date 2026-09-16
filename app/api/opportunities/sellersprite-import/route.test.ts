@@ -7,7 +7,7 @@ import { generateSellerSpritePreviewImportToken } from "@/lib/server/sellerSprit
 const auth = vi.hoisted(() => vi.fn());
 const importCandidates = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/server/demoGuard", () => ({
+vi.mock("@/lib/server/accessContext", () => ({
   requireAuthenticated: auth,
 }));
 vi.mock("@/lib/server/sellerSpriteCandidateImport", () => ({

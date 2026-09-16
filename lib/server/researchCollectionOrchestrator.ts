@@ -21,7 +21,7 @@
 
 import "server-only";
 
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import { isSandboxTaskId, getSandboxTask } from "@/lib/server/demoSandbox";
 import { prisma } from "@/lib/server/db";
 
@@ -42,12 +42,6 @@ import {
   browserUnavailableMessage,
   REVIEW_LOCAL_ENV_REQUIRED_MESSAGE,
 } from "@/lib/server/acquisitionCapability";
-import {
-  DEMO_ACQUISITION_EVIDENCE_ID,
-  buildDemoBrowserCollectPreview,
-  buildDemoReviewCollectPageResults,
-  buildDemoReviewCollectPreviewItems,
-} from "@/lib/server/demoAcquisitionSamples";
 
 // 来源 2：Keyword + Competitor (Browser Use)
 import {
@@ -102,7 +96,6 @@ import {
   IMAGE_ACQUISITION_DRIVER_VERSION,
 } from "@/lib/server/sourcingImageAcquisition";
 import { getTaskProductImageBuffer } from "@/lib/server/taskProductImage";
-import { DEMO_SOURCING_EVIDENCE_SAMPLE } from "@/lib/server/demoAcquisitionSamples";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -453,27 +446,7 @@ async function handleAmazonSource(
       };
     }
 
-    // 8. collect / refresh：尝试采集 Preview（严格不自动确认入库）
-    if (context.mode === "demo") {
-      // Demo 模式回放预置 preview
-      const preview = buildDemoBrowserCollectPreview(asin);
-      storeBrowserEvidencePreview({
-        evidenceId: DEMO_ACQUISITION_EVIDENCE_ID,
-        preview,
-        capturedAt: new Date().toISOString(),
-        expiresAt: Date.now() + 15 * 60 * 1000,
-        subjectKey,
-        taskId,
-        asin,
-      });
-      return {
-        status: "awaiting_confirmation",
-        hasEvidence: false,
-        previewId: DEMO_ACQUISITION_EVIDENCE_ID,
-        itemCount: 1,
-        message: "Amazon 详情采集完成（演示数据），等待人工确认",
-      };
-    }
+
 
     // 本地环境检查能力
     const capability = resolveBrowserAcquisitionCapability();
@@ -631,8 +604,11 @@ async function handleKeywordCompetitorSource(
     }
 
     // 5. collect / refresh：执行采集（Failure Isolation 重点保护）
-    // 必须限本机 Owner 环境使用
-    if (context.mode !== "owner" || getRuntimeMode() !== "local_owner") {
+    // 必须限本机 Owner / local_single_user 环境使用
+    if (
+      (context.mode !== "owner" && (context.mode as string) !== "local_single_user")
+      || (getRuntimeMode() !== "local_single_user" && (getRuntimeMode() as string) !== "local_owner")
+    ) {
       return {
         status: "failed",
         hasEvidence: false,
@@ -890,20 +866,7 @@ async function handleVocSource(
       };
     }
 
-    // 5. collect / refresh：Demo 模式回放预置 Preview（与 review-evidence route 行为一致）
     const capability = resolveBrowserAcquisitionCapability();
-    if (capability.state === "local_env_required" && context.mode === "demo") {
-      const items = buildDemoReviewCollectPreviewItems().map((item) => ({ ...item, duplicate: false }));
-      const pageResults = buildDemoReviewCollectPageResults();
-      storeDemoReviewPreview({ subjectKey, taskId, items, pageResults });
-      return {
-        status: "awaiting_confirmation",
-        hasEvidence: false,
-        previewId: DEMO_ACQUISITION_EVIDENCE_ID,
-        itemCount: items.length,
-        message: "买家评论预览已生成（演示数据），等待人工确认",
-      };
-    }
 
     // 6. capability gate：不可用 → needs_user（typed message，不泄露内部信息）
     if (capability.state !== "available") {
@@ -1017,23 +980,6 @@ async function handleVocSource(
   }
 }
 
-/** Demo 模式回放：把预置评论样本作为 Pending Preview 存储（不写入正式 Evidence） */
-function storeDemoReviewPreview(input: {
-  subjectKey: string;
-  taskId: string;
-  items: ReviewSnippetPreviewItem[];
-  pageResults: ReviewCollectPageResult[];
-}): void {
-  storeReviewCollectPreview({
-    previewId: DEMO_ACQUISITION_EVIDENCE_ID,
-    items: input.items,
-    pageResults: input.pageResults,
-    capturedAt: new Date().toISOString(),
-    expiresAt: Date.now() + 15 * 60 * 1000,
-    subjectKey: input.subjectKey,
-    taskId: input.taskId,
-  });
-}
 
 
 /* ── Source 4: 1688 货源处理 ───────────────────────────────────────────── */
@@ -1110,36 +1056,6 @@ async function runSourcingJobAsync(
   taskImage: { buffer: Buffer; mimeType: string } | null,
 ): Promise<void> {
   try {
-    // Demo 模式：生成演示候选预览
-    if (context.mode === "demo") {
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      const demoCandidates = DEMO_SOURCING_EVIDENCE_SAMPLE.candidates.map((c) => ({ ...c }));
-      const preview = createSourcingPreview({
-        context,
-        taskId,
-        method: "image",
-        query: publicUrl || `/api/tasks/${taskId}/image`,
-        runTrace: {
-          source: "1688",
-          method: "image",
-          query: "demo-image",
-          timestamp: new Date().toISOString(),
-          driverVersion: IMAGE_ACQUISITION_DRIVER_VERSION,
-          resolverVersion: null,
-          success: true,
-          failClosedReason: null,
-        },
-        candidates: demoCandidates,
-      });
-      const job = ACTIVE_SOURCING_JOBS.get(taskId);
-      if (job) {
-        job.status = "done";
-        job.previewId = preview.previewId;
-        job.itemCount = demoCandidates.length;
-        job.message = `1688 图搜完成（演示数据），已生成 ${demoCandidates.length} 条待确认候选`;
-      }
-      return;
-    }
 
     // 真实运行模式：bridge 生命周期与扩展 readiness 统一由 acquireByImage 负责。
     // 编排器不再复制一套短 timeout 检查，避免 bridge 冷启动时提前误判扩展未就绪。
