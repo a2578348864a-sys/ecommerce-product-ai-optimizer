@@ -125,3 +125,160 @@ export function normalizeOpportunityAnalysisResult(raw: unknown): OpportunityCan
 
   return candidates;
 }
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * V1：真实市场信号增强（向后兼容 V0）
+ *
+ * 与 V0 的唯一区别：候选多出一层「有出处的判断」。
+ * 关键门禁：userPainPoints[].signalRefs 只能引用真实存在的信号编号，
+ * 引用不到的编号一律剔除；一条痛点若引用全部无效，仍保留文本但 signalRefs 为空
+ * （前端据此显示"无真实依据"），绝不把 AI 编造的编号当作证据展示。
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+export const MAX_MARKET_OPPORTUNITY_LENGTH = 600;
+export const MAX_EVIDENCE_BASIS_LENGTH = 300;
+export const MAX_EVIDENCE_BASIS_PER_CANDIDATE = 5;
+export const MAX_RISK_LENGTH = 200;
+export const MAX_RISKS_PER_CANDIDATE = 5;
+export const MAX_RECOMMENDATION_REASON_LENGTH = 300;
+export const MAX_SIGNAL_REFS_PER_POINT = 5;
+
+export type OpportunityPainPoint = {
+  text: string;
+  /** 已通过门禁过滤的真实信号编号；空数组 = 该痛点没有真实信号支撑 */
+  signalRefs: string[];
+};
+
+export type OpportunityResearchRecommendation = {
+  recommended: boolean;
+  reason: string;
+};
+
+export type OpportunityCandidateV1 = OpportunityCandidate & {
+  /** 1. 市场机会描述 */
+  marketOpportunity: string;
+  /** 2. 用户痛点（带真实信号出处） */
+  userPainPoints: OpportunityPainPoint[];
+  /** 3. 验证依据 */
+  evidenceBasis: string[];
+  /** 4. 风险点 */
+  risks: string[];
+  /** 5. 是否建议进入 Research */
+  researchRecommendation: OpportunityResearchRecommendation;
+};
+
+function toBoundedTextList(
+  value: unknown,
+  maxLength: number,
+  maxItems: number,
+  fallback: string[],
+): string[] {
+  const raw = Array.isArray(value)
+    ? value.map(asText)
+    : typeof value === "string"
+      ? value.split(/\r?\n|；|;/)
+      : [];
+  const points: string[] = [];
+  for (const item of raw) {
+    const point = sanitizeOpportunityText(item).slice(0, maxLength);
+    if (point && !points.includes(point)) points.push(point);
+    if (points.length >= maxItems) break;
+  }
+  return points.length > 0 ? points : fallback;
+}
+
+/** 防编造门禁：只保留真实存在的信号编号。 */
+function toSignalRefs(value: unknown, validSignalRefs: ReadonlySet<string>): string[] {
+  const raw = Array.isArray(value) ? value : [];
+  const refs: string[] = [];
+  for (const item of raw) {
+    const ref = asText(item).trim().toUpperCase();
+    if (!ref || !validSignalRefs.has(ref) || refs.includes(ref)) continue;
+    refs.push(ref);
+    if (refs.length >= MAX_SIGNAL_REFS_PER_POINT) break;
+  }
+  return refs;
+}
+
+function toPainPoints(value: unknown, validSignalRefs: ReadonlySet<string>): OpportunityPainPoint[] {
+  const raw = Array.isArray(value) ? value : [];
+  const points: OpportunityPainPoint[] = [];
+  for (const item of raw) {
+    let text = "";
+    let signalRefs: string[] = [];
+    if (typeof item === "string") {
+      text = sanitizeOpportunityText(item).slice(0, MAX_POINT_LENGTH);
+    } else if (isRecord(item)) {
+      text = sanitizeOpportunityText(asText(item.text)).slice(0, MAX_POINT_LENGTH);
+      signalRefs = toSignalRefs(item.signalRefs, validSignalRefs);
+    }
+    if (text && !points.some((point) => point.text === text)) points.push({ text, signalRefs });
+    if (points.length >= MAX_POINTS_PER_CANDIDATE) break;
+  }
+  return points;
+}
+
+function toRecommendation(value: unknown): OpportunityResearchRecommendation {
+  const record = isRecord(value) ? value : {};
+  const raw = record.recommended;
+  const recommended = raw === true || raw === "true" || raw === "yes" || raw === "建议";
+  const reason =
+    sanitizeOpportunityText(asText(record.reason)).slice(0, MAX_RECOMMENDATION_REASON_LENGTH)
+    || "是否值得进入研究仍需人工判断。";
+  return { recommended, reason };
+}
+
+/**
+ * 把带真实市场信号的 AI 输出归一化为固定结构。
+ * 兼容性：V1 字段缺失时回落到 V0 字段，因此同一份输出在两种契约下都能解析。
+ */
+export function normalizeOpportunityAnalysisResultV1(
+  raw: unknown,
+  validSignalRefs: ReadonlySet<string>,
+): OpportunityCandidateV1[] {
+  const record = isRecord(raw) ? raw : {};
+  const rawCandidates = Array.isArray(record.candidates) ? record.candidates : [];
+  const seen = new Set<string>();
+  const candidates: OpportunityCandidateV1[] = [];
+
+  for (const item of rawCandidates) {
+    if (!isRecord(item)) continue;
+    const title = sanitizeOpportunityText(asText(item.title)).slice(0, MAX_CANDIDATE_TITLE_LENGTH);
+    if (!title) continue;
+    const identity = title.toLowerCase();
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+
+    const marketOpportunity =
+      sanitizeOpportunityText(asText(item.marketOpportunity)).slice(0, MAX_MARKET_OPPORTUNITY_LENGTH)
+      || sanitizeOpportunityText(asText(item.reason)).slice(0, MAX_MARKET_OPPORTUNITY_LENGTH)
+      || DEFAULT_REASON;
+
+    const normalizedPainPoints = toPainPoints(item.userPainPoints, validSignalRefs);
+    const userPainPoints: OpportunityPainPoint[] = normalizedPainPoints.length > 0
+      ? normalizedPainPoints
+      : toPointList(item.painPoints, DEFAULT_PAIN_POINT).map((text) => ({ text, signalRefs: [] }));
+
+    candidates.push({
+      title,
+      marketOpportunity,
+      userPainPoints,
+      evidenceBasis: toBoundedTextList(
+        item.evidenceBasis,
+        MAX_EVIDENCE_BASIS_LENGTH,
+        MAX_EVIDENCE_BASIS_PER_CANDIDATE,
+        [],
+      ),
+      risks: toBoundedTextList(item.risks, MAX_RISK_LENGTH, MAX_RISKS_PER_CANDIDATE, []),
+      researchRecommendation: toRecommendation(item.researchRecommendation),
+      reason:
+        sanitizeOpportunityText(asText(item.reason)).slice(0, MAX_CANDIDATE_REASON_LENGTH)
+        || marketOpportunity.slice(0, MAX_CANDIDATE_REASON_LENGTH),
+      painPoints: userPainPoints.map((point) => point.text),
+      validationNeeded: toPointList(item.validationNeeded, DEFAULT_VALIDATION_NEEDED),
+    });
+    if (candidates.length >= MAX_CANDIDATES) break;
+  }
+
+  return candidates;
+}

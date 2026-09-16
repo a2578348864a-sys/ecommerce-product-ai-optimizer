@@ -4,13 +4,18 @@ import { requireAuthenticated } from "@/lib/server/accessContext";
 import {
   analyzeOpportunities,
   type OpportunityAnalysisErrorCode,
+  type OpportunityAutoSignalInfo,
 } from "@/lib/server/opportunityAnalysis";
+import type { MarketSignalStats } from "@/lib/marketSignal";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-/** Spike 输入很小：方向 + 市场 + 限制条件。 */
-const REQUEST_BODY_LIMIT_BYTES = 8 * 1024;
+/**
+ * V1 请求体包含真实市场信号原文（上限 12000 字符，中文按 UTF-8 约 36KB），
+ * 因此比 V0 的 8KB 放宽到 64KB。
+ */
+const REQUEST_BODY_LIMIT_BYTES = 64 * 1024;
 
 type ApiError = {
   code: OpportunityAnalysisErrorCode;
@@ -25,6 +30,10 @@ type ApiResponse =
       category: string;
       marketplace: string;
       generatedAt: string;
+      /** V1：真实市场信号是否提供 + 服务端 deterministic 统计（不含 AI 生成的数字） */
+      marketSignal: { provided: boolean; stats: MarketSignalStats };
+      /** V2：自动信号的来源与检索范围（服务端 deterministic，供前端如实展示） */
+      autoSignal: OpportunityAutoSignalInfo;
       candidates: unknown[];
     }
   | { ok: false; error: ApiError };
@@ -45,17 +54,21 @@ function errorStatus(code: OpportunityAnalysisErrorCode): number {
 
 /**
  * POST /api/opportunity-analysis
- * 输入：{ category, marketplace?, constraints? }
- * 输出：{ ok: true, category, marketplace, generatedAt, candidates: [{ title, reason, painPoints, validationNeeded }] }
+ * 输入：{ category, marketplace?, constraints?, marketSignalText?, autoSignal?, candidateId? }
+ * 输出：{ ok: true, category, marketplace, generatedAt, marketSignal, autoSignal, candidates }
  *
- * V0：不接任何外部数据源，只调用现有 AI Provider 生成"值得研究的候选方向"。
+ * V1：marketSignalText 为用户提供的真实市场信号（评论 / 竞品反馈 / 关键词），
+ * 服务端解析为带编号的信号集合并注入提示词；为空时退化为 V0 行为。
+ * V2：autoSignal=true 时，服务端从**已有研究任务**的证据（reviewEvidence /
+ * vocAnalysis / keywordEvidence / competitorEvidence）自动读取信号并与手动信号合并。
+ * 不抓取外部数据，不写数据库。
  */
 export async function POST(request: NextRequest) {
   const contentLength = Number(request.headers.get("content-length") || 0);
   if (contentLength > REQUEST_BODY_LIMIT_BYTES) {
     return json({
       ok: false,
-      error: { code: "invalid_category", message: "请求体过大，请缩短商品方向或限制条件。", recoverable: false },
+      error: { code: "invalid_category", message: "请求体过大，请缩短商品方向、限制条件或市场信号。", recoverable: false },
     }, 400);
   }
 
@@ -72,7 +85,7 @@ export async function POST(request: NextRequest) {
   if (new TextEncoder().encode(rawText).length > REQUEST_BODY_LIMIT_BYTES) {
     return json({
       ok: false,
-      error: { code: "invalid_category", message: "请求体过大，请缩短商品方向或限制条件。", recoverable: false },
+      error: { code: "invalid_category", message: "请求体过大，请缩短商品方向、限制条件或市场信号。", recoverable: false },
     }, 400);
   }
 
@@ -107,6 +120,8 @@ export async function POST(request: NextRequest) {
     category: outcome.input.category,
     marketplace: outcome.input.marketplace,
     generatedAt: new Date().toISOString(),
+    marketSignal: { provided: outcome.marketSignal.provided, stats: outcome.marketSignal.stats },
+    autoSignal: outcome.autoSignal,
     candidates: outcome.candidates,
   });
 }
