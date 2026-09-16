@@ -24,7 +24,7 @@ vi.mock("@/lib/server/accessPassword", () => ({
   checkAccessPassword: () => null,
 }));
 
-vi.mock("@/lib/server/demoGuard", () => ({
+vi.mock("@/lib/server/accessContext", () => ({
   requireAuthenticated: () => authState.mode === "demo"
     ? { ok: true, context: { mode: "demo", demoAccessId: "demo-hr" } }
     : { ok: true, context: { mode: "owner" } },

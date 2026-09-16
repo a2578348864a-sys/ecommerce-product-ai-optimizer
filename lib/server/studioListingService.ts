@@ -2,7 +2,7 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import type { AiListingPackDraft } from "@/lib/aiListingDraft";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import {
   generateRealAiListingDraft,
   type RealAiListingContext,
@@ -22,7 +22,7 @@ import {
   reserveVisitorStandaloneStudioQuota,
   type VisitorStandaloneStudioQuotaReservation,
   type DemoAccessSnapshot,
-} from "@/lib/server/demoGuard";
+} from "@/lib/server/accessContext";
 import {
   loadStudioListingResult,
   saveStudioListingResult,
@@ -81,9 +81,10 @@ function logStudioListingDiagnostic(input: {
 }
 
 function identityFor(context: AccessContext, idempotencyKey: string) {
+  const isOwner = context.mode === "owner" || (context.mode as string) === "local_single_user";
   return {
-    accessMode: context.mode === "owner" ? "owner" as const : "visitor" as const,
-    accessScope: context.mode === "owner" ? "owner" : context.demoAccessId,
+    accessMode: isOwner ? "owner" as const : "visitor" as const,
+    accessScope: isOwner ? "owner" : (("demoAccessId" in context && context.demoAccessId) ? context.demoAccessId : "owner"),
     operation: OPERATION,
     idempotencyKey,
   };

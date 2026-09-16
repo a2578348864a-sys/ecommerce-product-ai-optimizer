@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import { browserEvidenceSubjectKey } from "@/lib/server/browserEvidenceCollect";
 import type { AmazonFactCandidateV1, AmazonFactEnrichmentPreviewV1 } from "./contract";
 

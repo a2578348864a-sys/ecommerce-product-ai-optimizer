@@ -2,10 +2,9 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import { prisma } from "@/lib/server/db";
 import type { SandboxTask } from "@/lib/server/demoSandbox";
-import { mutateSandboxTaskResultJsonInternal } from "@/lib/server/demoSandboxTaskMutation.internal";
 import {
   getProductResearchRecord,
   getProductResearchVerification,
@@ -338,53 +337,15 @@ async function mutateOwnerTaskResultJson<T>(
   return { ...next, snapshot };
 }
 
-async function mutateVisitorTaskResultJson<T>(input: TaskResultJsonMutationInput<T>) {
-  if (input.context.mode !== "demo") {
-    throw new TaskResultJsonMutationError("not_found", 404, "任务不存在。");
-  }
-  const result = await mutateSandboxTaskResultJsonInternal(
-    input.context.demoAccessId,
-    input.taskId,
-    async (task: SandboxTask) => {
-      const snapshot: TaskResultJsonSnapshot = {
-        id: task.id,
-        type: task.type,
-        updatedAt: task.updatedAt,
-        resultJson: task.resultJson,
-        decisionStatus: task.decisionStatus,
-        productLifecycle: task.productLifecycle,
-      };
-      if (!storageVersionMatches(snapshot, input.expectedStorageVersion)) {
-        throw new TaskResultJsonMutationError(
-          "task_result_conflict",
-          409,
-          "任务已在其他页面更新，请刷新后重试。",
-        );
-      }
-      const next = await applyTaskResultJsonMutation({
-        currentResultJson: task.resultJson,
-        writer: input.writer,
-        snapshot,
-        mutate: input.mutate,
-      });
-      return {
-        task: {
-          ...task,
-          resultJson: next.resultJson,
-          ...(next.decisionStatus === undefined ? {} : { decisionStatus: next.decisionStatus }),
-          ...(next.visitorProductLifecycle === undefined
-            ? {}
-            : { productLifecycle: next.visitorProductLifecycle }),
-          updatedAt: next.updatedAt,
-        },
-        value: { ...next, snapshot },
-      };
-    },
-  );
-  if (result.status === "not_found") {
-    throw new TaskResultJsonMutationError("not_found", 404, "任务不存在。");
-  }
-  return result.value;
+async function mutateVisitorTaskResultJson<T>(_input: TaskResultJsonMutationInput<T>): Promise<{
+  resultJson: string;
+  value: T;
+  decisionStatus?: string;
+  visitorProductLifecycle?: string;
+  updatedAt: string;
+  snapshot: TaskResultJsonSnapshot;
+}> {
+  throw new TaskResultJsonMutationError("demo_mode_deprecated", 403, "访客沙箱模式已下线。");
 }
 
 export function createTaskResultJsonMutator(input: {

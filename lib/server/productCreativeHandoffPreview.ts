@@ -29,7 +29,7 @@ function isVisualReferenceApproved(
   return approved.some((ref) => ref.assetFingerprint === hash256(`visual-reference:${contentHash}`));
 }
 
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import { prisma } from "@/lib/server/db";
 import { getSandboxTask, isSandboxTaskId } from "@/lib/server/demoSandbox";
 import {

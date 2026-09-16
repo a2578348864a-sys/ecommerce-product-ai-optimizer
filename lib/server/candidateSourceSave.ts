@@ -25,7 +25,7 @@ export type CandidateSourceSaveErrorCode =
   | "candidate_source_conflict";
 
 export type CandidateSaveAccessContext =
-  | { mode: "owner" }
+  | { mode: "owner" | "local_single_user" }
   | { mode: "demo"; demoAccessId: string };
 
 export type CandidateSaveItem = {

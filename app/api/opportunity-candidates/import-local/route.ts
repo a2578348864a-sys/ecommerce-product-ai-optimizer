@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuthenticated } from "@/lib/server/demoGuard";
+import { requireAuthenticated } from "@/lib/server/accessContext";
 import { saveLegacySandboxCandidates } from "@/lib/server/demoSandbox";
 import { saveLegacyCandidates } from "@/lib/server/opportunityCandidateService";
 import {

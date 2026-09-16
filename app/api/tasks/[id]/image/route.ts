@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { checkAccessPassword } from "@/lib/server/accessPassword";
+import { checkAccessPassword } from "@/lib/server/accessContext";
 import { getTaskProductImageBuffer } from "@/lib/server/taskProductImage";
 
 export const runtime = "nodejs";

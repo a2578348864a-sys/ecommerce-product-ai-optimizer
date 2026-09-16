@@ -6,7 +6,7 @@
  * 永不升级为 human_confirmed_product_fact；实体绑定（ASIN + sourceProductRole）无法证明 → 不保存。
  */
 import { createHash, randomUUID } from "node:crypto";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import {
   TaskResultJsonMutationError,
   mutateTaskResultJson,

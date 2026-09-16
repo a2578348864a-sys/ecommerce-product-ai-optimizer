@@ -14,7 +14,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
-import { DemoAccessBanner } from "@/components/DemoAccessBanner";
 import { buildAccessHeaders, setNoAuthOwnerMode } from "@/lib/client/accessToken";
 import { classifyResearchLifecycle } from "@/lib/researchLifecycle";
 import type { DecisionStatus } from "@/lib/tasks/decisionStatus";
@@ -24,12 +23,10 @@ type SidebarNavItem = { label: string; href: string; icon: LucideIcon };
 
 export type SidebarRuntime = { mode: RuntimeMode | null; v4Graph: boolean };
 /** V4.1 运行模式感知导航分组（纯函数，SSR 与客户端一致） */
-export function buildV4NavGroups(runtime: SidebarRuntime): ReadonlyArray<{
+export function buildV4NavGroups(_runtime?: SidebarRuntime): ReadonlyArray<{
   label: string;
   items: ReadonlyArray<SidebarNavItem>;
 }> {
-  // 本地（local_owner / SSR 初始）：普通卖家工作台——7 项主导航；
-  // V4 研究任务/案例回放不在本地导航（案例回放仅公网 Public Replay 保留；V4 runs 经首页“开始商品研究”进入）。
   const researchItems: SidebarNavItem[] = [
     { label: "发现商品", href: "/opportunities", icon: Search },
     { label: "待研究商品", href: "/opportunity-candidates", icon: Sparkles },
@@ -40,14 +37,6 @@ export function buildV4NavGroups(runtime: SidebarRuntime): ReadonlyArray<{
     { label: "文案工作台", href: "/listing-studio", icon: FileText },
     { label: "图片工作台", href: "/image-studio", icon: Images },
   ];
-  if (runtime.mode === "public_showcase") {
-    // 公网 HR 演示收口：侧栏只显示「首页」与「完整商品案例」（不出现密码锁/旧工作台入口）。
-    const showcaseGroup: SidebarNavItem[] = [
-      { label: "首页", href: "/", icon: LayoutDashboard },
-      { label: "完整商品案例", href: "/replay", icon: History },
-    ];
-    return [{ label: "演示门户", items: showcaseGroup }];
-  }
   return [
     { label: "工作台", items: [{ label: "工作台", href: "/", icon: LayoutDashboard }] },
     { label: "商品研究", items: researchItems },
@@ -56,9 +45,7 @@ export function buildV4NavGroups(runtime: SidebarRuntime): ReadonlyArray<{
 }
 
 /** 模式 Badge 文案（unknown → 空，避免 hydration 漂移） */
-export function modeBadgeLabel(runtime: SidebarRuntime): string {
-  if (runtime.mode === "public_showcase") return "演示门户 · 只读案例";
-  // §4.5：普通本地页面不显示 V4 / Local Live 等技术模式文案（保留公网展示）
+export function modeBadgeLabel(_runtime?: SidebarRuntime): string {
   return "";
 }
 
@@ -66,7 +53,7 @@ export function modeBadgeLabel(runtime: SidebarRuntime): string {
 export const workspaceNavGroups: ReadonlyArray<{
   label: string;
   items: ReadonlyArray<SidebarNavItem>;
-}> = buildV4NavGroups({ mode: "local_owner", v4Graph: false });
+}> = buildV4NavGroups({ mode: "local_single_user", v4Graph: false });
 
 export const workspaceNavItems: ReadonlyArray<SidebarNavItem> = workspaceNavGroups.flatMap((group) => group.items);
 
@@ -225,7 +212,7 @@ export function WorkspaceSidebar() {
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => {
         if (cancelled || !json?.ok) return;
-        const mode = json.mode === "public_showcase" || json.mode === "local_owner" ? json.mode : null;
+        const mode = json.mode === "local_owner" ? json.mode : null;
         setRuntime({ mode, v4Graph: json.v4GraphEnabled === true });
         if (mode === "local_owner" && json.noAuthOwner === true) {
           setNoAuthOwnerMode();
@@ -243,7 +230,6 @@ export function WorkspaceSidebar() {
 
   return (
     <>
-      <DemoAccessBanner />
       <aside className="hidden lg:block">
         <div className="sticky top-4 flex flex-col gap-2.5">
           <div className="surface-card flex flex-col p-3.5 shadow-sm">
@@ -255,9 +241,6 @@ export function WorkspaceSidebar() {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-xs font-bold text-emerald-800 tracking-tight">轻选工作台</span>
-                  {runtime.mode === "public_showcase" ? (
-                    <span className="rounded border border-emerald-200 bg-emerald-50 px-1 py-0.2 text-[10px] font-bold text-emerald-700">演示</span>
-                  ) : null}
                 </div>
                 <p className="mt-0.5 text-xs font-semibold text-slate-800 leading-snug">
                   AI 跨境商品研究与上架准备工作台
@@ -309,7 +292,7 @@ export function WorkspaceMobileNav() {
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => {
         if (cancelled || !json?.ok) return;
-        const mode = json.mode === "public_showcase" || json.mode === "local_owner" ? json.mode : null;
+        const mode = json.mode === "local_owner" ? json.mode : null;
         setRuntime({ mode, v4Graph: json.v4GraphEnabled === true });
       })
       .catch(() => undefined);

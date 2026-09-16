@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuthenticated } from "@/lib/server/demoGuard";
+import { requireAuthenticated } from "@/lib/server/accessContext";
 import { createOrGetResearchTask, StartResearchError } from "@/lib/server/startResearchTask";
 
 export const runtime = "nodejs";

@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { requireAuthenticated } from "@/lib/server/demoGuard";
+import { requireAuthenticated } from "@/lib/server/accessContext";
 import { hasSellerSpritePreviewSameOrigin } from "@/lib/server/sellerSpritePreviewOrigin";
 import { reserveSellerSpritePreviewRequest } from "@/lib/server/sellerSpritePreviewRateLimit";
 import {

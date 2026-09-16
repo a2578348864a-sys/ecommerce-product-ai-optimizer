@@ -3,7 +3,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 
 import { prisma } from "@/lib/server/db";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import {
   getSandboxCandidate,
   getSandboxTask,

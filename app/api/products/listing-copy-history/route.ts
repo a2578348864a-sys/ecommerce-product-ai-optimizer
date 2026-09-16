@@ -4,8 +4,8 @@ import {
   listListingCopyHistories,
   type ListingCopyHistoryRecord,
 } from "@/lib/server/listingCopyHistoryStore";
-import { getAccessPassword } from "@/lib/server/accessPassword";
-import { requireOwnerOnly } from "@/lib/server/demoGuard";
+import { getAccessPassword } from "@/lib/server/accessContext";
+import { requireOwnerOnly } from "@/lib/server/accessContext";
 import type { ListingCopyResult } from "@/lib/types";
 
 export const runtime = "nodejs";

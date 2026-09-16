@@ -7,7 +7,7 @@
  */
 import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
+import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/accessContext";
 import { isSandboxTaskId } from "@/lib/server/demoSandbox";
 import {
   addCompetitorAsin,
@@ -37,7 +37,7 @@ import { readBrowserEvidenceTaskAsin } from "@/lib/server/browserEvidence";
 import { runSellerSpriteCollection } from "@/tools/collectors/browser-use/sellerSpriteCollector";
 import { runAmazonCompetitorCollection, amazonCompetitorObservationToPreview } from "@/tools/collectors/browser-use/amazonCompetitorCollector";
 import { getRuntimeMode } from "@/lib/server/runtimeMode";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 
 export const runtime = "nodejs";
 

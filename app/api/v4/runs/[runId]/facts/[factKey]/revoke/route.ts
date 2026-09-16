@@ -28,7 +28,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ru
   try { body = (await request.json()) as Record<string, unknown>; } catch { /* 空 body 允许 */ }
   const [offerIdentity, variantKey, field] = factKey.split("|").map((s) => s.slice(0, 128));
   if (!offerIdentity || !variantKey || !field) return jsonError("invalid_fact_key", "事实键格式无效。", 400);
-  const actor = gate.ctx.mode === "demo" ? gate.ctx.demoAccessId : "owner";
+  const actor = "owner";
   const record = await revokeFact(createPrismaFactStore(), {
     runId, offerIdentity, variantKey, field, actor,
     reason: typeof body.reason === "string" ? body.reason.slice(0, 500) : "",

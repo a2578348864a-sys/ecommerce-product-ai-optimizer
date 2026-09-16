@@ -394,6 +394,7 @@ function installRecordHandler(record: ReturnType<typeof recordFixture>) {
 
 
 import { VocEvidenceSection } from "@/components/evidence/VocEvidenceSection";
+import { sessionSubjectKey } from "@/lib/client/useSessionDraft";
 
 const V1 = { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-14T02:00:00.000Z" };
 const V2 = { resultJsonHash: "b".repeat(64), updatedAt: "2026-08-14T02:01:00.000Z" };
@@ -457,11 +458,12 @@ async function rerenderVoc(storageVersionValue: { resultJsonHash: string; update
 /** 加载前预置会话草稿（等价于用户刷新后草稿恢复：importText 等已被 sessionStorage 保存过） */
 function seedVocDraft(version: { resultJsonHash: string; updatedAt: string }, importText: string): void {
   const revision = version.resultJsonHash + ":" + version.updatedAt;
-  const key = "qingxuan-workbench:draft:v1:anonymous:voc-import:task-x:" + revision;
+  const subject = sessionSubjectKey();
+  const key = "qingxuan-workbench:draft:v1:" + subject + ":voc-import:task-x:" + revision;
   const store = (globalThis as Record<string, unknown>).window as unknown as { sessionStorage: { setItem: (k: string, v: string) => void } };
   store.sessionStorage.setItem(key, JSON.stringify({
     schema: "qingxuan-workbench:draft:v1",
-    subject: "anonymous",
+    subject,
     pageKind: "voc-import",
     entityId: "task-x",
     data: { importText, importAsin: "B08NCVT244", importRole: "current_candidate", importRating: "" },

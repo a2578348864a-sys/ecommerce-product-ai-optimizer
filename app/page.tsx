@@ -10,8 +10,7 @@
  */
 import { getRuntimeMode, isLocalOwnerNoAuthTrust } from "@/lib/server/runtimeMode";
 import { isV4GraphEnabled } from "@/lib/v4/featureFlag";
-import { loadFeaturedReplay } from "@/components/v4/replay-featured";
-import { HomeGate } from "@/components/v4/home/HomeGate";
+import { HomeDashboardClient } from "@/components/HomeDashboardClient";
 import type { HomeRuntime } from "@/components/v4/home/heroLogic";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +21,7 @@ export default async function Home() {
     noAuthOwner: isLocalOwnerNoAuthTrust(),
     v4Graph: isV4GraphEnabled(),
   };
-  const featured = await loadFeaturedReplay();
 
-  return <HomeGate runtime={runtime} featured={featured} />;
+  return <HomeDashboardClient runtime={runtime} />;
 }
+

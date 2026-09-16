@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuthenticated } from "@/lib/server/demoGuard";
+import { requireAuthenticated } from "@/lib/server/accessContext";
 import { getSandboxTask, isSandboxTaskId } from "@/lib/server/demoSandbox";
 import { prisma } from "@/lib/server/db";
 import {

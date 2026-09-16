@@ -1,8 +1,8 @@
 import "server-only";
 
 import type { NextRequest } from "next/server";
-import type { AccessContext } from "@/lib/server/accessPassword";
-import { requireAuthenticated } from "@/lib/server/demoGuard";
+import type { AccessContext } from "@/lib/server/accessContext";
+import { requireAuthenticated } from "@/lib/server/accessContext";
 import { getSandboxTask, isSandboxTaskId } from "@/lib/server/demoSandbox";
 import type { AiImageAccessMode, AiImageTaskContext } from "@/lib/aiImageDraft";
 import { prisma } from "@/lib/server/db";

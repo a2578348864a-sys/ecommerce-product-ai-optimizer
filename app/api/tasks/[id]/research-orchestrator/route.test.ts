@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   orchestrateResearchCollection: vi.fn(),
 }));
 
-vi.mock("@/lib/server/demoGuard", () => ({
+vi.mock("@/lib/server/accessContext", () => ({
   requireOwnerOnly: mocks.requireOwnerOnly,
   requireAuthenticated: mocks.requireAuthenticated,
 }));

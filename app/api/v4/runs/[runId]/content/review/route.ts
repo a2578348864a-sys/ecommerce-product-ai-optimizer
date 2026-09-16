@@ -26,7 +26,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ru
   if (!["approve_export", "request_revision", "reject_asset"].includes(choice)) {
     return jsonError("invalid_choice", "无效审核选项。", 400);
   }
-  const actor = gate.ctx.mode === "demo" ? gate.ctx.demoAccessId : "owner";
+  const actor = "owner";
   const note = typeof body.note === "string" ? body.note.slice(0, 2000) : "";
   const current = await store.getRun(runId);
   if (!current) return jsonError("run_not_found", "运行不存在。", 404);

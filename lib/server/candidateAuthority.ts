@@ -1,4 +1,4 @@
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import { prisma } from "@/lib/server/db";
 import { getSandboxCandidate, isSandboxCandidateId } from "@/lib/server/demoSandbox";
 import { isLocalDraftCandidateId } from "@/lib/opportunityCandidatePool";

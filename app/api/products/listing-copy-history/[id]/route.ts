@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deleteListingCopyHistory } from "@/lib/server/listingCopyHistoryStore";
-import { getAccessPassword } from "@/lib/server/accessPassword";
-import { requireOwnerOnly } from "@/lib/server/demoGuard";
+import { getAccessPassword } from "@/lib/server/accessContext";
+import { requireOwnerOnly } from "@/lib/server/accessContext";
 
 export const runtime = "nodejs";
 

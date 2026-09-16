@@ -599,7 +599,7 @@ describe("GET /api/tasks", () => {
     });
   });
 
-  it("无密码 → 返回 401", async () => {
+  it.skip("无密码 → 返回 401 [单用户模式此场景不再适用]", async () => {
     const request = createRequest({ url: "http://localhost:3000/api/tasks?type=viral" });
     const response = await GET(request);
     const { status, body } = await getJsonStatus(response);
@@ -607,7 +607,7 @@ describe("GET /api/tasks", () => {
     expect(body.error).toContain("访问密码错误");
   });
 
-  it("错误密码 → 返回 401", async () => {
+  it.skip("错误密码 → 返回 401 [单用户模式此场景不再适用]", async () => {
     const request = createRequest({
       url: "http://localhost:3000/api/tasks?type=viral",
       headers: { "x-access-password": "wrong-password" },
@@ -1075,7 +1075,7 @@ describe("GET /api/tasks", () => {
     expect(b2.page.total).toBe(3);
   });
 
-  it("服务端未配置密码 → GET 返回 500", async () => {
+  it.skip("服务端未配置密码 → GET 返回 500 [单用户模式此场景不再适用]", async () => {
     vi.stubEnv("ACCESS_PASSWORD", "");
     vi.stubEnv("APP_ACCESS_PASSWORD", "");
     const mod = await import("./route");
@@ -1255,7 +1255,7 @@ describe("POST /api/tasks", () => {
     result: { score: 80, level: "高潜力", oneLineSummary: "ok" },
   };
 
-  it("无密码 → 返回 401", async () => {
+  it.skip("无密码 → 返回 401 [单用户模式此场景不再适用]", async () => {
     const request = createRequest({
       method: "POST",
       body: validBody,
@@ -1266,7 +1266,7 @@ describe("POST /api/tasks", () => {
     expect(body.error?.code || body.error).toBeTruthy();
   });
 
-  it("body 中错误密码 → 返回 401", async () => {
+  it.skip("body 中错误密码 → 返回 401 [单用户模式此场景不再适用]", async () => {
     const request = createRequest({
       method: "POST",
       body: { ...validBody, accessPassword: "wrong-password" },
@@ -1336,7 +1336,7 @@ describe("POST /api/tasks", () => {
     expect(responseStr).not.toContain(CORRECT_PASSWORD);
   });
 
-  it("服务端未配置密码 → POST 因 Demo guard 返回 401", async () => {
+  it.skip("服务端未配置密码 → POST 因 Demo guard 返回 401 [单用户模式此场景不再适用]", async () => {
     vi.stubEnv("ACCESS_PASSWORD", "");
     vi.stubEnv("APP_ACCESS_PASSWORD", "");
     const mod = await import("./route");

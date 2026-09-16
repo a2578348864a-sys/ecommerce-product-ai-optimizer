@@ -2,14 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import {
   requireAuthenticated,
-} from "@/lib/server/demoGuard";
-import {
-  buildProductJourneyIdentity,
-  commitDemoProductJourney,
-  releaseDemoProductJourney,
-  reserveDemoProductJourney,
-  type DemoProductJourneySnapshot,
-} from "@/lib/server/demoProductJourneyQuota";
+} from "@/lib/server/accessContext";
+
 import {
   getAuthoritativeCandidate,
   type AuthoritativeCandidate,
@@ -239,7 +233,6 @@ export async function POST(request: NextRequest) {
     );
   }
   const accessCtx = authResult.context;
-  let demoScreen: DemoProductJourneySnapshot | null = null;
 
   // Reject batch before string normalization
   if (Array.isArray(body.productName) || (body.products && Array.isArray(body.products))) {
@@ -363,65 +356,6 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
-  const jobRequestId = asString(body.jobRequestId).slice(0, 128);
-  if (accessCtx.mode === "demo" && !JOB_REQUEST_ID_PATTERN.test(jobRequestId)) {
-    return NextResponse.json(
-      { ok: false, error: { code: "invalid_ai_job_request", message: "AI 作业请求标识无效，请重新发起。" } },
-      { status: 400 },
-    );
-  }
-  const productJourneyIdentity = buildProductJourneyIdentity({ candidateId, productName });
-  let productJourneyReserved = false;
-  if (accessCtx.mode === "demo" && plannedAiCalls > 0) {
-    const journey = reserveDemoProductJourney(
-      accessCtx.demoAccessId,
-      productJourneyIdentity,
-      jobRequestId,
-      { leaseMs: plannedAiCalls * PRODUCT_ANALYSIS_AI_TIMEOUT_MS + 60_000 },
-    );
-    if (!journey.ok) {
-      const status = journey.code === "visitor_product_quota_exhausted"
-        || journey.code === "visitor_access_inactive"
-        || journey.code === "visitor_access_not_found"
-        ? 403
-        : journey.code === "product_journey_in_progress"
-          ? 409
-          : 500;
-      return NextResponse.json(
-        {
-          ok: false,
-          error: { code: journey.code, message: journey.message },
-          ...(journey.snapshot ? { demoAccess: journey.snapshot } : {}),
-        },
-        { status },
-      );
-    }
-    demoScreen = journey.snapshot;
-    if (journey.duplicate) {
-      if (journey.status === "reserved") {
-        return NextResponse.json({
-          ok: false,
-          error: {
-            code: "product_journey_in_progress",
-            message: "该商品研究链正在建立，请勿重复提交。",
-          },
-          demoAccess: journey.snapshot,
-        }, { status: 409 });
-      }
-      return NextResponse.json({
-        ok: true,
-        idempotentReplay: true,
-        productJourney: {
-          identity: productJourneyIdentity,
-          status: "committed" as const,
-          quotaMetric: "product_journeys_v1" as const,
-        },
-        demoAccess: journey.snapshot,
-      }, { status: 200 });
-    }
-    productJourneyReserved = true;
-  }
-
   const workflowId = makeWorkflowId();
   const runCreatedAt = new Date().toISOString();
   const r22CommercialValidation = r22MarketDecision
@@ -439,25 +373,6 @@ export async function POST(request: NextRequest) {
   };
 
   const settleUnexpectedFailure = (error: unknown) => {
-    if (accessCtx.mode === "demo" && productJourneyReserved) {
-      const released = releaseDemoProductJourney(
-        accessCtx.demoAccessId,
-        productJourneyIdentity,
-        jobRequestId,
-      );
-      if (!released.ok) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: { code: released.code, message: released.message },
-            ...(released.snapshot ? { demoAccess: released.snapshot } : {}),
-          },
-          { status: 500 },
-        );
-      }
-      demoScreen = released.snapshot;
-      productJourneyReserved = false;
-    }
     return NextResponse.json(
       {
         ok: false,
@@ -465,7 +380,6 @@ export async function POST(request: NextRequest) {
           code: "pipeline_error",
           message: error instanceof Error ? error.message : "商品分析流程异常。",
         },
-        ...(demoScreen ? { demoAccess: demoScreen } : {}),
       },
       { status: 500 },
     );
@@ -610,10 +524,6 @@ export async function POST(request: NextRequest) {
     warnings.push(`${fallbackSteps} 个步骤使用了兜底结果。`);
   }
 
-  const productJourneyStatus: "committed" | "released" | null = accessCtx.mode === "demo"
-    ? overallStatus === "failed" ? "released" : "committed"
-    : null;
-
   const result: WorkflowResult = {
     ok: true,
     workflowId,
@@ -643,15 +553,6 @@ export async function POST(request: NextRequest) {
       researchMode: "market_research_only" as const,
       promotionEligible: false as const,
     } : {}),
-    ...(productJourneyStatus ? {
-      productJourney: {
-        identity: productJourneyIdentity,
-        status: productJourneyStatus,
-        quotaMetric: "product_journeys_v1" as const,
-      },
-    } : {}),
-    // Demo-Login.1-E: include latest demo snapshot for Banner update
-    ...(demoScreen ? { demoAccess: demoScreen } : {}),
   };
 
   let runProof: string;
@@ -665,48 +566,17 @@ export async function POST(request: NextRequest) {
       status: overallStatus,
     });
   } catch {
-    if (accessCtx.mode === "demo" && productJourneyReserved) {
-      const released = releaseDemoProductJourney(
-        accessCtx.demoAccessId,
-        productJourneyIdentity,
-        jobRequestId,
-      );
-      if (released.ok) {
-        demoScreen = released.snapshot;
-        productJourneyReserved = false;
-      }
-    }
     return NextResponse.json(
       {
         ok: false,
         error: { code: "run_proof_unavailable", message: "分析结果暂时无法生成可信凭证，请稍后重试。" },
-        ...(demoScreen ? { demoAccess: demoScreen } : {}),
       },
       { status: 500 },
     );
   }
 
-  if (accessCtx.mode === "demo" && productJourneyReserved) {
-    const settled = overallStatus === "failed"
-      ? releaseDemoProductJourney(accessCtx.demoAccessId, productJourneyIdentity, jobRequestId)
-      : commitDemoProductJourney(accessCtx.demoAccessId, productJourneyIdentity, jobRequestId);
-    if (!settled.ok) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: { code: settled.code, message: settled.message },
-          ...(settled.snapshot ? { demoAccess: settled.snapshot } : {}),
-        },
-        { status: 500 },
-      );
-    }
-    demoScreen = settled.snapshot;
-    productJourneyReserved = false;
-  }
-
   return NextResponse.json({
     ...result,
-    ...(demoScreen ? { demoAccess: demoScreen } : {}),
     runProof,
   }, { status: 200 });
 }

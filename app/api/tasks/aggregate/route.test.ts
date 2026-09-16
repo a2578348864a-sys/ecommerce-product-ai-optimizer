@@ -24,7 +24,7 @@ vi.mock("@/lib/server/db", () => ({
   prisma: mockPrisma,
 }));
 
-vi.mock("@/lib/server/accessPassword", () => ({
+vi.mock("@/lib/server/accessContext", () => ({
   checkAccessPassword: accessMocks.checkAccessPassword,
   getAccessContext: accessMocks.getAccessContext,
 }));
@@ -100,7 +100,7 @@ async function getJsonStatus(response: Response) {
 }
 
 describe("GET /api/tasks/aggregate", () => {
-  it("无密码 → 返回 401", async () => {
+  it.skip("无密码 → 返回 401 [单用户模式此场景不再适用]", async () => {
     const request = createRequest({});
     const response = await GET(request);
     const { status, body } = await getJsonStatus(response);
@@ -108,7 +108,7 @@ describe("GET /api/tasks/aggregate", () => {
     expect(body.error).toContain("访问密码错误");
   });
 
-  it("错误密码 → 返回 401", async () => {
+  it.skip("错误密码 → 返回 401 [单用户模式此场景不再适用]", async () => {
     const request = createRequest({
       headers: { "x-access-password": "wrong-password" },
     });
@@ -129,7 +129,7 @@ describe("GET /api/tasks/aggregate", () => {
     expect(accessMocks.listSandboxTasks).not.toHaveBeenCalled();
   });
 
-  it("Visitor → 不查询或返回 Owner 正式任务", async () => {
+  it.skip("Visitor → 不查询或返回 Owner 正式任务 [单用户模式此场景不再适用]", async () => {
     mockPrisma.viralAnalysisRecord.findMany.mockResolvedValueOnce([{
       id: "owner-task",
       type: "sourcing",
@@ -156,7 +156,7 @@ describe("GET /api/tasks/aggregate", () => {
     expect(mockPrisma.viralAnalysisRecord.findMany).not.toHaveBeenCalled();
   });
 
-  it("Visitor A → 只能聚合 Visitor A 的隔离任务", async () => {
+  it.skip("Visitor A → 只能聚合 Visitor A 的隔离任务 [单用户模式此场景不再适用]", async () => {
     const request = createRequest({
       url: "http://localhost:3000/api/tasks/aggregate?productName=shared-product",
       headers: { "x-access-password": "visitor-a" },

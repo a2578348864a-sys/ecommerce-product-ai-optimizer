@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { generateSignedToken } from "@/lib/server/signedToken";
+import { generateSignedToken } from "@/lib/server/accessContext";
 import {
   createWorkflowInputHash,
   createWorkflowResultHash,

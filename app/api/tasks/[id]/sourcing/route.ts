@@ -16,9 +16,9 @@
  */
 import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
+import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/accessContext";
 import { isSandboxTaskId } from "@/lib/server/demoSandbox";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import {
   SourcingEvidenceError,
   createSourcingPreview,
@@ -61,13 +61,6 @@ import {
   SOURCING_LOCAL_ENV_REQUIRED_MESSAGE,
   type AcquisitionCapability,
 } from "@/lib/server/acquisitionCapability";
-import {
-  DEMO_ACQUISITION_EVIDENCE_ID,
-  DEMO_SAMPLE_SOURCING_ID,
-  DEMO_SOURCING_EVIDENCE_SAMPLE,
-  DEMO_SAMPLE_VERSION,
-} from "@/lib/server/demoAcquisitionSamples";
-
 export const runtime = "nodejs";
 
 const MAX_DETAIL_ENRICH = 3;
@@ -371,54 +364,7 @@ export async function POST(
   const resolved = await resolveContext(request, id, bodyRecord);
   if (!resolved.ok) return resolved.response;
 
-  // ── Acquisition Capability Gate（§30/§44）：本地实时采集动作在非本地 runtime 一律 409 typed ──
-  // Demo 模式（公网 Visitor 采集体验回放）：本地采集能力不可用（非本地 runtime）时，
-  // 用预置真实 1688 供应线索样本回放 search/url/image/detail → save 全链；
-  // 结果带 demo 标记，前端必须展示“演示数据”，不伪装实时采集。
-  const demoReplayActions = ["search", "url", "image", "detail"];
-  if (resolved.context.mode === "demo" && !isLocalAcquisitionEnabled() && demoReplayActions.includes(action)) {
-    try {
-      const query = action === "search"
-        ? asString(bodyRecord.keyword)
-        : action === "url" ? asString(bodyRecord.url) : asString(bodyRecord.offerId);
-      const runTrace: AcquisitionRunTrace = {
-        source: "1688",
-        method: action as AcquisitionMethod,
-        query,
-        timestamp: new Date().toISOString(),
-        driverVersion: "demo-replay.v1",
-        resolverVersion: null,
-        success: true,
-        failClosedReason: null,
-      };
-      const preview = createSourcingPreview({
-        context: resolved.context,
-        taskId: id,
-        method: action as "keyword" | "url" | "image",
-        query,
-        runTrace,
-        candidates: DEMO_SOURCING_EVIDENCE_SAMPLE.candidates,
-      });
-      return jsonResponse({
-        ok: true,
-        data: {
-          preview: {
-            previewId: preview.previewId,
-            method: preview.method,
-            query: preview.query,
-            candidates: preview.candidates,
-            expiresAt: preview.expiresAt,
-          },
-          trace: preview.runTrace,
-          demo: true,
-          demoSampleId: DEMO_SAMPLE_SOURCING_ID,
-          demoSampleVersion: DEMO_SAMPLE_VERSION,
-        },
-      });
-    } catch (error) {
-      return errorResponseFrom(error);
-    }
-  }
+
   const sourcingGate = sourcingActionCapabilityGate(action);
   if (sourcingGate) {
     return errorResponse(409, sourcingGate.code, sourcingGate.message);
@@ -481,8 +427,6 @@ export async function POST(
             expiresAt: preview.expiresAt,
           },
           trace: preview.runTrace,
-          demoSampleId: DEMO_SAMPLE_SOURCING_ID,
-          demoSampleVersion: DEMO_SAMPLE_VERSION,
         },
       });
     } catch (error) {
@@ -528,8 +472,6 @@ export async function POST(
             expiresAt: preview.expiresAt,
           },
           trace: preview.runTrace,
-          demoSampleId: DEMO_SAMPLE_SOURCING_ID,
-          demoSampleVersion: DEMO_SAMPLE_VERSION,
         },
       });
     } catch (error) {
@@ -594,8 +536,6 @@ export async function POST(
             expiresAt: preview.expiresAt,
           },
           trace: preview.runTrace,
-          demoSampleId: DEMO_SAMPLE_SOURCING_ID,
-          demoSampleVersion: DEMO_SAMPLE_VERSION,
         },
       });
     } catch (error) {
@@ -665,11 +605,7 @@ export async function POST(
       // 详情补全 + Entity Binding 交叉验证（服务端重新验证，不信任客户端字段）。
       // Demo 回放（公网演示环境）：预览来自预置样本（driverVersion=demo-replay.v1），
       // 跳过真实详情拉取；候选字段为历史真实采集样本，保存链与正式一致。
-      const isDemoReplay = resolved.context.mode === "demo"
-        && preview.runTrace.driverVersion === "demo-replay.v1";
-      const enriched = isDemoReplay
-        ? confirmedCandidates
-        : await enrichCandidates(confirmedCandidates, selectedOfferIds);
+      const enriched = await enrichCandidates(confirmedCandidates, selectedOfferIds);
       const evidence = await saveSourcingEvidence({
         context: resolved.context,
         taskId: id,

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
-import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
+import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/accessContext";
 import { isSandboxTaskId, getSandboxTask } from "@/lib/server/demoSandbox";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import { filterReferenceMaterials } from "@/lib/referenceListingDraft/referenceMaterialFilter";
 import { generateReferenceListingDraft } from "@/lib/referenceListingDraft/referenceDraftGenerator";
 

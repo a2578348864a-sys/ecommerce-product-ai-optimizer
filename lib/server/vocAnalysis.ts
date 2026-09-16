@@ -6,7 +6,7 @@
  * evidenceRefs 硬门禁：无效 ref → 整个主题拒绝（进 unverified），不输出无证据主题。
  */
 import { createHash, randomUUID } from "node:crypto";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import {
   TaskResultJsonMutationError,
   mutateTaskResultJson,

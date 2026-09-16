@@ -38,8 +38,7 @@ export type FeaturedReplay = {
 
 /** 模式 Badge 文案（与 WorkspaceSidebar.modeBadgeLabel 同规则；unknown → 空，避免 hydration 漂移）。 */
 export function v4ModeBadgeLabel(runtime: HomeRuntime): string {
-  if (runtime.mode === "public_showcase") return "Public Replay · 只读脱敏案例";
-  if (runtime.mode === "local_owner") {
+  if (runtime.mode === "local_single_user" || (runtime.mode as string) === "local_owner") {
     return runtime.v4Graph ? "Local Live · 可执行研究流程" : "本地模式 · V4 未启用";
   }
   return "";
@@ -52,48 +51,29 @@ export type HeroCta = {
 };
 
 /**
- * CTA 矩阵（契约 §3 运行模式 CTA 矩阵）。
- *   Public        → 主 CTA「查看真实脱敏案例」/replay；次 CTA「了解研究流程」#workflow
+ * CTA 矩阵：
  *   Local Live    → 主 CTA「开始商品研究」/v4/runs；次 CTA「查看研究任务」/v4/runs
- *   Local（off）  → 不显示 Live CTA；仅「案例回放」/replay
+ *   Local（off）  → 主 CTA「发现商品」/opportunities；次 CTA「查看研究记录」/tasks
  */
 export function deriveHeroCtas(runtime: HomeRuntime): {
   primary: HeroCta;
   secondary: HeroCta | null;
 } {
-  if (runtime.mode === "public_showcase") {
+  if (runtime.v4Graph) {
     return {
-      primary: { label: "查看真实脱敏案例", href: "/replay", primary: true },
-      secondary: { label: "了解研究流程", href: "#workflow", primary: false },
+      primary: { label: "开始商品研究", href: "/v4/runs", primary: true },
+      secondary: { label: "查看研究任务", href: "/v4/runs", primary: false },
     };
   }
 
-  if (runtime.mode === "local_owner") {
-    if (runtime.v4Graph) {
-      return {
-        primary: { label: "开始商品研究", href: "/v4/runs", primary: true },
-        secondary: { label: "查看研究任务", href: "/v4/runs", primary: false },
-      };
-    }
-    // Local flag OFF：不得渲染 Live CTA / 不泄露 Live 入口。
-    return {
-      primary: { label: "案例回放", href: "/replay", primary: true },
-      secondary: null,
-    };
-  }
-
-  // 保守缺省（未知模式）：只暴露公开只读回放入口，绝不泄露 Live CTA。
   return {
-    primary: { label: "案例回放", href: "/replay", primary: true },
-    secondary: null,
+    primary: { label: "发现商品", href: "/opportunities", primary: true },
+    secondary: { label: "查看研究记录", href: "/tasks", primary: false },
   };
 }
 
-/** 公网 HR 演示收口：public_showcase 模式下一律展示演示首页（匿名与访客一致，不得切回旧工作台）。 */
-export type HomeExperience = "showcase" | "dashboard" | "login";
+export type HomeExperience = "dashboard" | "login";
 export function deriveHomeExperience(runtime: HomeRuntime, authenticated: boolean): HomeExperience {
-  if (runtime.mode === "public_showcase") return "showcase";
-  if (runtime.mode === "local_owner" && runtime.noAuthOwner) return "dashboard";
-  if (!authenticated) return "login";
-  return "dashboard";
+  if (runtime.noAuthOwner || authenticated) return "dashboard";
+  return "login";
 }

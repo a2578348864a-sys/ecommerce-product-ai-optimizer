@@ -3,7 +3,7 @@ import { callAiJson } from "@/lib/server/aiClient";
 import { buildSummaryPrompt, type SummaryPromptInput } from "@/lib/cross-border/prompts";
 import { applyHardGuard, type RiskGuardInput } from "@/lib/server/summaryRiskGuard";
 import { sanitizeStringArray, sanitizeUnsupportedCertificationClaims } from "@/lib/server/alphaSafety";
-import { requireAuthenticated, ensureDemoAiQuota, consumeDemoAiCalls, type DemoAccessSnapshot } from "@/lib/server/demoGuard";
+import { requireAuthenticated, ensureDemoAiQuota, consumeDemoAiCalls, type DemoAccessSnapshot } from "@/lib/server/accessContext";
 
 export const runtime = "nodejs";
 export const maxDuration = 45;

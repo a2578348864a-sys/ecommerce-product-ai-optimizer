@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
-import { isSandboxTaskId } from "@/lib/server/demoSandbox";
-import { getDemoAccessById } from "@/lib/server/demoAccess";
 import {
   requireAuthenticated,
   requireOwnerOnly,
@@ -10,8 +8,8 @@ import {
   markVisitorStandaloneStudioProviderStarted,
   buildDemoAccessSnapshot,
   type DemoProviderActionToken,
-} from "@/lib/server/demoGuard";
-import type { AccessContext } from "@/lib/server/accessPassword";
+} from "@/lib/server/accessContext";
+import type { AccessContext } from "@/lib/server/accessContext";
 import { generateImageDraftFromHandoff, ImageHandoffError, imageDraftSafeSummaries, withDefaultImageProviderInterceptor } from "@/lib/imageHandoff/imageGenerationService";
 import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPreview";
 import { computeImageStatus, parseImageHandoffBinding, type ImageStatus } from "@/lib/imageHandoff/imageBinding";
@@ -25,11 +23,8 @@ import {
   parseTaskImageCreativeDirection,
 } from "@/lib/imageCreativeDescription";
 
-/** Guest 权威配额快照（响应体随生成/配额拒绝返回，供客户端横幅实时更新；Owner 不返回） */
-function demoAccessSnapshotFor(ctx: AccessContext): Record<string, unknown> | undefined {
-  if (ctx.mode !== "demo") return undefined;
-  const record = getDemoAccessById(ctx.demoAccessId);
-  return record ? (buildDemoAccessSnapshot(record) as unknown as Record<string, unknown>) : undefined;
+function demoAccessSnapshotFor(_ctx: AccessContext): Record<string, unknown> | undefined {
+  return undefined;
 }
 
 const ALLOWED_GENERATE_FIELDS = new Set([
@@ -140,15 +135,8 @@ function parseCurrentSelection(value: unknown, currentHandoffRevision: number | 
 type AuthResult = { ctx: AccessContext | null; error: NextResponse | null };
 
 function getAuth(req: NextRequest, id: string, bodyRecord: Record<string, unknown>): AuthResult {
-  if (isSandboxTaskId(id) || id.startsWith("demo-") || id.startsWith("sandbox-")) {
-    const auth = requireAuthenticated(req, bodyRecord);
-    if (!auth.ok) {
-      return { ctx: null, error: errorResponse(auth.status, auth.code === "not_found" ? "task_not_found" : auth.code, auth.message) };
-    }
-    if (auth.context!.mode !== "demo") {
-      return { ctx: null, error: errorResponse(404, "task_not_found", "任务不存在。") };
-    }
-    return { ctx: auth.context!, error: null };
+  if (id.startsWith("demo-") || id.startsWith("sandbox-")) {
+    return { ctx: null, error: errorResponse(404, "task_not_found", "任务不存在。") };
   }
   const auth = requireOwnerOnly(req, bodyRecord);
   if (!auth.ok) {
@@ -166,7 +154,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const gate = await checkCreativeHandoffGate(id, ctx);
     if (gate.reason === "legacy_not_supported" && gate.imageHandoffBindingRaw === undefined) {
-      if (isSandboxTaskId(id) || id.startsWith("demo-") || id.startsWith("sandbox-")) {
+      if (id.startsWith("demo-") || id.startsWith("sandbox-")) {
         return errorResponse(404, "task_not_found", "任务不存在。");
       }
       return NextResponse.json({

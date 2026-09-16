@@ -6,7 +6,7 @@ import {
   type ProductResearchVerificationV1,
   type ResearchCompletionV1,
 } from "@/lib/productResearchRecord";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import {
   createTaskResultJsonMutator,
   type TaskResultJsonDatabase,

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireAuthenticated } from "@/lib/server/demoGuard";
+import { requireAuthenticated } from "@/lib/server/accessContext";
 import { getAuthoritativeCandidate } from "@/lib/server/candidateAuthority";
 import { isSandboxTaskId, getSandboxTask } from "@/lib/server/demoSandbox";
 import { prisma } from "@/lib/server/db";
@@ -133,7 +133,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
  * 任务归属读取（Owner=DB / Visitor=Sandbox）+ 研究候选绑定提取。
  * 返回 null 表示任务不存在或无权访问（统一 404）。
  */
-async function loadOwnedTask(taskId: string, context: { mode: "owner" | "demo"; demoAccessId?: string }) {  const sandboxLike = isSandboxTaskId(taskId) || taskId.startsWith("demo-") || taskId.startsWith("sandbox-");
+async function loadOwnedTask(taskId: string, context: { mode: "owner" | "local_single_user" | "demo"; demoAccessId?: string } | any) {  const sandboxLike = isSandboxTaskId(taskId) || taskId.startsWith("demo-") || taskId.startsWith("sandbox-");
   if (sandboxLike) {
     if (context.mode !== "demo" || !context.demoAccessId) return null;
     const sandbox = getSandboxTask(context.demoAccessId, taskId);
@@ -143,7 +143,7 @@ async function loadOwnedTask(taskId: string, context: { mode: "owner" | "demo"; 
     return { candidateId: record.candidateId || null, researchRevision: record.revision, resultJson: sandbox.resultJson };
   }
 
-  if (context.mode !== "owner") return null;
+  if (context.mode !== "owner" && (context.mode as string) !== "local_single_user") return null;
   const db = await prisma.viralAnalysisRecord.findUnique({ where: { id: taskId } });
   if (!db) return null;
   const record = getProductResearchRecord(parseRecord(db.resultJson));

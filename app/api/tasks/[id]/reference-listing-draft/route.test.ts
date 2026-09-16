@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { GET, POST } from "./route";
-import * as demoGuard from "@/lib/server/demoGuard";
+import * as demoGuard from "@/lib/server/accessContext";
 import * as demoSandbox from "@/lib/server/demoSandbox";
 import { prisma } from "@/lib/server/db";
 

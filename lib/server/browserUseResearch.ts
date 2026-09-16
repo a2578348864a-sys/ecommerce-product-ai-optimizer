@@ -1,6 +1,6 @@
 import "server-only";
 import { pickBestKeyword } from "@/lib/research/researchInputQuality";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import { AMAZON_RETAIL_HOSTS } from "@/tools/collectors/amazon/page-diagnostics";
 
 /**
@@ -136,7 +136,7 @@ export function resolveBrowserUseSeed(result: unknown): BrowserUseSeed | null {
 
 /** 仅 local owner 可启动：Visitor/Sandbox 一律拒绝（fail-closed）。 */
 export function assertBrowserUseOwnerOnly(context: { mode?: string }): void {
-  if (!context || context.mode !== "owner") {
+  if (!context || (context.mode !== "owner" && context.mode !== "local_single_user")) {
     throw new BrowserUseResearchError(
       "browser_use_local_owner_only", 403,
       "Browser Use 自动采集仅限本机 Owner 使用。",

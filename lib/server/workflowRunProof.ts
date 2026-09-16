@@ -100,8 +100,8 @@ function isValidPayload(value: unknown): value is WorkflowRunProofPayload {
     && value.exp > value.iat;
 }
 
-export function buildWorkflowRunSubject(context: { mode: "owner" } | { mode: "demo"; demoAccessId: string }): string {
-  return context.mode === "owner" ? "owner" : `demo:${context.demoAccessId}`;
+export function buildWorkflowRunSubject(context: { mode: "owner" | "local_single_user" } | { mode: "demo"; demoAccessId: string } | any): string {
+  return (context.mode === "owner" || context.mode === "local_single_user") ? "owner" : `demo:${context.demoAccessId}`;
 }
 
 export function normalizeWorkflowRunInput(input: WorkflowRunInput): WorkflowRunInput {

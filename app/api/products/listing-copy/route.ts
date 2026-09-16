@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildListingCopyPrompt } from "@/lib/cross-border/prompts";
 import { callAiJson, getSafeAiClientErrorMessage } from "@/lib/server/aiClient";
-import { requireAuthenticated, ensureDemoAiQuota, consumeDemoAiCalls, type DemoAccessSnapshot } from "@/lib/server/demoGuard";
+import { requireAuthenticated, ensureDemoAiQuota, consumeDemoAiCalls, type DemoAccessSnapshot } from "@/lib/server/accessContext";
 import type {
   AiAnalysisResult,
   CrossBorderProductInput,

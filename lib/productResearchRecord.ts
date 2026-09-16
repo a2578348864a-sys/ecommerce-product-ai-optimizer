@@ -309,10 +309,11 @@ function assertRecordSize(record: ProductResearchRecordV1): void {
 }
 
 export function buildProductResearchActor(
-  context: { mode: "owner" } | { mode: "demo"; demoAccessId: string },
+  context: { mode: "owner" | "local_single_user" } | { mode: "demo"; demoAccessId?: string } | any,
 ): ProductResearchActor {
-  if (context.mode === "owner") return { mode: "owner", actorRef: "owner:v1" };
-  const digest = createHash("sha256").update(context.demoAccessId, "utf8").digest("hex").slice(0, 16);
+  if (context.mode === "owner" || context.mode === "local_single_user") return { mode: "owner", actorRef: "owner:v1" };
+  const demoId = context.demoAccessId || "demo";
+  const digest = createHash("sha256").update(demoId, "utf8").digest("hex").slice(0, 16);
   return { mode: "visitor", actorRef: `visitor:${digest}` };
 }
 

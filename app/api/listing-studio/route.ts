@@ -3,8 +3,7 @@
  * Reuses the same aiListingGenerator core as the Task-based API.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuthenticated, type DemoAccessSnapshot } from "@/lib/server/demoGuard";
-import { consumeIpBackstop } from "@/lib/server/ipBackstop";
+import { requireAuthenticated, type DemoAccessSnapshot } from "@/lib/server/accessContext";
 import { isRealAiListingEnabled, isRealAiVisitorListingEnabled } from "@/lib/server/realAiListingGate";
 import { generateRealStudioListing } from "@/lib/server/studioListingService";
 import type { AiListingPackDraft } from "@/lib/aiListingDraft";
@@ -115,10 +114,6 @@ export async function POST(request: NextRequest) {
     }, 403);
   }
 
-  // V3.1 Phase 2：IP Abuse Backstop（Provider burst；宽松滥用阈值，非产品额度）
-  if (auth.context.mode === "demo" && consumeIpBackstop(request, "text").limited) {
-    return json({ ok: false, error: { code: "rate_limited", message: "操作过于频繁，请稍后再试。" } }, 429);
-  }
 
   const idempotencyKey = input.idempotencyKey;
   if (!UUID_PATTERN.test(idempotencyKey)) {

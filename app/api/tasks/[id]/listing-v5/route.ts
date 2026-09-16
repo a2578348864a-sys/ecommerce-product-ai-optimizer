@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { isSandboxTaskId, getSandboxTask } from "@/lib/server/demoSandbox";
-import { markDemoAiProviderCallStarted, requireAuthenticated, reserveDemoAiCalls, settleDemoAiCalls } from "@/lib/server/demoGuard";
+import { markDemoAiProviderCallStarted, requireAuthenticated, reserveDemoAiCalls, settleDemoAiCalls } from "@/lib/server/accessContext";
 import { isRealAiListingEnabled, isRealAiVisitorListingEnabled } from "@/lib/server/realAiListingGate";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import { checkCreativeHandoffGate, type CreativeHandoffGateResult } from "@/lib/server/productCreativeHandoffPreview";
 import { buildListingInputFromCreativeHandoff } from "@/lib/listingHandoff/listingGenerationInput";
 import { mutateTaskResultJson, TaskResultJsonMutationError } from "@/lib/server/taskResultJsonMutation";

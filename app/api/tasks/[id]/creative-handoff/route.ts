@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
+import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/accessContext";
 import { isSandboxTaskId } from "@/lib/server/demoSandbox";
 import { TaskResultJsonMutationError } from "@/lib/server/taskResultJsonMutation";
 import {

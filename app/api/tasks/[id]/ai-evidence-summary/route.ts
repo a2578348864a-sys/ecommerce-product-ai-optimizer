@@ -10,7 +10,7 @@
  */
 import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { consumeDemoAiCalls, ensureDemoAiQuota, requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
+import { consumeDemoAiCalls, ensureDemoAiQuota, requireAuthenticated, requireOwnerOnly } from "@/lib/server/accessContext";
 import { isSandboxTaskId } from "@/lib/server/demoSandbox";
 import {
   AiEvidenceSummaryError,
@@ -20,7 +20,7 @@ import {
   projectLegacyCategories,
   readAiSummarySnapshot,
 } from "@/lib/server/aiEvidenceSummary";
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 
 export const runtime = "nodejs";
 

@@ -3,8 +3,7 @@
  * Uses studioImageGenerator which reuses the same provider as Task API.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuthenticated } from "@/lib/server/demoGuard";
-import { consumeIpBackstop } from "@/lib/server/ipBackstop";
+import { requireAuthenticated } from "@/lib/server/accessContext";
 import { validateAiImageGenerateRequest } from "@/lib/aiImageDraft";
 import {
   parseStudioImageInput,
@@ -30,7 +29,7 @@ type ApiResponse =
         images: Array<{ base64: string; width?: number; height?: number }>;
         meta: StudioImageResultMeta;
       };
-      demoAccess?: import("@/lib/server/demoGuard").DemoAccessSnapshot;
+      demoAccess?: import("@/lib/server/accessContext").DemoAccessSnapshot;
     }
   | { ok: false; error: { code: string; message: string } };
 

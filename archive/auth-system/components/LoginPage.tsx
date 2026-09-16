@@ -1,0 +1,158 @@
+"use client";
+
+import { useState } from "react";
+import {
+  ArrowRight,
+  CheckCircle2,
+  Eye,
+  Loader2,
+  Lock,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  User,
+} from "lucide-react";
+
+export interface LoginPageProps {
+  onSubmit: (password: string) => Promise<void>;
+  error: string;
+  loading: boolean;
+}
+
+const OWNER_PLACEHOLDER = "输入管理员密码";
+
+export const LOGIN_PRODUCT_JOURNEY = [
+  { number: "01", label: "导入真实数据", description: "SellerSprite 数据进入候选池", icon: Search },
+  { number: "02", label: "商品研究", description: "收集 Amazon、VOC 与供应证据", icon: Sparkles },
+  { number: "03", label: "AI 整理证据", description: "归纳重点、风险与信息缺口", icon: Sparkles },
+  { number: "04", label: "人工决定", description: "决定继续、补资料或结束研究", icon: CheckCircle2 },
+  { number: "05", label: "内容创作", description: "已确认资料进入 Listing / Image Studio", icon: ShieldCheck },
+] as const;
+
+export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
+  const [ownerPassword, setOwnerPassword] = useState("");
+
+  function handleOwnerSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!ownerPassword.trim() || loading) return;
+    onSubmit(ownerPassword.trim());
+  }
+
+  return (
+    <div className="login-page-root">
+      <div className="login-bg" />
+      <div className="login-grid" />
+
+      <main className="login-main">
+        <section className="login-product-intro" aria-labelledby="login-title">
+          <div className="flex items-center gap-3">
+            <div className="login-brand-icon">
+              <Sparkles className="size-7" aria-hidden="true" />
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">轻选工作台</p>
+              <p className="mt-1 text-xs text-slate-500">跨境商品研究与内容准备</p>
+            </div>
+          </div>
+
+          <h1
+            id="login-title"
+            aria-label="AI 跨境商品研究与上架准备工作台"
+            className="mt-7 max-w-2xl break-words text-[2rem] font-semibold leading-tight tracking-[-0.04em] text-slate-950 sm:text-5xl"
+          >
+            <span className="block lg:inline">AI 跨境商品研究与上架准备工作台</span>
+          </h1>
+          <p className="mt-4 max-w-xl text-base leading-7 text-slate-600">
+            从市场机会、证据、产品事实到 Listing / Image；AI 完成研究，人做关键决策。
+          </p>
+
+          <ol className="login-product-journey" data-testid="login-product-journey" aria-label="商品研究流程">
+            {LOGIN_PRODUCT_JOURNEY.map((step, index) => {
+              const Icon = step.icon;
+              return (
+                <li key={step.number} className="login-journey-step">
+                  <div className="login-journey-marker" aria-hidden="true">
+                    <Icon className="size-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-950">
+                      {step.number} {step.label}
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">{step.description}</p>
+                  </div>
+                  {index < LOGIN_PRODUCT_JOURNEY.length - 1 ? <span className="login-journey-line" aria-hidden="true" /> : null}
+                </li>
+              );
+            })}
+          </ol>
+
+          <div className="mt-6 flex items-start gap-2 rounded-2xl border border-teal-100 bg-white/70 p-3 text-xs leading-5 text-slate-600">
+            <ShieldCheck className="mt-0.5 size-4 shrink-0 text-teal-600" aria-hidden="true" />
+            <p>
+              <span className="block">不会自动采购、上架或投放广告；</span>
+              <span className="block">所有关键动作都需要人工确认。</span>
+            </p>
+          </div>
+        </section>
+
+        <section className="login-access-panel" aria-label="进入方式">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">继续使用</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">输入管理员密码</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">验证后进入商品研究与创作工作台。</p>
+          </div>
+
+          <form onSubmit={handleOwnerSubmit} className="mt-6 flex flex-col gap-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">管理员使用</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">维护候选商品、研究记录与创作内容。</p>
+            </div>
+            <div className="relative">
+              <Lock className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+              <label className="sr-only" htmlFor="owner-password">管理员密码</label>
+              <input
+                id="owner-password"
+                name="ownerPassword"
+                type="password"
+                value={ownerPassword}
+                onChange={(e) => setOwnerPassword(e.target.value)}
+                placeholder={OWNER_PLACEHOLDER}
+                disabled={loading}
+                autoComplete="current-password"
+                className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-sm text-slate-900 placeholder-slate-400 focus:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-100 disabled:opacity-50"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading || !ownerPassword.trim()}
+              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-500 px-4 text-sm font-semibold text-white shadow-sm shadow-teal-200 transition hover:from-teal-600 hover:to-emerald-600 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {loading ? (
+                <><Loader2 className="size-4 animate-spin" />验证中…</>
+              ) : (
+                <>进入轻选工作台<ArrowRight className="size-4" aria-hidden="true" /></>
+              )}
+            </button>
+          </form>
+
+          {error ? (
+            <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700" role="alert" aria-live="polite">
+              {error}
+            </div>
+          ) : null}
+
+          <div className="mt-5 border-t border-slate-100 pt-4">
+            <div className="flex items-start gap-2 text-xs leading-5 text-slate-500">
+              <ShieldCheck className="mt-0.5 size-4 shrink-0 text-teal-500" aria-hidden="true" />
+              <span>密码仅保存在当前会话；关闭网页后需重新输入。</span>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-slate-400">
+              AI 结果仅作辅助判断，关键动作由人工确认。
+            </p>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}

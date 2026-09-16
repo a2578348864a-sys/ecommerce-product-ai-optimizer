@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { AccessContext } from "@/lib/server/accessPassword";
+import type { AccessContext } from "@/lib/server/accessContext";
 import { isCandidateReadyForAgent } from "@/lib/opportunityCandidatePool";
 import { evaluateR22StoredCandidateStage2Gate } from "@/lib/r22CommercialValidation";
 import {
@@ -443,7 +443,7 @@ export async function evaluateCandidateResearchEligibility(
       );
     }
     const item = (await store.getBatchItems(batch.id)).find(
-      (candidateItem) => candidateItem.id === source.productBatchItemId,
+      (candidateItem: any) => candidateItem.id === source.productBatchItemId,
     );
     if (!item || !productBatchCandidateSourceMatches({
       source,

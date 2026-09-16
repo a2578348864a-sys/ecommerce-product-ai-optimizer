@@ -3,7 +3,7 @@ import { prisma } from "@/lib/server/db";
 import {
   requireAuthenticated,
   requireOwnerOnly,
-} from "@/lib/server/demoGuard";
+} from "@/lib/server/accessContext";
 import { getSandboxTask, isSandboxTaskId } from "@/lib/server/demoSandbox";
 import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPreview";
 import type { AiListingPackDraft } from "@/lib/aiListingDraft";
