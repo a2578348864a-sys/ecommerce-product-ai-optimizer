@@ -114,7 +114,7 @@ const SOURCE_META: Record<
     anchorId: "fact-candidate-review",
     tabKey: "market",
     defaultState: "needs_supplement",
-    allowedStates: new Set(["ready", "pending_review", "needs_supplement", "needs_user", "failed", "running"]),
+    allowedStates: new Set(["ready", "pending_review", "pending", "needs_supplement", "needs_user", "failed", "running"]),
   },
   keywords_competitors: {
     title: "关键词与竞品",
@@ -128,14 +128,14 @@ const SOURCE_META: Record<
     anchorId: "formal-v2-buyer-evidence",
     tabKey: "buyers",
     defaultState: "needs_action",
-    allowedStates: new Set(["ready", "pending_review", "needs_action", "needs_user", "failed", "confirmed_no_reviews", "extraction_empty", "no_public_reviews", "running"]),
+    allowedStates: new Set(["ready", "pending_review", "pending", "needs_action", "needs_user", "failed", "confirmed_no_reviews", "extraction_empty", "no_public_reviews", "running"]),
   },
   sourcing_1688: {
     title: "1688 供应链",
     anchorId: "formal-v2-sourcing-evidence",
     tabKey: "sourcing",
     defaultState: "pending_review",
-    allowedStates: new Set(["ready", "pending_review", "needs_login", "needs_user", "ready_to_search", "failed", "running"]),
+    allowedStates: new Set(["ready", "pending_review", "pending", "needs_login", "needs_user", "ready_to_search", "failed", "running"]),
   },
 };
 
@@ -302,6 +302,7 @@ export function normalizeState(
   key: OrchestratorSourceKey,
   rawState?: unknown,
   rawReady?: unknown,
+  rawConclusion?: unknown,
 ): OrchestratorSourceState {
   if (typeof rawState === "string") {
     const s = rawState.trim().toLowerCase();
@@ -342,6 +343,12 @@ export function normalizeState(
       return "extraction_empty";
     }
     if (s === "needs_user") {
+      // 服务端把 needs_user 分成了两种语义：
+      // - conclusion === "pending"：只读探测得到的通用"待采集 xxx"，表示这一步**还没开始**，
+      //   用中性的「待补齐」展示，不给「前往处理」这类无对象的动作；
+      // - 其余（含 conclusion === "conclusive" 与未声明的历史数据）：表示**缺少前置 / 需要用户处理**，
+      //   沿用各来源既有的强调映射。
+      if (rawConclusion === "pending") return "pending";
       if (key === "amazon") return "needs_supplement";
       if (key === "voc") return "needs_action";
       if (key === "sourcing_1688") return "needs_supplement";
@@ -661,7 +668,7 @@ export function ResearchCollectionOrchestratorCard({
         const effectiveState =
           errorCode === "confirmed_no_reviews" ? "confirmed_no_reviews" :
             errorCode === "extraction_empty" || errorCode === "no_public_reviews" ? "extraction_empty" : iv.status ?? iv.state;
-        const state = normalizeState(key, effectiveState, iv.ready);
+        const state = normalizeState(key, effectiveState, iv.ready, iv.conclusion);
         const detail = sanitizeDetail(extractDetailFromPayload(iv));
         return { state, detail, errorCode };
       }
@@ -776,7 +783,7 @@ export function ResearchCollectionOrchestratorCard({
               const effectiveState =
                 errorCode === "confirmed_no_reviews" ? "confirmed_no_reviews" :
                   errorCode === "extraction_empty" || errorCode === "no_public_reviews" ? "extraction_empty" : iv.state ?? iv.status;
-              const state = normalizeState(k, effectiveState, iv.ready);
+              const state = normalizeState(k, effectiveState, iv.ready, iv.conclusion);
               const extractedDetail = extractDetailFromPayload(iv);
               const prevState = prev[k]?.state;
               if (
@@ -830,7 +837,7 @@ export function ResearchCollectionOrchestratorCard({
                 const effectiveState =
                   errorCode === "confirmed_no_reviews" ? "confirmed_no_reviews" :
                     errorCode === "extraction_empty" || errorCode === "no_public_reviews" ? "extraction_empty" : it.state ?? it.status;
-                const state = normalizeState(targetKey, effectiveState, it.ready);
+                const state = normalizeState(targetKey, effectiveState, it.ready, it.conclusion);
                 const extractedDetail = extractDetailFromPayload(it);
                 const prevState = prev[targetKey]?.state;
                 if (

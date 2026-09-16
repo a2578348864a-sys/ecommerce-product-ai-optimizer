@@ -139,6 +139,24 @@ export type OrchestratorSourceDetail = {
   competitorPreviewId?: string | null;
   hasEvidence?: boolean;
   itemCount?: number;
+  /**
+   * 结论强度。用于阻止只读探测（inspect）把真实采集得到的结论冲刷成通用文案。
+   *
+   * 背景：`needs_user` 同时承担了两种语义 ——
+   * 1. 确定性结论："SellerSprite 未登录"、"评论模块未完成提取"、"本机无可用浏览器"，
+   *    这些原因只在真实采集（collect/refresh）时才可能得知，只读探测无法复现；
+   * 2. 弱状态："待采集 xxx"，只表示"这一步还没开始"。
+   *
+   * 因此：
+   * - `"conclusive"`：确定性结论，携带明确原因，只读探测不得反向覆盖；
+   * - `"pending"`：弱状态，任何更具体的结论都可以替换它；
+   * - 缺省：按弱状态参与粘性判定（fail-closed，未显式声明的结论不会被固化），
+   *   但前端沿用既有展示映射以保持向后兼容。
+   *
+   * 结构性缺前置（缺 ASIN / 缺商品身份 / 缺主图）**不标 conclusive**：
+   * 它们在只读探测阶段本身即可复现，保持弱状态才能在任务被补齐后自动自愈。
+   */
+  conclusion?: "conclusive" | "pending";
   error?: {
     code: string;
     message: string;
@@ -220,22 +238,30 @@ type LastOrchestrationCacheEntry = {
  * 每任务的"最近一次采集尝试账本"（进程内）。
  *
  * 它只承担一个职责：在只读 inspect 探测到**信息量更弱**的结果时，
- * 保住刚刚真实发生过的失败/待确认状态，避免前端把一次真实失败刷成
+ * 保住刚刚真实发生过的失败/待确认/确定性阻塞状态，避免前端把一次真实失败刷成
  * 模糊的“待补齐”。
  *
  * 严格边界（避免制造脏状态）：
- * - 只允许把 failed / awaiting_confirmation 这类"确定性结论"回填；
+ * - 只允许把 failed / awaiting_confirmation / 带明确原因的 needs_user 这类
+ *   "确定性结论"回填；
  * - 绝不回填 ready —— ready 必须永远由当前真实证据推导；
  * - 只读 inspect 绝不写账本，账本只记录真实发生过的采集。
  */
 const RECENT_ORCHESTRATION_CACHE = new Map<string, LastOrchestrationCacheEntry>();
 const ORCHESTRATION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
-/** 这些状态是"确定性结论"，在只读探测退化为 needs_user 时允许保留。 */
-const STICKY_CONCLUSION_STATUSES: ReadonlySet<SourceStatus> = new Set<SourceStatus>([
-  "failed",
-  "awaiting_confirmation",
-]);
+/**
+ * 判断一条来源结论是否属于"确定性结论"，即只读探测退化为通用文案时应当保留的那一类。
+ *
+ * 注意 `needs_user` 必须额外要求 `conclusion === "conclusive"`：
+ * 它是混合语义状态，若整体视为可粘住，会把"这一步还没开始"永久固化成
+ * "缺少某前置"，从而在用户补齐前置后仍然显示过期原因。
+ */
+function isStickyConclusion(detail: OrchestratorSourceDetail): boolean {
+  if (detail.status === "failed" || detail.status === "awaiting_confirmation") return true;
+  if (detail.status === "needs_user") return detail.conclusion === "conclusive";
+  return false;
+}
 
 /**
  * 只读探测退化为弱状态时，用最近一次真实采集结论兜底。
@@ -249,7 +275,7 @@ function preserveStickyConclusion(
   // 只读探测退化成"信息量更弱"的状态时才兜底：
   // 探测结果如果已经带来证据/预览/明确错误，就以探测为准。
   if (probe.status !== "needs_user" && probe.status !== "ready_to_search") return null;
-  if (!STICKY_CONCLUSION_STATUSES.has(cached.status)) return null;
+  if (!isStickyConclusion(cached)) return null;
   if (probe.status === "needs_user" && probe.error) return null;
   return { ...cached, hasEvidence: probe.hasEvidence ?? cached.hasEvidence };
 }
@@ -442,6 +468,7 @@ async function handleAmazonSource(
       return {
         status: "needs_user",
         hasEvidence: false,
+        conclusion: "pending",
         message: "待采集 Amazon 详情资料",
       };
     }
@@ -454,7 +481,13 @@ async function handleAmazonSource(
       return {
         status: "needs_user",
         hasEvidence: false,
+        // 环境结论只有真实采集时才可能得到，探测无法复现 → 必须保留。
+        conclusion: "conclusive",
         message: "本地未检测到可用的系统浏览器，请手动补充或检查浏览器环境",
+        error: {
+          code: "acquisition_unavailable",
+          message: "本地未检测到可用的系统浏览器，请手动补充或检查浏览器环境",
+        },
       };
     }
 
@@ -511,6 +544,9 @@ async function handleAmazonSource(
       return {
         status: isTypedBlockerOrUnavailable ? "needs_user" : "failed",
         hasEvidence: false,
+        // 登录墙 / 验证码 / 自动化校验属于"需要用户动手"的确定性结论，
+        // 只读探测无法复现，必须保留原因。
+        conclusion: isTypedBlockerOrUnavailable ? "conclusive" : undefined,
         message,
         error: { code: error.code, message },
       };
@@ -599,6 +635,7 @@ async function handleKeywordCompetitorSource(
       return {
         status: "needs_user",
         hasEvidence: false,
+        conclusion: "pending",
         message: "待采集关键词与竞品资料",
       };
     }
@@ -652,6 +689,9 @@ async function handleKeywordCompetitorSource(
       return {
         status: "needs_user",
         hasEvidence: false,
+        // "插件未登录"只有真实采集时才可能得知，只读探测无法复现 → 保留原因，
+        // 否则用户只会看到模糊的"待采集关键词与竞品资料"。
+        conclusion: "conclusive",
         message: "SellerSprite 插件未登录，请在浏览器中登录后重试",
         error: {
           code: "seller_sprite_login_required",
@@ -663,6 +703,7 @@ async function handleKeywordCompetitorSource(
       return {
         status: "needs_user",
         hasEvidence: false,
+        conclusion: "conclusive",
         message: "SellerSprite 遇到图形验证码，请在浏览器中完成验证",
         error: {
           code: "seller_sprite_captcha_required",
@@ -830,6 +871,8 @@ async function handleVocSource(
         return {
           status: "needs_user",
           hasEvidence: false,
+          // 登录/验证阻断是确定性结论，只读探测无法复现 → 保留原因。
+          conclusion: "conclusive",
           previewId: pending.previewId,
           itemCount: 0,
           message,
@@ -842,6 +885,7 @@ async function handleVocSource(
         return {
           status: "needs_user",
           hasEvidence: false,
+          conclusion: "conclusive",
           previewId: pending.previewId,
           itemCount: 0,
           message,
@@ -862,6 +906,7 @@ async function handleVocSource(
       return {
         status: "needs_user",
         hasEvidence: false,
+        conclusion: "pending",
         message: "待采集买家评论",
       };
     }
@@ -876,6 +921,8 @@ async function handleVocSource(
       return {
         status: "needs_user",
         hasEvidence: false,
+        // 环境结论只有真实采集时才可能得到，探测无法复现 → 保留。
+        conclusion: "conclusive",
         message,
         error: {
           code: capability.state === "local_env_required" ? "local_environment_required" : "acquisition_unavailable",
@@ -911,6 +958,7 @@ async function handleVocSource(
       return {
         status: "needs_user",
         hasEvidence: false,
+        conclusion: "conclusive",
         previewId: preview.previewId,
         itemCount: 0,
         message,
@@ -937,6 +985,9 @@ async function handleVocSource(
       return {
         status: "needs_user",
         hasEvidence: false,
+        // 「评论提取未完成」也是只有真实采集才会得知的确定性结论；
+        // 若被只读探测覆盖成"待采集买家评论"，用户会误以为从未点过采集。
+        conclusion: "conclusive",
         previewId: preview.previewId,
         itemCount: 0,
         message,
@@ -963,6 +1014,8 @@ async function handleVocSource(
       return {
         status: needsUser ? "needs_user" : "failed",
         hasEvidence: false,
+        // typed 阻断（登录/验证码/无浏览器）是确定性结论，探测无法复现 → 保留。
+        conclusion: needsUser ? "conclusive" : undefined,
         message,
         error: { code: error.code, message },
       };

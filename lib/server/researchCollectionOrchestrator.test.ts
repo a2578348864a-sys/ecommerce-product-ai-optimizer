@@ -1997,4 +1997,127 @@ describe("VOC auto collection contract (v11)", { timeout: 30000 }, () => {
       expect(mocks.collectBrowserEvidencePreview).not.toHaveBeenCalled();
     });
   });
+
+  describe("只读探测不得覆盖真实采集的确定性原因（结论强度分级）", () => {
+    it("SellerSprite 未登录：采集得到原因后，紧接着只读探测不得冲刷成通用文案", async () => {
+      mocks.runSellerSpriteCollection.mockResolvedValue({
+        ok: true,
+        preview: {
+          schema: "browser-use-research-preview.v1",
+          version: 1,
+          kind: "keyword",
+          seedAsin: "B0SAMPLE01",
+          marketplace: "Amazon US",
+          seedProductUrl: null,
+          sourceUrl: "https://www.amazon.com/dp/B0SAMPLE01",
+          capturedAt: new Date().toISOString(),
+          results: [],
+          missing: ["sellersprite_keyword_rows"],
+          failureReason: "login_required",
+          collector: { tool: "browser-use", version: "1.0.0" },
+        },
+      });
+
+      const collect = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "orchestrate",
+      });
+      expect(collect.sources.keywordCompetitor.status).toBe("needs_user");
+      expect(collect.sources.keywordCompetitor.conclusion).toBe("conclusive");
+
+      // 前端在 dataRevision 变化与轮询时都会发只读 inspect。它只能看到
+      // "关键词与竞品尚未采集"，但绝不能据此抹掉刚刚得到的真实原因，
+      // 否则用户会以为从未点过「补齐研究资料」。
+      const inspect = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "inspect",
+      });
+      expect(inspect.attemptedSources).toEqual([]);
+      expect(inspect.sources.keywordCompetitor.status).toBe("needs_user");
+      expect(inspect.sources.keywordCompetitor.message).toBe(
+        "SellerSprite 插件未登录，请在浏览器中登录后重试",
+      );
+      expect(inspect.sources.keywordCompetitor.error?.code).toBe("seller_sprite_login_required");
+      expect(inspect.sources.keywordCompetitor.conclusion).toBe("conclusive");
+    });
+
+    it("VOC 评论提取未完成：原因同样不被只读探测覆盖", async () => {
+      mocks.createReviewCollectPreview.mockResolvedValue({
+        previewId: "rcp_empty_public",
+        items: [],
+        pageResults: [
+          { asin: "B0SAMPLE01", status: "no_reviews_extracted", note: "详情页无公开 Top Reviews 片段。", extractedCount: 0 },
+        ],
+        capturedAt: new Date().toISOString(),
+        expiresAt: Date.now() + 60000,
+      });
+
+      const collect = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "orchestrate",
+      });
+      expect(collect.sources.voc.status).toBe("needs_user");
+      expect(collect.sources.voc.error?.code).toBe("extraction_empty");
+      expect(collect.sources.voc.conclusion).toBe("conclusive");
+
+      const inspect = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "inspect",
+      });
+      expect(inspect.sources.voc.status).toBe("needs_user");
+      expect(inspect.sources.voc.message).toContain("无法确认是否无评论");
+      expect(inspect.sources.voc.error?.code).toBe("extraction_empty");
+    });
+
+    it("通用“待采集”属于弱状态：不得被固化，真实证据一旦出现必须优先", async () => {
+      // 只读探测得到的通用文案标记为 pending —— 它只表示"这一步还没开始"。
+      const probe = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "inspect",
+      });
+      expect(probe.sources.keywordCompetitor.status).toBe("needs_user");
+      expect(probe.sources.keywordCompetitor.conclusion).toBe("pending");
+      expect(probe.sources.keywordCompetitor.message).toBe("待采集关键词与竞品资料");
+
+      // 真实证据落库后，只读探测必须如实报告 ready，绝不沿用弱状态、更不伪造 ready。
+      mocks.getKeywordEvidence.mockResolvedValue({ rows: [{ keyword: "paper towels" }] });
+      mocks.getCompetitorEvidence.mockResolvedValue({ asins: ["B0COMPET01"] });
+      const afterEvidence = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "inspect",
+      });
+      expect(afterEvidence.sources.keywordCompetitor.status).toBe("ready");
+      expect(afterEvidence.sources.keywordCompetitor.hasEvidence).toBe(true);
+      expect(afterEvidence.sources.keywordCompetitor.itemCount).toBe(2);
+    });
+
+    it("结构性缺前置保持可自愈：补齐 ASIN 后不得继续显示旧的“缺少商品 ASIN”", async () => {
+      mocks.readBrowserEvidenceTaskAsin.mockResolvedValue(null);
+      const before = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "orchestrate",
+      });
+      expect(before.sources.amazon.status).toBe("needs_user");
+      expect(before.sources.amazon.message).toBe("缺少商品 ASIN，无法采集 Amazon 资料");
+      // 结构性缺前置刻意不标 conclusive：它必须能在任务被补齐后自愈，
+      // 否则用户绑定 ASIN 之后仍会看到过期的"缺少商品 ASIN"。
+      expect(before.sources.amazon.conclusion).toBeUndefined();
+
+      mocks.readBrowserEvidenceTaskAsin.mockResolvedValue("B0SAMPLE01");
+      const after = await orchestrateResearchCollection({
+        context: ownerContext,
+        taskId: "task-001",
+        action: "inspect",
+      });
+      expect(after.sources.amazon.message).toBe("待采集 Amazon 详情资料");
+      expect(after.sources.amazon.conclusion).toBe("pending");
+    });
+  });
 });

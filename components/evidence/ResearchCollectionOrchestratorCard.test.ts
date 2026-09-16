@@ -413,6 +413,32 @@ describe("ResearchCollectionOrchestratorCard (Phase 3 UI / Interaction)", () => 
       expect(normalizeState("sourcing_1688", "pending_review")).toBe("pending_review");
     });
 
+    it("normalizeState 按结论强度区分“未开始”与“缺少前置”", () => {
+      // 只读探测得到的通用"待采集 xxx"（conclusion === "pending"）表示这一步还没开始，
+      // 统一映射为中性的"待补齐"，不再伪装成"需要处理 / 需要补充"。
+      expect(normalizeState("amazon", "needs_user", undefined, "pending")).toBe("pending");
+      expect(normalizeState("keywords_competitors", "needs_user", undefined, "pending")).toBe("pending");
+      expect(normalizeState("voc", "needs_user", undefined, "pending")).toBe("pending");
+      expect(normalizeState("sourcing_1688", "needs_user", undefined, "pending")).toBe("pending");
+
+      // 携带明确原因的确定性结论（conclusion === "conclusive"）沿用各来源既有强调映射。
+      expect(normalizeState("amazon", "needs_user", undefined, "conclusive")).toBe("needs_supplement");
+      expect(normalizeState("keywords_competitors", "needs_user", undefined, "conclusive")).toBe("needs_user");
+      expect(normalizeState("voc", "needs_user", undefined, "conclusive")).toBe("needs_action");
+
+      // 历史数据没有 conclusion 字段时，展示回落到既有映射，行为不变。
+      expect(normalizeState("amazon", "needs_user")).toBe("needs_supplement");
+      expect(normalizeState("keywords_competitors", "needs_user")).toBe("needs_user");
+      expect(normalizeState("voc", "needs_user")).toBe("needs_action");
+
+      // 未开始时用中性徽章，避免"待补齐"与"需要处理"混淆。
+      expect(formatBadgeLabel("pending")).toEqual({
+        icon: "circle",
+        text: "○ 待补齐",
+        variant: "slate",
+      });
+    });
+
     it("formatBadgeLabel 返回规范的徽章文案与样式变体", () => {
       expect(formatBadgeLabel("ready")).toEqual({
         icon: "check",

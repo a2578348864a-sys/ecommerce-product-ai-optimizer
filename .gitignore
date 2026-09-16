@@ -1,5 +1,7 @@
 node_modules
 .next
+# Next 构建残留（mv .next .next-<suffix> 规避批量删除守卫时产生）
+.next-*
 tsconfig.tsbuildinfo
 out
 .vercel
