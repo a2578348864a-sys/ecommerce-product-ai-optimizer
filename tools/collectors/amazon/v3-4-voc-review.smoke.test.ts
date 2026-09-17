@@ -89,6 +89,9 @@ function buildTopReviewsExtractionExpression() {
       // 用户名 = rating 之前的文本（img 无 alt，从文本节点推断：删掉 rating 前非标题杂质）
       const username = ratingMatch ? raw.slice(0, ratingMatch.index).replace(/<[^>]+>/g, '').trim() : '';
       if (username) title = title.replace(username, ' ').trim();
+      // 与 review-snippet-extract.ts 的 REVIEW_SNIPPET_EXTRACTOR_SOURCE 保持同步：
+      // 头像等 <img ...> 标记文本会残留在 title 里，需最后再剥离一次标签。
+      title = title.replace(/<[^>]*>/g, ' ').replace(/\\s+/g, ' ').trim();
       if (!title) continue;
       out.push({ rating, date, title });
     }

@@ -370,7 +370,21 @@ function parseSnippet(value: unknown): ReviewSnippet | null {
 }
 
 /** 执行一次采集（同步阻塞；调用方负责超时与错误归一化） */
-export async function collectReviewSnippets(input: {
+/**
+ * 单会话采集（阻塞；调用方负责超时与错误归一化）。
+ *
+ * 背景（实测结论，2026-09-17）：
+ * Amazon 详情页的评论列表是**异步懒渲染**，而且在**会话维度随机缺失** ——
+ * 同一个 ASIN、同一套启动参数，全新浏览器会话下约 1/3 的加载会渲染出评论卡片，
+ * 其余加载的页面上**只有评分直方图、一条评论卡片都没有**（`[data-hook="review"]` = 0，
+ * 文本里连 "Reviewed in" 都没有）。此时提取表达式返回 0 条**是正确的**，
+ * 不是选择器失效：只要有评论卡片，同一个选择器立刻就有 13 条。
+ *
+ * 该缺失是**会话级**的：同一浏览器会话内重新导航不会改善（实测 3 次导航 0/6 改善），
+ * 延长等待也无效（命中时 2–6 秒内即出现；缺失时等 12 秒仍为 0）。
+ * 因此重试必须**换一个全新会话**，见 `collectReviewSnippets`。
+ */
+async function collectReviewSnippetsOnce(input: {
   asins: ReviewCollectRequestAsin[];
   headless?: boolean;
 }): Promise<{ items: ReviewSnippetPreviewItem[]; pageResults: ReviewCollectPageResult[] }> {
@@ -495,6 +509,63 @@ export async function collectReviewSnippets(input: {
   } finally {
     await session.close();
   }
+  return { items, pageResults };
+}
+
+/**
+ * 会话级重试次数（含首次尝试）。实测全新会话单次命中率约 1/3，
+ * 3 次尝试后实测 5/6 命中（见 docs 与验收记录）。
+ */
+export const REVIEW_COLLECT_SESSION_ATTEMPTS = 3;
+
+/**
+ * 「评论列表未渲染」判定：页面已成功打开、无登录墙/验证码/错误页，
+ * 但整页一条评论卡片都没有（`reviewNodeCount` = 0）。
+ *
+ * 这是 Amazon 侧的会话级随机缺失，既不是页面明确无公开评论，也不是选择器失效，
+ * 因此只有这一类才值得换会话重试。登录墙 / 验证码 / 明确无评论 / 真错误都不重试
+ * （重试无意义，且避免无谓的浏览器启动）。
+ */
+function isReviewListNotRendered(pageResult: ReviewCollectPageResult): boolean {
+  return pageResult.status === "extraction_empty" && (pageResult.reviewNodeCount ?? 0) === 0;
+}
+
+/**
+ * 采集评论片段：对「评论列表未渲染」的来源做**会话级重试**（每次重试都重开隔离浏览器）。
+ *
+ * 保持的语义边界（与改动前一致）：
+ * - 只重试「评论列表未渲染」这一类；其它失败按原样如实返回，不掩盖真实阻断；
+ * - 每次尝试使用独立会话，单会话导航预算仍为本次待采集 ASIN 数，不扩大原有预算；
+ * - 成功结果优先落账，后一次失败不会覆盖前一次的有效诊断；
+ * - 不为任何来源伪造条目 —— 重试全部失败时仍如实返回 `extraction_empty`。
+ */
+export async function collectReviewSnippets(input: {
+  asins: ReviewCollectRequestAsin[];
+  headless?: boolean;
+}): Promise<{ items: ReviewSnippetPreviewItem[]; pageResults: ReviewCollectPageResult[] }> {
+  const finalPageResults = new Map<string, ReviewCollectPageResult>();
+  const items: ReviewSnippetPreviewItem[] = [];
+  let pending: ReviewCollectRequestAsin[] = [...input.asins];
+
+  for (let attempt = 1; attempt <= REVIEW_COLLECT_SESSION_ATTEMPTS && pending.length > 0; attempt++) {
+    const attemptResult = await collectReviewSnippetsOnce({ asins: pending, headless: input.headless });
+    items.push(...attemptResult.items);
+    for (const pageResult of attemptResult.pageResults) {
+      const previous = finalPageResults.get(pageResult.asin);
+      if (!previous || pageResult.status === "ok" || previous.status !== "ok") {
+        finalPageResults.set(pageResult.asin, pageResult);
+      }
+    }
+    const notRendered = new Set(
+      attemptResult.pageResults.filter(isReviewListNotRendered).map((pageResult) => pageResult.asin),
+    );
+    pending = input.asins.filter((candidate) => notRendered.has(candidate.asin));
+  }
+
+  // 保持与请求一致的顺序，且只返回本次请求过的 ASIN。
+  const pageResults = input.asins
+    .map((candidate) => finalPageResults.get(candidate.asin))
+    .filter((pageResult): pageResult is ReviewCollectPageResult => pageResult !== undefined);
   return { items, pageResults };
 }
 
