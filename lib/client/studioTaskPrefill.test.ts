@@ -141,7 +141,7 @@ describe("Studio task prefill", () => {
 
     expect(listingPage).not.toContain("redirect(");
     expect(imagePage).not.toContain("redirect(");
-    expect(listingPage).toMatch(/<ListingStudioClient taskId=\{taskId\}/);
+    expect(listingPage).toMatch(/<ListingStudioV5Client taskId=\{taskId\}/);
     expect(imagePage).toMatch(/<ImageStudioClient taskId=\{taskId\}/);
   });
 });

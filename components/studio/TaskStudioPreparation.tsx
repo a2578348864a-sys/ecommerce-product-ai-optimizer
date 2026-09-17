@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { createBrowserUuid } from "@/lib/browserUuid";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
@@ -11,16 +11,48 @@ import {
   ApiError,
   CreativeHandoffPreview,
 } from "@/components/creative-handoff/types";
-import { ImageScenePresetPicker } from "@/components/image-studio/ImageScenePresetPicker";
 import { ListingFactSupplementPanel } from "@/components/studio/ListingFactSupplementPanel";
-import { useSessionDraft } from "@/lib/client/useSessionDraft";
+import { MarketingIntelligencePanel } from "@/components/listing-handoff/MarketingIntelligencePanel";
+import { marketingReferenceFromSummary } from "@/components/listing-handoff/MarketingIntelligencePanel";
+import { CopyStrategyPanel } from "@/components/listing-handoff/CopyStrategyPanel";
+import { CopyStrategyPlannerSuggestionPanel } from "@/components/listing-handoff/CopyStrategyPlannerSuggestionPanel";
+import { ListingCopyStrategyCard } from "@/components/listing-handoff/ListingCopyStrategyCard";
+import { analyzeMarketingIntelligence } from "@/lib/listingHandoff/marketingIntelligence/analyzer";
+import { buildCopyStrategy } from "@/lib/listingHandoff/copyStrategy/analyzer";
+import { buildCopyStrategyPlannerSuggestion } from "@/lib/listingHandoff/copyStrategy/plannerSuggestion";
 import { authorityCounts } from "@/lib/productCreativeHandoffFactAuthority";
-import {
-  DEFAULT_STUDIO_IMAGE_CREATIVE_INTENT,
-  resolveStudioImageCreativeIntent,
-} from "@/lib/studioImageCreativeIntent";
 
-type PreparationKind = "listing" | "image";
+export type PreparationKind = "listing" | "image";
+
+export function canConfirmPreparation(params: {
+  preview: CreativeHandoffPreview | null;
+  kind: PreparationKind;
+  confirmed: boolean;
+  selectedFacts: string[];
+  selectedVisuals?: string[];
+}): boolean {
+  const { preview, kind, confirmed, selectedFacts, selectedVisuals = [] } = params;
+  const hasResearchConfirmedFacts = (preview?.currentConfirmedFacts?.length ?? 0) > 0;
+  const hasSelectableConfirmedFacts = selectedFacts.length > 0;
+  const hasListingFactBasis = hasResearchConfirmedFacts || hasSelectableConfirmedFacts;
+
+  return Boolean(
+    preview
+    && preview.expectedResearchRevision
+    && preview.storageVersion
+    && preview.expectedCurrentHandoffRevision !== undefined
+    && confirmed
+    && (
+      kind === "listing"
+        ? hasListingFactBasis
+        : (
+            hasResearchConfirmedFacts
+            || selectedFacts.length > 0
+            || selectedVisuals.length > 0
+          )
+    )
+  );
+}
 
 const FACT_LABELS: Record<string, string> = {
   brand: "品牌",
@@ -182,8 +214,6 @@ export function TaskStudioPreparation({
   const [confirmed, setConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState("");
-  const [sceneSelection, setSceneSelection] = useState(DEFAULT_STUDIO_IMAGE_CREATIVE_INTENT);
-  const restoredSceneRef = useRef(false);
   const [visualNotice, setVisualNotice] = useState("");
 
   useEffect(() => {
@@ -193,26 +223,25 @@ export function TaskStudioPreparation({
   const successful = api.result?.kind === "ok" ? api.result : null;
   const preview = successful?.preview ?? null;
   const detail = successful?.detail ?? null;
+  const marketingInsight = useMemo(
+    () => analyzeMarketingIntelligence(marketingReferenceFromSummary(preview?.creativeContextSummary)),
+    [preview?.creativeContextSummary],
+  );
+  const copyStrategy = useMemo(
+    () => buildCopyStrategy({
+      marketingInsight,
+      confirmedFactSummary: {
+        count: detail?.confirmedFacts?.length ?? 0,
+        labels: (detail?.confirmedFacts ?? []).map((fact) => fact.label),
+      },
+    }),
+    [detail?.confirmedFacts, marketingInsight],
+  );
+  const plannerSuggestion = useMemo(
+    () => buildCopyStrategyPlannerSuggestion(copyStrategy),
+    [copyStrategy],
+  );
   const isActive = detail?.effectiveStatus === "active" && detail.controlState === "active";
-  const sceneDraft = useSessionDraft({
-    pageKind: "image-studio-task-scene",
-    entityId: taskId,
-    revision: kind === "image" && preview?.expectedResearchRevision
-      ? String(preview.expectedResearchRevision)
-      : null,
-    initial: DEFAULT_STUDIO_IMAGE_CREATIVE_INTENT,
-  });
-
-  useEffect(() => {
-    if (kind !== "image" || !sceneDraft.draft || restoredSceneRef.current) return;
-    restoredSceneRef.current = true;
-    setSceneSelection(sceneDraft.draft);
-  }, [kind, sceneDraft.draft]);
-
-  useEffect(() => {
-    if (kind === "image") sceneDraft.save(sceneSelection);
-  }, [kind, sceneDraft, sceneSelection]);
-
   useEffect(() => {
     onReadyChange?.(isActive);
   }, [isActive, onReadyChange]);
@@ -371,111 +400,53 @@ export function TaskStudioPreparation({
     const supplementalFacts = (detail?.confirmedFacts ?? []).filter((fact) => !authorityFieldNames.has(fact.field));
     return (
       <div data-testid="task-studio-authoritative-mode">
-        <section className="surface-card mb-4 border-teal-200 bg-teal-50/50 p-4">
-          <p className="text-sm font-bold text-teal-800">创作资料已确认</p>
-          <p className="mt-1 text-sm leading-6 text-slate-600">
-            生成时服务器会再次读取研究记录、核对最新版本与当前身份；浏览器预填内容不作为权威事实。
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
-            <span className="rounded-full bg-white px-2.5 py-1">已确认事实：{listingFactSummary.confirmedFacts}</span>
-            {kind === "listing" ? (
-              <span className="rounded-full bg-white px-2.5 py-1">可用于 Listing：{listingFactSummary.listingEligibleFacts}</span>
-            ) : null}
-            <span className="rounded-full bg-white px-2.5 py-1">禁止声明：{listingFactSummary.prohibitedClaims}</span>
-            <span className="rounded-full bg-white px-2.5 py-1">最终人工复核：必须</span>
-          </div>
-        </section>
-        {/* V4R：创作侧人工补充事实（独立面板；有则显示，无则不显示空面板） */}
-        {supplementalFacts.length > 0 ? (
-          <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50/60 p-3" data-testid="studio-supplemental-facts">
-            <p className="text-sm font-bold text-sky-900">创作侧人工补充事实</p>
-            <p className="mt-0.5 text-xs leading-5 text-slate-500">
-              Studio-confirmed supplemental facts：创作侧人工补充并确认、研究侧当前无同字段的事实。若研究后续确认同字段，将自动以研究值替代，此处旧值仅留在历史快照。
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {supplementalFacts.map((fact) => (
-                <span key={fact.field} className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
-                  {FACT_LABELS[fact.field] ?? fact.label}：{String(fact.value)}
-                </span>
-              ))}
-            </div>
-          </div>
-        ) : null}
-        {/* V3 Evidence → Creative Context Bridge：创作参考资料摘要（§51，authoritative 模式也展示） */}
-        {preview?.creativeContextSummary ? (
-          <div className="mb-4 rounded-xl border border-teal-100 bg-teal-50/50 p-3" data-testid="creative-context-summary">
-            <p className="text-sm font-bold text-teal-900">创作参考资料（研究证据已载入）</p>
-            <p className="mt-1 text-xs leading-5 text-slate-500">
-              以下均来自商品研究阶段保存的证据；除「已确认商品事实」外，其余只作参考，不自动成为事实声明。
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-slate-700">
-              <span className="rounded-full bg-white px-2.5 py-1">VOC 洞察：{preview.creativeContextSummary.counts.vocInsights}</span>
-              <span className="rounded-full bg-white px-2.5 py-1">关键词候选：{preview.creativeContextSummary.counts.keywordCandidates}</span>
-              <span className="rounded-full bg-white px-2.5 py-1">竞品参考：{preview.creativeContextSummary.counts.competitiveInsights}</span>
-              <span className="rounded-full bg-white px-2.5 py-1">供应线索：{preview.creativeContextSummary.counts.sourcingEntries}</span>
-              <span className="rounded-full bg-white px-2.5 py-1">AI 研究摘要：{preview.creativeContextSummary.counts.aiReferences > 0 ? "已载入" : "无"}</span>
-              {preview.creativeContextSummary.counts.missingConflicts > 0 ? (
-                <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">缺失/冲突：{preview.creativeContextSummary.counts.missingConflicts}</span>
-              ) : null}
-            </div>
-            {preview.creativeContextSummary.vocInsights && preview.creativeContextSummary.vocInsights.length > 0 ? (
-              <details className="mt-2">
-                <summary className="cursor-pointer text-xs font-bold text-teal-800">查看 VOC 洞察（客户语言/场景参考，非事实）</summary>
-                <ul className="mt-2 space-y-1 text-xs leading-5 text-slate-600">
-                  {preview.creativeContextSummary.vocInsights.map((v) => (
-                    <li key={v.insightId}>- {v.theme}{v.reviewCount > 0 ? `（${v.reviewCount} 条评论）` : ""}：{v.summary}</li>
-                  ))}
-                </ul>
-              </details>
-            ) : null}
-          </div>
-        ) : null}
         {kind === "listing" ? (
-          <section className="surface-card mb-4 border-amber-200 bg-amber-50/70 p-4" data-testid="task-listing-facts-missing">
-            <p className="text-sm font-bold text-amber-900">
-              {listingFactsMissing
-                ? "当前研究记录缺少可用于 Listing 的商品事实。"
-                : "你可以继续补充已经核实的商品事实。"}
-            </p>
-            <p className="mt-1 text-sm leading-6 text-slate-600">
-              系统已有事实不会阻止你继续补充尺寸、重量、使用、兼容性等真实信息。
-            </p>
-            <ListingFactSupplementPanel
-              taskId={taskId}
-              preview={preview}
-              create={api.create}
-              refresh={api.refresh}
-              onCommitted={onCommitted}
-              existingFacts={detail.confirmedFacts ?? []}
-              workbenchConfirmedFacts={detail.workbenchConfirmedFacts ?? []}
-            />
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Link
-                href={`/tasks/${encodeURIComponent(taskId)}`}
-                className="inline-flex h-10 items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700"
-              >
-                返回研究记录查看来源
-              </Link>
-              <Link
-                href="/listing-studio"
-                className="inline-flex h-10 items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700"
-              >
-                转为独立创作
-              </Link>
+          <section className="mb-2.5 rounded-xl border border-teal-200 bg-teal-50/40 p-2.5 text-xs text-slate-700">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-1.5 font-medium">
+                <span className="font-bold text-teal-900">创作资料已确认</span>
+                <span className="text-slate-300">·</span>
+                <span className="rounded-md border border-teal-100 bg-white px-2 py-0.5">已确认事实：{listingFactSummary.confirmedFacts}</span>
+                <span className="text-slate-300">·</span>
+                <span className="rounded-md border border-teal-100 bg-white px-2 py-0.5">Listing 可用事实：{listingFactSummary.listingEligibleFacts}</span>
+                <span className="text-slate-300">·</span>
+                <span className={`rounded-md border px-2 py-0.5 ${listingFactSummary.prohibitedClaims > 0 ? "border-amber-200 bg-amber-50 text-amber-800" : "border-teal-100 bg-white"}`}>
+                  禁止声明：{listingFactSummary.prohibitedClaims}
+                </span>
+                <span className="text-slate-300">·</span>
+                <span className="rounded-md border border-teal-100 bg-white px-2 py-0.5 text-slate-600">最终人工复核：必须</span>
+              </div>
+              <details className="inline-block text-xs">
+                <summary className="cursor-pointer text-teal-700 hover:underline">规则说明</summary>
+                <p className="mt-1 text-slate-600 leading-5">
+                  生成时服务器会再次读取研究记录、核对最新版本与当前身份；浏览器预填内容不作为权威事实。
+                </p>
+              </details>
             </div>
-            <p className="mt-2 text-xs leading-5 text-slate-600">
-              转为独立创作后将解除本页的 Task 权威绑定，并按独立 Listing 的人工输入与确认流程重新开始。
-            </p>
           </section>
+        ) : null}
+        {/* 缺事实时的首屏轻量提示 */}
+        {listingFactsMissing ? (
+          <div className="mb-2.5 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs font-semibold text-amber-800">
+            当前研究记录缺少 Listing 可用事实，请在下方「策略分析与详细证据来源」中补充并确认商品资料。
+          </div>
         ) : null}
 
         {/* V3 Visual Reference Confirmation（权威模式）：已确认态也必须能看到并批准商品参考图 */}
         {kind === "image" ? (
-          <section className="surface-card mb-4 border-slate-200 p-4" id="task-visual-reference-fieldset" data-testid="task-visual-reference-panel">
-            <p className="text-sm font-bold text-slate-900">商品参考图</p>
-            <p className="mt-1 text-xs leading-5 text-slate-500">
-              只有你在这里批准的当前研究参考图，才能用于具体商品视觉草稿。
-            </p>
+          <section className="surface-card mb-4 border-slate-200 p-3.5" id="task-visual-reference-fieldset" data-testid="task-visual-reference-panel">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+              <h3 className="text-sm font-bold text-slate-900">商品参考图</h3>
+              {visualOptions.length > 0 && visualOptions.every((option) => option.approvedForReference === true) ? (
+                <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-0.5 text-xs font-semibold text-teal-700">
+                  ✓ 商品参考图已确认
+                </span>
+              ) : (
+                <span className="text-xs font-semibold text-amber-700">
+                  生成真实商品外观前，需要先确认商品参考图。
+                </span>
+              )}
+            </div>
             {visualOptions.length > 0 ? (
               <div className="mt-3 grid gap-2 md:grid-cols-2">
                 {visualOptions.map((option) => {
@@ -486,13 +457,13 @@ export function TaskStudioPreparation({
                       {option.thumbnailUrl ? (
                         <VisualReferenceThumbnail taskId={taskId} thumbnailUrl={option.thumbnailUrl} />
                       ) : (
-                        <div className="h-20 w-20 shrink-0 rounded-lg border border-dashed border-slate-300 bg-slate-50" />
+                        <div className="h-16 w-16 shrink-0 rounded-lg border border-dashed border-slate-300 bg-slate-50" />
                       )}
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate font-medium text-slate-800">{option.summary || "研究记录中的商品参考图"}</span>
+                        <span className="block truncate font-medium text-slate-800">{option.summary || "当前商品参考图"}</span>
                         <span className="mt-0.5 block text-xs text-slate-500">来源：{visualReferenceSourceLabel(option.sourceTier)}</span>
                         <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${approved ? "bg-teal-100 text-teal-800" : "bg-amber-100 text-amber-800"}`}>
-                          {approved ? "✓ 已确认" : "待确认"}
+                          {approved ? "✓ 商品参考图已确认" : "待确认"}
                         </span>
                       </span>
                       <input
@@ -518,9 +489,9 @@ export function TaskStudioPreparation({
                 type="button"
                 disabled={submitting || selectedVisuals.length === 0}
                 onClick={() => void confirmVisualReference()}
-                className="mt-3 inline-flex h-10 items-center rounded-xl bg-teal-600 px-4 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="mt-3 inline-flex h-9 items-center rounded-xl bg-teal-600 px-4 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {submitting ? "正在确认…" : "确认作为商品参考图"}
+                {submitting ? "正在确认…" : "确认商品参考图"}
               </button>
             ) : null}
             {visualNotice ? (
@@ -528,19 +499,133 @@ export function TaskStudioPreparation({
             ) : null}
           </section>
         ) : null}
+
+        {/* 【第一层主角】：Listing 工作区与结果（优先展现） */}
+        {kind === "listing" ? <ListingCopyStrategyCard strategy={copyStrategy} /> : null}
         {children}
+
+        {/* 【第二层折叠】：策略分析与详细证据来源（默认收起，按需查阅） */}
+        {kind === "listing" ? (
+          <details className="mt-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs" data-testid="task-studio-secondary-drawer">
+            <summary className="cursor-pointer font-bold text-slate-700 hover:text-slate-900">
+              展开策略分析与详细证据来源（AI研究依据 · AI文案规划 · Listing生成规划 · 证据来源 · 补充事实）
+            </summary>
+            <div className="mt-3 space-y-3">
+              <MarketingIntelligencePanel summary={preview?.creativeContextSummary} />
+              <CopyStrategyPanel strategy={copyStrategy} />
+              <CopyStrategyPlannerSuggestionPanel suggestion={plannerSuggestion} />
+
+              {/* V4R：创作侧人工补充事实（独立面板；有则显示，无则不显示空面板） */}
+              {supplementalFacts.length > 0 ? (
+                <div className="rounded-xl border border-sky-200 bg-sky-50/40 p-2.5 text-xs" data-testid="studio-supplemental-facts">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5 font-medium">
+                      <span className="font-bold text-sky-900">创作侧人工补充事实</span>
+                      <span className="text-slate-300">·</span>
+                      {supplementalFacts.map((fact) => (
+                        <span key={fact.field} className="rounded-md border border-sky-100 bg-white px-2 py-0.5 text-slate-700">
+                          {FACT_LABELS[fact.field] ?? fact.label}：{String(fact.value)}
+                        </span>
+                      ))}
+                    </div>
+                    <details className="inline-block text-xs">
+                      <summary className="cursor-pointer text-sky-700 hover:underline">说明</summary>
+                      <p className="mt-1 text-slate-500 leading-5">
+                        Studio-confirmed supplemental facts：创作侧人工补充并确认、研究侧当前无同字段的事实。若研究后续确认同字段，将自动以研究值替代，此处旧值仅留在历史快照。
+                      </p>
+                    </details>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* V3 Evidence → Creative Context Bridge：创作参考资料摘要（§51，authoritative 模式也展示） */}
+              {preview?.creativeContextSummary ? (
+                <div className="rounded-xl border border-teal-100 bg-teal-50/40 p-2.5 text-xs" data-testid="creative-context-summary">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5 font-medium text-slate-700">
+                      <span className="font-bold text-teal-900">创作参考资料</span>
+                      <span className="text-slate-300">·</span>
+                      <span className="rounded-md border border-teal-100 bg-white px-2 py-0.5">买家反馈（VOC）：{preview.creativeContextSummary.counts.vocInsights}</span>
+                      <span className="rounded-md border border-teal-100 bg-white px-2 py-0.5">关键词候选：{preview.creativeContextSummary.counts.keywordCandidates}</span>
+                      <span className="rounded-md border border-teal-100 bg-white px-2 py-0.5">竞品参考：{preview.creativeContextSummary.counts.competitiveInsights}</span>
+                      <span className="rounded-md border border-teal-100 bg-white px-2 py-0.5">供应线索：{preview.creativeContextSummary.counts.sourcingEntries}</span>
+                      <span className="rounded-md border border-teal-100 bg-white px-2 py-0.5">AI 研究摘要：{preview.creativeContextSummary.counts.aiReferences > 0 ? "已载入" : "无"}</span>
+                      {preview.creativeContextSummary.counts.missingConflicts > 0 ? (
+                        <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-700">缺失/冲突：{preview.creativeContextSummary.counts.missingConflicts}</span>
+                      ) : null}
+                    </div>
+                    <details className="inline-block text-xs">
+                      <summary className="cursor-pointer text-teal-700 hover:underline">说明</summary>
+                      <p className="mt-1 text-slate-500 leading-5">
+                        以下均来自商品研究阶段保存的证据；除「已确认商品事实」外，其余只作参考，不自动成为事实声明。
+                      </p>
+                    </details>
+                  </div>
+                  {preview.creativeContextSummary.vocInsights && preview.creativeContextSummary.vocInsights.length > 0 ? (
+                    <details className="mt-2 border-t border-teal-100/60 pt-1.5">
+                      <summary className="cursor-pointer text-xs font-bold text-teal-800">查看买家反馈洞察（客户语言/场景参考，非事实）</summary>
+                      <ul className="mt-1.5 space-y-1 text-xs leading-5 text-slate-600">
+                        {preview.creativeContextSummary.vocInsights.map((v) => (
+                          <li key={v.insightId}>- {v.theme}{v.reviewCount > 0 ? `（${v.reviewCount} 条评论）` : ""}：{v.summary}</li>
+                        ))}
+                      </ul>
+                    </details>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {/* 原地事实补充面板 */}
+              <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-2xs" data-testid="task-listing-facts-missing">
+                {listingFactsMissing ? (
+                  <div className="mb-2 rounded-lg bg-amber-50 p-2 text-xs font-semibold text-amber-800">
+                    当前研究记录缺少 Listing 可用事实，请在下方补充并确认商品资料。
+                  </div>
+                ) : null}
+                <ListingFactSupplementPanel
+                  taskId={taskId}
+                  preview={preview}
+                  create={api.create}
+                  refresh={api.refresh}
+                  onCommitted={onCommitted}
+                  existingFacts={detail.confirmedFacts ?? []}
+                  workbenchConfirmedFacts={detail.workbenchConfirmedFacts ?? []}
+                />
+                <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-xs">
+                  <div className="flex flex-wrap gap-2">
+                    <Link
+                      href={`/tasks/${encodeURIComponent(taskId)}`}
+                      className="inline-flex h-7 items-center rounded-md border border-slate-300 bg-white px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      返回商品研究
+                    </Link>
+                    <Link
+                      href="/listing-studio"
+                      className="inline-flex h-7 items-center rounded-md border border-slate-300 bg-white px-2.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                    >
+                      转为独立创作
+                    </Link>
+                  </div>
+                  <span className="text-[11px] text-slate-400">独立创作将解除 Task 绑定</span>
+                </div>
+              </section>
+            </div>
+          </details>
+        ) : null}
       </div>
     );
   }
 
-  const canConfirm = Boolean(
-    preview
-    && preview.expectedResearchRevision
-    && preview.storageVersion
-    && preview.expectedCurrentHandoffRevision !== undefined
-    && (selectedFacts.length > 0 || (kind === "image" && selectedVisuals.length > 0))
-    && confirmed,
-  );
+  const hasResearchConfirmedFacts = (preview?.currentConfirmedFacts?.length ?? 0) > 0;
+  const hasSelectableConfirmedFacts = selectedFacts.length > 0;
+  const hasListingFactBasis = hasResearchConfirmedFacts || hasSelectableConfirmedFacts;
+
+  const canConfirm = canConfirmPreparation({
+    preview,
+    kind,
+    confirmed,
+    selectedFacts,
+    selectedVisuals,
+  });
 
   /** V4 Fact Authority：冲突面板「仍作为视觉参考使用」——确保已勾选待批准参考图并提示事实采用权威值 */
   function stillUseVisualAsReference() {
@@ -584,7 +669,6 @@ export function TaskStudioPreparation({
     setSubmitting(true);
     setNotice("");
     try {
-      const scene = resolveStudioImageCreativeIntent(sceneSelection);
       await api.create({
         requestId: createBrowserUuid(),
         selectedFactCandidateIds: selectedFacts,
@@ -596,17 +680,14 @@ export function TaskStudioPreparation({
         expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision!,
         creativePreferences: buildPreparationPreferences(
           preview.creativePreferences,
-          kind === "image" ? {
-            imageStyle: scene.visualStyle,
-            backgroundPreference: scene.background,
-            compositionPreference: scene.composition,
-            additionalRequirements: `图片用途：${scene.label}。${scene.direction}。`,
-          } : undefined,
+          undefined,
         ),
       });
       setConfirmed(false);
-      if (kind === "image") sceneDraft.clear();
       await api.refresh();
+      // 确认成功后必须通知父级：Listing Studio / Image Studio 的下游状态（门禁、生成按钮）
+      // 依赖父级重新读取服务端状态；缺少这一步时父页面会停在确认前的门禁提示上。
+      onCommitted?.();
     } catch (error) {
       setNotice(error instanceof HandoffApiRequestError
         ? friendlyError(error.error)
@@ -631,8 +712,22 @@ export function TaskStudioPreparation({
         </Link>
       </div>
 
+      {/* 策略分析与参考（默认折叠） */}
+      {kind === "listing" ? (
+        <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50/60 p-2.5 text-xs">
+          <summary className="cursor-pointer font-bold text-slate-700 hover:text-slate-900">
+            展开策略分析参考（AI研究依据 · AI文案规划 · Listing生成规划）
+          </summary>
+          <div className="mt-2 space-y-2">
+            <MarketingIntelligencePanel summary={preview?.creativeContextSummary} />
+            <CopyStrategyPanel strategy={copyStrategy} />
+            <CopyStrategyPlannerSuggestionPanel suggestion={plannerSuggestion} />
+          </div>
+        </details>
+      ) : null}
+
       {/* V3 Evidence → Creative Context Bridge：创作参考资料摘要（§51 Context Visibility） */}
-      {preview?.creativeContextSummary ? (
+      {kind === "listing" && preview?.creativeContextSummary ? (
         <div className="mt-4 rounded-xl border border-teal-100 bg-teal-50/50 p-3" data-testid="creative-context-summary">
           <p className="text-sm font-bold text-teal-900">创作参考资料（研究证据已载入）</p>
           <p className="mt-1 text-xs leading-5 text-slate-500">
@@ -641,7 +736,7 @@ export function TaskStudioPreparation({
           <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-slate-700">
             <span className="rounded-full bg-white px-2.5 py-1">已确认商品事实：{authoritySummary.confirmedFacts}</span>
             <span className="rounded-full bg-white px-2.5 py-1">待确认候选：{authoritySummary.confirmableCandidates}</span>
-            <span className="rounded-full bg-white px-2.5 py-1">VOC 洞察：{preview.creativeContextSummary.counts.vocInsights}</span>
+            <span className="rounded-full bg-white px-2.5 py-1">买家反馈（VOC）：{preview.creativeContextSummary.counts.vocInsights}</span>
             <span className="rounded-full bg-white px-2.5 py-1">关键词候选：{preview.creativeContextSummary.counts.keywordCandidates}</span>
             <span className="rounded-full bg-white px-2.5 py-1">竞品参考：{preview.creativeContextSummary.counts.competitiveInsights}</span>
             <span className="rounded-full bg-white px-2.5 py-1">供应线索：{preview.creativeContextSummary.counts.sourcingEntries}</span>
@@ -652,7 +747,7 @@ export function TaskStudioPreparation({
           </div>
           {preview.creativeContextSummary.vocInsights && preview.creativeContextSummary.vocInsights.length > 0 ? (
             <details className="mt-2">
-              <summary className="cursor-pointer text-xs font-bold text-teal-800">查看 VOC 洞察（客户语言/场景参考，非事实）</summary>
+              <summary className="cursor-pointer text-xs font-bold text-teal-800">查看买家反馈洞察（客户语言/场景参考，非事实）</summary>
               <ul className="mt-2 space-y-1 text-xs leading-5 text-slate-600">
                 {preview.creativeContextSummary.vocInsights.map((v) => (
                   <li key={v.insightId}>- {v.theme}{v.reviewCount > 0 ? `（${v.reviewCount} 条评论）` : ""}：{v.summary}</li>
@@ -746,8 +841,10 @@ export function TaskStudioPreparation({
           </div>
         </fieldset>
       ) : (
-        <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-800">
-          当前没有可确认的来源快照事实；研究已确认事实会自动用于创作，无需再次勾选。如需补充新事实或修改已确认事实，请先回到商品研究处理。
+        <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-800" data-testid="task-studio-no-selectable-facts">
+          {hasResearchConfirmedFacts
+            ? "当前没有可确认的来源快照事实；研究已确认事实会自动用于创作，无需再次勾选。如需补充新事实或修改已确认事实，请先回到商品研究处理。"
+            : "当前没有 Listing 可用的已确认商品事实，请先返回商品研究确认商品事实。"}
         </p>
       )}
 
@@ -830,24 +927,7 @@ export function TaskStudioPreparation({
         </div>
       ) : null}
 
-      {kind === "image" ? (
-        <div className="mt-5 rounded-2xl border border-cyan-100 bg-cyan-50/30 p-4" data-testid="task-image-scene-selection">
-          <p className="mb-3 text-sm font-bold text-slate-900">图片用途与场景</p>
-          <ImageScenePresetPicker
-            value={sceneSelection}
-            name="task-image-preparation"
-            onChange={(nextSelection) => {
-              setSceneSelection(nextSelection);
-              setConfirmed(false);
-            }}
-          />
-          {sceneDraft.restored ? (
-            <p className="mt-2 text-xs font-semibold text-cyan-800">已恢复刷新前未提交的场景选择。</p>
-          ) : null}
-        </div>
-      ) : null}
-
-      {preview?.creativePreferences ? (
+      {kind === "listing" && preview?.creativePreferences ? (
         <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3 text-sm leading-6 text-slate-600">
           <p className="font-bold text-slate-900">创作偏好</p>
           <p className="mt-1">
@@ -861,8 +941,18 @@ export function TaskStudioPreparation({
 
       <label className="mt-5 flex gap-3 rounded-xl border border-teal-200 bg-teal-50/60 p-3 text-sm leading-6 text-teal-900">
         <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
-        <span>我已核对以上商品事实、禁止声明与创作偏好；生成结果仅作为草稿，最终仍需人工复核。</span>
+        <span>
+          {kind === "image"
+            ? "我已核对以上商品事实与商品参考图；生成结果仅作为图片草稿，最终仍需人工复核。"
+            : "我已核对以上商品事实、禁止声明与创作偏好；生成结果仅作为草稿，最终仍需人工复核。"}
+        </span>
       </label>
+
+      {kind === "listing" && !hasListingFactBasis ? (
+        <p className="mt-3 text-sm font-semibold text-amber-700" role="alert" data-testid="task-studio-missing-fact-basis-notice">
+          当前没有 Listing 可用的已确认商品事实，请先返回商品研究确认商品事实。
+        </p>
+      ) : null}
 
       {notice ? <p className="mt-3 text-sm font-semibold text-rose-700" role="alert">{notice}</p> : null}
 

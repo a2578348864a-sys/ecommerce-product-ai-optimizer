@@ -4,7 +4,7 @@ import path from "path";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["scripts/real-ai-listing-smoke.ts"],
+    include: ["scripts/archive/acceptance/real-ai-listing-smoke.ts"],
     testTimeout: 60_000,
   },
   resolve: {

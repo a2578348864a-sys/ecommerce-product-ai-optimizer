@@ -21,4 +21,12 @@ describe("轮 10 合并：KeywordPendingSubmitCard 契约", () => {
     expect(buildSaveBrowserUsePayload("preview-1", null)).toBeNull();
     expect(buildSaveBrowserUsePayload("preview-1", { resultJsonHash: "", updatedAt: "x" } as unknown as BrowserUseStorageVersion)).toBeNull();
   });
+  it("待确认关键词明细表格契约：渲染搜索量/ABA周排名/购买量/竞争度表头与行", () => {
+    expect(source).toContain("keyword-pending-table");
+    expect(source).toContain("搜索量");
+    expect(source).toContain("ABA周排名");
+    expect(source).toContain("购买量");
+    expect(source).toContain("竞争度");
+    expect(source).toContain("it.keywordTranslation");
+  });
 });

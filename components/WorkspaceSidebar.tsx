@@ -23,42 +23,43 @@ import type { RuntimeMode } from "@/lib/server/runtimeMode";
 type SidebarNavItem = { label: string; href: string; icon: LucideIcon };
 
 export type SidebarRuntime = { mode: RuntimeMode | null; v4Graph: boolean };
-/** V4.1 运行模式感知导航分组（纯函数，SSR 与客户端一致） */
+
+/** 模式感知导航分组（纯函数，SSR 与客户端一致） */
 export function buildV4NavGroups(runtime: SidebarRuntime): ReadonlyArray<{
   label: string;
   items: ReadonlyArray<SidebarNavItem>;
 }> {
-  // 本地（local_owner / SSR 初始）：普通卖家工作台——7 项主导航；
-  // V4 研究任务/案例回放不在本地导航（案例回放仅公网 Public Replay 保留；V4 runs 经首页“开始商品研究”进入）。
-  const researchItems: SidebarNavItem[] = [
-    { label: "发现商品", href: "/opportunities", icon: Search },
-    { label: "待研究商品", href: "/opportunity-candidates", icon: Sparkles },
-    { label: "商品研究", href: "/research", icon: Package },
-    { label: "研究记录", href: "/tasks", icon: History },
+  // 本地（local_owner / SSR 初始）：聚焦商品开发决策核心流程与辅助工具
+  // 兼容性保留映射：商品研究 (/research) 与待研究商品已收敛为核心流程与辅助工具
+  const coreProcessItems: SidebarNavItem[] = [
+    { label: "商品发现", href: "/opportunities", icon: Search },
+    { label: "商品研究", href: "/opportunity-candidates", icon: Sparkles },
+    { label: "决策复盘", href: "/tasks", icon: History },
   ];
-  const creativeItems: SidebarNavItem[] = [
-    { label: "Listing Studio", href: "/listing-studio", icon: FileText },
+  const auxiliaryTools: SidebarNavItem[] = [
+    { label: "Listing Studio", href: "/listing-studio-v5", icon: FileText },
     { label: "Image Studio", href: "/image-studio", icon: Images },
   ];
+
   if (runtime.mode === "public_showcase") {
-    // 公网 HR 演示收口：侧栏只显示「首页」与「完整商品案例」（不出现密码锁/旧工作台入口）。
+    // 公网 HR 演示收口：侧栏只显示「首页」与「完整商品案例」（不出现密码锁/旧工作台入口）
     const showcaseGroup: SidebarNavItem[] = [
       { label: "首页", href: "/", icon: LayoutDashboard },
       { label: "完整商品案例", href: "/replay", icon: History },
     ];
     return [{ label: "演示门户", items: showcaseGroup }];
   }
+
   return [
     { label: "工作台", items: [{ label: "工作台", href: "/", icon: LayoutDashboard }] },
-    { label: "商品研究", items: researchItems },
-    { label: "创作工具", items: creativeItems },
+    { label: "核心流程", items: coreProcessItems },
+    { label: "辅助工具", items: auxiliaryTools },
   ];
 }
 
-/** 模式 Badge 文案（unknown → 空，避免 hydration 漂移） */
+/** 模式 Badge 文案（unknown 为空，避免 hydration 漂移） */
 export function modeBadgeLabel(runtime: SidebarRuntime): string {
   if (runtime.mode === "public_showcase") return "演示门户 · 只读案例";
-  // §4.5：普通本地页面不显示 V4 / Local Live 等技术模式文案（保留公网展示）
   return "";
 }
 
@@ -77,8 +78,6 @@ function isActivePath(pathname: string, href: string) {
 
 export function isTaskActiveResearchHighlight(pathname: string, search: string, hasActiveDetail: boolean | null) {
   if (pathname === "/research" || pathname.startsWith("/research/")) return true;
-  // §4.1/§4.3：活动研究详情高亮"商品研究"——由真实记录生命周期决定，不依赖 from=research 临时参数；
-  // 直接打开/刷新详情 URL 后仍一致；null=尚在读取 → 不抢高亮（回退"研究记录"）。
   if (pathname.startsWith("/tasks/")) {
     if (hasActiveDetail === null) return search.includes("from=research");
     return hasActiveDetail;
@@ -91,7 +90,7 @@ function isTasksHighlight(pathname: string, search: string, hasActiveDetail: boo
   return !isTaskActiveResearchHighlight(pathname, search, hasActiveDetail);
 }
 
-/** §4.1/§4.3：任务详情研究高亮（数据驱动，侧栏与移动导航共用；读取中返回 null 不抢高亮）。 */
+/** 任务详情研究高亮（数据驱动，侧栏与移动导航共用；读取中返回 null 不抢高亮） */
 function useTaskDetailResearchHighlight(pathname: string): boolean | null {
   const taskId = pathname.match(/^\/tasks\/([^/?#]+)/)?.[1] ?? null;
   const [state, setState] = useState<boolean | null>(null);
@@ -139,47 +138,81 @@ function currentProductLabel(productName: string) {
   }
   return productName;
 }
+
+/**
+ * Task-scoped studios must keep the taskId: opening either one without it
+ * loses the research context and can render the wrong standalone entry. The
+ * sidebar carries the task the user is already looking at (from /tasks/<id>
+ * or from the current ?taskId=).
+ */
+export function withTaskContext(href: string, taskId: string | null): string {
+  if (!taskId || (href !== "/listing-studio" && href !== "/image-studio")) return href;
+  return `${href}?taskId=${encodeURIComponent(taskId)}`;
+}
+
+export function useCurrentTaskId(pathname: string): string | null {
+  const [taskId, setTaskId] = useState<string | null>(null);
+  useEffect(() => {
+    const fromPath = pathname.match(/^\/tasks\/([^/?#]+)/)?.[1] ?? null;
+    const fromQuery = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("taskId") : null;
+    setTaskId(fromPath ?? fromQuery);
+  }, [pathname]);
+  return taskId;
+}
+
 function NavLink({
   item,
   pathname,
   search,
   compact = false,
+  isAuxiliary = false,
   hasActiveDetail = null,
+  taskId = null,
 }: {
   item: SidebarNavItem;
   pathname: string;
   search?: string;
   compact?: boolean;
+  isAuxiliary?: boolean;
   hasActiveDetail?: boolean | null;
+  taskId?: string | null;
 }) {
   const Icon = item.icon;
-  const active = item.href === "/research"
-    ? isTaskActiveResearchHighlight(pathname, search ?? "", hasActiveDetail)
+  const active = item.href === "/opportunity-candidates"
+    ? isActivePath(pathname, item.href)
     : item.href === "/tasks"
-      ? isTasksHighlight(pathname, search ?? "", hasActiveDetail)
+      ? (pathname === "/tasks" || pathname.startsWith("/tasks/"))
       : isActivePath(pathname, item.href);
 
   return (
     <Link
-      href={item.href}
+      href={withTaskContext(item.href, taskId)}
       aria-current={active ? "page" : undefined}
       className={
         (compact
-          ? "mb-1 flex h-9 w-full items-center gap-2 rounded-lg px-2 text-sm font-medium transition last:mb-0 "
+          ? "mb-1 flex h-8 w-full items-center gap-2 rounded-lg px-2 text-xs font-medium transition last:mb-0 "
           : "mb-1 flex h-10 w-full items-center gap-2.5 rounded-xl px-2.5 text-sm font-medium transition last:mb-0 ") +
-        (active ? "linear-nav-active" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950")
+        (active
+          ? "linear-nav-active"
+          : isAuxiliary
+            ? "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+            : "text-slate-600 hover:bg-slate-50 hover:text-slate-950")
       }
     >
       <span
         className={
           "flex items-center justify-center rounded-lg border bg-white " +
-          (compact ? "size-6 " : "size-7 ") +
-          (active ? "border-teal-200 text-teal-700" : "border-slate-200 text-slate-500")
+          (compact ? "size-5 " : "size-7 ") +
+          (active
+            ? "border-teal-200 text-teal-700"
+            : isAuxiliary
+              ? "border-slate-100 text-slate-400"
+              : "border-slate-200 text-slate-500")
         }
       >
-        <Icon className={compact ? "size-3.5" : "size-4"} />
+        <Icon className={compact ? "size-3" : "size-4"} />
       </span>
-      {item.label}
+      <span>{item.label}</span>
     </Link>
   );
 }
@@ -192,8 +225,9 @@ export function WorkspaceSidebar() {
   }, [pathname]);
   const search = fromResearch ? "from=research" : "";
   const hasActiveDetail = useTaskDetailResearchHighlight(pathname);
+  const currentTaskId = useCurrentTaskId(pathname);
   const [sharedProduct] = useSharedProduct();
-  // V4.1：runtime-mode 服务端权威（模式 + V4 Graph flag）；SSR 初始 unknown → 保守（不泄露 Live 入口）
+  // runtime-mode 服务端权威（模式 + V4 Graph flag）；SSR 初始 unknown -> 保守
   const [runtime, setRuntime] = useState<SidebarRuntime>({ mode: null, v4Graph: false });
   useEffect(() => {
     let cancelled = false;
@@ -223,54 +257,72 @@ export function WorkspaceSidebar() {
       <aside className="hidden lg:block">
         <div className="sticky top-4 flex flex-col gap-3">
           {sharedProduct.productName ? (
-          <div className="surface-card rounded-2xl border-teal-200 bg-teal-50/60 p-3">
-            <div className="flex items-center gap-2">
-              <Package className="size-4 shrink-0 text-teal-600" />
-              <p className="text-xs font-semibold text-teal-600">当前研究商品</p>
+            <div className="surface-card rounded-2xl border-teal-200 bg-teal-50/60 p-3">
+              <div className="flex items-center gap-2">
+                <Package className="size-4 shrink-0 text-teal-600" />
+                <p className="text-xs font-semibold text-teal-600">当前评估商品</p>
+              </div>
+              <p className="mt-1 truncate text-sm font-bold text-teal-900">{productLabel}</p>
+              <p className="mt-0.5 text-xs text-teal-600">{productMeta}</p>
             </div>
-            <p className="mt-1 truncate text-sm font-bold text-teal-900">{productLabel}</p>
-            <p className="mt-0.5 text-xs text-teal-600">{productMeta}</p>
-          </div>
-        ) : null}
+          ) : null}
 
-        <div className="surface-card p-3">
-          <div className="flex items-start gap-3">
-            <div className="linear-icon size-9 shrink-0 rounded-xl">
-              <Sparkles className="size-5" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <p className="text-xs font-semibold text-teal-700">轻选工作台</p>
-                {runtime.mode === "public_showcase" ? (
-                  <span className="rounded border border-teal-200 bg-teal-50 px-1 py-0.5 text-[10px] font-bold text-teal-700">演示</span>
+          <div className="surface-card p-3">
+            <div className="flex items-start gap-3">
+              <div className="linear-icon size-9 shrink-0 rounded-xl">
+                <Sparkles className="size-5" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <p className="text-xs font-semibold text-teal-700">轻选工作台</p>
+                  {runtime.mode === "public_showcase" ? (
+                    <span className="rounded border border-teal-200 bg-teal-50 px-1 py-0.5 text-[10px] font-bold text-teal-700">演示</span>
+                  ) : null}
+                </div>
+                <p className="mt-0.5 break-words text-sm font-semibold leading-5 text-slate-950">
+                  AI 跨境新品开发决策助手
+                </p>
+                <p className="muted-text mt-1 text-sm leading-6">辅助评估 · 人工决定</p>
+                {badge ? (
+                  <p data-testid="sidebar-mode-badge" className="mt-1.5 inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{badge}</p>
                 ) : null}
               </div>
-              <p className="mt-0.5 break-words text-sm font-semibold leading-5 text-slate-950">
-                AI 跨境商品研究与上架准备工作台
-              </p>
-              <p className="muted-text mt-1 text-sm leading-6">辅助研究 · 人工决定</p>
-              {badge ? (
-                <p data-testid="sidebar-mode-badge" className="mt-1.5 inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{badge}</p>
-              ) : null}
             </div>
           </div>
-        </div>
 
-        <nav className="surface-card p-2" aria-label="工作台导航">
-          {groups.map((group, index) => (
-            <section key={group.label} className={index > 0 ? "mt-3 border-t border-slate-100 pt-3" : ""}>
-              <p className="px-2 pb-1 text-xs font-semibold text-teal-700">{group.label}</p>
-              {group.items.map((item) => (
-                <NavLink key={item.href} item={item} pathname={pathname} search={search} hasActiveDetail={hasActiveDetail} />
-              ))}
-            </section>
-          ))}
-        </nav>
-      </div>
-    </aside>
+          <nav className="surface-card p-2" aria-label="工作台导航">
+            {groups.map((group, index) => {
+              const isAuxiliary = group.label === "辅助工具";
+              return (
+                <section key={group.label} className={index > 0 ? "mt-3 border-t border-slate-100 pt-3" : ""}>
+                  <div className="flex items-center justify-between px-2 pb-1">
+                    <p className={"text-xs font-semibold " + (isAuxiliary ? "text-slate-500" : "text-teal-700")}>{group.label}</p>
+                    {isAuxiliary ? (
+                      <span className="rounded bg-slate-100 px-1.5 py-0.2 text-[10px] font-medium text-slate-400">决策后辅助</span>
+                    ) : null}
+                  </div>
+                  {group.items.map((item) => (
+                    <NavLink
+                      key={item.href}
+                      item={item}
+                      pathname={pathname}
+                      search={search}
+                      compact={isAuxiliary}
+                      isAuxiliary={isAuxiliary}
+                      hasActiveDetail={hasActiveDetail}
+                      taskId={currentTaskId}
+                    />
+                  ))}
+                </section>
+              );
+            })}
+          </nav>
+        </div>
+      </aside>
     </>
   );
 }
+
 export function WorkspaceMobileNav() {
   const pathname = usePathname() || "/";
   const [runtime, setRuntime] = useState<SidebarRuntime>({ mode: null, v4Graph: false });
@@ -290,20 +342,21 @@ export function WorkspaceMobileNav() {
   }, []);
   const items = buildV4NavGroups(runtime).flatMap((group) => group.items);
   const researchHighlight = useTaskDetailResearchHighlight(pathname);
+  const currentTaskId = useCurrentTaskId(pathname);
 
   return (
     <nav className="no-scrollbar mt-4 flex gap-2 overflow-x-auto pb-1 lg:hidden" aria-label="工作台移动导航">
       {items.map((item) => {
         const Icon = item.icon;
-        const active = item.href === "/research"
-          ? isTaskActiveResearchHighlight(pathname, "", researchHighlight)
+        const active = item.href === "/opportunity-candidates"
+          ? isActivePath(pathname, item.href)
           : item.href === "/tasks"
-            ? isTasksHighlight(pathname, "", researchHighlight)
+            ? (pathname === "/tasks" || pathname.startsWith("/tasks/"))
             : isActivePath(pathname, item.href);
         return (
           <Link
             key={item.href}
-            href={item.href}
+            href={withTaskContext(item.href, currentTaskId)}
             aria-current={active ? "page" : undefined}
             className={
               "inline-flex h-11 shrink-0 items-center gap-2 rounded-full border px-3 text-sm font-semibold transition " +

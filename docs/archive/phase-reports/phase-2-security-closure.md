@@ -2,7 +2,7 @@
 
 > **状态**：✅ 已完成并归档。两个安全修复均已 commit/push，lint/test/build 全部通过。
 > **日期**：2026-06-22
-> **commits**：`e0cae79`、`f2c6b71`
+> **commits**：`<redacted-hash>`、`<redacted-hash>`
 
 ---
 
@@ -19,7 +19,7 @@ Phase 2 的核心目标是沿着「全自动电商 Agent」路线，把单品受
 
 ## Security.1 — Products API 服务端鉴权补齐
 
-**commit**：`e0cae79`
+**commit**：`<redacted-hash>`
 
 ### 修复内容
 
@@ -43,12 +43,12 @@ Phase 2 的核心目标是沿着「全自动电商 Agent」路线，把单品受
 
 ## Security.2 — radarCrawler SSRF 防护加固
 
-**commit**：`f2c6b71`
+**commit**：`<redacted-hash>`
 
 ### 修复内容
 
 **新增 `lib/server/ssrfGuard.ts`**（可复用 SSRF 防护模块）：
-- `isPrivateIPv4()` — 覆盖 127.0.0.0/8、10.0.0.0/8、172.16.0.0/12、192.168.0.0/16、169.254.0.0/16、0.0.0.0
+- `isPrivateIPv4()` — 覆盖 your-server-ip/8、your-server-ip/8、your-server-ip/12、your-server-ip/16、your-server-ip/16、0.0.0.0
 - `isPrivateIPv6()` — 覆盖 ::1、fe80::/10、fc00::/7
 - `isBlockedHostname()` — hostname 正则黑名单
 - `isAllowedProtocol()` — 仅允许 http/https
@@ -79,7 +79,7 @@ Phase 2 的核心目标是沿着「全自动电商 Agent」路线，把单品受
 | lint | ✅ 0 warnings | ✅ 0 warnings |
 | test | ✅ 20 files / 179 passed | ✅ 21 files / 258 passed |
 | build | ✅ 37/37 pages | ✅ 37/37 pages |
-| origin/main | ✅ e0cae79 已 push | ✅ f2c6b71 已 push |
+| origin/main | ✅ <redacted-hash> 已 push | ✅ <redacted-hash> 已 push |
 
 ---
 

@@ -43,9 +43,8 @@ describe("Studio progress derivation", () => {
       selectedImageId: null,
     })).toMatchObject([
       { key: "brief", status: "completed" },
-      { key: "strategy", status: "completed" },
       { key: "generate", status: "active", loading: true },
-      { key: "select", status: "pending" },
+      { key: "review", status: "pending" },
     ]);
 
     expect(deriveImageStudioProgress({
@@ -55,7 +54,6 @@ describe("Studio progress derivation", () => {
       candidateCount: 1,
       selectedImageId: null,
     }).map((step) => step.status)).toEqual([
-      "completed",
       "completed",
       "completed",
       "active",
@@ -68,7 +66,6 @@ describe("Studio progress derivation", () => {
       candidateCount: 2,
       selectedImageId: "image-1",
     }).map((step) => step.status)).toEqual([
-      "completed",
       "completed",
       "completed",
       "completed",

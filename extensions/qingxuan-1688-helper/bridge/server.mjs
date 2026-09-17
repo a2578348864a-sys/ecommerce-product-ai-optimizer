@@ -27,7 +27,7 @@ const BRIDGE_VERSION = "authenticated-loopback-bridge.v1"; // V3 Final R13：/he
 const JOB_TTL_MS = 10 * 60 * 1000;
 const MAX_COMMAND_BYTES = 6 * 1024 * 1024; // 命令含图片 base64（候选图 ≤4MB 时足够）
 const MAX_IMAGE_BYTES = 30 * 1024 * 1024;
-const ALLOWED_COMMANDS = new Set(["getState", "upload", "submit", "collect", "navigateUploadPage"]);
+const ALLOWED_COMMANDS = new Set(["getState", "upload", "submit", "collect", "navigateUploadPage", "reloadTab"]);
 const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp"]);
 
 const token = parseToken(process.argv);
@@ -41,6 +41,38 @@ function parseToken(argv) {
   if (index < 0 || !argv[index + 1]) return null;
   const value = argv[index + 1];
   return /^[a-f0-9]{64}$/.test(value) ? value : null;
+}
+
+function parseParentPid(argv) {
+  const index = argv.indexOf("--parent-pid");
+  if (index < 0 || !argv[index + 1]) return null;
+  const value = parseInt(argv[index + 1], 10);
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function parsePort(argv) {
+  const index = argv.indexOf("--port");
+  if (index < 0 || !argv[index + 1]) return null;
+  const value = parseInt(argv[index + 1], 10);
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+const parentPid = parseParentPid(process.argv);
+if (parentPid) {
+  let consecutiveFailures = 0;
+  const watchdog = setInterval(() => {
+    try {
+      process.kill(parentPid, 0);
+      consecutiveFailures = 0;
+    } catch {
+      consecutiveFailures++;
+      // 连续 3 次（6 秒）确认父进程不存在才退出，避免 Windows 瞬时查询失败造成误退
+      if (consecutiveFailures >= 3) {
+        process.exit(0);
+      }
+    }
+  }, 2000);
+  watchdog.unref();
 }
 
 /** @type {Map<string, {image: Buffer|null, meta: Object, phase: string, nonces: Set<string>, expiresAt: number}>} */
@@ -152,12 +184,12 @@ async function handleRequest(req, res) {
       return json(res, 200, { ok: true });
     }
 
-    // ── 以下全部为轻选客户端通道（需 token） ──
-    if (!requireClientToken(req, res)) return;
-
     if (path === "/health" && req.method === "GET") {
       return json(res, 200, { ok: true, jobs: jobs.size, extensionSeen: lastExtensionSeenAt > 0, lastExtensionSeenAt, extensionSwVersion, bridgeVersion: BRIDGE_VERSION });
     }
+
+    // ── 以下全部为轻选客户端通道（需 token） ──
+    if (!requireClientToken(req, res)) return;
 
     if (path === "/jobs" && req.method === "POST") {
       const raw = await readBody(req, MAX_IMAGE_BYTES + 64 * 1024);
@@ -254,6 +286,17 @@ function tryListen(port) {
 }
 
 async function main() {
+  const explicitPort = parsePort(process.argv);
+  if (explicitPort) {
+    try {
+      await tryListen(explicitPort);
+      console.log(`[v35-bridge] listening on http://${HOST}:${explicitPort} (token auth enabled)`);
+      return;
+    } catch (e) {
+      console.error(`[v35-bridge] cannot listen on explicit port ${explicitPort}: ${e}`);
+      process.exit(1);
+    }
+  }
   for (let offset = 0; offset < PORT_RANGE; offset++) {
     const port = BASE_PORT + offset;
     try {

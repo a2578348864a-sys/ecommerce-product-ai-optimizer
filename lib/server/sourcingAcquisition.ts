@@ -14,8 +14,8 @@
 
 import "server-only";
 
-import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { appendFileSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { SourcingAcquisitionError, READ_ONLY_COMMANDS, type ReadOnlyCommand } from "@/lib/upstream/1688/contracts";
 import {
@@ -223,6 +223,22 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** 宽松解析 JSON（用于探测状态、容忍头部杂质日志） */
+function tryParseJson(raw: string): Record<string, unknown> | null {
+  try {
+    const trimmed = raw.trim();
+    const firstBrace = trimmed.indexOf("{");
+    if (firstBrace < 0) return null;
+    const candidate = trimmed.slice(firstBrace);
+    const lastBrace = candidate.lastIndexOf("}");
+    const body = lastBrace > 0 ? candidate.slice(0, lastBrace + 1) : candidate;
+    const parsed = JSON.parse(body);
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 /** 从 stdout 提取 JSON：容忍头部日志行（首个 { 开始，末尾可能截断则取最后一个 }） */
 function parseCliJson(stdout: string): unknown {
   const trimmed = stdout.trim();
@@ -426,14 +442,344 @@ export function buildCliLoginHint(env: NodeJS.ProcessEnv = process.env): { comma
 }
 
 /**
- * Package A（R1）：固定安全登录 capability——从 Web UI 启动 1688 关键词登录。
- * 安全边界（任务 13 节）：
- * - fixed executable + 固定参数 ["login", "--headed"]；shell=false；不接受任何用户输入。
- * - detached 后台运行，不等待完成（扫码动作由用户在 CLI 打开的真实浏览器窗口中完成）。
- * - 不捕获/不导出 cookie、token、password；login 会话由 CLI 自身管理。
- * - 返回后由用户点击「重新检测」（whoami）确认登录结果。
+ * 启动前 Daemon 冲突排查与释放：
+ * 检查 daemon 是否正在运行（通过 cli daemon status --json 或 ~/.1688/daemon.pid），
+ * 若存活则执行 cli daemon stop --json（3000ms 超时）等待其优雅停止并释放 .lock；
+ * 随后清理残留的 stale daemon.pid 与 proper-lockfile 锁目录（.lock.lock），防止 LOCK_BUSY 秒退。
  */
-export async function begin1688KeywordLogin(env: NodeJS.ProcessEnv = process.env): Promise<{ started: boolean }> {
+export async function stop1688DaemonIfRunning(
+  cliPath: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
+  let isRunning = false;
+  let statusDetermined = false;
+
+  try {
+    const statusResult = await runCliProcessCore(
+      [cliPath, "daemon", "status", "--json"],
+      3000,
+      env,
+    );
+    if (statusResult.exitCode === 0 && statusResult.stdout) {
+      const parsed = tryParseJson(statusResult.stdout);
+      if (parsed && typeof parsed.running === "boolean") {
+        isRunning = parsed.running;
+        statusDetermined = true;
+      }
+    }
+  } catch (statusError) {
+    console.warn(
+      "[1688-cli] daemon status check failed or timed out:",
+      errorMessage(statusError),
+    );
+  }
+
+  const homeDir = env.USERPROFILE ?? env.HOME;
+  const rootDir = env.BB1688_HOME ?? (homeDir ? join(homeDir, ".1688") : null);
+
+  if (!statusDetermined && rootDir) {
+    try {
+      const pidPath = join(rootDir, "daemon.pid");
+      if (existsSync(pidPath)) {
+        const pidStr = readFileSync(pidPath, "utf8").trim();
+        const pid = parseInt(pidStr, 10);
+        if (!isNaN(pid) && pid > 0) {
+          try {
+            process.kill(pid, 0);
+            isRunning = true;
+          } catch (killErr: unknown) {
+            const code = (killErr as { code?: string })?.code;
+            if (code === "EPERM") {
+              isRunning = true;
+            }
+          }
+        }
+      }
+    } catch (pidError) {
+      console.warn("[1688-cli] daemon pid check failed:", errorMessage(pidError));
+    }
+  }
+
+  if (isRunning) {
+    try {
+      await runCliProcessCore([cliPath, "daemon", "stop", "--json"], 3000, env);
+    } catch (stopError) {
+      console.warn(
+        "[1688-cli] daemon stop failed or timed out:",
+        errorMessage(stopError),
+      );
+    }
+  }
+
+  // 清理残留的死进程 pid 与 stale lock 文件（防止 LOCK_BUSY 秒退）
+  if (rootDir) {
+    try {
+      const pidPath = join(rootDir, "daemon.pid");
+      if (existsSync(pidPath)) {
+        const pidStr = readFileSync(pidPath, "utf8").trim();
+        const pid = parseInt(pidStr, 10);
+        let dead = true;
+        if (!isNaN(pid) && pid > 0) {
+          try {
+            process.kill(pid, 0);
+            dead = false;
+          } catch {
+            dead = true;
+          }
+        }
+        if (dead) {
+          try {
+            rmSync(pidPath, { force: true });
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      // 若 daemon 未运行，清理 proper-lockfile 残留目录（.lock.lock）
+      if (!isRunning) {
+        const lockTargets = [
+          join(rootDir, ".lock.lock"),
+          join(rootDir, "profiles", "default", ".lock.lock"),
+        ];
+        for (const target of lockTargets) {
+          if (existsSync(target)) {
+            try {
+              rmSync(target, { recursive: true, force: true });
+            } catch {
+              // ignore
+            }
+          }
+        }
+      }
+    } catch (cleanupErr) {
+      console.warn("[1688-cli] stale lock cleanup error:", errorMessage(cleanupErr));
+    }
+  }
+}
+
+export type WindowProbeResult = {
+  ok: boolean;
+  found: boolean;
+  pid?: number;
+  hwnd?: number;
+  reason?: string;
+};
+
+export type WindowProbeFn = (input: {
+  profileDir: string;
+  timeoutMs: number;
+  intervalMs: number;
+  signal?: AbortSignal;
+  env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+}) => Promise<WindowProbeResult>;
+
+/**
+ * 精简 env 白名单：本机 agent/连接器会话会注入超过 64KB 的环境块，
+ * PowerShell `Add-Type`(csc.exe 子进程) 会因「环境块不能多于 65535 字节」直接失败，
+ * 导致 probe-1688-window.ps1 的 [Win32DesktopProbe] 类型编译不出来、探测永远返回
+ * not_visible（即使桌面已有真实可见 headed 窗口）。对 launcher/probe 子进程只传
+ * 白名单键，保证 ps1 内 Add-Type 可编译、CLI 不受巨型 env 干扰。
+ */
+export const SPAWN_ENV_ALLOWLIST: ReadonlyArray<string> = [
+  "PATH",
+  "SystemRoot",
+  "WINDIR",
+  "COMSPEC",
+  "TEMP",
+  "TMP",
+  "USERPROFILE",
+  "HOME",
+  "LOCALAPPDATA",
+  "APPDATA",
+  "SystemDrive",
+  "ProgramFiles",
+  "ProgramFiles(x86)",
+  "OS",
+  "PROCESSOR_ARCHITECTURE",
+  "NUMBER_OF_PROCESSORS",
+  "NODE_ENV",
+];
+
+export function sanitizedSpawnEnv(
+  source: NodeJS.ProcessEnv | Record<string, string | undefined> | undefined,
+): Record<string, string | undefined> {
+  if (!source) return {};
+  const out: Record<string, string | undefined> = {};
+  for (const key of Object.keys(source)) {
+    const keep =
+      SPAWN_ENV_ALLOWLIST.includes(key) ||
+      key.startsWith("BB1688_") ||
+      key.startsWith("V35_1688_") ||
+      key.startsWith("SOURCING_") ||
+      key.startsWith("FAKE_");
+    if (keep && source[key] !== undefined) out[key] = source[key];
+  }
+  return out;
+}
+
+/**
+ * Windows 原生可见 Chrome 窗口探测：
+ * 调用 scripts/probe-1688-window.ps1 脚本，检查 Chrome 顶层窗口 handle、可见性与屏幕区域有效性。
+ */
+export async function defaultWindowProbe(input: {
+  profileDir: string;
+  timeoutMs: number;
+  intervalMs: number;
+  signal?: AbortSignal;
+  env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+}): Promise<WindowProbeResult> {
+  const env = input.env ?? process.env;
+
+  const delayMs = (ms: number) =>
+    new Promise<boolean>((resolve) => {
+      if (input.signal?.aborted) return resolve(false);
+      const timer = setTimeout(() => {
+        input.signal?.removeEventListener("abort", onAbort);
+        resolve(true);
+      }, ms);
+      const onAbort = () => {
+        clearTimeout(timer);
+        resolve(false);
+      };
+      input.signal?.addEventListener("abort", onAbort, { once: true });
+    });
+
+  // 1. 测试与 Mock 覆盖
+  if (env.FAKE_WINDOW_PROBE === "true") {
+    const completed = await delayMs(Math.max(input.intervalMs, 1000));
+    if (!completed || input.signal?.aborted) {
+      return { ok: false, found: false, reason: "aborted" };
+    }
+    return { ok: true, found: true, pid: 12345, hwnd: 67890 };
+  }
+  if (env.FAKE_WINDOW_PROBE === "false") {
+    await delayMs(Math.min(input.timeoutMs, 1000));
+    return { ok: true, found: false, reason: "mock_window_not_found" };
+  }
+
+  const cliPath = env[SOURCING_CLI_ENV_PATH] ?? "";
+  if (cliPath.includes("fake-1688-cli") || env.FAKE_CLI_MODE) {
+    if (env.FAKE_CLI_MODE === "login-window-not-visible") {
+      await delayMs(Math.min(input.timeoutMs, 1000));
+      return { ok: true, found: false, reason: "mock_timeout_no_visible_window" };
+    }
+    // Mock 成功：等待探针周期（保证子进程完成启动/写入日志；若子进程提前退出则由 abort 中断）
+    const completed = await delayMs(Math.max(input.intervalMs, 1000));
+    if (!completed || input.signal?.aborted) {
+      return { ok: false, found: false, reason: "aborted" };
+    }
+    return { ok: true, found: true, pid: 12345, hwnd: 67890 };
+  }
+
+  // 2. 非 Windows 平台降级
+  if (process.platform !== "win32") {
+    return { ok: true, found: false, reason: "unsupported_platform" };
+  }
+
+  // 3. Windows 原生脚本探测
+  const scriptPath = join(process.cwd(), "scripts", "probe-1688-window.ps1");
+  if (!existsSync(scriptPath)) {
+    return { ok: false, found: false, reason: "probe_script_missing" };
+  }
+
+  return await new Promise<WindowProbeResult>((resolve) => {
+    let stdout = "";
+    let settled = false;
+
+    const ps = spawn(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        scriptPath,
+        "-ProfileDir",
+        input.profileDir,
+        "-TimeoutMs",
+        String(input.timeoutMs),
+        "-IntervalMs",
+        String(input.intervalMs),
+      ],
+      {
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "pipe"],
+        env: sanitizedSpawnEnv(env) as NodeJS.ProcessEnv,
+      },
+    );
+
+    ps.stdout?.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString("utf8");
+    });
+
+    const onAbort = () => {
+      if (settled) return;
+      try {
+        ps.kill();
+      } catch {
+        // ignore
+      }
+    };
+    input.signal?.addEventListener("abort", onAbort, { once: true });
+
+    ps.once("close", () => {
+      if (settled) return;
+      settled = true;
+      input.signal?.removeEventListener("abort", onAbort);
+      try {
+        const parsed = JSON.parse(stdout.trim());
+        if (parsed && typeof parsed === "object" && parsed.found === true) {
+          resolve({ ok: true, found: true, pid: parsed.pid, hwnd: parsed.hwnd });
+          return;
+        }
+        resolve({
+          ok: true,
+          found: false,
+          reason: parsed?.reason || "timeout_no_visible_window",
+        });
+      } catch {
+        resolve({
+          ok: false,
+          found: false,
+          reason: `probe_parse_failed: ${stdout.slice(0, 100)}`,
+        });
+      }
+    });
+
+    ps.once("error", (err) => {
+      if (settled) return;
+      settled = true;
+      input.signal?.removeEventListener("abort", onAbort);
+      resolve({ ok: false, found: false, reason: err.message });
+    });
+  });
+}
+
+/**
+ * Package A（R1）：固定安全登录 capability——从 Web UI 启动 1688 关键词登录。
+ * 安全边界与启动自检：
+ * - 启动前排查并释放已有 daemon 冲突与 stale lock（stop1688DaemonIfRunning）。
+ * - fixed executable + 固定参数 [status.cliPath, "login", "--headed", "--force", "--no-daemon"]；shell=false；不接受任何用户输入。
+ * - --force：保证即使本地有历史 state.json 也强制打开 headed 扫码窗口，绝不秒退；
+ * - --no-daemon：避免登录成功后在后台常驻拉起 daemon 导致后续冲突。
+ * - 管道与生命周期安全：
+ *   - 严禁主动调用 child.stdout?.destroy() / child.stderr?.destroy()，彻底杜绝 EPIPE 崩溃！
+ *   - 输出安全重定向至 login-launch.log 并保持 pipe drain；
+ *   - resolve 后对 stdout/stderr 与 child 显式 unref()，保证既不阻断父进程退出也不引发 EPIPE。
+ * - Windows 原生真实可见窗口探测（Visible Window Readiness Probe）：
+ *   - 替换死等 1000ms 假阳性判定；
+ *   - 在启动后轮询（默认最长等待 8000ms，每 500ms 探测一次）；
+ *   - 探测 Chrome 对应 default profile 是否拉起，且存在 MainWindowHandle != 0 且处于屏幕工作区的真实窗口；
+ *   - 调用 Win32 API 激活置顶（SetForegroundWindow / SwitchToThisWindow）；
+ *   - 仅当探测到真实可见窗口时才返回 { started: true }；
+ *   - 若超时未出现真实窗口，收集 CLI stderr 并抛出精准 typed error（sourcing_login_window_not_visible），绝不报假成功。
+ */
+export async function begin1688KeywordLogin(
+  env: NodeJS.ProcessEnv = process.env,
+  options?: { probeWindow?: WindowProbeFn },
+): Promise<{ started: boolean; visibility?: "detected" | "unknown" }> {
   const status = getCliToolStatus(env);
   if (!status.available) {
     throw new SourcingAcquisitionError(
@@ -444,15 +790,286 @@ export async function begin1688KeywordLogin(env: NodeJS.ProcessEnv = process.env
         : "1688 采集工具路径无效，无法打开登录窗口。",
     );
   }
-  const child = spawn(process.execPath, [status.cliPath, "login", "--headed"], {
-    shell: false,
-    windowsHide: false,
-    detached: true,
-    stdio: "ignore",
-    env,
+
+  await stop1688DaemonIfRunning(status.cliPath, env);
+
+  const homeDir = env.USERPROFILE ?? env.HOME;
+  const rootDir = env.BB1688_HOME ?? (homeDir ? join(homeDir, ".1688") : null);
+  const logPath = rootDir ? join(rootDir, "login-launch.log") : null;
+
+  const appendToLog = (data: Buffer | string) => {
+    if (!logPath) return;
+    try {
+      appendFileSync(logPath, data);
+    } catch {
+      // ignore
+    }
+  };
+
+  const args = [status.cliPath, "login", "--headed", "--force", "--no-daemon"];
+
+  const isMock = Boolean(
+    options?.probeWindow ||
+    env.FAKE_WINDOW_PROBE ||
+    env.FAKE_CLI_MODE ||
+    status.cliPath.includes("fake-1688-cli")
+  );
+
+  const launcherScript = join(process.cwd(), "scripts", "launch-1688-login.ps1");
+  // Win32 真实路径：通过 launch-1688-login.ps1 以「真实控制台 + Start-Process」启动 CLI。
+  // 依据实测：1688 CLI 的 --headed 仅在 stdout 为真实控制台（TTY）时才 headful 启动 Chrome；
+  // 服务器 spawn 若直接管道重定向 stdout，CLI 会静默降级 headless → 无可见窗口（P0-C 根因）。
+  // ps1 不做任何输出重定向，Chrome 登录窗口即真实出现在用户桌面。
+  if (process.platform === "win32" && !isMock && existsSync(launcherScript)) {
+    // 第十一版（1688 P0）：异步启动 launcher，spawnSync 改为 execFile + Promise，
+    // 不阻塞 Node event loop；launcher 自身通过 Start-Process fire-and-detach，
+    // 正常 << 2s 返回。超过 5s 视为 sourcing_login_launcher_timeout。
+    const LAUNCHER_TIMEOUT_MS = 5000;
+    const launcherResult = await new Promise<{ ok: boolean; stdout: string; error?: string }>(
+      (resolve, reject) => {
+        const ps: ChildProcess = spawn(
+          "powershell.exe",
+          [
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            launcherScript,
+            "-NodePath",
+            process.execPath,
+            "-CliPath",
+            status.cliPath,
+            ...(logPath ? ["-LogPath", logPath] : []),
+          ],
+          { windowsHide: true, stdio: ["ignore", "pipe", "pipe"], env: sanitizedSpawnEnv(env) as NodeJS.ProcessEnv },
+        );
+        let stdout = "";
+        let settled = false;
+        const timer = setTimeout(() => {
+          if (!settled) {
+            settled = true;
+            ps.kill();
+            reject(new SourcingAcquisitionError(
+              "sourcing_login_launcher_timeout",
+              504,
+              "1688 登录 launcher 超时，请稍后重试。",
+            ));
+          }
+        }, LAUNCHER_TIMEOUT_MS);
+        ps.stdout?.on("data", (chunk: Buffer) => { stdout += chunk.toString(); });
+        ps.stderr?.on("data", (chunk: Buffer) => { stdout += chunk.toString(); });
+        ps.on("close", (code) => {
+          if (!settled) {
+            settled = true;
+            clearTimeout(timer);
+            resolve({ ok: code === 0, stdout });
+          }
+        });
+        ps.on("error", (err) => {
+          if (!settled) {
+            settled = true;
+            clearTimeout(timer);
+            reject(new SourcingAcquisitionError(
+              "sourcing_login_launcher_failed",
+              500,
+              `1688 登录 launcher 启动失败: ${err.message}`,
+            ));
+          }
+        });
+      },
+    );
+
+    console.log("[begin1688KeywordLogin launcher]", { ok: launcherResult.ok, stdout: launcherResult.stdout.slice(0, 200) });
+    if (!launcherResult.ok) {
+      throw new SourcingAcquisitionError(
+        "sourcing_login_window_launch_failed",
+        500,
+        `无法启动 1688 登录窗口: ${launcherResult.error || launcherResult.stdout || "PowerShell launcher failed"}`,
+      );
+    }
+    try {
+      const parsed = JSON.parse(launcherResult.stdout.trim().split("\n").filter(Boolean).pop() || "{}");
+      if (!parsed.ok) {
+        throw new SourcingAcquisitionError(
+          "sourcing_login_window_launch_failed",
+          500,
+          `无法启动 1688 登录窗口: ${parsed.error || "Launch error"}`,
+        );
+      }
+    } catch (parseErr) {
+      if (parseErr instanceof SourcingAcquisitionError) throw parseErr;
+      // ignore JSON parse error if stdout had extra text
+    }
+
+    // Best-effort 可见性诊断（不再作为强门禁）：
+    // headed 窗口与探测存在天然时序 race（CLI 登录成功前窗口生命周期短、可能被自身 daemon
+    // 顶替），因此窗口未探测到不阻断请求——登录是否真正完成由 whoami / 重新检测唯一裁决。
+    const probeFn = options?.probeWindow ?? defaultWindowProbe;
+    const profileDir = rootDir ? join(rootDir, "profiles", "default") : "default";
+    let visibility: "detected" | "unknown" = "unknown";
+    try {
+      const probeResult = await probeFn({
+        profileDir,
+        // 诊断窗口期收缩到 5s：仅作 best-effort 反馈，不让请求因探测等待过长
+        timeoutMs: Number(env.V35_1688_LOGIN_PROBE_TIMEOUT_MS) || 5000,
+        intervalMs: Number(env.V35_1688_LOGIN_PROBE_INTERVAL_MS) || 500,
+        env,
+      });
+      if (probeResult.found) visibility = "detected";
+    } catch {
+      // 探测异常不影响 login 请求成功（launcher 已 detach 启动）
+    }
+
+    return { started: true, visibility };
+  }
+
+  return await new Promise<{ started: boolean }>((resolve, reject) => {
+    let stderr = "";
+    let settled = false;
+    const probeController = new AbortController();
+
+    const child = spawn(process.execPath, args, {
+      shell: false,
+      windowsHide: false,
+      detached: true,
+      stdio: ["ignore", "pipe", "pipe"],
+      ...(env ? { env } : {}),
+    });
+
+    child.stdout?.on("data", (chunk: Buffer) => {
+      appendToLog(chunk);
+    });
+
+    child.stderr?.on("data", (chunk: Buffer) => {
+      if (stderr.length < MAX_STDERR_BYTES) {
+        stderr += chunk.toString("utf8");
+      }
+      appendToLog(chunk);
+    });
+
+    const finishFailure = (exitCode: number | null, err?: Error) => {
+      if (settled) return;
+      settled = true;
+      probeController.abort();
+
+      try {
+        child.kill("SIGTERM");
+        setTimeout(() => {
+          if (child.exitCode === null) child.kill("SIGKILL");
+        }, 1000).unref();
+      } catch {
+        // ignore
+      }
+
+      if (err) {
+        reject(
+          new SourcingAcquisitionError(
+            "sourcing_login_window_launch_failed",
+            500,
+            `无法启动 1688 登录窗口: ${err.message || String(err)}`,
+          ),
+        );
+        return;
+      }
+
+      const effectiveExitCode = child.exitCode ?? exitCode;
+      if (stderr.includes("LOCK_BUSY") || effectiveExitCode === 5) {
+        reject(
+          new SourcingAcquisitionError(
+            "sourcing_login_lock_busy",
+            503,
+            "1688 进程锁被占用，请稍后重试。",
+          ),
+        );
+        return;
+      }
+
+      const sanitized = stderr.trim().split(/\r?\n/)[0] || `进程异常退出（exitCode: ${effectiveExitCode}）`;
+      reject(
+        new SourcingAcquisitionError(
+          "sourcing_login_window_launch_failed",
+          500,
+          `无法启动 1688 登录窗口: ${sanitized}`,
+        ),
+      );
+    };
+
+    child.once("error", (err) => {
+      finishFailure(child.exitCode, err);
+    });
+
+    child.once("exit", (code) => {
+      setTimeout(() => {
+        finishFailure(code ?? child.exitCode);
+      }, 50);
+    });
+
+    // 启动原生可见窗口探测（Visible Window Readiness Probe）
+    const probeFn = options?.probeWindow ?? defaultWindowProbe;
+    const profileDir = rootDir ? join(rootDir, "profiles", "default") : "default";
+    const timeoutMs = Number(env.V35_1688_LOGIN_PROBE_TIMEOUT_MS) || 20000;
+    const intervalMs = Number(env.V35_1688_LOGIN_PROBE_INTERVAL_MS) || 500;
+
+    void probeFn({
+      profileDir,
+      timeoutMs,
+      intervalMs,
+      signal: probeController.signal,
+      env,
+    })
+      .then((probeResult) => {
+        if (settled) return;
+
+        // 若探测期间子进程已退出，以 exitCode / stderr 裁决
+        if (child.exitCode !== null) {
+          finishFailure(child.exitCode);
+          return;
+        }
+
+        if (!probeResult.found) {
+          settled = true;
+          try {
+            child.kill("SIGTERM");
+            setTimeout(() => {
+              if (child.exitCode === null) child.kill("SIGKILL");
+            }, 1000).unref();
+          } catch {
+            // ignore
+          }
+
+          if (stderr.includes("LOCK_BUSY") || child.exitCode === 5) {
+            reject(
+              new SourcingAcquisitionError(
+                "sourcing_login_lock_busy",
+                503,
+                "1688 进程锁被占用，请稍后重试。",
+              ),
+            );
+            return;
+          }
+
+          const cliStderr = stderr.trim().split(/\r?\n/)[0];
+          const detail = cliStderr ? `（CLI 输出: ${cliStderr}）` : "";
+          reject(
+            new SourcingAcquisitionError(
+              "sourcing_login_window_not_visible",
+              504,
+              `1688 登录窗口未能在有效屏幕区域内显示${detail}。`,
+            ),
+          );
+          return;
+        }
+
+        // 安全 unref 子进程，管道保持开启与 drain，严禁 destroy
+        child.unref();
+        resolve({ started: true });
+      })
+      .catch((probeErr) => {
+        if (settled) return;
+        finishFailure(child.exitCode, probeErr instanceof Error ? probeErr : new Error(String(probeErr)));
+      });
   });
-  child.unref();
-  return { started: true };
 }
 
 /** 登录状态检测（只读）——只返回 loggedIn 布尔，账号标识一律丢弃 */

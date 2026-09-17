@@ -4,14 +4,14 @@
 
 - **日期**：2026-06-21
 - **执行人**：Claude
-- **生产服务器**：112.124.54.81
-- **生产代码 HEAD**：`7b83cdfc07dc14bb2e3f0b363f41bf575507cdc9`
-- **origin/main HEAD**：`f469beb`（执行前）
-- **数据库路径**：`/www/alibaba-ai-assistant/prisma/prod.db`
+- **生产服务器**：your-server-ip
+- **生产代码 HEAD**：`<redacted-hash>`
+- **origin/main HEAD**：`<redacted-hash>`（执行前）
+- **数据库路径**：`/path/to/project/prisma/prod.db`
 
 ## 删除原因
 
-Alpha 发出前最终复核（`f469beb`）发现 C 类 2 条 viral mock 记录在 /tasks 任务列表显示「mock 模拟拆解」标签（`source=mock`），且详情页 raw JSON 折叠区含 `"mode":"mock"`。判定 P2，建议删除后再发给 Alpha 测试用户。
+Alpha 发出前最终复核（`<redacted-hash>`）发现 C 类 2 条 viral mock 记录在 /tasks 任务列表显示「mock 模拟拆解」标签（`source=mock`），且详情页 raw JSON 折叠区含 `"mode":"mock"`。判定 P2，建议删除后再发给 Alpha 测试用户。
 
 ## 删除对象
 
@@ -25,9 +25,9 @@ Alpha 发出前最终复核（`f469beb`）发现 C 类 2 条 viral mock 记录�
 ### 备份
 
 ```
-路径：/www/server-backups/alibaba-ai-assistant/2026-06-21-before-alpha-delete-viral-mock/
+路径：/path/to/server-backups/alibaba-ai-assistant/2026-06-21-before-alpha-delete-viral-mock/
 文件：prod.db.before-delete-viral-mock.bak
-大小：352KB
+大小：<redacted>
 quick_check：ok
 记录数：82
 ```

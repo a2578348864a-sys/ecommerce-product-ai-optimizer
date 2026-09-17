@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { ProductCreativeHandoffV1 } from "@/lib/productCreativeHandoff";
 import type { ListingBrief } from "@/lib/listingHandoff/listingBrief";
+import type { CopyStrategyV1 } from "@/lib/listingHandoff/copyStrategy/types";
 
 /**
  * PR2-2: 从当前有效 Creative Handoff 构造安全 Listing 生成输入。
@@ -34,6 +35,8 @@ export type ListingGenerationInput = {
   promotionEligible: false;
   /** Request-scoped marketing direction. Never part of confirmed product facts. */
   listingBrief?: ListingBrief;
+  /** Deterministic strategy projection; framing only, never a fact/evidence source. */
+  copyStrategy?: CopyStrategyV1;
   /**
    * R3.2 English rendering pack：中文 confirmed facts 的语义等价英文渲染（factRef 溯源）。
    * 原始 facts 永不修改；渲染仅供用户可见 Listing 字段使用。

@@ -52,6 +52,7 @@ import { createBrowserUuid } from "@/lib/browserUuid";
 import { useSessionDraft } from "@/lib/client/useSessionDraft";
 import { TaskStudioPreparation } from "@/components/studio/TaskStudioPreparation";
 import { ListingHandoffSection } from "@/components/listing-handoff/ListingHandoffSection";
+import { CopyStrategyPanel } from "@/components/listing-handoff/CopyStrategyPanel";
 import { studioApiErrorCode, studioErrorMessage } from "@/lib/client/studioErrorMessage";
 import { StudioProgressRail } from "@/components/studio/StudioProgressRail";
 import { deriveListingStudioProgress } from "@/lib/client/studioProgress";
@@ -182,7 +183,7 @@ export function ListingStudioClient({ taskId = "" }: { taskId?: string }) {
       <div data-testid="listing-studio-task-flow" className="studio-main-flow">
         {progressRail}
         <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700" data-testid="listing-mode-task-linked">
-          来自研究记录（TASK-LINKED）· 事实来自商品研究确认
+          来自研究记录 · 事实来自商品研究确认
         </div>
         <TaskStudioPreparation taskId={taskId} kind="listing" onReadyChange={handleTaskReady} onCommitted={handleTaskCommitted}>
           <div className="surface-card p-4" data-testid="listing-studio-task-mode">
@@ -196,14 +197,19 @@ export function ListingStudioClient({ taskId = "" }: { taskId?: string }) {
     <div data-testid="listing-studio-standalone-flow" className="studio-main-flow">
       {progressRail}
       <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600" data-testid="listing-mode-standalone">
-        独立工具（STANDALONE）· 资料由你提供，未经商品研究验证
+        独立工具 · 资料由你提供，未经商品研究验证
       </div>
+      <CopyStrategyPanel strategy={null} />
       <ManualListingStudioClient onProgressChange={handleManualProgress} />
     </div>
   );
 }
 
-function ManualListingStudioClient({ onProgressChange }: {
+/**
+ * 独立工具的输入与生成面板（无 Task 依赖）。
+ * 第十二轮：本组件由 standalone 入口组件复用导出，自身实现与生成规则未改动。
+ */
+export function ManualListingStudioClient({ onProgressChange }: {
   onProgressChange: (state: { briefReady: boolean; isGenerating: boolean; hasResult: boolean }) => void;
 }) {
   const [productName, setProductName] = useState("");

@@ -121,17 +121,75 @@ function exactWordCount(text: string, needle: string): number {
   return words.filter((w) => w === key).length;
 }
 
-export function validateRuntimeQualityContract(input: RuntimeQualityInput): RuntimeQualityResult {
-  const issues: RuntimeIssue[] = [];
-  const facts = input.facts ?? [];
-  const used = input.usedFactIds ?? [];
-  const usedValues = used
+/** usedFactIds → 锚定用事实值集合（factId/field 双匹配；与 Runtime 合同锚点判定同源）。 */
+export function usedFactValuesOf(facts: RuntimeFact[], usedFactIds: ReadonlyArray<string>): string[] {
+  const used = usedFactIds ?? [];
+  const rawValues = used
     .map((id) => valueOf(facts, id))
     .concat(used.map((id) => {
       const f = facts.find((x) => x.factId === id || x.field === id);
       return f ? String(f.value).trim() : "";
     }))
     .filter((v) => v.length > 0);
+  const atoms = rawValues.flatMap((val) =>
+    val.split(/[,;，；/]+/).map((s) => s.trim()).filter((s) => s && s !== val)
+  );
+  return [...rawValues, ...atoms];
+}
+
+/**
+ * 单条 Bullet 运行时合同（唯一判定出口）：
+ * validateRuntimeQualityContract（整稿）与 Bullet salvage（逐条剔除）共用同一套阈值与判定，
+ * 禁止任何一侧另设词数/锚点规则。
+ */
+export function validateRuntimeBulletContract(input: {
+  bullet: string;
+  anchorValues: ReadonlyArray<string>;
+  label?: string;
+}): RuntimeIssue[] {
+  const label = input.label ?? "Bullet";
+  const bullet = String(input.bullet ?? "");
+  const issues: RuntimeIssue[] = [];
+  const wc = wordCount(bullet);
+  if (wc < RUNTIME_QUALITY_LIMITS.bulletWordsMin) {
+    issues.push({
+      target: "bullets",
+      code: wc < 3 ? "fragment" : "too_short",
+      message: label + " 不是合格句（" + wc + " 个词，需 " + RUNTIME_QUALITY_LIMITS.bulletWordsMin + "-" + RUNTIME_QUALITY_LIMITS.bulletWordsMax + " 词）。",
+    });
+  } else if (wc > RUNTIME_QUALITY_LIMITS.bulletWordsMax) {
+    issues.push({ target: "bullets", code: "too_long", message: label + " 超过 " + RUNTIME_QUALITY_LIMITS.bulletWordsMax + " 词（" + wc + "）。" });
+  }
+  if (!/[.!?]$/.test(bullet.trim())) {
+    issues.push({ target: "bullets", code: "fragment", message: label + " 不是完整句（缺少句末标点）。" });
+  }
+  const lower = bullet.toLowerCase();
+  const normBullet = lower.replace(/[-_]/g, " ").replace(/\s+/g, " ");
+  const anchored = (input.anchorValues ?? []).some((v) => {
+    const rawVal = v.toLowerCase().trim();
+    if (!rawVal) return false;
+    if (lower.includes(rawVal)) return true;
+    const normVal = rawVal.replace(/[-_]/g, " ").replace(/\s+/g, " ");
+    if (normBullet.includes(normVal)) return true;
+    // Pack / pcs unit equivalence (e.g. "6pcs" vs "6-pack")
+    const packMatch = rawVal.match(/\b(\d+)\s*(pcs|pieces?|packs?|count|ct|pk)?\b/);
+    if (packMatch) {
+      const num = packMatch[1];
+      const packRe = new RegExp(`\\b${num}\\s*[- ]*(?:pcs|pieces?|packs?|count|ct|pk)?\\b`, "i");
+      if (packRe.test(lower)) return true;
+    }
+    return false;
+  });
+  if (!anchored) {
+    issues.push({ target: "bullets", code: "no_fact_anchor", message: label + " 未绑定已确认事实值。" });
+  }
+  return issues;
+}
+
+export function validateRuntimeQualityContract(input: RuntimeQualityInput): RuntimeQualityResult {
+  const issues: RuntimeIssue[] = [];
+  const facts = input.facts ?? [];
+  const usedValues = usedFactValuesOf(facts, input.usedFactIds ?? []);
 
   // 标题品牌重复
   const brand = valueOf(facts, "brand");
@@ -149,24 +207,7 @@ export function validateRuntimeQualityContract(input: RuntimeQualityInput): Runt
     issues.push({ target: "bullets", code: "count", message: "五点数量应为 3-5 条（当前 " + bullets.length + "）。" });
   }
   bullets.forEach((b, index) => {
-    const wc = wordCount(b);
-    if (wc < RUNTIME_QUALITY_LIMITS.bulletWordsMin) {
-      issues.push({
-        target: "bullets",
-        code: wc < 3 ? "fragment" : "too_short",
-        message: "Bullet " + (index + 1) + " 不是合格句（" + wc + " 个词，需 " + RUNTIME_QUALITY_LIMITS.bulletWordsMin + "-" + RUNTIME_QUALITY_LIMITS.bulletWordsMax + " 词）。",
-      });
-    } else if (wc > 30) {
-      issues.push({ target: "bullets", code: "too_long", message: "Bullet " + (index + 1) + " 超过 30 词（" + wc + "）。" });
-    }
-    if (!/[.!?]$/.test(b.trim())) {
-      issues.push({ target: "bullets", code: "fragment", message: "Bullet " + (index + 1) + " 不是完整句（缺少句末标点）。" });
-    }
-    const lower = b.toLowerCase();
-    const anchored = usedValues.some((v) => lower.includes(v.toLowerCase()));
-    if (!anchored) {
-      issues.push({ target: "bullets", code: "no_fact_anchor", message: "Bullet " + (index + 1) + " 未绑定已确认事实值。" });
-    }
+    issues.push(...validateRuntimeBulletContract({ bullet: b, anchorValues: usedValues, label: "Bullet " + (index + 1) }));
   });
 
   // 关键词：大小写不敏感去重 + 保序
@@ -262,10 +303,15 @@ export type SafeFactSentencesResult =
  */
 const TEMPLATES: Array<{ field: string; build: (type: string, value: string) => string }> = [
   { field: "cleaning", build: (type, value) => "For easy cleaning with this " + type + ", " + value + "." },
-  { field: "functional_feature", build: (type, value) => "The " + type + " with " + value + " for everyday use." },
+  // A short adjective fact still needs a real predicate. The old
+  // "with ... for everyday use" frame was a fragment and could make the
+  // entire deterministic fallback empty when the planner/provider failed.
+  { field: "functional_feature", build: (type, value) => "This " + type + " is " + String(value).replace(/^([A-Z])/, (_, letter: string) => letter.toLowerCase()) + "." },
   { field: "construction", build: (type, value) => "Available with " + value + " for this " + type + "." },
-  { field: "care", build: (type, value) => "For easy use with this " + type + ", " + value + "." },
-  { field: "included_components", build: (type, value) => "The " + type + " available with " + value + " for practical use." },
+  { field: "care", build: (type, value) => /^hand\s+wash\s+only$/i.test(String(value).trim())
+    ? "For care, hand wash only."
+    : "For easy use with this " + type + ", " + value + "." },
+  { field: "included_components", build: (type, value) => "The " + type + " includes " + value + "." },
   { field: "operation", build: (type, value) => value + " for standard use with this product every day." },
   { field: "usage", build: (type, value) => value + " for practical use with this product." },
 ];
@@ -329,6 +375,7 @@ const FINITE_VERB_S = Object.freeze(new Set([
   "organizes", "separates", "divides", "accommodates", "arranges",
   "protects", "supports", "keeps", "works", "offers", "provides", "allows",
   "prevents", "reduces", "resists", "uses", "makes", "helps", "doubles", "requires",
+  "gives", "delivers", "ensures", "creates", "secures", "stays", "remains",
 ]));
 
 /** 复数/不可数主语的系动词与助动词（The parts are ... / The trays have ...） */
@@ -349,6 +396,7 @@ const UNAMBIGUOUS_BASE_VERBS = Object.freeze(new Set([
   "feature", "open", "close", "attach", "mount", "convert", "slide", "stand",
   "sit", "hang", "double", "help", "resist", "reduce", "prevent", "seal", "lock",
   "extend", "retract", "adjust", "divide", "arrange", "span", "comprise", "require",
+  "enjoy", "give", "deliver", "ensure", "create", "stay", "remain",
 ]));
 
 /**
@@ -361,6 +409,7 @@ const IMPERATIVE_HEAD_VERBS = Object.freeze(new Set([
   "avoid", "remove", "place", "store", "keep", "use", "insert", "attach", "detach",
   "fill", "empty", "expand", "collapse", "fold", "unfold", "press", "pull", "push", "turn",
   "hand", "air", "towel", "do", "refer", "follow", "check", "separate", "handle", "let",
+  "enjoy",
 ]));
 
 /**
@@ -664,12 +713,34 @@ export function validateCopyQualityContract(input: CopyQualityInput): CopyQualit
   if (plans.length > 0) {
     plans.forEach((bp, index) => {
       if (index >= bullets.length) return;
-      const wantValues = (bp.featureFactIds ?? []).map((fid) => {
-        const f = (input.facts ?? []).find((x) => x.factId === fid || x.field === fid);
-        return f ? String(f.value).toLowerCase() : "";
+      const bulletText = bullets[index]?.toLowerCase() ?? "";
+      const normBullet = bulletText.replace(/[-_]/g, " ").replace(/\s+/g, " ");
+      const wantFacts = (bp.featureFactIds ?? []).map((fid) => {
+        return (input.facts ?? []).find((x) => x.factId === fid || x.field === fid);
       }).filter(Boolean);
-      if (wantValues.length === 0) return;
-      const hit = wantValues.some((v) => bullets[index]?.toLowerCase().includes(v));
+      if (wantFacts.length === 0) return;
+      const hit = wantFacts.some((f) => {
+        const rawLower = String(f!.value ?? "").trim().toLowerCase();
+        if (!rawLower) return false;
+        const normVal = rawLower.replace(/[-_]/g, " ").replace(/\s+/g, " ");
+        if (normBullet.includes(normVal)) return true;
+        // 复合事实原子拆解（如 "Neodymium, Steel" 或 "Heavy Duty, Lockable, Magnetic, Rust Resistant"）
+        const atoms = rawLower
+          .split(/[,;，；/]+/)
+          .map((p) => p.trim().replace(/[-_]/g, " ").replace(/\s+/g, " "))
+          .filter(Boolean);
+        if (atoms.length > 1 && atoms.some((atom) => normBullet.includes(atom))) {
+          return true;
+        }
+        // 件数规格等价（如 6pcs 对应 6-pack / 6 pieces）
+        const packMatch = rawLower.match(/\b(\d+)\s*(pcs|pieces?|packs?|count|ct|pk)?\b/);
+        if (packMatch) {
+          const num = packMatch[1];
+          const packRe = new RegExp(`\\b${num}\\s*[- ]*(?:pcs|pieces?|packs?|count|ct|pk)?\\b`, "i");
+          if (packRe.test(bulletText)) return true;
+        }
+        return false;
+      });
       if (!hit) {
         issues.push({ target: "bullets", code: "role_mismatch", message: "Bullet " + (index + 1) + " 与其计划角色事实不匹配。" });
       }

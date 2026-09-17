@@ -50,6 +50,7 @@ const MATERIALS = [
 ] as const;
 
 const COLOR_WORDS = [
+  "matte black", "matt black",
   "black", "white", "red", "blue", "green", "yellow", "purple", "pink",
   "orange", "gray", "grey", "brown", "silver", "gold", "navy", "teal",
   "beige", "cream", "rose", "olive", "charcoal", "sky blue", "out of the blue",

@@ -1,12 +1,13 @@
 /**
  * V3 Final Operability Correction — Package C：半自动 Review Collector（Preview 服务端层）
  *
- * 流程：隔离浏览器会话 → 逐 ASIN 导航详情页（?language=en_US）→ 提取公开
- * "Top reviews" 片段（星级/日期/标题）→ 关闭会话 → 返回 Preview（服务端缓存，
- * 客户端不可伪造字段值）→ 人工确认后由 route 层走 importReviews（browser 绑定）。
+ * 流程：隔离浏览器会话（先切美国配送 ZIP + en_US/USD）→ 逐 ASIN 导航详情页
+ * （?language=en_US&currency=USD，保持 amazon.com 市场）→ 提取公开 "Top reviews" 片段
+ * （星级/日期/标题）→ 关闭会话 → 返回 Preview（服务端缓存，客户端不可伪造字段值）
+ * → 人工确认后由 route 层走 importReviews（browser 绑定）。
  *
  * 安全铁律（与 browserEvidenceCollect 一致）：
- * - 只导航 https://www.amazon.com 白名单；单页导航，不自动搜索、不批量。
+ * - 只导航明确的 Amazon 零售站点白名单；单页导航，不自动搜索、不批量。
  * - CAPTCHA / 登录墙 / 重定向出白名单 → fail-closed 明确记录，不绕过、不提取。
  * - 不读取 Cookie/Token/密码；不保存完整 HTML；零 AI 调用。
  * - 上限：单次 ≤3 个 ASIN、每页 ≤20 条（详情页 Top Reviews 片段公开可见的边界）。
@@ -18,12 +19,54 @@ import {
   resolveSystemBrowser,
   type BrowserExecutableCandidate,
 } from "@/tools/collectors/amazon/browser-control";
-import { buildReviewSnippetExtractionExpression, type ReviewSnippet } from "@/tools/collectors/amazon/review-snippet-extract";
-import { isValidAsin, type ReviewSourceProductRole } from "@/lib/server/reviewEvidence";
+import {
+  buildReviewDomReadinessExpression,
+  buildReviewSnippetExtractionExpression,
+  type ReviewDomReadiness,
+  type ReviewSnippet,
+} from "@/tools/collectors/amazon/review-snippet-extract";
+import { buildAmazonDetailPageExtractionExpression, type AmazonDetailPageStatus } from "@/tools/collectors/amazon/detail-page-extract";
+import { AMAZON_RETAIL_ORIGINS } from "@/tools/collectors/amazon/page-diagnostics";
+import {
+  isValidAsin,
+  buildReviewDuplicateKey,
+  buildReviewContentHash,
+  type ReviewSourceProductRole,
+  type ReviewEvidenceV1,
+} from "@/lib/server/reviewEvidence";
 import type { AccessContext } from "@/lib/server/accessPassword";
 
 export const REVIEW_COLLECTOR_VERSION = "amazon-review-snippet-collector.v1";
-export const REVIEW_COLLECTOR_ALLOWED_ORIGINS = ["https://www.amazon.com"] as const;
+export const REVIEW_COLLECTOR_ALLOWED_ORIGINS = AMAZON_RETAIL_ORIGINS;
+/**
+ * 采集前环境校准用的美国配送 ZIP（与 Amazon 商品资料采集 browserEvidenceCollect 一致）。
+ *
+ * 实测（任务 cmu13dxfa000v9641uqejz0d5 / ASIN B07VBJ5MSH）：不校准的隔离会话访问
+ * `www.amazon.com/dp/...?language=en_US` 会被 Amazon 按访客归属做 marketplace redirect
+ * （`ref_=mr_direct_us_sg_sg`）跳到 `www.amazon.sg`，最终 origin 不在白名单 →
+ * 评论采集必然 blocked_redirect。商品资料链路正因为在导航前设置了美国配送地址
+ * （外加 currency=USD）才停在 amazon.com。
+ */
+export const REVIEW_COLLECT_US_POSTAL_CODE = "10001";
+/** 评论采集的详情页 URL：与商品资料采集同一形态（en_US + 显式 USD，保持 amazon.com 市场）。 */
+export function reviewCollectDetailUrl(asin: string): string {
+  return `https://www.amazon.com/dp/${asin}?language=en_US&currency=USD`;
+}
+
+/**
+ * 请求的市场主机。本采集器只请求 amazon.com；最终落在其它 amazon 市场（实测被
+ * marketplace redirect 跳到 amazon.sg / amazon.co.jp）时，虽然仍在白名单内，但评论
+ * 属于另一个市场，不能当作本次研究（Amazon US）的证据 → 必须 fail-closed。
+ */
+const REVIEW_COLLECT_REQUESTED_HOSTS = new Set(["amazon.com", "www.amazon.com"]);
+
+function finalUrlHost(value: string): string {
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
 /** 单次采集：最多 3 个 ASIN（maxNavigations 预算内） */
 export const REVIEW_COLLECT_MAX_ASINS_PER_RUN = 3;
 /** 单页最多提取条数（详情页 Top Reviews 片段） */
@@ -59,9 +102,17 @@ export type ReviewSnippetPreviewItem = {
 
 export type ReviewCollectPageResult = {
   asin: string;
-  status: "ok" | "blocked_redirect" | "no_reviews_extracted" | "error";
+  status: "ok" | "blocked_redirect" | "login_required" | "captcha_required" | "page_error" | "page_unknown" | "confirmed_no_reviews" | "extraction_empty" | "no_reviews_extracted" | "error";
   note: string | null;
   extractedCount: number;
+  /** 新采集结果会写入；旧内存/演示 Preview 允许缺失以保持读取兼容。 */
+  reviewNodeCount?: number;
+  finalUrl?: string;
+  pageTitle?: string;
+  waitElapsedMs?: number;
+  retryAttempt?: number;
+  scrollTriggered?: boolean;
+  pageStatus?: AmazonDetailPageStatus | "blocked_redirect" | null;
 };
 
 export type ReviewCollectPreview = {
@@ -101,6 +152,47 @@ class ReviewCollectPreviewStore {
     return entry;
   }
 
+  peek(previewId: string, claim: { subjectKey: string; taskId: string }): ReviewCollectPreview | null {
+    this.prune();
+    const entry = this.entries.get(previewId);
+    if (!entry) return null;
+    if (entry.subjectKey !== claim.subjectKey || entry.taskId !== claim.taskId) return null;
+    return entry;
+  }
+
+  consume(previewId: string, claim: { subjectKey: string; taskId: string }): boolean {
+    const entry = this.peek(previewId, claim);
+    if (!entry) return false;
+    this.entries.delete(previewId);
+    return true;
+  }
+
+  /** 第十一版：无副作用查询（prune 先行；subjectKey/taskId 严格匹配；仅返回最新未过期 Preview） */
+  clearForTests(): void {
+    this.entries.clear();
+  }
+
+  findPending(query: { subjectKey: string; taskId: string; asin?: string }): ReviewCollectPreview | null {
+    this.prune();
+    const now = Date.now();
+    const normalizedAsin = query.asin ? query.asin.trim().toUpperCase() : null;
+    let match: ReviewCollectPreview | null = null;
+    for (const entry of this.entries.values()) {
+      if (entry.subjectKey !== query.subjectKey || entry.taskId !== query.taskId || entry.expiresAt <= now) continue;
+      if (normalizedAsin !== null) {
+        const hasCurrentCandidateAsin = entry.items.some(
+          (item) => item.role === "current_candidate" && item.asin.trim().toUpperCase() === normalizedAsin,
+        );
+        const hasPageResultAsin = entry.pageResults.some(
+          (p) => p.asin.trim().toUpperCase() === normalizedAsin,
+        );
+        if (!hasCurrentCandidateAsin && !hasPageResultAsin) continue;
+      }
+      match = entry;
+    }
+    return match;
+  }
+
   private prune(): void {
     const now = Date.now();
     for (const [id, entry] of this.entries) {
@@ -124,6 +216,134 @@ export function takeReviewCollectPreview(
   claim: { subjectKey: string; taskId: string },
 ): ReviewCollectPreview | null {
   return previewStore.take(previewId, claim);
+}
+
+/** 无副作用读取；只有正式导入成功后才允许调用 consumeReviewCollectPreview。 */
+export function peekReviewCollectPreview(
+  previewId: string,
+  claim: { subjectKey: string; taskId: string },
+): ReviewCollectPreview | null {
+  return previewStore.peek(previewId, claim);
+}
+
+/** 在正式评论证据持久化成功后消费 Preview。身份不匹配时 fail-closed。 */
+export function consumeReviewCollectPreview(
+  previewId: string,
+  claim: { subjectKey: string; taskId: string },
+): boolean {
+  return previewStore.consume(previewId, claim);
+}
+
+/** 第十一版：无副作用 Pending Preview 查询（不消费、不删除有效 Preview；跨主体/跨任务 fail-closed；过期不复用） */
+export function findPendingReviewCollectPreview(query: {
+  subjectKey: string;
+  taskId: string;
+  asin?: string;
+}): ReviewCollectPreview | null {
+  return previewStore.findPending(query);
+}
+
+/**
+ * 复用判定：只有「成功待确认」或「用户可操作」的 Pending Preview 才复用（幂等不重复采集）——
+ * 已有待确认条目、页面要求登录/验证（用户可去处理）、页面明确无评论。
+ *
+ * 不复用的两类：
+ * - extraction_empty 等瞬时失败：缓存它会阻塞重试 15 分钟，与「请重试」的承诺矛盾。
+ * - blocked_redirect（编排器报 navigation_not_allowed）：这是"访问方式不对"的失败，
+ *   实测（2026-09-14）缓存它会让用户在 TTL 内每次点「重试」都秒回同一条失败且从不
+ *   重新访问 Amazon，用户无法自救。失败 Preview 仍留在 store 里供诊断（含 finalUrl），
+ *   只是不参与复用判定，下一次 orchestrate 会真正重新采集。
+ */
+export function isReusableReviewCollectPreview(pending: ReviewCollectPreview): boolean {
+  if (pending.items.length > 0) return true;
+  return pending.pageResults.some((page) =>
+    page.status === "login_required"
+    || page.status === "captcha_required"
+    || page.status === "confirmed_no_reviews",
+  );
+}
+
+export type PendingReviewCollectPreviewDto = {
+  previewId: string;
+  items: Array<{
+    asin: string;
+    role: ReviewSourceProductRole;
+    rating: number | null;
+    date: string | null;
+    title: string;
+    duplicate: boolean;
+  }>;
+  pageResults: Array<Pick<ReviewCollectPageResult, "asin" | "status" | "note" | "extractedCount" | "reviewNodeCount" | "finalUrl" | "pageTitle" | "waitElapsedMs" | "retryAttempt" | "scrollTriggered" | "pageStatus">>;
+  capturedAt: string;
+  expiresAt: string;
+};
+
+/**
+ * 纯只读安全 DTO 投影：不消费、不删除 Preview，不泄漏内部凭证与 subjectKey。
+ * 若有效，计算每条评论片段相对于 currentDatasetReviews 的 duplicate 标记。
+ */
+export function getPendingReviewCollectPreviewDto(query: {
+  subjectKey: string;
+  taskId: string;
+  asin?: string;
+  currentDatasetReviews?: ReviewEvidenceV1["dataset"]["reviews"];
+}): PendingReviewCollectPreviewDto | null {
+  const preview = findPendingReviewCollectPreview({
+    subjectKey: query.subjectKey,
+    taskId: query.taskId,
+    asin: query.asin,
+  });
+  if (!preview) return null;
+  const now = Date.now();
+  if (preview.expiresAt <= now) return null;
+
+  const existingKeys = new Set(
+    (query.currentDatasetReviews ?? []).map((review) => review.duplicateKey),
+  );
+  const items = preview.items.map((item) => {
+    const duplicateKey = buildReviewDuplicateKey({
+      reviewId: null,
+      asin: item.asin,
+      contentHash: buildReviewContentHash(item.title),
+      rating: item.rating,
+      reviewDate: item.date,
+    });
+    return {
+      asin: item.asin,
+      role: item.role,
+      rating: item.rating,
+      date: item.date,
+      title: item.title,
+      duplicate: existingKeys.has(duplicateKey),
+    };
+  });
+
+  const pageResults = preview.pageResults.map((page) => ({
+    asin: page.asin,
+    status: page.status,
+    note: page.note,
+    extractedCount: page.extractedCount,
+    reviewNodeCount: page.reviewNodeCount ?? 0,
+    finalUrl: page.finalUrl ?? "",
+    pageTitle: page.pageTitle ?? "",
+    waitElapsedMs: page.waitElapsedMs ?? 0,
+    retryAttempt: page.retryAttempt ?? 0,
+    scrollTriggered: page.scrollTriggered ?? false,
+    pageStatus: page.pageStatus ?? null,
+  }));
+
+  return {
+    previewId: preview.previewId,
+    items,
+    pageResults,
+    capturedAt: preview.capturedAt,
+    expiresAt: new Date(preview.expiresAt).toISOString(),
+  };
+}
+
+/** 测试专用：清空内存 Preview Store（仅测试文件使用） */
+export function resetReviewCollectPreviewStoreForTests(): void {
+  previewStore.clearForTests();
 }
 
 export function assertReviewCollectRequest(
@@ -183,6 +403,45 @@ function parseSnippet(value: unknown): ReviewSnippet | null {
   };
 }
 
+/**
+ * 页面分类 → 评论采集阻断映射（纯函数，便于单测）。
+ *
+ * - captcha：可交互验证码 → captcha_required
+ * - automation_blocked：Amazon 自动化访问校验中间页（/errors_page/validateCaptcha +
+ *   "Continue shopping"）→ 归入 captcha_required 承载（VOC 分支的可选状态集合由 orchestrator
+ *   决定，本次不在授权范围内），但 note 明确写"自动化访问校验"且**不含"登录"**，
+ *   避免 UI 指引用户去登录；真实分类保留在 diagnosticPageStatus。
+ * - login_wall：真实登录墙 → login_required
+ * - error_page：服务错误页 → page_error
+ * - ok / unknown_page / null：不阻断
+ */
+export type ReviewPageBlock = {
+  status: ReviewCollectPageResult["status"];
+  note: string;
+  diagnosticPageStatus: ReviewCollectPageResult["pageStatus"];
+};
+
+export function reviewBlockForPageStatus(
+  pageStatus: "ok" | "captcha" | "automation_blocked" | "login_wall" | "error_page" | "unknown_page" | null | undefined,
+): ReviewPageBlock | null {
+  switch (pageStatus) {
+    case "captcha":
+      return { status: "captcha_required", note: "页面要求完成 CAPTCHA 验证，系统未绕过。", diagnosticPageStatus: "captcha" };
+    case "automation_blocked":
+      return {
+        status: "captcha_required",
+        note: "Amazon 触发了自动化访问校验（“Continue shopping”中间页），系统不会绕过：请在本机浏览器手动打开该商品页确认，或稍后重试。",
+        diagnosticPageStatus: "automation_blocked",
+      };
+    case "login_wall":
+      return { status: "login_required", note: "页面要求登录，系统未自动登录。", diagnosticPageStatus: "login_wall" };
+    case "error_page":
+      return { status: "page_error", note: "Amazon 返回错误页，未提取评论。", diagnosticPageStatus: "error_page" };
+    default:
+      return null;
+  }
+}
+
 /** 执行一次采集（同步阻塞；调用方负责超时与错误归一化） */
 export async function collectReviewSnippets(input: {
   asins: ReviewCollectRequestAsin[];
@@ -199,21 +458,94 @@ export async function collectReviewSnippets(input: {
     allowedOrigins: REVIEW_COLLECTOR_ALLOWED_ORIGINS,
     maxNavigations: input.asins.length,
     headless: input.headless ?? true,
+    // 与商品资料采集一致：导航前先切美国配送 ZIP + en_US/USD 偏好，
+    // 否则 Amazon 会把 US 商品页按访客归属跳转到本地市场（如 amazon.sg），
+    // 最终 origin 不在白名单 → 评论采集永远失败在 blocked_redirect。
+    calibrateEnvironment: { postalCode: REVIEW_COLLECT_US_POSTAL_CODE },
   });
   try {
     for (const { asin, role } of input.asins) {
+      let nav: { finalUrl: string; allowedFinalOrigin: boolean } | null = null;
+      let pageTitle = "";
+      const emptyDiagnostics = (pageStatus: ReviewCollectPageResult["pageStatus"] = null) => ({
+        reviewNodeCount: 0,
+        finalUrl: nav?.finalUrl ?? "",
+        pageTitle,
+        waitElapsedMs: 0,
+        retryAttempt: 0,
+        scrollTriggered: false,
+        pageStatus,
+      });
       try {
-        const nav = await session.navigate(`https://www.amazon.com/dp/${asin}?language=en_US`);
+        nav = await session.navigate(reviewCollectDetailUrl(asin));
         if (!nav.allowedFinalOrigin) {
-          pageResults.push({ asin, status: "blocked_redirect", note: "页面重定向到白名单外（验证码/登录墙），未绕过。", extractedCount: 0 });
+          pageResults.push({ asin, status: "blocked_redirect", note: "页面重定向到白名单外，导航被安全白名单阻断；未判定为登录墙。", extractedCount: 0, ...emptyDiagnostics("blocked_redirect") });
           continue;
         }
+        // 白名单内但换了市场：Amazon 会按访客归属把 /dp/ 请求 marketplace redirect 到
+        // 区域站点（实测 amazon.sg / amazon.co.jp）。这类页面能提取出评论，但属于另一个
+        // 市场，直接当成本次（amazon.com）证据会造成市场串味 → fail-closed 并记下实际市场。
+        if (!REVIEW_COLLECT_REQUESTED_HOSTS.has(finalUrlHost(nav.finalUrl))) {
+          const host = finalUrlHost(nav.finalUrl) || "未知站点";
+          pageResults.push({
+            asin,
+            status: "blocked_redirect",
+            note: `Amazon 把该商品页重定向到 ${host}（非 amazon.com 市场），已停止采集，避免把其它市场的评论当作本次研究证据。`,
+            extractedCount: 0,
+            ...emptyDiagnostics("blocked_redirect"),
+          });
+          continue;
+        }
+        pageTitle = await session.evaluateDomByValue<string>("document.title || ''").catch(() => "");
+        // 详情页内容级阻断：最终 URL 仍在白名单内时，登录墙/CAPTCHA
+        // 不一定表现为跨域跳转，必须先分类再尝试提取评论，避免生成
+        // 空的“待确认预览”。该表达式只读 DOM，不读取凭据、不绕过验证。
+        const pageExtraction = await session.evaluateDomByValue<{
+          pageStatus?: "ok" | "captcha" | "automation_blocked" | "login_wall" | "error_page" | "unknown_page";
+        }>(
+          buildAmazonDetailPageExtractionExpression({
+            expectedAsin: asin,
+            capturedAt: new Date().toISOString(),
+            collectorVersion: "amazon-review-page-diagnostic.v1",
+          }),
+        );
+        const pageBlock = reviewBlockForPageStatus(pageExtraction?.pageStatus);
+        if (pageBlock) {
+          pageResults.push({
+            asin,
+            status: pageBlock.status,
+            note: pageBlock.note,
+            extractedCount: 0,
+            ...emptyDiagnostics(pageBlock.diagnosticPageStatus),
+          });
+          continue;
+        }
+        // unknown_page 不单独阻断：部分 Amazon 变体/区域页面缺少标准
+        // #productTitle，但仍可能包含可见 Top Reviews。继续走评论提取，
+        // 只有确切的登录墙、验证码或错误页才 fail-closed。
+        const readiness = await session.evaluateDomByValue<ReviewDomReadiness>(
+          buildReviewDomReadinessExpression(),
+        );
         const extracted = await session.evaluateDomByValue<unknown[]>(
           buildReviewSnippetExtractionExpression({ maxItems: REVIEW_COLLECT_MAX_ITEMS_PER_PAGE }),
         );
         const reviews = Array.isArray(extracted) ? extracted.map(parseSnippet).filter((snippet): snippet is ReviewSnippet => snippet !== null) : [];
         if (reviews.length === 0) {
-          pageResults.push({ asin, status: "no_reviews_extracted", note: "详情页无公开 Top Reviews 片段。", extractedCount: 0 });
+          pageResults.push({
+            asin,
+            status: readiness.explicitNoReviews ? "confirmed_no_reviews" : "extraction_empty",
+            note: readiness.explicitNoReviews
+              ? "页面明确显示暂无公开评论。"
+              : "页面已加载但评论片段未完成可解析提取，未能确认无评论；请重试。",
+            extractedCount: 0,
+            reviewNodeCount: readiness.reviewNodeCount,
+            finalUrl: nav.finalUrl,
+            pageTitle: readiness.pageTitle,
+            waitElapsedMs: readiness.elapsedMs,
+            retryAttempt: readiness.retryAttempt,
+            scrollTriggered: readiness.scrollTriggered,
+            pageStatus: pageExtraction?.pageStatus ?? null,
+          });
           continue;
         }
         for (const review of reviews) {
@@ -227,13 +559,26 @@ export async function collectReviewSnippets(input: {
             bindingNote: "详情页公开 Top Reviews 片段（评论全文页需登录，未绕过；正文不可见为已知限制）",
           });
         }
-        pageResults.push({ asin, status: "ok", note: null, extractedCount: reviews.length });
+        pageResults.push({
+          asin,
+          status: "ok",
+          note: null,
+          extractedCount: reviews.length,
+          reviewNodeCount: readiness.reviewNodeCount,
+          finalUrl: nav.finalUrl,
+          pageTitle: readiness.pageTitle,
+          waitElapsedMs: readiness.elapsedMs,
+          retryAttempt: readiness.retryAttempt,
+          scrollTriggered: readiness.scrollTriggered,
+          pageStatus: pageExtraction?.pageStatus ?? null,
+        });
       } catch (error) {
         pageResults.push({
           asin,
           status: "error",
           note: error instanceof Error ? error.message.slice(0, 120) : "未知错误",
           extractedCount: 0,
+          ...emptyDiagnostics(null),
         });
       }
     }

@@ -2,6 +2,7 @@ import type {
   StudioImageAspectRatio,
   StudioImageMode,
 } from "@/lib/studioImageInput";
+import { DEFAULT_IMAGE_STYLE_PRESET_ID, type ImageStylePresetId } from "@/lib/imageStyleLibrary";
 import {
   DEFAULT_STUDIO_IMAGE_CREATIVE_INTENT,
   normalizeStudioImageCreativeIntent,
@@ -33,6 +34,8 @@ export type PromptImageFormIntent = SharedImageFormIntent & {
   creationMode: "prompt";
   creativePrompt: string;
   avoidElements: string;
+  /** 视觉方向同样适用于自由创意模式：它只控制视觉表达，不覆盖事实与用途。 */
+  stylePresetId: ImageStylePresetId;
 };
 
 export type StudioImageFormIntent = ImageFormIntent | PromptImageFormIntent;
@@ -40,6 +43,8 @@ export type StudioImageFormIntent = ImageFormIntent | PromptImageFormIntent;
 export const EMPTY_IMAGE_INTENT: ImageFormIntent = {
   creationMode: "guided",
   ...DEFAULT_STUDIO_IMAGE_CREATIVE_INTENT,
+  // Studio 独立入口自有默认视觉方向（共享默认意图不携带该维度，见 StudioImageCreativeIntent 注释）。
+  stylePresetId: DEFAULT_IMAGE_STYLE_PRESET_ID,
   count: 1,
   aspectRatio: "square_1_1",
   prohibitedElements: "",
@@ -51,6 +56,7 @@ export const EMPTY_PROMPT_IMAGE_INTENT: PromptImageFormIntent = {
   avoidElements: "",
   count: 1,
   aspectRatio: "square_1_1",
+  stylePresetId: DEFAULT_IMAGE_STYLE_PRESET_ID,
 };
 
 export const STUDIO_IMAGE_PROMPT_TEMPLATES = [
@@ -106,12 +112,14 @@ export function buildStudioImageRequestCore(input: {
       ...common,
       creativePrompt: input.intent.creativePrompt.trim(),
       avoidElements: input.intent.avoidElements.trim(),
+      stylePresetId: input.intent.stylePresetId ?? DEFAULT_IMAGE_STYLE_PRESET_ID,
     };
   }
   const creativeIntent = normalizeStudioImageCreativeIntent(input.intent);
   return {
     ...common,
     ...creativeIntent,
+    stylePresetId: creativeIntent.stylePresetId ?? DEFAULT_IMAGE_STYLE_PRESET_ID,
     prohibitedElements: input.intent.prohibitedElements.trim(),
   };
 }

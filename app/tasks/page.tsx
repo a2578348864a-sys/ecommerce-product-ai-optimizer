@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { TaskRecordsList } from "@/components/TaskRecordsList";
 
 export const metadata: Metadata = {
-  title: "研究记录 - 轻选工作台",
-  description: "已经形成历史结果的研究：已完成、已放弃与旧版记录。",
+  title: "决策复盘 - 轻选工作台",
+  description: "查看商品开发决策报告与历史沉淀，跟进推进、暂缓与放弃项目。",
 };
 
 export default function TasksPage() {

@@ -278,7 +278,7 @@ describe("商品身份锁定（轮 12）", () => {
   });
 
   it("当前商品未采到评论时不再诱导换商品：文案为「可重试或粘贴该商品评论」，不含「换一个 ASIN」", () => {
-    expect(noReviewsEmptyMessage()).toBe("当前商品暂未采到公开评论，可重试或粘贴该商品评论。");
+    expect(noReviewsEmptyMessage()).toBe("评论尚未完成提取，可重试或粘贴该商品评论。");
   });
 });
 });

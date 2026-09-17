@@ -60,8 +60,8 @@
 
 .titleMeta h1 {
   color: var(--text-primary);
-  font-size: clamp(1.25rem, 2vw, 1.65rem);
-  font-weight: 720;
+  font-size: clamp(1.4rem, 2.2vw, 1.75rem);
+  font-weight: 800;
   letter-spacing: -0.035em;
   line-height: 1.2;
 }
@@ -206,9 +206,9 @@
 .resultHeader h2 {
   margin-top: 0.14rem;
   color: var(--text-primary);
-  font-size: 1.05rem;
-  font-weight: 720;
-  letter-spacing: -0.018em;
+  font-size: 1.22rem;
+  font-weight: 780;
+  letter-spacing: -0.025em;
 }
 
 .panelIntro > div > p:last-child,
@@ -323,13 +323,15 @@
 
 .formSectionHeader h3 {
   color: var(--text-primary);
-  font-size: 0.82rem;
-  font-weight: 730;
+  font-size: 1.02rem;
+  font-weight: 750;
+  letter-spacing: -0.015em;
 }
 
 .formSectionHeader span {
   color: var(--color-muted);
-  font-size: 0.7rem;
+  font-size: 0.72rem;
+  font-weight: 500;
 }
 
 .field {
@@ -341,9 +343,9 @@
 .modeFieldset legend {
   display: block;
   margin-bottom: 0.36rem;
-  color: var(--text-primary);
-  font-size: 0.72rem;
-  font-weight: 680;
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 650;
 }
 
 .required {
@@ -420,6 +422,95 @@ textarea.control {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.45rem;
+}
+
+/* ── Image Style Library V1：视觉方向卡片 ───────────────────────── */
+.styleGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.styleOption {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  cursor: pointer;
+  border: 1px solid var(--color-rule);
+  border-radius: 12px;
+  background: var(--panel-soft);
+  padding: 0.5rem 0.56rem;
+  transition:
+    transform 180ms ease,
+    border-color 200ms ease,
+    background 200ms ease,
+    box-shadow 200ms ease;
+}
+
+.styleOption:hover {
+  border-color: var(--brand-200);
+  transform: translateY(-1px);
+}
+
+.styleOption[data-selected="true"] {
+  border-color: var(--brand-200);
+  background: var(--brand-core);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84);
+}
+
+.styleOption[data-recommended="true"]:not([data-selected="true"]) {
+  border-color: color-mix(in srgb, var(--brand-600) 34%, var(--color-rule));
+}
+
+.styleOption input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.styleOption:has(input:focus-visible) {
+  outline: 2px solid var(--brand-600);
+  outline-offset: 2px;
+}
+
+.stylePreview {
+  display: inline-flex;
+  color: var(--brand-600);
+}
+
+.styleOptionText {
+  display: grid;
+  gap: 0.08rem;
+  min-width: 0;
+}
+
+.styleOptionText strong {
+  display: flex;
+  align-items: center;
+  gap: 0.28rem;
+  color: var(--text-primary);
+  font-size: 0.72rem;
+  font-weight: 720;
+}
+
+.styleOptionText small {
+  color: var(--color-muted);
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+.styleRecommended {
+  border: 1px solid var(--brand-200);
+  border-radius: 999px;
+  color: var(--brand-700);
+  font-size: 0.6rem;
+  font-style: normal;
+  font-weight: 700;
+  padding: 0 0.3rem;
 }
 
 .templateButton {
@@ -758,7 +849,25 @@ textarea.control {
 .contactSheet {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
-  gap: 0.85rem;
+  gap: 1rem;
+}
+
+.contactSheet[data-count="1"] {
+  display: block;
+  max-width: 580px;
+  margin: 0 auto;
+}
+
+.contactSheet[data-count="2"] {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+@media (max-width: 640px) {
+  .contactSheet[data-count="2"] {
+    grid-template-columns: 1fr;
+  }
 }
 
 .imageCard {
@@ -897,6 +1006,55 @@ textarea.control {
 .cardStatus[data-selected="true"] {
   background: var(--brand-100);
   color: var(--brand-600);
+}
+
+.candidateAttributes {
+  margin-top: 0.4rem;
+  display: grid;
+  gap: 0.35rem;
+  border-radius: 12px;
+  background: var(--panel-soft);
+  padding: 0.55rem 0.65rem;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.candidateAttributes p {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.attrBadgeTeal {
+  flex-shrink: 0;
+  border-radius: 4px;
+  background: var(--brand-100);
+  padding: 0.1rem 0.35rem;
+  color: var(--brand-600);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.attrBadgeSlate {
+  flex-shrink: 0;
+  border-radius: 4px;
+  background: rgba(148, 163, 184, 0.2);
+  padding: 0.1rem 0.35rem;
+  color: #475569;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.attrBadgeAmber {
+  flex-shrink: 0;
+  border-radius: 4px;
+  background: rgba(245, 158, 11, 0.15);
+  padding: 0.1rem 0.35rem;
+  color: #b45309;
+  font-size: 0.7rem;
+  font-weight: 700;
 }
 
 .cardActions {

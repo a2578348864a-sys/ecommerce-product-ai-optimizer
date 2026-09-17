@@ -58,6 +58,20 @@ export type ProductCreativeHandoffUserConfirmationReference = {
   confirmedBy: ProductCreativeHandoffInternalActor;
   confirmedAt: string;
   confirmationReference: string;
+  origin?: ProductCreativeHandoffAmazonConfirmationOrigin;
+};
+
+export type ProductCreativeHandoffAmazonConfirmationOrigin = {
+  kind: "amazon_fact_enrichment";
+  asin: string;
+  capturedAt: string;
+  sources: Array<{
+    sourceUrl: string;
+    sourceSection: "product_information" | "bullet" | "description" | "aplus";
+    sourceLabel: string;
+    sourceBlockId: string;
+    evidenceText: string;
+  }>;
 };
 
 /** @deprecated Use the 5-branch discriminated union types above. */
@@ -410,6 +424,20 @@ function isIsoDate(value: unknown): value is string {
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString() === value;
 }
 
+function isAmazonAsin(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Z0-9]{10}$/.test(value);
+}
+
+function isAmazonHttpsUrl(value: unknown, maxLength: number): value is string {
+  if (!isNfcTrimmedText(value, maxLength)) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && (url.hostname === "amazon.com" || url.hostname.endsWith(".amazon.com"));
+  } catch {
+    return false;
+  }
+}
+
 function isSafeIntegerBetween(value: unknown, minimum: number, maximum: number): value is number {
   return Number.isSafeInteger(value) && Number(value) >= minimum && Number(value) <= maximum;
 }
@@ -519,6 +547,35 @@ function parseSnapshotSourceReference(value: unknown): ProductCreativeHandoffSna
     ?? parseAmazonBrowserSnapshotReference(value);
 }
 
+function parseAmazonConfirmationOrigin(value: unknown): ProductCreativeHandoffAmazonConfirmationOrigin | null {
+  if (!isRecord(value) || !hasExactKeys(value, ["kind", "asin", "capturedAt", "sources"])) return null;
+  if (value.kind !== "amazon_fact_enrichment" || !isAmazonAsin(value.asin) || !isIsoDate(value.capturedAt)
+    || !Array.isArray(value.sources) || value.sources.length < 1 || value.sources.length > 5) return null;
+  const sources = value.sources.map((raw) => {
+    if (!isRecord(raw) || !hasExactKeys(raw, ["sourceUrl", "sourceSection", "sourceLabel", "sourceBlockId", "evidenceText"])) return null;
+    if (!isAmazonHttpsUrl(raw.sourceUrl, 500)
+      || !["product_information", "bullet", "description", "aplus"].includes(String(raw.sourceSection))
+      || !isNfcTrimmedText(raw.sourceLabel, 200)
+      || !isNfcTrimmedText(raw.sourceBlockId, 160)
+      || !isNfcTrimmedText(raw.evidenceText, 1000)) return null;
+    if (raw.sourceSection === "product_information" && raw.sourceUrl !== `https://www.amazon.com/dp/${value.asin}`) return null;
+    return {
+      sourceUrl: raw.sourceUrl as string,
+      sourceSection: raw.sourceSection as ProductCreativeHandoffAmazonConfirmationOrigin["sources"][number]["sourceSection"],
+      sourceLabel: raw.sourceLabel as string,
+      sourceBlockId: raw.sourceBlockId as string,
+      evidenceText: raw.evidenceText as string,
+    };
+  });
+  if (sources.some((source) => !source)) return null;
+  return {
+    kind: "amazon_fact_enrichment",
+    asin: value.asin,
+    capturedAt: value.capturedAt,
+    sources: sources as ProductCreativeHandoffAmazonConfirmationOrigin["sources"],
+  };
+}
+
 function parseUserConfirmationReference(value: unknown): ProductCreativeHandoffUserConfirmationReference | null {
   if (!isRecord(value) || !hasExactKeys(value, [
     "sourceKind",
@@ -526,19 +583,22 @@ function parseUserConfirmationReference(value: unknown): ProductCreativeHandoffU
     "confirmedBy",
     "confirmedAt",
     "confirmationReference",
-  ])) return null;
+  ], ["origin"])) return null;
   if (value.sourceKind !== "user_confirmation"
     || !isNfcTrimmedText(value.sourceField, 160)
     || !isIsoDate(value.confirmedAt)
     || !isNfcTrimmedText(value.confirmationReference, 240)) return null;
   const confirmedBy = parseActor(value.confirmedBy);
   if (!confirmedBy) return null;
+  const origin = value.origin === undefined ? undefined : parseAmazonConfirmationOrigin(value.origin);
+  if (value.origin !== undefined && !origin) return null;
   return {
     sourceKind: "user_confirmation",
     sourceField: value.sourceField,
     confirmedBy,
     confirmedAt: value.confirmedAt,
     confirmationReference: value.confirmationReference,
+    ...(origin ? { origin } : {}),
   };
 }
 

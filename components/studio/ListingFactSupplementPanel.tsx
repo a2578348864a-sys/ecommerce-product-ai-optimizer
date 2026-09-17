@@ -43,6 +43,58 @@ function titleDerivedHint(canonicalField: string): string {
   return MANUAL_FIELD_LABELS[canonicalField] ?? canonicalField;
 }
 
+type AmazonInlineCandidate = { id: string; field: string; value: string; reviewRequired?: boolean; sources?: Array<{ sourceBlockId?: string; text?: string }>; evidenceTexts?: string[] };
+
+function normalizeAmazonCandidateText(value: string): string {
+  return value.toLowerCase().replace(/^(?:product description|click to play video)\s*[:：-]?\s*/i, "").replace(/\s+/g, " ").trim();
+}
+
+export function prepareSelectableAmazonCandidates(candidates: AmazonInlineCandidate[], existingFields: ReadonlySet<string>) {
+  const hiddenExisting = candidates.filter((candidate) => existingFields.has(candidate.field)).length;
+  const selectable = candidates.filter((candidate) => !existingFields.has(candidate.field));
+  const exact = new Map<string, AmazonInlineCandidate>();
+  for (const candidate of selectable) {
+    const evidence = (candidate.evidenceTexts || candidate.sources?.map((source) => source.text || "") || []).map(normalizeAmazonCandidateText).sort().join("|");
+    const key = `${normalizeAmazonCandidateText(candidate.value)}|${evidence}`;
+    const previous = exact.get(key);
+    if (!previous) {
+      exact.set(key, { ...candidate, sources: candidate.sources ? [...candidate.sources] : undefined, evidenceTexts: candidate.evidenceTexts ? [...candidate.evidenceTexts] : undefined });
+      continue;
+    }
+    previous.sources = [...(previous.sources || []), ...(candidate.sources || [])].filter((source, index, all) => all.findIndex((item) => item.sourceBlockId === source.sourceBlockId && item.text === source.text) === index);
+    previous.evidenceTexts = [...new Set([...(previous.evidenceTexts || []), ...(candidate.evidenceTexts || [])])];
+  }
+  const deduplicated = [...exact.values()];
+  return { candidates: deduplicated, hiddenCount: hiddenExisting + selectable.length - deduplicated.length };
+}
+
+function AmazonFactEnrichmentInline({taskId, preview, create, refresh, onCommitted, existingFields}:{taskId:string; preview:CreativeHandoffPreview|null; create:ListingFactSupplementPanelProps["create"]; refresh:()=>Promise<unknown>; onCommitted?:()=>void; existingFields:Set<string>}) {
+  const [state, setState] = useState<"idle"|"loading"|"ready"|"error">("idle");
+  const [data, setData] = useState<{ evidenceId: string; candidates: AmazonInlineCandidate[] } | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [notice, setNotice] = useState("");
+  async function collect() {
+    setState("loading"); setNotice("");
+    try {
+      const r = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/amazon-fact-enrichment`, { method: "POST" });
+      const j = await r.json();
+      if (!r.ok || !j.ok) throw new Error(j.error?.message || "采集失败");
+      setData({ evidenceId: j.data.evidenceId, candidates: j.data.preview.candidates ?? [] });
+      setSelected([]); setState("ready");
+    } catch (e) { setState("error"); setNotice(e instanceof Error ? e.message : "Amazon 补充资料暂时不可用，不影响 Listing 主流程。"); }
+  }
+  async function confirm() {
+    if (!data || selected.length === 0 || !preview?.storageVersion) return;
+    setState("loading");
+    try {
+      await create({ requestId: createBrowserUuid(), selectedFactCandidateIds: [], amazonFactEnrichmentSelection: { evidenceId: data.evidenceId, selectionIds: selected }, expectedStorageVersion: preview.storageVersion!, expectedResearchRevision: preview.expectedResearchRevision!, expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision ?? 0 });
+      await refresh(); onCommitted?.(); setNotice("已提交人工确认，创作资料已刷新。"); setSelected([]); setState("ready");
+    } catch { setNotice("确认失败，请刷新后重试。"); setState("ready"); }
+  }
+  const prepared = data ? prepareSelectableAmazonCandidates(data.candidates, existingFields) : null;
+  return <div className="mt-2 rounded-lg border border-cyan-200 bg-cyan-50/40 p-2.5" data-testid="amazon-fact-enrichment"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-bold text-cyan-900">Amazon 商品事实建议</p><p className="text-[11px] text-slate-600">仅读取当前任务绑定 ASIN 的卖家详情内容；同一字段只能选择一个值。</p></div><button type="button" onClick={()=>void collect()} disabled={state==="loading"} className="inline-flex h-8 items-center rounded-md bg-cyan-700 px-3 text-xs font-bold text-white disabled:opacity-50" data-testid="amazon-fact-enrichment-collect">{state==="loading"?"查找中…":"自动查找"}</button></div>{notice?<p role="status" className="mt-2 text-xs text-amber-800">{notice}</p>:null}{prepared?<details className="mt-2" open={false}><summary className="cursor-pointer text-xs font-semibold text-cyan-900">{prepared.candidates.length>0?`发现 ${prepared.candidates.length} 条可选事实${prepared.hiddenCount>0?" · 已自动整理重复/已确认内容":""}`:"没有新的可补充商品事实。"}</summary>{prepared.candidates.length>0?<div className="mt-2 grid gap-1.5 md:grid-cols-2">{prepared.candidates.map((c)=><label key={c.id} className="flex gap-2 rounded border border-cyan-100 bg-white p-2 text-xs"><input type="radio" name={`amazon-fact-${c.field}`} checked={selected.includes(c.id)} onChange={()=>setSelected(cur=>[...cur.filter(id=>data?.candidates.find(x=>x.id===id)?.field!==c.field),c.id])}/><span><strong>{c.field}</strong>：{c.value}<span className="block text-[10px] text-slate-500">{c.reviewRequired?"需要重点复核":"来自卖家详情原文"}</span></span></label>)}</div>:null}{selected.length>0?<button type="button" onClick={()=>void confirm()} className="mt-2 inline-flex h-8 items-center rounded-md border border-cyan-300 bg-white px-3 text-xs font-bold text-cyan-800">确认所选事实</button>:null}</details>:null}</div>;
+}
+type ListingFactSupplementPanelProps = { create: any };
 export type ManualFactInput = { field: string; value: string };
 
 /** V3 Final HWF（FIX-6）：Evidence Workbench 已确认事实（factCandidates namespace，只读展示） */
@@ -85,6 +137,7 @@ export type CreativeHandoffCreateOptions = {
   requestId: string;
   selectedFactCandidateIds: string[];
   manualConfirmedFacts?: ManualFactInput[];
+  amazonFactEnrichmentSelection?: { evidenceId: string; selectionIds: string[] };
   expectedStorageVersion: { resultJsonHash: string; updatedAt: string };
   expectedResearchRevision: number;
   expectedCurrentHandoffRevision: number;
@@ -142,6 +195,7 @@ export function ListingFactSupplementPanel({
     requestId: string;
     selectedFactCandidateIds: string[];
     manualConfirmedFacts?: ManualFactInput[];
+    amazonFactEnrichmentSelection?: { evidenceId: string; selectionIds: string[] };
     expectedStorageVersion: { resultJsonHash: string; updatedAt: string };
     expectedResearchRevision: number;
     expectedCurrentHandoffRevision: number;
@@ -158,8 +212,8 @@ export function ListingFactSupplementPanel({
   const mergedFacts = useMemo(
     () => {
       const seen = new Set(existingFacts.map((fact) => fact.field));
-      const merged: Array<{ field: string; label: string; value: string | number; sourceKind: string }> = [
-        ...existingFacts.map((fact) => ({ field: fact.field, label: fact.label, value: fact.value, sourceKind: fact.sourceKind })),
+      const merged: Array<{ field: string; label: string; value: string | number; sourceKind: string; origin?: HandoffDetailConfirmedFact["origin"] }> = [
+        ...existingFacts.map((fact) => ({ field: fact.field, label: fact.label, value: fact.value, sourceKind: fact.sourceKind, ...(fact.origin ? { origin: fact.origin } : {}) })),
       ];
       for (const fact of workbenchConfirmedFacts) {
         if (seen.has(fact.field)) continue;
@@ -169,6 +223,11 @@ export function ListingFactSupplementPanel({
       return merged;
     },
     [existingFacts, workbenchConfirmedFacts],
+  );
+  const existingHandoffFields = useMemo(() => new Set(existingFacts.map((fact) => fact.field)), [existingFacts]);
+  const pendingResearchBridgeFacts = useMemo(
+    () => workbenchConfirmedFacts.filter((fact) => !existingHandoffFields.has(fact.field)),
+    [existingHandoffFields, workbenchConfirmedFacts],
   );
   const existingFields = useMemo(() => new Set(mergedFacts.map((fact) => fact.field)), [mergedFacts]);
   const candidates = useMemo(
@@ -237,154 +296,242 @@ export function ListingFactSupplementPanel({
     }
   }
 
+  /**
+   * Research Human Confirmed Facts 已经在研究页完成了人工确认；
+   * 这里仅创建一个新的 Creative Handoff 版本，让服务端复用同一权威桥接，
+   * 不提交新事实、不修改研究事实，也不把参考资料升级成商品事实。
+   */
+  async function syncResearchConfirmedFacts() {
+    if (!preview || !preview.storageVersion || preview.expectedResearchRevision === undefined
+      || pendingResearchBridgeFacts.length === 0 || submitting) return;
+    setSubmitting(true);
+    setNotice(null);
+    try {
+      await runCreativeHandoffCreate({
+        create,
+        refresh,
+        requestPayload: {
+          requestId: createBrowserUuid(),
+          selectedFactCandidateIds: [],
+          expectedStorageVersion: preview.storageVersion,
+          expectedResearchRevision: preview.expectedResearchRevision,
+          expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision ?? 0,
+        },
+        onSuccess: () => {
+          onCommitted?.();
+        },
+        emit: (notice) => setNotice(notice),
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const missingFieldOptions = useMemo(
+    () => MANUAL_FIELD_OPTIONS.filter(({ field }) => !existingFields.has(field)),
+    [existingFields],
+  );
+  const missingSummaryText = useMemo(
+    () => missingFieldOptions.slice(0, 3).map((item) => item.label).join("、"),
+    [missingFieldOptions],
+  );
+
   return (
-    <section className="mt-4 rounded-2xl border border-amber-200 bg-white p-4" data-testid="listing-fact-supplement-panel">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h3 className="text-sm font-bold text-slate-900">商品事实</h3>
-          <p className="mt-1 text-sm leading-6 text-slate-600">
-            这里填写的是你已经核实过的商品真实信息。确认后会用于 Listing 的事实校验。
-          </p>
-        </div>
-        <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+    <section className="mt-3 rounded-xl border border-slate-200 bg-white p-3 shadow-xs" data-testid="listing-fact-supplement-panel">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-bold text-slate-900">商品事实与补充</h3>
+        <span className="rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-semibold text-teal-800 border border-teal-200">
           已确认 {mergedFacts.length} 项
         </span>
       </div>
 
       {mergedFacts.length > 0 ? (
-        <div className="mt-3 grid gap-2 md:grid-cols-2" data-testid="listing-confirmed-facts">
-          {mergedFacts.map((fact) => (
-            <div key={fact.field} className="rounded-xl border border-teal-100 bg-teal-50/50 p-3 text-sm text-slate-700">
-              <strong>{fact.label}</strong>：{fact.value}
-              <span className="mt-1 block text-xs text-teal-700">
-                {fact.sourceKind === "human_manual"
-                  ? "人工核实（手动补充）"
-                  : fact.sourceKind === "user_confirmation"
-                    ? "人工核实确认"
-                    : "来源证据确认"}
+        <details className="mt-2.5 rounded-lg border border-teal-100 bg-teal-50/30 p-2.5" data-testid="confirmed-facts-details">
+          <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 text-xs font-bold text-teal-900">
+            <span className="flex items-center gap-1.5">
+              <span>已确认商品事实</span>
+              <span className="rounded-full bg-teal-100/80 px-2 py-0.5 text-[11px] text-teal-800">
+                {mergedFacts.length} 项
               </span>
-            </div>
-          ))}
+            </span>
+            <span className="text-xs font-normal text-teal-700 hover:underline">展开查看详情 ↓</span>
+          </summary>
+          <p className="mt-2 text-xs leading-5 text-slate-500">
+            这里填写的是你已经核实过的商品真实信息。确认后会作为 Listing 草稿的事实校验依据。
+          </p>
+          <div className="mt-2 grid gap-2 md:grid-cols-2" data-testid="listing-confirmed-facts">
+            {mergedFacts.map((fact) => (
+              <div key={fact.field} className="rounded-lg border border-teal-100 bg-white p-2.5 text-sm text-slate-700 shadow-2xs">
+                <strong>{fact.label}</strong>：{fact.value}
+                <span className="mt-1 block text-xs text-teal-700">
+                  {fact.origin?.kind === "amazon_fact_enrichment"
+                    ? `人工核实确认 · Amazon 来源（${fact.origin.asin}）`
+                    : fact.sourceKind === "human_manual"
+                    ? "人工核实（手动补充）"
+                    : fact.sourceKind === "user_confirmation"
+                      ? "人工核实确认"
+                      : "来源证据确认"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </details>
+      ) : null}
+
+      {pendingResearchBridgeFacts.length > 0 && preview?.storageVersion ? (
+        <div className="mt-2.5 rounded-lg border border-indigo-200 bg-indigo-50/60 p-2.5" data-testid="research-fact-bridge">
+          <p className="text-xs font-bold text-indigo-900">研究侧已确认事实待同步</p>
+          <p className="mt-1 text-[11px] leading-5 text-indigo-800">
+            研究页已确认 {pendingResearchBridgeFacts.length} 项当前商品事实；同步只更新创作交接快照，不新增或修改事实，也不改变研究侧权威值。
+          </p>
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => void syncResearchConfirmedFacts()}
+            className="mt-2 inline-flex h-8 items-center rounded-md border border-indigo-300 bg-white px-3 text-xs font-bold text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
+            data-testid="sync-research-confirmed-facts"
+          >
+            {submitting ? "同步中…" : "同步到创作资料"}
+          </button>
         </div>
       ) : null}
 
-      <h4 className="mt-4 text-sm font-bold text-slate-900">补充商品事实</h4>
+      <AmazonFactEnrichmentInline taskId={taskId} preview={preview} create={create} refresh={refresh} onCommitted={onCommitted} existingFields={existingFields} />
 
-      {notice ? (
-        <p
-          role="status"
-          aria-live="polite"
-          className={`mt-3 rounded-lg px-3 py-2 text-sm ${notice.tone === "error" ? "bg-red-50 text-red-800" : "bg-teal-50 text-teal-800"}`}
-        >
-          {notice.text}
-        </p>
-      ) : null}
+      <details className="mt-2.5 rounded-lg border border-slate-200 bg-slate-50/50 p-2.5" data-testid="supplement-facts-details">
+        <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 text-xs font-semibold text-slate-800">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="font-bold text-slate-900">建议补充商品事实</span>
+            {missingFieldOptions.length > 0 ? (
+              <span className="text-slate-500">
+                （还缺：{missingSummaryText}{missingFieldOptions.length > 3 ? "等" : ""}）
+              </span>
+            ) : null}
+          </div>
+          <span className="inline-flex items-center rounded-md border border-slate-300 bg-white px-2 py-0.5 text-xs font-semibold text-slate-700 hover:bg-slate-50" data-testid="btn-toggle-supplement">
+            手动补充 ↓
+          </span>
+        </summary>
+        <div className="mt-2.5 border-t border-slate-200/60 pt-2.5">
+          <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">补充商品事实</h4>
 
-      {candidates.length > 0 ? (
-        <>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            以下候选来自商品标题 / 来源资料，<strong className="text-slate-800">需人工核实</strong>后才可用于 Listing 草稿。
-            勾选后确认，系统会保存新的创作资料版本。
-          </p>
-          <fieldset className="mt-3">
-            <legend className="text-xs font-bold uppercase tracking-wide text-slate-500">待核实商品事实</legend>
-            <div className="mt-2 grid gap-2 md:grid-cols-2">
-              {candidates.map((candidate) => (
-                <label
-                  key={candidate.selectionId}
-                  className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3 text-sm leading-6 text-slate-700"
-                >
+          {notice ? (
+            <p
+              role="status"
+              aria-live="polite"
+              className={`mt-2 rounded-lg px-3 py-2 text-sm ${notice.tone === "error" ? "bg-red-50 text-red-800" : "bg-teal-50 text-teal-800"}`}
+            >
+              {notice.text}
+            </p>
+          ) : null}
+
+          {candidates.length > 0 ? (
+            <>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                以下候选来自商品标题 / 来源资料，<strong className="text-slate-800">需人工核实</strong>后才可作为 Listing 草稿事实。
+                勾选后确认，系统会保存新的创作资料版本。
+              </p>
+              <fieldset className="mt-3">
+                <legend className="text-xs font-bold uppercase tracking-wide text-slate-500">待核实商品事实</legend>
+                <div className="mt-2 grid gap-2 md:grid-cols-2">
+                  {candidates.map((candidate) => (
+                    <label
+                      key={candidate.selectionId}
+                      className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3 text-sm leading-6 text-slate-700"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(candidate.selectionId)}
+                        onChange={(event) => {
+                          setSelectedIds((current) => (event.target.checked
+                            ? [...new Set([...current.filter((id) => candidates.find((item) => item.selectionId === id)?.canonicalField !== candidate.canonicalField), candidate.selectionId])]
+                            : current.filter((id) => id !== candidate.selectionId)));
+                          if (event.target.checked) {
+                            setManualValues((current) => ({ ...current, [candidate.canonicalField]: "" }));
+                          }
+                          setConfirmed(false);
+                        }}
+                      />
+                      <span>
+                        <strong>{titleDerivedHint(candidate.canonicalField)}</strong>：{candidate.displayValue}
+                        <span className="mt-0.5 block text-xs text-slate-400">来自商品标题/来源资料，需人工核实</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            </>
+          ) : (
+            <p className="mt-2 text-xs leading-5 text-slate-600">
+              {(() => {
+                const allCandidates = preview?.confirmableFactCandidates ?? [];
+                const referenceOnly = allCandidates.filter((c) => !c.allowedUsageScopes.includes("listing"));
+                if (allCandidates.length > 0 && referenceOnly.length > 0) {
+                  return "已载入研究证据（含仅内部参考的市场观察，如 Observed Price / Rating / BSR；它们不会自动成为 Listing 事实）。可在下方人工填写已核实的商品事实。";
+                }
+                return "当前来源资料没有可直接核实的商品事实候选，仍可在下方填写你已核实的信息。";
+              })()}
+            </p>
+          )}
+
+          <>
+            <p className="mt-2 text-xs leading-5 text-slate-600">
+              <strong className="text-slate-800">人工填写已核实事实</strong>：请填写以下你已核实确定的商品信息
+              （<strong className="text-slate-800">不必全部填写</strong>），填写项将保存为创作资料并作为 Listing 草稿事实。
+            </p>
+            <div className="mt-2 rounded-lg border border-sky-100 bg-sky-50/60 p-2.5 text-xs leading-5 text-slate-600">
+              <p className="font-bold text-slate-800">建议核实的缺失信息</p>
+              {!existingFields.has("dimensions") ? <p>• 可补充商品尺寸</p> : null}
+              {!existingFields.has("weight") ? <p>• 可补充商品重量</p> : null}
+              {!existingFields.has("usage") ? <p>• 可补充已确认的使用场景</p> : null}
+              {!existingFields.has("compatibility") ? <p>• 是否有杯架/设备兼容信息？</p> : null}
+            </div>
+            <div className="mt-2.5 grid gap-2 md:grid-cols-2" data-testid="listing-fact-manual-inputs">
+              {MANUAL_FIELD_OPTIONS.filter(({ field }) => !existingFields.has(field)).map(({ field, label }) => (
+                <label key={field} className="flex flex-col gap-1 rounded-lg border border-slate-200 bg-white p-2 text-sm text-slate-700">
+                  <span className="text-xs font-semibold text-slate-600">{label}</span>
                   <input
-                    type="checkbox"
-                    checked={selectedIds.includes(candidate.selectionId)}
+                    type="text"
+                    maxLength={200}
+                    value={manualValues[field] ?? ""}
+                    placeholder={field === "other" ? "例如：含替换吸管" : label}
                     onChange={(event) => {
-                      setSelectedIds((current) => (event.target.checked
-                        ? [...new Set([...current.filter((id) => candidates.find((item) => item.selectionId === id)?.canonicalField !== candidate.canonicalField), candidate.selectionId])]
-                        : current.filter((id) => id !== candidate.selectionId)));
-                      if (event.target.checked) {
-                        setManualValues((current) => ({ ...current, [candidate.canonicalField]: "" }));
+                      const nextValue = event.target.value;
+                      setManualValues((current) => ({ ...current, [field]: nextValue }));
+                      if (nextValue.trim()) {
+                        setSelectedIds((current) => current.filter((id) => candidates.find((candidate) => candidate.selectionId === id)?.canonicalField !== field));
                       }
                       setConfirmed(false);
                     }}
+                    className="h-8 w-full rounded-md border border-slate-300 bg-white px-2 text-xs outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
                   />
-                  <span>
-                    <strong>{titleDerivedHint(candidate.canonicalField)}</strong>：{candidate.displayValue}
-                    <span className="mt-0.5 block text-xs text-slate-400">来自商品标题/来源资料，需人工核实</span>
-                  </span>
                 </label>
               ))}
             </div>
-          </fieldset>
-        </>
-      ) : (
-        <p className="mt-2 text-sm leading-6 text-slate-600">
-          {(() => {
-            const allCandidates = preview?.confirmableFactCandidates ?? [];
-            const referenceOnly = allCandidates.filter((c) => !c.allowedUsageScopes.includes("listing"));
-            if (allCandidates.length > 0 && referenceOnly.length > 0) {
-              return "已载入研究证据（含仅内部参考的市场观察，如 Observed Price / Rating / BSR；它们不会自动成为 Listing 事实）。可在下方人工填写已核实的商品事实。";
-            }
-            return "当前来源资料没有可直接核实的商品事实候选，仍可在下方填写你已核实的信息。";
-          })()}
-        </p>
-      )}
+          </>
 
-      <>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            <strong className="text-slate-800">人工填写已核实事实</strong>：请填写以下你已核实确定的商品信息
-            （<strong className="text-slate-800">不必全部填写</strong>），填写项将保存为创作资料并可用于 Listing 草稿。
-          </p>
-          <div className="mt-2 rounded-xl border border-sky-100 bg-sky-50/60 p-3 text-xs leading-5 text-slate-600">
-            <p className="font-bold text-slate-800">建议核实的缺失信息</p>
-            {!existingFields.has("dimensions") ? <p>• 可补充商品尺寸</p> : null}
-            {!existingFields.has("weight") ? <p>• 可补充商品重量</p> : null}
-            {!existingFields.has("usage") ? <p>• 可补充已确认的使用场景</p> : null}
-            {!existingFields.has("compatibility") ? <p>• 是否有杯架/设备兼容信息？</p> : null}
+          <label className="mt-3 flex gap-2.5 rounded-lg border border-teal-200 bg-teal-50/60 p-2.5 text-xs leading-5 text-teal-900">
+            <input
+              type="checkbox"
+              checked={confirmed}
+              onChange={(event) => setConfirmed(event.target.checked)}
+              disabled={selectedIds.length === 0 && manualFilled.length === 0}
+            />
+            <span>我已核对，这是商品真实信息；确认后可作为 Listing 草稿事实并接受事实校验。</span>
+          </label>
+
+          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={!canSubmit}
+              onClick={() => void submit()}
+              className="inline-flex h-9 items-center justify-center rounded-lg bg-teal-600 px-4 text-xs font-bold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {submitting ? "正在保存…" : "确认并保存创作资料"}
+            </button>
           </div>
-          <div className="mt-3 grid gap-2 md:grid-cols-2" data-testid="listing-fact-manual-inputs">
-            {MANUAL_FIELD_OPTIONS.filter(({ field }) => !existingFields.has(field)).map(({ field, label }) => (
-              <label key={field} className="flex flex-col gap-1 rounded-xl border border-slate-200 bg-slate-50/60 p-2.5 text-sm text-slate-700">
-                <span className="text-xs font-semibold text-slate-600">{label}</span>
-                <input
-                  type="text"
-                  maxLength={200}
-                  value={manualValues[field] ?? ""}
-                  placeholder={field === "other" ? "例如：含替换吸管" : label}
-                  onChange={(event) => {
-                    const nextValue = event.target.value;
-                    setManualValues((current) => ({ ...current, [field]: nextValue }));
-                    if (nextValue.trim()) {
-                      setSelectedIds((current) => current.filter((id) => candidates.find((candidate) => candidate.selectionId === id)?.canonicalField !== field));
-                    }
-                    setConfirmed(false);
-                  }}
-                  className="h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-sm outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
-                />
-              </label>
-            ))}
-          </div>
-      </>
-
-      <label className="mt-4 flex gap-3 rounded-xl border border-teal-200 bg-teal-50/60 p-3 text-sm leading-6 text-teal-900">
-        <input
-          type="checkbox"
-          checked={confirmed}
-          onChange={(event) => setConfirmed(event.target.checked)}
-          disabled={selectedIds.length === 0 && manualFilled.length === 0}
-        />
-        <span>我已核对，这是商品真实信息；确认后可用于 Listing 草稿与事实校验。</span>
-      </label>
-
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          disabled={!canSubmit}
-          onClick={() => void submit()}
-          className="inline-flex h-10 items-center justify-center rounded-xl bg-teal-600 px-5 text-sm font-bold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {submitting ? "正在保存…" : "确认并保存创作资料"}
-        </button>
-      </div>
+        </div>
+      </details>
     </section>
   );
 }
@@ -404,3 +551,4 @@ function friendlySupplementError(error: { status: number; code: string; message:
   }
   return error.message || "保存失败，请稍后重试。";
 }
+

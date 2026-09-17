@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-import { TaskRecordDetail } from "@/components/TaskRecordDetail";
+import { TaskRecordDetail, activateFormalV2Target } from "@/components/TaskRecordDetail";
 
 /* ── 真实 React DOM 行为测试：无 jsdom 的最小 DOM（支撑 React 19 渲染/事件 + 真实组件挂载）。 ── */
 
@@ -398,18 +398,78 @@ function installRecordHandler(record: ReturnType<typeof recordFixture>) {
   };
 }
 
+function installRecordHandlerWithLifecycle(
+  record: ReturnType<typeof recordFixture>,
+  lifecycle: Record<string, unknown>,
+) {
+  fetchHandler = (url: string) => {
+    if (url.includes("/api/runtime-mode")) {
+      return makeResponse(true, 200, { ok: true, mode: "local_owner", noAuthOwner: true, v4GraphEnabled: true });
+    }
+    if (url.includes("/api/tasks/task-x/research-lifecycle")) {
+      return makeResponse(true, 200, { ok: true, data: lifecycle });
+    }
+    if (url.includes("/api/tasks/task-x")) {
+      return makeResponse(true, 200, { ok: true, data: record });
+    }
+    return makeResponse(false, 404, { ok: false });
+  };
+}
+
 describe("TaskRecordDetail 正式组件挂载（真实 DOM）", () => {
+  it("使用服务端 lifecycle snapshot 驱动正式主状态与下一步动作", async () => {
+    installRecordHandlerWithLifecycle(recordFixture(), {
+      phase: "ready_to_complete",
+      collectionStatus: "ready",
+      confirmationStatus: "confirmed",
+      decisionStatus: "creative_ready",
+      completionStatus: "not_completed",
+      creativeReadiness: "blocked",
+      stale: false,
+      blockers: ["research_not_completed"],
+      nextAction: "完成研究并保存研究记录。",
+      contractMode: "modern",
+    });
+    await mountDetail();
+
+    const button = findByTestId("formal-v2-primary-action")!;
+    expect(button.textContent).toContain("完成研究");
+    expect(button.getAttribute("aria-controls")).toBe("product-research-decision");
+    const result = findByTestId("formal-v2-product-result")!;
+    expect(result.textContent).toContain("待完成研究");
+  });
+
+  it("已完成但创作绑定未核验时，顶部动作跟随快照阻断原因", async () => {
+    installRecordHandlerWithLifecycle(recordFixture(), {
+      phase: "completed",
+      collectionStatus: "ready",
+      confirmationStatus: "confirmed",
+      decisionStatus: "creative_ready",
+      completionStatus: "completed",
+      creativeReadiness: "blocked",
+      stale: false,
+      blockers: ["candidate_binding_unverified"],
+      nextAction: "核对研究绑定和人工决定后再进入创作。",
+      contractMode: "modern",
+    });
+    await mountDetail();
+
+    const button = findByTestId("formal-v2-primary-action")!;
+    expect(button.textContent).toContain("核对研究状态");
+    expect(button.getAttribute("aria-controls")).toBe("formal-v2-materials");
+  });
+
   it("workflow 活动记录：显示 Formal v2，不出现 legacy；主按钮实点展开/定位/焦点/aria 正确", async () => {
     installRecordHandler(recordFixture());
     await mountDetail();
 
     expect(findByTestId("formal-v2-product-result")).not.toBeNull();
     expect(findByTestId("legacy-record-content")).toBeNull();
-    expect(findAllByTestId("formal-v2-module-market").length).toBe(1);
+    expect(findAllByTestId("formal-v2-module-market").length).toBe(0);
 
     const button = findByTestId("formal-v2-primary-action")!;
     expect(button.getAttribute("aria-controls")).toBe("formal-v2-materials");
-    expect(button.getAttribute("aria-expanded")).toBe("false");
+    expect(button.getAttribute("aria-expanded")).toBe("true");
 
     await act(async () => { button.dispatchEvent(new FakeEvent("click", button)); });
     await flush();
@@ -442,15 +502,6 @@ describe("TaskRecordDetail 正式组件挂载（真实 DOM）", () => {
     expect(hashHistory.at(-1)).toBe("#listing-and-images");
     expect(documentInstance!.getElementById("listing-and-images")).not.toBeNull();
     expect(documentInstance!.activeElement?.nodeName).toBe("H2");
-
-    // 四模块按钮指向各自的证据目标
-    const firstModule = (container as unknown as FakeElement).querySelector('[data-testid="formal-v2-module-market"] button') as FakeElement | null;
-    expect(firstModule).not.toBeNull();
-    expect(firstModule!.getAttribute("aria-controls")).toBe("formal-v2-market-evidence");
-    await act(async () => { firstModule!.dispatchEvent(new FakeEvent("click", firstModule!)); });
-    await flush();
-    expect(hashHistory.at(-1)).toBe("#formal-v2-market-evidence");
-    expect(documentInstance!.getElementById("formal-v2-market-evidence")).not.toBeNull();
   });
 
   it("stale workflow：正式组件真实渲染重新确认目标，点击后展开/hash/焦点/aria 正确", async () => {
@@ -500,15 +551,10 @@ const MODULE_EXPECT: Array<{ key: string; targetId: string }> = [
   { key: "cost-risk", targetId: "formal-v2-cost-risk-evidence" },
 ];
 
-describe("四模块按钮目标路由（真实 TaskRecordDetail 挂载）", () => {
+describe("四证据目标路由（真实 TaskRecordDetail 挂载）", () => {
   async function mountWorkflow() {
     installRecordHandler(recordFixture());
     await mountDetail();
-  }
-  function moduleButton(key: string): FakeElement {
-    const btn = (container as unknown as FakeElement).querySelector('[data-testid="formal-v2-module-' + key + '"] button') as FakeElement | null;
-    expect(btn, "module button " + key).not.toBeNull();
-    return btn!;
   }
   function focusedInside(target: FakeElement): boolean {
     let cur: FakeNode | null = documentInstance!.activeElement;
@@ -516,19 +562,17 @@ describe("四模块按钮目标路由（真实 TaskRecordDetail 挂载）", () =
     return false;
   }
 
-  it("1. 四个按钮 aria-controls 分别等于四个目标且互不重复；目标在挂载 DOM 中真实存在", async () => {
+  it("1. 四个证据目标在挂载 DOM 中真实存在且 ID 互不重复", async () => {
     await mountWorkflow();
     const seen = new Set<string>();
     for (const { key, targetId } of MODULE_EXPECT) {
-      const btn = moduleButton(key);
-      expect(btn.getAttribute("aria-controls")).toBe(targetId);
       seen.add(targetId);
       expect(documentInstance!.getElementById(targetId), targetId + " exists").not.toBeNull();
     }
     expect(seen.size).toBe(4);
   });
 
-  it("2. 分别点击四个按钮：外层 details 自动展开；hash/滚动目标/焦点均在对应资料区内", async () => {
+  it("2. 通过 activateFormalV2Target 激活四个目标：外层 details 自动展开；hash/滚动目标/焦点均在对应资料区内", async () => {
     await mountWorkflow();
     const details = documentInstance!.getElementById("formal-v2-materials") as FakeElement | null;
     for (const { key, targetId } of MODULE_EXPECT) {
@@ -536,8 +580,9 @@ describe("四模块按钮目标路由（真实 TaskRecordDetail 挂载）", () =
         await act(async () => { details.open = false; });
         await flush();
       }
-      const btn = moduleButton(key);
-      await act(async () => { btn.dispatchEvent(new FakeEvent("click", btn)); });
+      await act(async () => {
+        activateFormalV2Target(targetId, "h3");
+      });
       await flush();
       expect(details!.open, key + " ancestors open").toBe(true);
       expect(hashHistory.at(-1), key + " hash").toBe("#" + targetId);
@@ -547,15 +592,16 @@ describe("四模块按钮目标路由（真实 TaskRecordDetail 挂载）", () =
     }
   });
 
-  it("3. 关闭总资料区后点击模块按钮会重新展开祖先 details", async () => {
+  it("3. 关闭总资料区后激活目标会重新展开祖先 details", async () => {
     await mountWorkflow();
     const details = documentInstance!.getElementById("formal-v2-materials") as FakeElement | null;
     expect(details).not.toBeNull();
     await act(async () => { details!.open = false; });
     await flush();
     expect(details!.open).toBe(false);
-    const btn = moduleButton("sourcing");
-    await act(async () => { btn.dispatchEvent(new FakeEvent("click", btn)); });
+    await act(async () => {
+      activateFormalV2Target("formal-v2-sourcing-evidence", "h3");
+    });
     await flush();
     expect(details!.open).toBe(true);
     expect(hashHistory.at(-1)).toBe("#formal-v2-sourcing-evidence");
@@ -573,13 +619,176 @@ describe("四模块按钮目标路由（真实 TaskRecordDetail 挂载）", () =
   it("5. 焦点落在目标区内的标题或首个可操作元素（H3 或 section 本身）", async () => {
     await mountWorkflow();
     for (const { key, targetId } of MODULE_EXPECT) {
-      const btn = moduleButton(key);
-      await act(async () => { btn.dispatchEvent(new FakeEvent("click", btn)); });
+      await act(async () => {
+        activateFormalV2Target(targetId, "h3");
+      });
       await flush();
       const section = documentInstance!.getElementById(targetId)!;
       const focused = documentInstance!.activeElement!;
       const ok = focused.nodeName === "H3" || focused === section || focusedInside(section);
       expect(ok, key + " focus semantics").toBe(true);
     }
+  });
+
+  it("6. 访问带 #formal-v2-market-evidence 锚点：自动展开 materials 并激活目标区域", async () => {
+    const w = (globalThis as unknown as { window: { location: { hash?: string } } }).window;
+    w.location.hash = "#formal-v2-market-evidence";
+    await mountWorkflow();
+    await new Promise((r) => setTimeout(r, 50));
+    await flush();
+
+    const details = documentInstance!.getElementById("formal-v2-materials") as FakeElement | null;
+    expect(details).not.toBeNull();
+    expect(details!.open).toBe(true);
+
+    const target = documentInstance!.getElementById("formal-v2-market-evidence") as FakeElement | null;
+    expect(target).not.toBeNull();
+    expect(target!.scrollIntoViewCalls).toBeGreaterThan(0);
+  });
+
+  it("7. 访问带 #fact-candidate-review 锚点：自动展开 materials 并展开 fact-candidate-review 折叠入口", async () => {
+    const w = (globalThis as unknown as { window: { location: { hash?: string } } }).window;
+    w.location.hash = "#fact-candidate-review";
+    await mountWorkflow();
+    await new Promise((r) => setTimeout(r, 50));
+    await flush();
+
+    const details = documentInstance!.getElementById("formal-v2-materials") as FakeElement | null;
+    expect(details).not.toBeNull();
+    expect(details!.open).toBe(true);
+
+    const target = documentInstance!.getElementById("fact-candidate-review") as FakeElement | null;
+    expect(target).not.toBeNull();
+    expect(target!.open).toBe(true);
+  });
+
+  /**
+   * 关键词方案状态联动（2026-09 修复）。
+   *
+   * 现象：关键词方案确认成功后，创作流程第 02 步仍显示「待完成」、动作仍是「确认关键词方案」。
+   * 根因：详情 DTO 不投影 result.listingKeywordBrief，第 02 步实际只认 listing-handoff 的
+   * keywordBriefSummary；而那次读取只在挂载时跑一次，父级 refreshRecord 之后不会重读。
+   * 这里走真实点击链路：保存关键词方案 → 卡片 onSave/handleDataChanged → 父级 refreshRecord
+   * → 新的 result 对象 → 重新读取 keywordBriefSummary → 第 02 步就地转为已完成。
+   */
+  it("8. 保存关键词方案后：创作流程第 02 步就地变为已完成，不再是「确认关键词方案」", async () => {
+    let keywordBriefReads = 0;
+    let detailReads = 0;
+    let saved = false;
+    // 该用例需要区分同一 URL 的 GET / POST，所以直接接管 fetch（harness 的 fetchHandler 只拿到 URL）。
+    const g = globalThis as unknown as { fetch: (url: string, init?: { method?: string }) => Promise<FetchResponse> };
+    g.fetch = vi.fn(async (url: string, init?: { method?: string }) => {
+      const target = String(url);
+      if (target.includes("/api/runtime-mode")) {
+        return makeResponse(true, 200, { ok: true, mode: "local_owner", noAuthOwner: true, v4GraphEnabled: true });
+      }
+      if (target.includes("/api/tasks/task-x/research-lifecycle")) {
+        return makeResponse(true, 200, {
+          ok: true,
+          data: {
+            phase: "completed", collectionStatus: "ready", confirmationStatus: "confirmed",
+            decisionStatus: "creative_ready", completionStatus: "completed",
+            creativeReadiness: "ready", stale: false, blockers: [],
+            nextAction: "进入创作准备。", contractMode: "modern",
+          },
+        });
+      }
+      if (target.includes("/api/tasks/task-x/keyword-evidence")) {
+        return makeResponse(true, 200, {
+          ok: true,
+          data: {
+            evidence: {
+              reportType: "reverse_asin",
+              capturedAt: "2026-09-14T08:00:00.000Z",
+              rows: [{ rowNumber: 1, keyword: "halloween decorations", fields: {} }],
+            },
+            storageVersion: { resultJsonHash: "hash-1", updatedAt: "2026-09-14T08:00:00.000Z" },
+          },
+        });
+      }
+      if (target.includes("/api/tasks/task-x/listing-handoff")) {
+        if (init?.method === "POST") {
+          saved = true;
+          return makeResponse(true, 200, { ok: true, data: { saved: true } });
+        }
+        keywordBriefReads += 1;
+        return makeResponse(true, 200, {
+          ok: true,
+          data: {
+            keywordBriefSummary: saved
+              ? { primaryKeyword: "halloween decorations", source: "sellersprite", backendTermsCount: 0 }
+              : null,
+          },
+        });
+      }
+      if (target.includes("/api/tasks/task-x")) {
+        detailReads += 1;
+        return makeResponse(true, 200, {
+          ok: true,
+          data: recordFixture({
+            // 研究事实已确认：关键词步骤才是当前待办（与用户看到的页面一致）
+            result: {
+              productName: "测试商品",
+              // 详情 DTO 若携带历史 brief，也不能覆盖 listing-handoff 的当前确认摘要。
+              listingKeywordBrief: {
+                schema: "listing-keyword-brief.v1",
+                primaryKeyword: "old keyword A",
+                supportingKeywords: [],
+                backendSearchTerms: [],
+                source: "sellersprite",
+                capturedAt: "2026-08-01T00:00:00.000Z",
+              },
+              factCandidates: { confirmed: [{ factId: "f-brand", field: "brand", label: "Brand", value: "TestBrand" }] },
+            },
+          }),
+        });
+      }
+      return makeResponse(false, 404, { ok: false });
+    });
+
+    await mountDetail();
+    await flush();
+
+    const flowStep = (key: string): FakeElement | null => {
+      let found: FakeElement | null = null;
+      const walk = (node: FakeNode) => {
+        for (const child of [...node.childNodes]) {
+          if (child.nodeType !== 1) continue;
+          const el = child as FakeElement;
+          if (found === null && el.dataset["flow-step"] === key) found = el;
+          walk(el);
+        }
+      };
+      walk(container as FakeNode);
+      return found;
+    };
+
+    // 保存前：第 02 步待完成，动作是「确认关键词方案」
+    expect(flowStep("keywords")).not.toBeNull();
+    expect(flowStep("keywords")!.dataset["flow-state"]).toBe("pending");
+    expect(findByTestId("product-creation-flow-action")!.textContent).toContain("确认关键词方案");
+    const detailReadsAfterMount = detailReads;
+
+    // 真实用户动作：打开关键词方案编辑器 → 勾选核对 → 保存关键词方案
+    const openEditor = findByTestId("kw-adjust")!;
+    await act(async () => { openEditor.dispatchEvent(new FakeEvent("click", openEditor)); });
+    await flush();
+    expect(findByTestId("kw-editor")).not.toBeNull();
+
+    const confirmBox = findByTestId("kw-confirm") as FakeElement & { checked: boolean };
+    confirmBox.checked = true;
+    await act(async () => { confirmBox.dispatchEvent(new FakeEvent("click", confirmBox)); });
+    await flush();
+
+    const saveButton = findByTestId("kw-save")!;
+    await act(async () => { saveButton.dispatchEvent(new FakeEvent("click", saveButton)); });
+    for (let i = 0; i < 5; i += 1) await flush();
+
+    // 保存成功：立即反馈 + 父级重新拉取详情 + 关键词状态就地联动
+    expect(findByTestId("kw-saved-notice")!.textContent).toContain("关键词方案已保存");
+    expect(detailReads).toBeGreaterThan(detailReadsAfterMount);
+    expect(keywordBriefReads).toBeGreaterThan(1);
+    expect(flowStep("keywords")!.dataset["flow-state"]).toBe("complete");
+    expect(findByTestId("product-creation-flow-action")!.textContent).not.toContain("确认关键词方案");
   });
 });

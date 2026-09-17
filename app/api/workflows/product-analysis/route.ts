@@ -19,6 +19,13 @@ import {
   createCandidateAnalysisBindingHash,
   formatCandidateAnalysisPromptContext,
 } from "@/lib/server/candidateAnalysisContext";
+import { prisma } from "@/lib/server/db";
+import { getSandboxTask, isSandboxTaskId } from "@/lib/server/demoSandbox";
+import {
+  buildEvidenceContext,
+  formatEvidenceContextPrompt,
+  type EvidenceContextV1,
+} from "@/lib/server/evidenceContext";
 import {
   buildR22PendingCommercialRunSnapshot,
   type R22CommercialRunSnapshot,
@@ -328,18 +335,63 @@ export async function POST(request: NextRequest) {
   if (productName.length < 2) {
     return NextResponse.json({ ok: false, error: { code: "product_name_too_short", message: "商品名称至少需要 2 个字符。" } }, { status: 400 });
   }
+  const taskId = asString(body.taskId).slice(0, 80) || null;
+  let taskResultJson: Record<string, unknown> | null = isPlainObject(body.resultJson)
+    ? body.resultJson
+    : null;
+
+  if (!taskResultJson && taskId) {
+    if (accessCtx.mode === "demo") {
+      if (isSandboxTaskId(taskId)) {
+        const sandboxTask = getSandboxTask(accessCtx.demoAccessId, taskId);
+        if (sandboxTask && typeof sandboxTask.resultJson === "string") {
+          try {
+            const parsed = JSON.parse(sandboxTask.resultJson);
+            if (isPlainObject(parsed)) taskResultJson = parsed;
+          } catch {
+            // fail-soft
+          }
+        }
+      }
+    } else {
+      const ownerTask = await prisma.viralAnalysisRecord.findUnique({
+        where: { id: taskId },
+        select: { resultJson: true },
+      });
+      if (ownerTask && typeof ownerTask.resultJson === "string") {
+        try {
+          const parsed = JSON.parse(ownerTask.resultJson);
+          if (isPlainObject(parsed)) taskResultJson = parsed;
+        } catch {
+          // fail-soft
+        }
+      }
+    }
+  }
+
   const candidateAnalysisContext = candidateForAnalysis
     ? buildCandidateAnalysisContext(candidateForAnalysis)
     : null;
-  const analysisDescription = candidateAnalysisContext
-    ? [
-        formatCandidateAnalysisPromptContext(candidateAnalysisContext),
-        ...(marketResearchOnly ? [
-          "当前只允许 market_research_only 市场研究；promotionEligible=false。",
-          "不得声称已晋级、通过 R2.2、适合采购、可自动上架或形成正式商业结论。",
-        ] : []),
-      ].join("\n")
-    : productName;
+
+  const evidenceContext = buildEvidenceContext({
+    resultJson: taskResultJson,
+    candidate: candidateForAnalysis,
+    candidateAnalysisContext,
+  });
+  const evidencePrompt = formatEvidenceContextPrompt(evidenceContext);
+
+  const basePrompt = candidateAnalysisContext
+    ? formatCandidateAnalysisPromptContext(candidateAnalysisContext)
+    : `商品名称：${productName}`;
+
+  const analysisDescription = [
+    basePrompt,
+    ...(marketResearchOnly ? [
+      "当前只允许 market_research_only 市场研究；promotionEligible=false。",
+      "不得声称已晋级、通过 R2.2、适合采购、可自动上架或形成正式商业结论。",
+    ] : []),
+    evidencePrompt,
+  ].filter(Boolean).join("\n\n");
   const candidateContextHash = candidateForAnalysis && candidateAnalysisContext
     ? createCandidateAnalysisBindingHash(candidateForAnalysis, candidateAnalysisContext)
     : null;
@@ -707,6 +759,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     ...result,
     ...(demoScreen ? { demoAccess: demoScreen } : {}),
+    evidenceContext,
     runProof,
   }, { status: 200 });
 }

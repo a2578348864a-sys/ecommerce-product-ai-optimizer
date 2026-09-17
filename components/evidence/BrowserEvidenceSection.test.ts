@@ -1,6 +1,10 @@
 import { resolveSaveConflictRecovery } from "./BrowserEvidenceSection";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { writeFileSync, existsSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
+import { resolveSystemBrowser } from "@/tools/collectors/amazon/browser-control";
 import { describe, expect, it } from "vitest";
 import {
   BrowserEvidenceSection,
@@ -288,6 +292,33 @@ describe("BrowserEvidenceSection rendering", () => {
     expect(html).toContain("本次不保存价格");
   });
 
+  it("renders clear entity-binding failure message and details when pageStatus is ok but entityBound is false", () => {
+    const fixture = previewFixture();
+    fixture.extraction.pageStatus = "ok";
+    fixture.extraction.entityBound = false;
+    fixture.extraction.bindingProof = {
+      productContainerFound: true,
+      urlMatchesExpected: true,
+      pageAnchorMatchesExpected: false,
+    };
+    (fixture.extraction as { pageAsin: string | null }).pageAsin = null;
+    const parsed = parseBrowserCollectPreviewView(fixture);
+    const element = createElement(BrowserEvidenceSection, {
+      taskId: "sandbox_task_test",
+      evidence: null,
+      taskAsin: "B0A1B2C3D4",
+      storageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-06T00:00:00.000Z" },
+      onChanged: () => undefined,
+      initialPreview: parsed,
+    });
+    const html = renderToStaticMarkup(element);
+    expect(html).toContain("页面打开成功，但商品身份确认失败");
+    expect(html).not.toContain("页面未通过身份检查（ok）");
+    expect(html).not.toContain("我确认这是目标商品");
+    expect(html).toContain("页面锚点 ASIN");
+    expect(html).toContain("商品主容器");
+  });
+
 describe("保存冲突自动恢复（轮 12）", () => {
   it("首次 409：保留预览并仅重试一次；二次 409：提示“资料刚刚更新，请再试一次”，不无限重试", () => {
     const first = resolveSaveConflictRecovery(409, "task_result_conflict", false);
@@ -299,4 +330,66 @@ describe("保存冲突自动恢复（轮 12）", () => {
     expect(resolveSaveConflictRecovery(200, null, false).retry).toBe(false);
   });
 });
+
+  it("renders both success and failure states and captures real Chrome browser screenshots", () => {
+    const artifactDir = "C:\\Users\\a2578\\.gemini\\antigravity\\brain\\589da4b9-8b64-498e-b19d-0c933b58482c";
+    const browser = resolveSystemBrowser();
+    if (!browser) return;
+
+    // 成功态
+    const successParsed = parseBrowserCollectPreviewView(previewFixture());
+    const successEl = createElement(BrowserEvidenceSection, {
+      taskId: "test_task_b0bdhwdr12",
+      evidence: null,
+      taskAsin: "B0BDHWDR12",
+      storageVersion: { resultJsonHash: "hash123", updatedAt: new Date().toISOString() },
+      onChanged: () => undefined,
+      initialPreview: successParsed,
+    });
+    const successHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Success State</title><script src="https://cdn.tailwindcss.com"></script></head><body class="p-6 bg-slate-50"><div class="max-w-3xl mx-auto"><h2 class="text-lg font-bold text-slate-800 mb-4">Amazon Evidence 采集成功（AirPods Pro B0BDHWDR12 实体绑定证明通过）</h2>${renderToStaticMarkup(successEl)}</div></body></html>`;
+    const successPath = join(artifactDir, "browser_evidence_success.html");
+    writeFileSync(successPath, successHtml, "utf-8");
+
+    // 失败态（清晰错误展示，彻底消除反直觉 ok 文案）
+    const failFixture = previewFixture();
+    failFixture.extraction.entityBound = false;
+    failFixture.extraction.bindingProof.pageAnchorMatchesExpected = false;
+    (failFixture.extraction as { pageAsin: string | null }).pageAsin = null;
+    const failParsed = parseBrowserCollectPreviewView(failFixture);
+    const failEl = createElement(BrowserEvidenceSection, {
+      taskId: "test_task_b0bdhwdr12",
+      evidence: null,
+      taskAsin: "B0BDHWDR12",
+      storageVersion: { resultJsonHash: "hash123", updatedAt: new Date().toISOString() },
+      onChanged: () => undefined,
+      initialPreview: failParsed,
+    });
+    const failHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Failure State</title><script src="https://cdn.tailwindcss.com"></script></head><body class="p-6 bg-slate-50"><div class="max-w-3xl mx-auto"><h2 class="text-lg font-bold text-slate-800 mb-4">Amazon Evidence 实体绑定未通过（清晰错误提示，彻底消除反直觉 ok 文案）</h2>${renderToStaticMarkup(failEl)}</div></body></html>`;
+    const failPath = join(artifactDir, "browser_evidence_failure.html");
+    writeFileSync(failPath, failHtml, "utf-8");
+
+    const successImg = join(artifactDir, "browser_evidence_success.png");
+    const failImg = join(artifactDir, "browser_evidence_failure.png");
+
+    spawnSync(browser.executablePath, [
+      "--headless=new",
+      "--disable-gpu",
+      `--screenshot=${successImg}`,
+      "--window-size=1280,800",
+      `file:///${successPath.replace(/\\/g, "/")}`,
+    ]);
+
+    spawnSync(browser.executablePath, [
+      "--headless=new",
+      "--disable-gpu",
+      `--screenshot=${failImg}`,
+      "--window-size=1280,800",
+      `file:///${failPath.replace(/\\/g, "/")}`,
+    ]);
+
+    expect(existsSync(successImg)).toBe(true);
+    expect(statSync(successImg).size).toBeGreaterThan(1000);
+    expect(existsSync(failImg)).toBe(true);
+    expect(statSync(failImg).size).toBeGreaterThan(1000);
+  });
 });

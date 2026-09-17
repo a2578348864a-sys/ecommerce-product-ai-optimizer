@@ -20,6 +20,7 @@ describe("buildStudioImageRequestCore", () => {
       count: 2,
       aspectRatio: "portrait_4_5",
       prohibitedElements: " Logo, watermark ",
+      stylePresetId: "macro_detail",
     };
 
     expect(buildStudioImageRequestCore({
@@ -40,6 +41,7 @@ describe("buildStudioImageRequestCore", () => {
       count: 2,
       aspectRatio: "portrait_4_5",
       prohibitedElements: "Logo, watermark",
+      stylePresetId: "macro_detail",
       mode: "mock",
     });
   });
@@ -51,6 +53,7 @@ describe("buildStudioImageRequestCore", () => {
       avoidElements: " Logos, watermarks ",
       count: 2,
       aspectRatio: "landscape_16_9",
+      stylePresetId: "premium_editorial",
     };
 
     const request = buildStudioImageRequestCore({
@@ -71,6 +74,7 @@ describe("buildStudioImageRequestCore", () => {
       avoidElements: "Logos, watermarks",
       count: 2,
       aspectRatio: "landscape_16_9",
+      stylePresetId: "premium_editorial",
       mode: "mock",
     });
     expect(request).not.toHaveProperty("imageType");
@@ -104,6 +108,7 @@ describe("buildStudioImageRequestCore", () => {
       count: 1,
       aspectRatio: "square_1_1",
       prohibitedElements: "",
+      stylePresetId: "amazon_clean_hero",
     });
     expect(EMPTY_PROMPT_IMAGE_INTENT).toEqual({
       creationMode: "prompt",
@@ -111,6 +116,7 @@ describe("buildStudioImageRequestCore", () => {
       avoidElements: "",
       count: 1,
       aspectRatio: "square_1_1",
+      stylePresetId: "amazon_clean_hero",
     });
   });
 
@@ -118,6 +124,7 @@ describe("buildStudioImageRequestCore", () => {
     expect(STUDIO_IMAGE_PRIMARY_PURPOSES.map((purpose) => purpose.label)).toEqual([
       "白底主图/棚拍",
       "卖点信息图",
+      "使用场景图",
       "尺寸规格图",
       "产品细节特写",
       "包装/套装展示",

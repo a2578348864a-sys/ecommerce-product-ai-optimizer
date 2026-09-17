@@ -28,7 +28,7 @@ const HARD_PROPERTY_HINTS: RegExp[] = [
   /\b(dimension|capacity|weight|size)\b/i,
   /\b(certified|certification|fda|ul|csa|ce|rohs|gmp|organic)\b/i,
   /\b(waterproof|leakproof|spill.proof|spill.resistant|leak.resistant|water.resistant|durable|long.lasting|rust.free|heat.resistant|scratch.resistant|non.stick)\b/i,
-  /\b(compatible|compatibility|works with|fits)\b/i,
+  /\b(compatible|compatibility|works with|fits\s+(?:for|with))\b/i,
   /\b(best|guaranteed|guarantee|no.1|#1|top.rated|premium.quality|medical.grade)\b/i,
   /\b(effective|improves|reduces|prevents|heals|treats|cures)\b/i,
 ];
@@ -57,7 +57,8 @@ export function canonicalizeUnits(value: string): string {
     .replace(/\b(\d+)\s*(inches?|in)\b/g, "$1 in")
     .replace(/\b(\d+)\s*(centimeters?|cm)\b/g, "$1 cm")
     .replace(/\b(\d+)\s*(millimeters?|mm)\b/g, "$1 mm")
-    .replace(/\b(\d+)\s*(qt|cups?)\b/g, "$1 qt");
+    .replace(/\b(\d+)\s*(qt|cups?)\b/g, "$1 qt")
+    .replace(/\b(\d+)\s*[- ]*\s*(pcs|pieces?|packs?|count|ct|pk)\b/g, "$1 pcs");
 }
 
 /** 句内所有硬属性提及（单位归一化后逐条提取，尽量保留原始提及形态） */
@@ -88,7 +89,16 @@ export function classifyClaimTier(
   supported: string[],
   confirmedValues: string[],
 ): TieredClaim[] {
-  const values = confirmedValues.map((v) => canonicalizeUnits(v)).filter(Boolean);
+  const values = confirmedValues
+    .flatMap((v) => {
+      const canonical = canonicalizeUnits(v);
+      const atoms = canonical
+        .split(/[,;，；/]+/)
+        .map((a) => a.trim())
+        .filter((a) => a && a !== canonical);
+      return [canonical, ...atoms];
+    })
+    .filter(Boolean);
   return supported.map((text) => {
     const lower = text.toLowerCase();
     const canonical = canonicalizeUnits(lower);
@@ -110,17 +120,20 @@ export function classifyClaimTier(
     }
     // 2) 事实锚点：句子必须"明确包含已确认事实值"——已确认值的连续短语（≥2 词的
     //    连续片段，或 ≤2 词值的全部词）在句中出现；任意词重叠不算锚点。
+    //    连字符与空格等价归一化（如 rust-resistant 与 rust resistant）。
     //    无锚点 → blocked（未支持内容不得默认 verified/review）。
+    const canonicalDehyphen = canonical.replace(/[-_]/g, " ").replace(/\s+/g, " ");
     const hasAnchor = values.some((v) => {
-      const vTokens = v.split(/\s+/).filter((w) => w.length > 1);
+      const vNorm = v.replace(/[-_]/g, " ").replace(/[.,;，；/]/g, " ").replace(/\s+/g, " ").trim();
+      const vTokens = vNorm.split(/\s+/).filter((w) => w.length > 1);
       if (vTokens.length === 0) return false;
       if (vTokens.length === 1) {
-        return canonical.includes(vTokens[0]);
+        return canonicalDehyphen.includes(vTokens[0]);
       }
-      if (canonical.includes(v)) return true;
+      if (canonicalDehyphen.includes(vNorm)) return true;
       for (let start = 0; start + 1 < vTokens.length; start++) {
         const phrase = vTokens.slice(start, start + 2).join(" ");
-        if (canonical.includes(phrase)) return true;
+        if (canonicalDehyphen.includes(phrase)) return true;
       }
       return false;
     });

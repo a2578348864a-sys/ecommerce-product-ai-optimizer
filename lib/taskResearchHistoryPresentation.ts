@@ -44,6 +44,21 @@ function hasSavedResearch(result: Record<string, unknown>, oneLineSummary: strin
     || hasText(oneLineSummary);
 }
 
+/**
+ * 第十一轮（Bug 2）：researchCompletion 是「已完成」的唯一终态依据。
+ * productResearchSummary / researchRecord / finalReport / agentOutputSnapshot /
+ * oneLineSummary 等最多证明「研究过程中有资料/有输出/有决定」，不能证明正式收口。
+ */
+export function readResearchCompletionStatus(result: Record<string, unknown> | null): "completed" | "abandoned" | null {
+  if (!isRecord(result)) return null;
+  const completion = result.researchCompletion;
+  if (!isRecord(completion)) return null;
+  if (completion.schema !== "research-completion.v1") return null;
+  if (completion.status === "completed") return "completed";
+  if (completion.status === "abandoned") return "abandoned";
+  return null;
+}
+
 export function deriveResearchHistoryStatus(input: {
   result: unknown;
   decisionStatus: DecisionStatus;
@@ -62,12 +77,19 @@ export function deriveResearchHistoryStatus(input: {
   const summaryStatus = isRecord(result.productResearchSummary)
     ? (result.productResearchSummary as Record<string, unknown>).status
     : "";
+  // 第十一轮（Bug 2）：正式收口标记唯一终态依据；completed/abandoned 之外的任何
+  // 资料/输出/决定组合都不得进入「已完成」。
+  const completion = readResearchCompletionStatus(result);
+  if (completion === "completed") {
+    return { key: "completed", label: "研究已完成", researchSaved: true, humanDecisionExists: true };
+  }
+  if (completion === "abandoned") {
+    return { key: "abandoned", label: "已放弃", researchSaved, humanDecisionExists };
+  }
   if (researchSaved && humanDecisionExists) {
-    // P1-3：已放弃（abandoned）是终态历史，不得再标「研究已完成」
-    if (summaryStatus === "abandoned") {
-      return { key: "abandoned", label: "已放弃", researchSaved, humanDecisionExists };
-    }
-    return { key: "completed", label: "研究已完成", researchSaved, humanDecisionExists };
+    // 第十一轮：abandoned 终态只能由 researchCompletion 证明；
+    // 无 completion 时（含 summaryStatus=abandoned）= 研究未收口 → 待人工决定。
+    return { key: "awaiting_decision", label: "待人工决定", researchSaved, humanDecisionExists };
   }
   if (researchSaved) {
     return { key: "awaiting_decision", label: "待人工决定", researchSaved, humanDecisionExists };

@@ -40,4 +40,28 @@ describe("resolvePublicSourceImageUrl", () => {
   it("https 但含空白字符 → null", () => {
     expect(resolvePublicSourceImageUrl({ sourceMeta: { productBatchSnapshot: { imageUrl: "https://example.com/a b.jpg" } } })).toBeNull();
   });
+
+  it("当提供 taskId 且存在 dataUrl 快照时 → 返回 /api/tasks/:id/image", () => {
+    const result = {
+      sourceMeta: { productBatchSnapshot: { imageUrl: PNG_DATA_URL } },
+    };
+    expect(resolvePublicSourceImageUrl(result, "task-abc-123")).toBe("/api/tasks/task-abc-123/image");
+  });
+
+  it("当提供 taskId 且同时存在 https 公网图与 Base64 快照时 → 优先返回 https 公网图", () => {
+    const result = {
+      sourceMeta: {
+        productBatchSnapshot: {
+          imageUrl: "https://m.media-amazon.com/images/I/71X8e8wz7mL._AC_SL1500_.jpg",
+          imageSnapshotJson: PNG_DATA_URL,
+        },
+      },
+    };
+    expect(resolvePublicSourceImageUrl(result, "task-abc-123")).toBe("https://m.media-amazon.com/images/I/71X8e8wz7mL._AC_SL1500_.jpg");
+  });
+
+  it("当存在 fallbackImage 为 dataUrl 时 → 返回 /api/tasks/:id/image", () => {
+    const result = {};
+    expect(resolvePublicSourceImageUrl(result, "task-xyz", PNG_DATA_URL)).toBe("/api/tasks/task-xyz/image");
+  });
 });

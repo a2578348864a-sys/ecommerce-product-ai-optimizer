@@ -8,7 +8,7 @@
  * 数据来源严格按 docs/v3/changes/phase-2/evidence-read-model.md；
  * 缺失一律显示 unknown/「未收集」，禁止 AI 填空、禁止编造。
  */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
@@ -19,12 +19,6 @@ import {
   type KeywordEvidenceView,
 } from "@/components/evidence/KeywordReportEvidenceSection";
 import {
-  AiEvidenceSummarySection,
-  type AiEvidenceSummaryView,
-  type BusinessModuleView,
-  type LegacyCategoryView,
-} from "@/components/evidence/AiEvidenceSummarySection";
-import {
   BrowserEvidenceSection,
   parseBrowserEvidenceView,
   type BrowserEvidenceView,
@@ -33,15 +27,19 @@ import {
   VocEvidenceSection,
   parseVocAnalysisView,
   parseVocEvidenceView,
+  parseVocCollectPreviewView,
   type VocAnalysisView,
   type VocEvidenceView,
+  type VocCollectPreviewView,
 } from "@/components/evidence/VocEvidenceSection";
 import { CommercialInputsCard } from "@/components/product-research/CommercialInputsCard";
 import { BrowserUseCollectButton } from "@/components/evidence/BrowserUseCollectButton";
 import { KeywordPendingSubmitCard, type KeywordPendingPreview } from "@/components/evidence/KeywordPendingSubmitCard";
 import { KeywordStrategyCard } from "./KeywordStrategyCard";
 import { CompetitorStrategyCard } from "./CompetitorStrategyCard";
+import { CompetitorPendingSubmitCard, type CompetitorPendingPreview } from "@/components/evidence/CompetitorPendingSubmitCard";
 import { SourcingEvidencePanel } from "@/components/cross-border/SourcingEvidencePanel";
+import { ResearchCollectionOrchestratorCard } from "./ResearchCollectionOrchestratorCard";
 import { RESEARCH_MATERIAL_ROWS } from "@/lib/client/evidenceCompletion";
 import {
   getFactCandidates,
@@ -52,6 +50,7 @@ import {
   parseAcquisitionCapability,
   type AcquisitionCapabilityView,
 } from "@/lib/client/acquisitionCapability";
+import type { ResearchLifecycleSnapshot } from "@/lib/server/researchLifecycleReader";
 
 /* ── 纯提取工具（导出供测试） ─────────────────────────── */
 
@@ -202,7 +201,7 @@ const OVERVIEW_FIELDS: ReadonlyArray<{ field: string; label: string }> = [
   { field: "price", label: "价格(USD)" },
   { field: "rating", label: "评分" },
   { field: "reviews", label: "评论数" },
-  { field: "rootCategoryBsr", label: "大类BSR" },
+  { field: "rootCategoryBsr", label: "大类BSR（类目排名）" },
   { field: "subCategoryBsr", label: "小类BSR" },
   { field: "estimatedMonthlySales", label: "估算月销量" },
   { field: "estimatedMonthlyRevenue", label: "估算月销售额(USD)" },
@@ -444,7 +443,14 @@ export type CompetitorAsinView = {
 };
 
 type CompetitorApiResponse =
-  | { ok: true; data: { evidence: { asins: CompetitorAsinView[] }; storageVersion: { resultJsonHash: string; updatedAt: string } } }
+  | {
+      ok: true;
+      data: {
+        evidence: { asins: CompetitorAsinView[] };
+        storageVersion: { resultJsonHash: string; updatedAt: string };
+        pendingPreview?: CompetitorPendingPreview | null;
+      };
+    }
   | { ok: false; error?: { code?: string; message?: string } };
 
 function buildFetchHeaders(extra?: Record<string, string>): Headers {
@@ -544,12 +550,72 @@ function MissingSection({ gaps }: { gaps: string[] }) {
   );
 }
 
+export type EvidenceTabKey = "market" | "buyers" | "sourcing" | "cost-risk";
+
+/**
+ * 生命周期快照的展示标签。快照由上层只读计算，本组件只负责把 phase 翻译成用户语言，
+ * 不在这里重新判断研究生命周期，也不把资料数量当作正式状态。
+ *
+ * 第十二轮：stale（完成研究后证据已变化）优先——此时旧结论尚未对应当前资料，
+ * 不能再对用户显示「研究已完成」，文案与商品详情页顶部状态、工作台卡片保持一致。
+ */
+export function researchLifecyclePhaseLabel(
+  phase: ResearchLifecycleSnapshot["phase"],
+  stale = false,
+): string {
+  if (stale) return "研究资料需重新确认";
+  const labels: Record<ResearchLifecycleSnapshot["phase"], string> = {
+    created: "尚未开始",
+    collecting: "正在采集研究资料",
+    awaiting_confirmation: "等待确认事实",
+    awaiting_decision: "等待人工决定",
+    ready_to_complete: "可以完成研究",
+    completed: "研究已完成",
+    abandoned: "研究已放弃",
+    blocked: "研究被阻断",
+  };
+  return labels[phase];
+}
+
+/**
+ * 生命周期阻断原因的展示标签（仅展示层）。
+ *
+ * 快照里的 blockers 是内部原因码，直接渲染会把 `candidate_binding_unverified` 之类的
+ * 开发字段暴露给普通用户；未登记的码保留原文，便于排查。
+ */
+const LIFECYCLE_BLOCKER_LABELS: Record<string, string> = {
+  research_result_invalid: "研究结果数据异常，需要重新核对资料",
+  research_record_invalid: "研究记录数据异常，需要重新核对资料",
+  research_verification_invalid: "研究校验信息异常，需要重新核对资料",
+  legacy_not_supported: "该任务属于旧版研究流程",
+  decision_abandoned: "研究已被放弃",
+  research_stale_requires_reconfirmation: "研究资料已变化，需要重新确认",
+  decision_not_creative_ready: "人工决定尚未进入创作准备",
+  research_verification_missing: "缺少研究校验信息，需要重新确认",
+  candidate_binding_invalid: "候选商品绑定已失效，需要重新确认研究对象",
+  candidate_binding_unverified: "候选商品绑定尚未核实，需要重新确认研究对象",
+  research_not_completed: "商品研究尚未完成",
+  research_needs_information: "研究资料不足，需要补充信息",
+  pending_confirmation: "还有事实待人工确认",
+  collection_failed: "资料采集失败，需要重试",
+  decision_not_saved: "人工决定尚未保存",
+};
+
+export function researchLifecycleBlockerLabel(blocker: unknown): string {
+  const raw = typeof blocker === "string" ? blocker.trim() : "";
+  if (!raw) return "";
+  return LIFECYCLE_BLOCKER_LABELS[raw] ?? raw;
+}
+
 export function EvidenceWorkbench({
   taskId,
   result,
   onDataChanged,
   sourceImageUrl,
   onMaterialRowsChange,
+  activeTab: activeTabProp,
+  onTabChange,
+  lifecycleSnapshot,
 }: {
   taskId: string;
   result: Record<string, unknown> | null;
@@ -559,7 +625,47 @@ export function EvidenceWorkbench({
   sourceImageUrl?: string | null;
   /** 轮 13 一致性：当前研究资料清单（live rows）实时冒泡给外层（研究模块卡「缺什么」据此更新） */
   onMaterialRowsChange?: (payload: { rows: ResearchMaterialRow[]; counts: LiveEvidenceCounts; hasAiSummary: boolean }) => void;
+  activeTab?: EvidenceTabKey;
+  onTabChange?: (tab: EvidenceTabKey) => void;
+  /** 上层提供的只读研究生命周期快照；缺省时保留历史摘要兼容行为。 */
+  lifecycleSnapshot?: ResearchLifecycleSnapshot | null;
 }) {
+  const [internalTab, setInternalTab] = useState<EvidenceTabKey>("market");
+  const currentTab = activeTabProp ?? internalTab;
+
+  // 维护数据变更版本号，递增驱动资料编排卡片自动核对并刷新真实状态
+  const [dataRevision, setDataRevision] = useState(0);
+
+  const handleDataChanged = useCallback(() => {
+    setDataRevision((prev) => prev + 1);
+    onDataChanged?.();
+  }, [onDataChanged]);
+
+  const handleTabSelect = useCallback((tab: EvidenceTabKey) => {
+    setInternalTab(tab);
+    onTabChange?.(tab);
+  }, [onTabChange]);
+
+  useEffect(() => {
+    function syncWithHash() {
+      if (typeof window === "undefined") return;
+      const hash = (window.location.hash || "").replace(/^#/, "");
+      if (hash === "formal-v2-market-evidence" || hash.startsWith("workbench-browser") || hash.startsWith("workbench-competitor") || hash.startsWith("workbench-keyword") || hash === "workbench-overview") {
+        handleTabSelect("market");
+      } else if (hash === "formal-v2-buyer-evidence" || hash.startsWith("workbench-voc")) {
+        handleTabSelect("buyers");
+      } else if (hash === "formal-v2-sourcing-evidence" || hash.startsWith("workbench-sourcing")) {
+        handleTabSelect("sourcing");
+      } else if (hash === "formal-v2-cost-risk-evidence" || hash.startsWith("workbench-cost-risk") || hash === "commercial-inputs-card") {
+        handleTabSelect("cost-risk");
+      }
+    }
+    syncWithHash();
+    window.addEventListener("hashchange", syncWithHash);
+    return () => {
+      window.removeEventListener("hashchange", syncWithHash);
+    };
+  }, [handleTabSelect]);
   const overview = extractOverviewItems(result);
   const decision = extractDecisionSummary(result);
   const gaps = extractEvidenceGaps(result);
@@ -596,26 +702,41 @@ export function EvidenceWorkbench({
   // 轮 10 合并：竞品采集同时产出的关键词预览（待确认卡片）
   const [keywordPending, setKeywordPending] = useState<KeywordPendingPreview | null>(null);
   const [isPendingExpired, setIsPendingExpired] = useState(false);
+  // 竞品采集待确认预览状态
+  const [competitorPending, setCompetitorPending] = useState<CompetitorPendingPreview | null>(null);
+  const [isCompetitorPendingExpired, setIsCompetitorPendingExpired] = useState(false);
   // 竞品采集命令式句柄：卡片内「自动采集竞品」与下方 BrowserUseCollectButton 共用同一采集链路
   const competitorCollectRef = useRef<(() => void) | null>(null);
 
   const [keywordReportEvidence, setKeywordReportEvidence] = useState<KeywordEvidenceView | null>(null);
   const [keywordReportStorageVersion, setKeywordReportStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
 
-  const [aiSummary, setAiSummary] = useState<boolean>(false);
-  const [aiSummaryBusinessModules, setAiSummaryBusinessModules] = useState<BusinessModuleView[] | null>(null);
-  const [aiSummaryLegacyCategories, setAiSummaryLegacyCategories] = useState<LegacyCategoryView[] | null>(null);
-  const [aiSummaryStorageVersion, setAiSummaryStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
 
   const [browserEvidence, setBrowserEvidence] = useState<BrowserEvidenceView | null>(null);
   const [browserEvidenceStorageVersion, setBrowserEvidenceStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
   const [browserTaskAsin, setBrowserTaskAsin] = useState<string | null>(null);
   const [browserCapability, setBrowserCapability] = useState<AcquisitionCapabilityView | null>(null);
 
+  const resultAsin = useMemo(() => {
+    if (!isRecord(result)) return null;
+    const sourceMeta = isRecord(result.sourceMeta) ? result.sourceMeta : null;
+    const batch = sourceMeta && isRecord(sourceMeta.productBatchSnapshot) ? sourceMeta.productBatchSnapshot : null;
+    if (typeof batch?.asin === "string" && batch.asin.trim()) return batch.asin.trim();
+    const cac = isRecord(result.candidateAnalysisContext) ? result.candidateAnalysisContext : null;
+    if (typeof cac?.asin === "string" && cac.asin.trim()) return cac.asin.trim();
+    const cacFacts = cac && isRecord(cac.facts) ? cac.facts : null;
+    if (typeof cacFacts?.asin === "string" && cacFacts.asin.trim()) return cacFacts.asin.trim();
+    const product = isRecord(result.product) ? result.product : null;
+    if (typeof product?.asin === "string" && product.asin.trim()) return product.asin.trim();
+    return null;
+  }, [result]);
+  const effectiveTaskAsin = browserTaskAsin ?? resultAsin;
+
   const [vocEvidence, setVocEvidence] = useState<VocEvidenceView | null>(null);
   const [vocAnalysis, setVocAnalysis] = useState<VocAnalysisView | null>(null);
   const [vocStorageVersion, setVocStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
   const [vocCapability, setVocCapability] = useState<AcquisitionCapabilityView | null>(null);
+  const [vocPendingPreview, setVocPendingPreview] = useState<VocCollectPreviewView | null>(null);
 
   // P1-A：区分 loading / empty / error / ready（不再把加载失败伪装成"没有数据"）
   const [sectionLoading, setSectionLoading] = useState(true);
@@ -639,13 +760,17 @@ export function EvidenceWorkbench({
         signal: AbortSignal.timeout(60_000),
       });
       const json = await res.json() as
-        | { ok: true; data: { evidence: unknown; analysis: unknown; storageVersion: { resultJsonHash: string; updatedAt: string }; capability?: unknown } }
+        | { ok: true; data: { evidence: unknown; analysis: unknown; storageVersion: { resultJsonHash: string; updatedAt: string }; capability?: unknown; pendingPreview?: unknown; taskAsin?: string | null } }
         | { ok: false };
       if (res.ok && json.ok) {
         setVocEvidence(parseVocEvidenceView(json.data.evidence));
         setVocAnalysis(parseVocAnalysisView(json.data.analysis));
         setVocStorageVersion(json.data.storageVersion);
         setVocCapability(parseAcquisitionCapability(json.data.capability));
+        setVocPendingPreview(parseVocCollectPreviewView(json.data.pendingPreview));
+        if (json.data.taskAsin) {
+          setBrowserTaskAsin((prev) => prev ?? json.data.taskAsin ?? null);
+        }
         clearSectionError("voc");
       } else {
         setSectionError("voc", "买家评论读取失败，请稍后重试。");
@@ -678,30 +803,8 @@ export function EvidenceWorkbench({
     }
   }
 
-  async function loadAiSummary() {
-    try {
-      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/ai-evidence-summary`, {
-        headers: buildFetchHeaders(),
-        signal: AbortSignal.timeout(60_000),
-      });
-      const json = await res.json() as
-        | { ok: true; data: { hasSummary: boolean; businessModules?: BusinessModuleView[] | null; legacyCategories?: LegacyCategoryView[] | null; storageVersion: { resultJsonHash: string; updatedAt: string } } }
-        | { ok: false };
-      if (res.ok && json.ok) {
-        setAiSummary(json.data.hasSummary);
-        setAiSummaryLegacyCategories(json.data.legacyCategories ?? null);
-        setAiSummaryBusinessModules(json.data.businessModules ?? null);
-        setAiSummaryStorageVersion(json.data.storageVersion);
-        clearSectionError("aiSummary");
-      } else {
-        setSectionError("aiSummary", "AI 研究摘要读取失败，请稍后重试。");
-      }
-    } catch {
-      setSectionError("aiSummary", "AI 研究摘要读取失败，请检查网络后重试。");
-    }
-  }
-
   const [keywordBriefState, setKeywordBriefState] = useState<{ primaryKeyword: string; source: string; backendTermsCount: number } | null>(null);
+  const [keywordBriefStateLoaded, setKeywordBriefStateLoaded] = useState(false);
   async function loadKeywordBriefState() {
     try {
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/listing-handoff`, {
@@ -711,21 +814,54 @@ export function EvidenceWorkbench({
       const json = await res.json() as { ok?: boolean; data?: { keywordBriefSummary?: { primaryKeyword: string; source: string; backendTermsCount: number } | null } };
       if (res.ok && json.ok) {
         setKeywordBriefState(json.data?.keywordBriefSummary ?? null);
+        setKeywordBriefStateLoaded(true);
       }
     } catch { /* best-effort */ }
   }
-    async function loadKeywordEvidence() {
+
+  async function loadKeywordEvidence() {
     try {
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/keyword-evidence`, {
         headers: buildFetchHeaders(),
         signal: AbortSignal.timeout(60_000),
       });
       const json = await res.json() as
-        | { ok: true; data: { evidence: KeywordEvidenceView | null; storageVersion: { resultJsonHash: string; updatedAt: string } } }
+        | { ok: true; data: { evidence: KeywordEvidenceView | null; storageVersion: { resultJsonHash: string; updatedAt: string }; pendingPreview?: unknown } }
         | { ok: false };
       if (res.ok && json.ok) {
         setKeywordReportEvidence(json.data.evidence);
         setKeywordReportStorageVersion(json.data.storageVersion);
+        if (json.data.pendingPreview && typeof json.data.pendingPreview === "object") {
+          const pp = json.data.pendingPreview as {
+            previewId?: string;
+            seedAsin?: string;
+            sourceUrl?: string;
+            keywordCount?: number;
+            capturedAt?: string | null;
+            items?: Array<{
+              keyword: string;
+              keywordTranslation?: string;
+              searchVolume?: number;
+              abaWeeklyRank?: number;
+              purchaseVolume?: number;
+              relevance?: number;
+              competition?: string;
+            }>;
+          };
+          if (pp.previewId) {
+            setKeywordPending({
+              previewId: pp.previewId,
+              seedAsin: pp.seedAsin ?? "",
+              sourceUrl: pp.sourceUrl ?? "",
+              keywordCount: pp.keywordCount ?? 0,
+              capturedAt: pp.capturedAt ?? null,
+              items: pp.items,
+            });
+            setIsPendingExpired(false);
+          }
+        } else if (!json.data.pendingPreview) {
+          setKeywordPending(null);
+        }
         clearSectionError("keyword");
       } else {
         setSectionError("keyword", "关键词证据读取失败，请稍后重试。");
@@ -741,7 +877,6 @@ export function EvidenceWorkbench({
     void Promise.allSettled([
       loadKeywordEvidence(),
       loadKeywordBriefState(),
-      loadAiSummary(),
       loadBrowserEvidence(),
       loadVoc(),
     ]).then(() => setSectionLoading(false));
@@ -762,6 +897,12 @@ export function EvidenceWorkbench({
       }
       setCompetitors(json.data.evidence.asins);
       setStorageVersion(json.data.storageVersion);
+      if (json.data.pendingPreview && typeof json.data.pendingPreview === "object") {
+        setCompetitorPending(json.data.pendingPreview);
+        setIsCompetitorPendingExpired(false);
+      } else if (!json.data.pendingPreview) {
+        setCompetitorPending(null);
+      }
     } catch {
       setCompetitorError("竞品列表读取失败。");
     } finally {
@@ -773,6 +914,20 @@ export function EvidenceWorkbench({
     void loadCompetitors();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
+
+  useEffect(() => {
+    if (dataRevision > 0) {
+      // 统一编排完成后同步刷新四类来源与事实确认入口，避免只更新顶部状态而遗漏下游预览。
+      void Promise.allSettled([
+        loadCompetitors(),
+        loadKeywordEvidence(),
+        loadKeywordBriefState(),
+        loadBrowserEvidence(),
+        loadVoc(),
+      ]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataRevision]);
 
   async function mutateCompetitor(method: "POST" | "DELETE", body: Record<string, unknown>) {
     setCompetitorBusy(true);
@@ -815,80 +970,77 @@ export function EvidenceWorkbench({
     productBasicsState: coveredFacts.size > 0 ? "已有" : "待补",
     productBasicsDetail,
   });
-  const researchStatus = deriveResearchStatus(materialRows, aiSummary);
+  const researchStatus = deriveResearchStatus(materialRows, null);
 
   // 轮 13 一致性：把 live 清单冒泡给外层（模块卡「缺什么」不落后于实际资料）
   const liveCounts: LiveEvidenceCounts = {
-  productBasics: coveredFacts.size,
-  competitor: competitors.length,
-  keyword: (keywordReportEvidence as { rows?: unknown[] } | null)?.rows?.length ?? 0,
-  browser: (browserEvidence as { snapshots?: unknown[] } | null)?.snapshots?.length ?? 0,
-  voc: (vocEvidence as { dataset?: { reviews?: unknown[] } } | null)?.dataset?.reviews?.length ?? 0,
-  sourcing: sourcingConfirmed ? 1 : 0,
-};
-const materialRowsJson = JSON.stringify(materialRows.map((row) => [row.key, row.state])) + JSON.stringify(liveCounts) + (aiSummary ? "1" : "0");
-useEffect(() => {
-  onMaterialRowsChange?.({ rows: materialRows, counts: liveCounts, hasAiSummary: aiSummary });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [materialRowsJson]);
+    productBasics: coveredFacts.size,
+    competitor: competitors.length,
+    keyword: (keywordReportEvidence as { rows?: unknown[] } | null)?.rows?.length ?? 0,
+    browser: (browserEvidence as { snapshots?: unknown[] } | null)?.snapshots?.length ?? 0,
+    voc: (vocEvidence as { dataset?: { reviews?: unknown[] } } | null)?.dataset?.reviews?.length ?? 0,
+    sourcing: sourcingConfirmed ? 1 : 0,
+  };
+  const materialRowsJson = JSON.stringify(materialRows.map((row) => [row.key, row.state])) + JSON.stringify(liveCounts);
+  useEffect(() => {
+    onMaterialRowsChange?.({ rows: materialRows, counts: liveCounts, hasAiSummary: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [materialRowsJson]);
 
   return (
     <section data-testid="evidence-workbench" className="mt-5 space-y-4">
-      {/* R7：当前研究资料（从各 资料 区实时 state 派生，确认保存后自动更新） */}
-      <section data-testid="research-evidence-checklist" className="rounded-2xl border border-slate-200 bg-white p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm font-bold text-slate-900">当前研究资料</p>
-          {/* V3 Final R12：研究状态行（唯一语义：研究开始 ≠ AI 总结生成） */}
-          <span
-            data-testid="research-status-line"
-            className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-              researchStatus.status === "ai_ready"
-                ? "bg-teal-50 text-teal-700"
-                : researchStatus.status === "partial"
-                  ? "bg-sky-50 text-sky-700"
-                  : "bg-amber-50 text-amber-700"
-            }`}
-          >
-            {researchStatus.status === "ai_ready"
-              ? "AI 已整理当前资料"
-              : researchStatus.status === "partial"
-                ? "研究进行中"
-                : "研究资料尚待补充"}
-          </span>
-        </div>
-        {researchStatus.status === "partial" ? (
-          <p className="mt-1.5 text-sm leading-6 text-slate-600" data-testid="research-status-detail">
-            已收集{researchStatus.collectedLabels.join("、")}等资料；可继续补充其他 资料，或在下方生成 AI 研究摘要。
-          </p>
-        ) : null}
-        <details className="mt-2" data-testid="research-material-details">
-          <summary className="cursor-pointer text-xs font-semibold text-slate-600">查看各资料区状态（{materialRows.filter((row) => row.state === "已有").length} 项已有）</summary>
-          <ul className="mt-2 grid gap-1.5 text-sm sm:grid-cols-2">
-            {materialRows.map((row) => (
-              <li key={row.key} className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2">
-                <span className="text-slate-700">{row.label}{row.detail ? <span className="ml-1 text-xs text-slate-400">（{row.detail}）</span> : null}</span>
-                {row.key === "productBasics" && row.state === "待补" ? (
-                  <a href="#fact-candidate-review" className="inline-flex items-center gap-1 rounded-lg border border-indigo-300 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100" data-testid="cta-product-basics">补充商品事实 →</a>
-                ) : row.key === "browser" && row.state === "待补" ? (
-                  <a href="#workbench-browser-evidence" className="inline-flex items-center gap-1 rounded-lg border border-indigo-300 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100" data-testid="cta-browser-collect">采集 Amazon 页面 →</a>
-                ) : (
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${row.state === "已有" ? "bg-teal-50 text-teal-700" : row.state === "可选" ? "bg-slate-100 text-slate-500" : "bg-amber-50 text-amber-700"}`}>{row.state}</span>
-                )}
-              </li>
-            ))}
-          </ul>
-          <p className="mt-2 text-xs text-slate-400">下方各区可直接补充资料；确认保存后，这里的状态会自动更新。</p>
-        </details>
-      </section>
-
-      {/* V3 UX Closure：Fact Candidate Review（商品基础资料待补时的就地补充入口） */}
-      <FactCandidateReview
+      {/* 资料编排卡片（置顶于当前研究资料/分类导航之上，紧贴研究资料主区域） */}
+      <ResearchCollectionOrchestratorCard
         taskId={taskId}
-        storageVersion={storageVersion}
-        onChanged={() => onDataChanged?.()}
+        dataRevision={dataRevision}
+        onDataChanged={handleDataChanged}
+        onNavigate={(tab, anchorId) => {
+          handleTabSelect(tab);
+          if (anchorId && typeof window !== "undefined") {
+            const cleanId = anchorId.replace(/^#+/, "");
+            window.location.hash = cleanId;
+
+            const scrollAndHighlight = () => {
+              const el = document.getElementById(cleanId);
+              if (el) {
+                // 展开目标自身（若为 details）以及所有祖先 <details>
+                if (el.tagName === "DETAILS" || el.nodeName === "DETAILS") {
+                  (el as HTMLDetailsElement).open = true;
+                }
+                let parent = el.parentElement;
+                while (parent) {
+                  if (parent.tagName === "DETAILS" || parent.nodeName === "DETAILS") {
+                    (parent as HTMLDetailsElement).open = true;
+                  }
+                  parent = parent.parentElement;
+                }
+                // 平滑滚动居中对齐
+                el.scrollIntoView({ behavior: "smooth", block: "center" });
+                try {
+                  if (typeof el.focus === "function") {
+                    el.focus({ preventScroll: true });
+                  }
+                } catch {
+                  /* best-effort */
+                }
+                return true;
+              }
+              return false;
+            };
+
+            // React 切换 Tab 后需等待 DOM 节点渲染就绪
+            if (!scrollAndHighlight()) {
+              setTimeout(() => {
+                if (!scrollAndHighlight()) {
+                  setTimeout(scrollAndHighlight, 120);
+                }
+              }, 60);
+            }
+          }
+        }}
       />
 
-      {/* ── 简明结论（首屏） ── */}
+      {/* ── 02: 简明结论（首屏） ── */}
       <section data-testid="workbench-summary" className="rounded-2xl border border-teal-200 bg-teal-50/60 p-4">
         <h3 className="text-sm font-bold text-slate-900">简明结论</h3>
         <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
@@ -896,13 +1048,27 @@ useEffect(() => {
             <dt className="text-xs text-slate-500">目前知道什么</dt>
             <dd className="mt-0.5 text-slate-800">
               {overview.some((item) => item.value !== "unknown") || confirmedFacts.length > 0
-                ? `已整理商品概览 ${mergedOverview.filter((item) => item.value !== "unknown").length} 项、已确认 ${confirmedProductFacts.length} 条商品事实${confirmedMarketObservations.length > 0 ? `、${confirmedMarketObservations.length} 项市场观察（价格/评分/评论数/BSR/类目）` : ""}。`
+                ? `已整理商品概览 ${mergedOverview.filter((item) => item.value !== "unknown").length} 项、已确认 ${confirmedProductFacts.length} 条商品事实${confirmedMarketObservations.length > 0 ? `、${confirmedMarketObservations.length} 项市场观察（价格 / 评分 / 评论数 / BSR 类目排名 / 类目）` : ""}。`
                 : "暂无已确认的商品证据。"}
             </dd>
           </div>
           <div>
+            <dt className="text-xs text-slate-500">研究主状态</dt>
+            <dd className="mt-0.5 font-semibold text-slate-900" data-testid="research-lifecycle-phase">
+              {lifecycleSnapshot ? researchLifecyclePhaseLabel(lifecycleSnapshot.phase, lifecycleSnapshot.stale) : "资料状态待整理"}
+            </dd>
+            {lifecycleSnapshot?.stale ? (
+              <p className="mt-1 text-xs text-amber-700" data-testid="research-lifecycle-stale">研究资料已变化，请重新确认。</p>
+            ) : null}
+            {lifecycleSnapshot && lifecycleSnapshot.blockers.length > 0 ? (
+              <ul className="mt-1 space-y-0.5 text-xs text-amber-700" data-testid="research-lifecycle-blockers">
+                {lifecycleSnapshot.blockers.map((blocker) => <li key={blocker}>· {researchLifecycleBlockerLabel(blocker)}</li>)}
+              </ul>
+            ) : null}
+          </div>
+          <div>
             <dt className="text-xs text-slate-500">目前不知道什么</dt>
-            <dd className="mt-0.5 text-slate-800">采购价 / MOQ / 物流成本 / 合规均尚未取得（未用 AI 填补）。</dd>
+            <dd className="mt-0.5 text-slate-800">采购价 / 最小起订量（MOQ）/ 物流成本 / 合规均尚未取得（未用 AI 填补）。</dd>
           </div>
           <div>
             <dt className="text-xs text-slate-500">人工决定</dt>
@@ -911,7 +1077,7 @@ useEffect(() => {
           <div>
             <dt className="text-xs text-slate-500">下一步最值得补什么证据</dt>
             <dd className="mt-0.5 text-slate-800">
-              {decision?.nextAction || (gaps.length > 0 ? gaps[0] : "按需要补充竞品、关键词或货源证据。")}
+              {lifecycleSnapshot?.nextAction || decision?.nextAction || (gaps.length > 0 ? gaps[0] : "按需要补充竞品、关键词或货源证据。")}
             </dd>
           </div>
         </dl>
@@ -927,219 +1093,306 @@ useEffect(() => {
         )}
       </section>
 
-      {/* ── 商品概览 ── */}
-      <section id="formal-v2-market-evidence" data-testid="workbench-overview" className="rounded-2xl border border-slate-200 bg-white p-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold text-slate-900">商品概览</h3>
-          {source && (
-            <span className="text-xs text-slate-500">
-              {source.reportType} · {source.marketplace} · capturedAt {source.capturedAt || "尚未取得"}
-            </span>
+
+      {/* ── 4 维度 Tabs 导航 ── */}
+      <div className="rounded-2xl border border-slate-200/90 bg-slate-50/80 p-1.5 shadow-sm" data-testid="workbench-tabs">
+        <nav className="grid grid-cols-2 gap-1.5 sm:grid-cols-4" aria-label="研究资料分类">
+          {[
+            { key: "market" as const, num: "01", label: "市场与竞品", count: (liveCounts.productBasics > 0 || liveCounts.competitor > 0 || liveCounts.keyword > 0 || liveCounts.browser > 0) ? "已收集" : "待收集" },
+            { key: "buyers" as const, num: "02", label: "买家需求与评论", count: liveCounts.voc > 0 ? `${liveCounts.voc} 条评论` : "待收集" },
+            { key: "sourcing" as const, num: "03", label: "货源与供应链", count: sourcingConfirmed || liveCounts.sourcing > 0 ? "已确认" : "待收集" },
+            { key: "cost-risk" as const, num: "04", label: "成本与风险", count: "商业输入" },
+          ].map((t) => {
+            const isActive = currentTab === t.key;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                data-testid={`workbench-tab-${t.key}`}
+                onClick={() => handleTabSelect(t.key)}
+                className={`flex flex-col items-center justify-center rounded-xl px-3 py-2.5 text-center transition-all ${
+                  isActive
+                    ? "bg-white text-emerald-950 font-bold shadow-sm ring-1 ring-slate-200"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                }`}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className={`text-[11px] font-semibold ${isActive ? "text-emerald-600" : "text-slate-400"}`}>{t.num}</span>
+                  <span className="text-xs sm:text-sm font-semibold">{t.label}</span>
+                </div>
+                <span className={`mt-0.5 text-[11px] ${isActive ? "text-emerald-700" : "text-slate-400"}`}>
+                  {t.count}
+                </span>
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+
+      {/* ── 4 个 Tab 容器（常驻 DOM，CSS hidden 切换） ── */}
+      {/* Tab 1: 市场与竞品 */}
+      <div className={currentTab === "market" ? "space-y-4" : "hidden"} data-testid="workbench-panel-market">
+        {/* ── 商品概览 ── */}
+        <section id="formal-v2-market-evidence" data-testid="workbench-overview" className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-slate-900">商品概览</h3>
+            {source && (
+              <span className="text-xs text-slate-500">
+                {source.reportType} · {source.marketplace} · capturedAt {source.capturedAt || "尚未取得"}
+              </span>
+            )}
+          </div>
+          <div className="mt-3">
+            <OverviewGrid items={mergedOverview} />
+          </div>
+          {source?.evidenceHash && (
+            <details className="mt-2">
+              <summary className="cursor-pointer text-xs text-slate-500">原始 资料（来源追溯）</summary>
+              <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+                {JSON.stringify({ evidenceHash: source.evidenceHash, reportType: source.reportType, capturedAt: source.capturedAt }, null, 2)}
+              </pre>
+            </details>
           )}
-        </div>
-        <div className="mt-3">
-          <OverviewGrid items={mergedOverview} />
-        </div>
-        {source?.evidenceHash && (
-          <details className="mt-2">
-            <summary className="cursor-pointer text-xs text-slate-500">原始 资料（来源追溯）</summary>
-            <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
-              {JSON.stringify({ evidenceHash: source.evidenceHash, reportType: source.reportType, capturedAt: source.capturedAt }, null, 2)}
-            </pre>
-          </details>
-        )}
-      </section>
+        </section>
 
-      {/* ── 关键词策略（第2轮：默认摘要，编辑/原始资料折叠） ── */}
-      <KeywordStrategyCard
-        rows={(keywordReportEvidence?.rows ?? []).map((r) => ({ keyword: r.keyword, rowNumber: r.rowNumber }))}
-        productName={productNameForBrief}
-        briefPrimary={keywordBriefState?.primaryKeyword ?? null}
-        briefSource={keywordBriefState?.source ?? null}
-        briefReportType={keywordBrief?.reportType ?? null}
-        briefCapturedAt={keywordReportEvidence?.capturedAt ?? null}
-        briefEvidenceCount={keywordReportEvidence?.rows.length ?? 0}
-        inListing={Boolean(keywordBriefState)}
-        needsReconfirm={false}
-        hasPending={Boolean(keywordPending)}
-        pendingKeywordCount={keywordPending?.keywordCount}
-        hasPendingExpired={isPendingExpired}
-        pendingPanel={
-          keywordPending ? (
-            <KeywordPendingSubmitCard
-              taskId={taskId}
-              preview={keywordPending}
-              storageVersion={keywordReportStorageVersion}
-              onSaved={() => {
-                setKeywordPending(null); loadKeywordEvidence();
-                setIsPendingExpired(false);
-                loadKeywordBriefState();
-                onDataChanged?.();
-              }}
-              onCancel={() => {
-                setKeywordPending(null);
-                setIsPendingExpired(false);
-              }}
-              onExpired={() => {
-                setIsPendingExpired(true);
-              }}
-              onRecollect={() => {
-                setKeywordPending(null);
-                setIsPendingExpired(false);
-                competitorCollectRef.current?.();
-              }}
-            />
-          ) : null
-        }
-        onSave={async (input) => {
-          try {
-            const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/listing-handoff`, {
-              method: "POST",
-              headers: { ...buildAccessHeaders(), "content-type": "application/json" },
-              body: JSON.stringify({
-                action: "save_keyword_brief",
-                confirmed: true,
-                expectedStorageVersion: keywordReportStorageVersion,
-                keywordBrief: { primaryKeyword: input.primaryKeyword, supportingKeywords: input.supportingKeywords, backendSearchTerms: input.backendSearchTerms, source: "sellersprite" },
-              }),
-            });
-            const body = await res.json().catch(() => null) as { ok?: boolean; error?: { message?: string } } | null;
-            if (!res.ok) return body?.error?.message ?? "保存失败，请稍后重试。";
-            onDataChanged?.();
-            return null;
-          } catch { return "网络错误，请重试。"; }
-        }}
-        onSaved={() => { loadKeywordEvidence(); loadKeywordBriefState(); }}
-        error={sectionErrors.keyword ?? null}
-        rawEvidence={keywordReportEvidence ? { reportType: keywordReportEvidence.reportType, capturedAt: keywordReportEvidence.capturedAt, rows: keywordReportEvidence.rows } as never : null}
-      />
-      {/* ── 竞品策略（第2轮：默认摘要，管理/采集折叠） ── */}
-      <CompetitorStrategyCard
-        productName={productNameForBrief}
-        entries={competitors.map((c) => ({
-          asin: c.asin,
-          note: c.note ?? null,
-          sourceKind: c.sourceKind ?? "manual",
-          addedAt: c.addedAt ?? null,
-          detailBulletsCount: Array.isArray(c.detailBullets?.bullets) ? c.detailBullets.bullets.length : 0,
-        }))}
-        onCollect={() => { competitorCollectRef.current?.(); }}
-        onAdd={async (input) => {
-          await mutateCompetitor("POST", { asin: input.asin, note: input.note });
-          return competitorError || null;
-        }}
-        onDelete={async (asin) => {
-          await mutateCompetitor("DELETE", { asin });
-          return competitorError || null;
-        }}
-        error={competitorError}
-        busy={competitorBusy}
-      />
-      <BrowserUseCollectButton taskId={taskId} kind="competitor"
-        storageVersion={storageVersion}
-        collectRef={competitorCollectRef}
-        showTrigger={false}
-        onCollectStart={() => {
-          setKeywordPending(null);
-          setIsPendingExpired(false);
-        }}
-        onCollected={({ keywordPreviewId, keywordCount, seedAsin, sourceUrl }) => {
-          if (keywordPreviewId) {
-            setIsPendingExpired(false);
-            setKeywordPending({
-              previewId: keywordPreviewId,
-              seedAsin: seedAsin ?? "",
-              sourceUrl: sourceUrl ?? "",
-              keywordCount: keywordCount ?? 0,
-              capturedAt: null,
-            });
+        {/* ── 关键词策略（第2轮：默认摘要，编辑/原始资料折叠） ── */}
+        <div id="workbench-keyword-strategy" className="scroll-mt-6">
+        <KeywordStrategyCard
+          rows={(keywordReportEvidence?.rows && keywordReportEvidence.rows.length > 0
+            ? keywordReportEvidence.rows
+            : (keywordPending?.items ?? [])
+          ).map((r) => ({ keyword: r.keyword, rowNumber: (r as { rowNumber?: number }).rowNumber }))}
+          productName={productNameForBrief}
+          briefPrimary={keywordBriefState?.primaryKeyword ?? null}
+          briefSource={keywordBriefState?.source ?? null}
+          briefReportType={keywordBrief?.reportType ?? null}
+          briefCapturedAt={keywordReportEvidence?.capturedAt ?? null}
+          briefEvidenceCount={keywordReportEvidence?.rows.length ?? 0}
+          inListing={Boolean(keywordBriefState)}
+          needsReconfirm={keywordBriefStateLoaded && Boolean(keywordBrief && keywordReportEvidence && !keywordBriefState)}
+          hasPending={Boolean(keywordPending)}
+          pendingKeywordCount={keywordPending?.keywordCount}
+          hasPendingExpired={isPendingExpired}
+          pendingPanel={
+            keywordPending ? (
+              <KeywordPendingSubmitCard
+                taskId={taskId}
+                preview={keywordPending}
+                storageVersion={keywordReportStorageVersion}
+                onSaved={() => {
+                  setKeywordPending(null); loadKeywordEvidence();
+                  setIsPendingExpired(false);
+                  void loadCompetitors();
+                  loadKeywordBriefState();
+                  handleDataChanged();
+                }}
+                onCancel={() => {
+                  setKeywordPending(null);
+                  setIsPendingExpired(false);
+                }}
+                onExpired={() => {
+                  setIsPendingExpired(true);
+                }}
+                onRecollect={() => {
+                  setKeywordPending(null);
+                  setIsPendingExpired(false);
+                  competitorCollectRef.current?.();
+                }}
+              />
+            ) : null
           }
-        }}
-        onSaved={() => {
-          void (async () => {
+          onSave={async (input) => {
             try {
-              const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/competitor-evidence`, { headers: buildFetchHeaders() });
-              const body = await res.json();
-              if (res.ok && body.ok && Array.isArray(body.data?.evidence?.asins)) setCompetitors(body.data.evidence.asins);
-              if (body.ok && body.data?.storageVersion) setStorageVersion(body.data.storageVersion);
-            } catch { /* refresh best-effort */ }
-          })();
-          void loadKeywordEvidence();
-          onDataChanged?.();
-        }}
-      />
-      {/* ── Amazon 商品资料（V3.3） ── */}
-      <div data-testid="workbench-browser">
-        <SectionStatusBar
-          loading={sectionLoading}
-          error={sectionErrors.browser ?? ""}
-          onRetry={() => { void loadBrowserEvidence(); }}
-          loadingLabel="Amazon 页面证据"
+              const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/listing-handoff`, {
+                method: "POST",
+                headers: { ...buildAccessHeaders(), "content-type": "application/json" },
+                body: JSON.stringify({
+                  action: "save_keyword_brief",
+                  confirmed: true,
+                  expectedStorageVersion: keywordReportStorageVersion,
+                  keywordBrief: { primaryKeyword: input.primaryKeyword, supportingKeywords: input.supportingKeywords, backendSearchTerms: input.backendSearchTerms, source: "sellersprite" },
+                }),
+              });
+              const body = await res.json().catch(() => null) as { ok?: boolean; error?: { message?: string } } | null;
+              if (!res.ok) return body?.error?.message ?? "保存失败，请稍后重试。";
+              handleDataChanged();
+              return null;
+            } catch { return "网络错误，请重试。"; }
+          }}
+          onSaved={() => { loadKeywordEvidence(); loadKeywordBriefState(); }}
+          error={sectionErrors.keyword ?? null}
+          rawEvidence={keywordReportEvidence ? { reportType: keywordReportEvidence.reportType, capturedAt: keywordReportEvidence.capturedAt, rows: keywordReportEvidence.rows } as never : null}
         />
-        <BrowserEvidenceSection
+        </div>
+        {/* ── 竞品策略（第2轮：默认摘要，管理/采集折叠） ── */}
+        <div id="workbench-competitor-strategy" className="scroll-mt-6">
+        <CompetitorStrategyCard
+          productName={productNameForBrief}
+          entries={competitors.map((c) => ({
+            asin: c.asin,
+            note: c.note ?? null,
+            sourceKind: c.sourceKind ?? "manual",
+            addedAt: c.addedAt ?? null,
+            detailBulletsCount: Array.isArray(c.detailBullets?.bullets) ? c.detailBullets.bullets.length : 0,
+          }))}
+          pendingPreview={competitorPending}
+          showCollectTrigger={false}
+          pendingPanel={
+            competitorPending ? (
+              <CompetitorPendingSubmitCard
+                taskId={taskId}
+                preview={competitorPending}
+                storageVersion={storageVersion}
+                onSaved={() => {
+                  setCompetitorPending(null);
+                  setIsCompetitorPendingExpired(false);
+                  void loadCompetitors();
+                  void loadKeywordEvidence();
+                  handleDataChanged();
+                }}
+                onCancel={() => {
+                  setCompetitorPending(null);
+                  setIsCompetitorPendingExpired(false);
+                }}
+                onExpired={() => {
+                  setIsCompetitorPendingExpired(true);
+                }}
+                onRecollect={() => {
+                  setCompetitorPending(null);
+                  setIsCompetitorPendingExpired(false);
+                  competitorCollectRef.current?.();
+                }}
+              />
+            ) : null
+          }
+          onAdd={async (input) => {
+            await mutateCompetitor("POST", { asin: input.asin, note: input.note });
+            return competitorError || null;
+          }}
+          onDelete={async (asin) => {
+            await mutateCompetitor("DELETE", { asin });
+            return competitorError || null;
+          }}
+          error={competitorError}
+          busy={competitorBusy}
+        />
+        </div>
+        <BrowserUseCollectButton taskId={taskId} kind="competitor"
+          storageVersion={storageVersion}
+          collectRef={competitorCollectRef}
+          showTrigger={false}
+          onCollectStart={() => {
+            setKeywordPending(null);
+            setCompetitorPending(null);
+            setIsPendingExpired(false);
+            setIsCompetitorPendingExpired(false);
+          }}
+          onCollected={({ keywordPreviewId, keywordCount, seedAsin, sourceUrl }) => {
+            void loadCompetitors();
+            void loadKeywordEvidence();
+            if (keywordPreviewId) {
+              setIsPendingExpired(false);
+              setKeywordPending({
+                previewId: keywordPreviewId,
+                seedAsin: seedAsin ?? "",
+                sourceUrl: sourceUrl ?? "",
+                keywordCount: keywordCount ?? 0,
+                capturedAt: null,
+              });
+            }
+          }}
+          onSaved={() => {
+            void loadCompetitors();
+            void loadKeywordEvidence();
+            handleDataChanged();
+          }}
+        />
+        {/* ── Amazon 商品资料（V3.3） ── */}
+        <div data-testid="workbench-browser">
+          <SectionStatusBar
+            loading={sectionLoading}
+            error={sectionErrors.browser ?? ""}
+            onRetry={() => { void loadBrowserEvidence(); }}
+            loadingLabel="Amazon 页面证据"
+          />
+          <BrowserEvidenceSection
+            taskId={taskId}
+            evidence={browserEvidence}
+            taskAsin={browserTaskAsin}
+            storageVersion={browserEvidenceStorageVersion}
+            capability={browserCapability}
+            showCollectTrigger={false}
+            onChanged={() => { loadBrowserEvidence(); handleDataChanged(); }}
+          />
+        </div>
+
+        {/* 商品事实确认属于 Amazon/市场证据闭环，固定放在 Tab 01 内，避免与
+            四维度工作台形成第二个漂浮入口；组件本身的权威与来源语义不变。 */}
+        <FactCandidateReview
           taskId={taskId}
-          evidence={browserEvidence}
-          taskAsin={browserTaskAsin}
-          storageVersion={browserEvidenceStorageVersion}
-          capability={browserCapability}
-          onChanged={() => { loadBrowserEvidence(); onDataChanged?.(); }}
+          storageVersion={storageVersion}
+          refreshToken={dataRevision}
+          showRecoveryTrigger={false}
+          onChanged={() => handleDataChanged()}
         />
       </div>
 
-      {/* ── 买家评论与需求（V3.4） ── */}
-      <div id="formal-v2-buyer-evidence" data-testid="workbench-voc">
-        <SectionStatusBar
-          loading={sectionLoading}
-          error={sectionErrors.voc ?? ""}
-          onRetry={() => { void loadVoc(); }}
-          loadingLabel="买家评论"
-        />
-        <VocEvidenceSection
-          taskId={taskId}
-          taskAsin={browserTaskAsin}
-          evidence={vocEvidence}
-          analysis={vocAnalysis}
-          storageVersion={vocStorageVersion}
-          capability={vocCapability}
-          onChanged={() => { loadVoc(); onDataChanged?.(); }}
-        />
+      {/* Tab 2: 买家需求与评论 */}
+      <div className={currentTab === "buyers" ? "space-y-4" : "hidden"} data-testid="workbench-panel-buyers">
+        {/* ── 买家评论与需求（V3.4） ── */}
+        <div id="formal-v2-buyer-evidence" data-testid="workbench-voc">
+          <SectionStatusBar
+            loading={sectionLoading}
+            error={sectionErrors.voc ?? ""}
+            onRetry={() => { void loadVoc(); }}
+            loadingLabel="买家评论"
+          />
+          <VocEvidenceSection
+            taskId={taskId}
+            taskAsin={effectiveTaskAsin}
+            evidence={vocEvidence}
+            analysis={vocAnalysis}
+            storageVersion={vocStorageVersion}
+            capability={vocCapability}
+            pendingPreview={vocPendingPreview}
+            showCollectTrigger={false}
+            onChanged={() => { loadVoc(); handleDataChanged(); }}
+          />
+        </div>
       </div>
 
-      {/* ── 货源 资料（F2：真实 1688 供应线索工作台；证据序列 VOC 之后、AI 总结之前） ── */}
-      <section id="formal-v2-sourcing-evidence" data-testid="workbench-sourcing" className="rounded-2xl border border-slate-200 bg-white p-4">
-        <SourcingEvidencePanel
-          taskId={taskId}
-          amazonContext={{ title: null, image: sourceImageUrl ?? null, asin: null }}
-          onEvidenceChange={setSourcingConfirmed}
-        />
-      </section>
+      {/* Tab 3: 货源与供应链 */}
+      <div className={currentTab === "sourcing" ? "space-y-4" : "hidden"} data-testid="workbench-panel-sourcing">
+        {/* ── 货源 资料（F2：真实 1688 供应线索工作台；证据序列 VOC 之后、AI 总结之前） ── */}
+        <section id="formal-v2-sourcing-evidence" data-testid="workbench-sourcing" className="rounded-2xl border border-slate-200 bg-white p-4">
+          <SourcingEvidencePanel
+            taskId={taskId}
+            amazonContext={{ title: null, image: sourceImageUrl ?? null, asin: null }}
+            refreshToken={dataRevision}
+            showManualImageSearch={false}
+            onEvidenceChange={(confirmed) => {
+              // SourcingEvidencePanel also reports its persisted state after each
+              // refreshToken-driven reload. Only bubble a revision when the
+              // confirmed state actually changes; otherwise refreshToken and
+              // onEvidenceChange form a feedback loop that never settles.
+              setSourcingConfirmed((previous) => {
+                if (previous === confirmed) return previous;
+                handleDataChanged();
+                return confirmed;
+              });
+            }}
+          />
+        </section>
+      </div>
 
-      {/* ── AI 研究摘要（Phase 5） ── */}
-      <section data-testid="workbench-ai-summary" className="rounded-2xl border border-slate-200 bg-white p-4">
-        <h3 className="text-sm font-bold text-slate-900">AI 研究摘要</h3>
-        <SectionStatusBar
-          loading={sectionLoading}
-          error={sectionErrors.aiSummary ?? ""}
-          onRetry={() => { void loadAiSummary(); }}
-          loadingLabel="AI 研究摘要"
-        />
-        <p className="mt-1 text-xs text-slate-500">
-          AI 只解释已有 资料，不创造事实；事实、风险和矛盾信息必须带资料引用。
-        </p>
-        <AiEvidenceSummarySection
-          taskId={taskId}
-          summary={aiSummary}
-          businessModules={aiSummaryBusinessModules}
-          legacyCategories={aiSummaryLegacyCategories}
-          storageVersion={aiSummaryStorageVersion}
-          onChanged={loadAiSummary}
-        />
-      </section>
+      {/* Tab 4: 成本与风险 */}
+      <div className={currentTab === "cost-risk" ? "space-y-4" : "hidden"} data-testid="workbench-panel-cost-risk">
+        {/* ── 待补资料 ── */}
+        <MissingSection gaps={gaps} />
+        <CommercialInputsCard taskId={taskId} onChanged={() => handleDataChanged()} />
+      </div>
 
       {/* ── 待补资料 ── */}
-      <MissingSection gaps={gaps} />
-      <CommercialInputsCard taskId={taskId} onChanged={() => onDataChanged?.()} />
-
       <p className="text-xs text-slate-400">
         资料 全部来自真实来源；AI 不创造事实。查看完整研究记录：
         <Link href={`/tasks/${encodeURIComponent(taskId)}`} className="ml-1 text-teal-700 underline">研究记录详情</Link>

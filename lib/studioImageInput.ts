@@ -1,5 +1,10 @@
 import type { AiImageDraftType } from "@/lib/aiImageDraft";
 import {
+  DEFAULT_IMAGE_STYLE_PRESET_ID,
+  isImageStylePresetId,
+  type ImageStylePresetId,
+} from "@/lib/imageStyleLibrary";
+import {
   isStudioImageLifestyleScene,
   isStudioImagePrimaryPurpose,
   resolveStudioImageCreativeIntent,
@@ -45,6 +50,8 @@ type StudioImageBaseContext = {
   description: string;
   aspectRatio: StudioImageAspectRatio;
   count: 1 | 2;
+  /** Image Style Library V1：视觉方向（纯视觉表达，永不改变商品事实）。 */
+  stylePresetId: ImageStylePresetId;
 };
 
 export type StudioImageGuidedContext = StudioImageBaseContext & {
@@ -129,6 +136,7 @@ type StudioImageInputErrorCode =
   | "invalid_visual_style"
   | "invalid_aspect_ratio"
   | "invalid_image_count"
+  | "invalid_style_preset"
   | "unsupported_request_field"
   | "invalid_studio_brief"
   | "studio_brief_confirmation_required"
@@ -158,6 +166,7 @@ export const STUDIO_IMAGE_ALLOWED_FIELDS = new Set([
   "avoidElements",
   "imageType",
   "visualStyle",
+  "stylePresetId",
   "primaryImagePurpose",
   "lifestyleScene",
   "customImagePurpose",
@@ -306,6 +315,13 @@ export function parseStudioImageInput(value: unknown): StudioImageInputResult {
   const legacyDirection = readText(value, "additionalDirection", 300);
   const idempotencyKey = readText(value, "idempotencyKey", 100);
   const aspectRatio = readEnum(value, "aspectRatio", STUDIO_IMAGE_ASPECT_RATIOS, "square_1_1");
+  // Image Style Library V1：显式提交时必须命中 8 个预设之一，缺省用默认白底方向。
+  if (value.stylePresetId !== undefined && !isImageStylePresetId(value.stylePresetId)) {
+    return fail("invalid_style_preset", "请选择一个支持的视觉方向。");
+  }
+  const stylePresetId: ImageStylePresetId = isImageStylePresetId(value.stylePresetId)
+    ? value.stylePresetId
+    : DEFAULT_IMAGE_STYLE_PRESET_ID;
   const invalidText = [
     productName,
     description,
@@ -349,6 +365,7 @@ export function parseStudioImageInput(value: unknown): StudioImageInputResult {
     description: description.value,
     aspectRatio: aspectRatio.value,
     count: value.count === 2 ? 2 : 1,
+    stylePresetId,
   };
 
   if (creationMode.value === "prompt") {
@@ -443,6 +460,7 @@ export function parseStudioImageInput(value: unknown): StudioImageInputResult {
       primaryImagePurpose: value.primaryImagePurpose,
       lifestyleScene: value.lifestyleScene,
       customImagePurpose: customImagePurpose.value,
+      stylePresetId,
     });
     return {
       ok: true,
@@ -486,6 +504,7 @@ export function toStudioImageContext(input: StudioImageInput): StudioImageContex
     description: input.description,
     aspectRatio: input.aspectRatio,
     count: input.count,
+    stylePresetId: input.stylePresetId,
   };
   if (input.creationMode === "prompt") {
     return {

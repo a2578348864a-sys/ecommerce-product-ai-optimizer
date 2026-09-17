@@ -10,12 +10,23 @@ import { buildSaveBrowserUsePayload, type BrowserUseStorageVersion } from "./Bro
  * 取消不产生任何落库。
  */
 
+export type KeywordPendingPreviewItem = {
+  keyword: string;
+  keywordTranslation?: string;
+  searchVolume?: number;
+  abaWeeklyRank?: number;
+  purchaseVolume?: number;
+  relevance?: number;
+  competition?: string;
+};
+
 export type KeywordPendingPreview = {
   previewId: string;
   seedAsin: string;
   sourceUrl: string;
   keywordCount: number;
   capturedAt: string | null;
+  items?: KeywordPendingPreviewItem[];
 };
 
 export type KeywordPendingCardStatus = "ready" | "saving" | "expired" | "error";
@@ -118,7 +129,52 @@ export function KeywordPendingSubmitCard({
           </p>
         </details>
       ) : null}
-      <div className="mt-2 flex items-center gap-2">
+
+      {Array.isArray(preview.items) && preview.items.length > 0 ? (
+        <div className="mt-2.5 overflow-hidden rounded-lg border border-amber-200/80 bg-white shadow-xs" data-testid="keyword-pending-table-container">
+          <div className="max-h-52 overflow-y-auto">
+            <table className="w-full text-left text-xs text-slate-700" data-testid="keyword-pending-table">
+              <thead className="sticky top-0 bg-amber-100/70 text-[11px] font-semibold text-slate-600 uppercase border-b border-amber-200/60">
+                <tr>
+                  <th className="px-2.5 py-1.5">关键词</th>
+                  <th className="px-2 py-1.5 text-right">搜索量</th>
+                  <th className="px-2 py-1.5 text-right">ABA周排名</th>
+                  <th className="px-2 py-1.5 text-right">购买量</th>
+                  <th className="px-2 py-1.5 text-center">竞争度</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {preview.items.map((it, idx) => (
+                  <tr key={`${it.keyword}-${idx}`} className="hover:bg-amber-50/40" data-testid={`kw-pending-row-${idx}`}>
+                    <td className="px-2.5 py-1.5 font-medium text-slate-900">
+                      <span>{it.keyword}</span>
+                      {it.keywordTranslation ? (
+                        <span className="ml-1.5 text-[11px] font-normal text-slate-400">
+                          ({it.keywordTranslation})
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="px-2 py-1.5 text-right font-mono text-slate-600">
+                      {typeof it.searchVolume === "number" ? it.searchVolume.toLocaleString() : "-"}
+                    </td>
+                    <td className="px-2 py-1.5 text-right font-mono text-slate-600">
+                      {typeof it.abaWeeklyRank === "number" ? `#${it.abaWeeklyRank.toLocaleString()}` : "-"}
+                    </td>
+                    <td className="px-2 py-1.5 text-right font-mono text-slate-600">
+                      {typeof it.purchaseVolume === "number" ? it.purchaseVolume.toLocaleString() : "-"}
+                    </td>
+                    <td className="px-2 py-1.5 text-center text-slate-600">
+                      {it.competition ?? "-"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="mt-2.5 flex items-center gap-2">
         <button
           type="button"
           data-testid="keyword-pending-save"
@@ -136,7 +192,7 @@ export function KeywordPendingSubmitCard({
           onClick={onCancel}
           className="inline-flex h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"
         >
-          放弃
+          放弃本次预览
         </button>
       </div>
       {error ? <p className="mt-1 text-xs text-rose-700" role="alert">{error}</p> : null}

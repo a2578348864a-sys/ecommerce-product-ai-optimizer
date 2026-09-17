@@ -5,8 +5,8 @@ import { CandidatePoolPanel } from "@/components/cross-border/CandidatePoolView"
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "待研究商品 - 轻选工作台",
-  description: "查看当前身份下已加入研究的商品，并继续商品研究。",
+  title: "商品研究 - 轻选工作台",
+  description: "待研判商品候选池，挑选高潜标的进入商品决策研判。",
 };
 
 export default async function OpportunityCandidatesPage({
@@ -25,10 +25,10 @@ export default async function OpportunityCandidatesPage({
         <WorkspaceSidebar />
         <div className="min-w-0">
           <header className="workspace-header page-header">
-            <p className="eyebrow">商品身份保持 · 人工决定</p>
-            <h1 className="section-title mt-2 text-2xl sm:text-3xl">待研究商品</h1>
+            <p className="eyebrow">核心流程 02 · 商品研究队列</p>
+            <h1 className="section-title mt-2 text-2xl sm:text-3xl">商品研究</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-              这里展示当前登录身份下已加入研究的商品。你可以继续研究，或查看已保存的研究记录。
+              待研判候选商品池。挑选高潜标的进入四阶段研判，系统聚合需求、供应链与风险证据以辅助拍板；决策完成后方可生成后续资产。
             </p>
             <WorkspaceMobileNav />
           </header>

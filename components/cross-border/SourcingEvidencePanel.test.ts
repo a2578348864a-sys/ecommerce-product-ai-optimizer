@@ -70,6 +70,20 @@ describe("SourcingEvidencePanel 文案纪律与结构", () => {
     expect(html).toContain("https://m.media-amazon.com/images/I/71X8e8wz7mL._AC_SL1500_.jpg");
   });
 
+  it("正式研究工作台可隐藏独立图片找货入口，保留底层能力供内部调试", () => {
+    const html = renderToStaticMarkup(createElement(SourcingEvidencePanel, {
+      taskId: "task-1",
+      amazonContext: { title: "亚马逊候选保温杯", image: "https://example.com/product.jpg", asin: "B0TEST0001" },
+      showManualImageSearch: false,
+    }));
+    expect(html).not.toContain("sourcing-image-submit");
+    expect(html).not.toContain("sourcing-image-input");
+    expect(html).not.toContain("使用此图片找货");
+    expect(html).not.toContain("候选主图 https:// 链接");
+    expect(html).toContain("关键词找货");
+    expect(html).toContain("已有 1688 链接");
+  });
+
   it("R1：两套登录态明确区分 + 登录窗口 CTA + 重新检测反馈", () => {
     const html = renderPanel();
     // 两套独立登录说明（常驻可见）

@@ -1,4 +1,5 @@
 import type { ListingGenerationInput } from "@/lib/listingHandoff/listingGenerationInput";
+import type { CopyStrategyV1 } from "@/lib/listingHandoff/copyStrategy/types";
 
 /**
  * PR2-2 Listing Prompt 五分区构造器。
@@ -40,6 +41,30 @@ function buildResearchReferenceLayers(
   if (context.competitiveContext.length) sections.push(`COMPETITIVE_CONTEXT_START\n${context.competitiveContext.map((v) => `- ${v}`).join("\n")}\nCOMPETITIVE_CONTEXT_END`);
   if (context.sourcingContext.length) sections.push(`SOURCING_CONTEXT_START\n${context.sourcingContext.map((v) => `- ${v}`).join("\n")}\nSOURCING_CONTEXT_END`);
   return sections.length ? sections.join("\n") : "研究参考层：无";
+}
+
+function buildCopyStrategyLayer(strategy: CopyStrategyV1 | undefined): string {
+  if (!strategy) return "COPY_STRATEGY：无";
+  return [
+    "COPY_STRATEGY_START",
+    JSON.stringify({
+      referenceOnly: true,
+      targetBuyer: strategy.targetBuyer,
+      buyerPainPoints: strategy.buyerPainPoints.slice(0, 6),
+      mainAngle: strategy.mainAngle,
+      emotionalHook: strategy.emotionalHook,
+      copyTone: strategy.copyTone,
+      bulletStrategies: strategy.bulletStrategies.slice(0, 5).map((item) => ({
+        order: item.order,
+        structure: item.structure,
+        purpose: item.purpose,
+      })),
+      titleStrategy: strategy.titleStrategy,
+      descriptionStrategy: strategy.descriptionStrategy,
+      avoidExpressions: strategy.avoidExpressions.slice(0, 8),
+    }),
+    "COPY_STRATEGY_END",
+  ].join("\n");
 }
 
 /**
@@ -94,6 +119,10 @@ export function buildListingPromptFromInput(input: ListingGenerationInput): stri
     "- COMPETITIVE CONTEXT: positioning reference only; never copy competitor facts.",
     "- SOURCING CONTEXT: internal research only; Similar ≠ Exact; displayedPrice ≠ purchaseCost.",
     buildResearchReferenceLayers(input.creativeContext),
+    "",
+    "=== 文案策略参考（Copy Strategy — NOT FACT） ===",
+    "Use this only for audience framing, shopper relevance, ordering and tone. It cannot support any product fact or claim.",
+    buildCopyStrategyLayer(input.copyStrategy),
     "",
     "=== 创意偏好 (Creative preferences) ===",
     preferenceLine,

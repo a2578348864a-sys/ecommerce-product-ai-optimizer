@@ -90,4 +90,25 @@ describe("FAILURE_ATTRIBUTION 判定（身份锚点验证）", () => {
     expect(r[0].tier).toBe("blocked");
     expect(r[0].reason ?? "").toContain("无已确认事实锚点");
   });
+
+  it("自然表达容错：连字符、件数规格与场景 fits 放行", () => {
+    const facts = [
+      "Heavy Duty",
+      "Rust Resistant",
+      "Neodymium, Steel",
+      "6pcs",
+      "Travel, Cruise, Organization",
+    ];
+    // 1. 连字符容错：rust-resistant 对应确认事实 Rust Resistant
+    const r1 = classifyClaimTier(["The rust-resistant finish protects during humid cruise use."], facts);
+    expect(r1[0].tier).not.toBe("blocked");
+
+    // 2. 件数规格归一化：6-pack / 6-piece 对应 6pcs
+    const r2 = classifyClaimTier(["This 6-pack of magnetic hooks offers versatile storage."], facts);
+    expect(r2[0].tier).not.toBe("blocked");
+
+    // 3. 场景 fits into luggage 不应被误判为硬属性设备兼容
+    const r3 = classifyClaimTier(["The compact hooks easily fit in luggage for travel organization."], facts);
+    expect(r3[0].tier).not.toBe("blocked");
+  });
 });

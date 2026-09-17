@@ -5,7 +5,7 @@
  * 页面分类 + 实体绑定 + 6 字段提取 → 关闭会话 → 返回 Preview（不可信客户端不可伪造）。
  *
  * 安全铁律：
- * - 只导航 https://www.amazon.com 白名单；单页导航，不自动搜索、不批量。
+ * - 只导航明确的 Amazon 零售站点白名单；单页导航，不自动搜索、不批量。
  * - CAPTCHA / 登录墙 / 错误页 → fail-closed 明确错误，不绕过。
  * - 不读取 Cookie/Token/密码；不保存完整 HTML；零 AI 调用。
  */
@@ -21,10 +21,14 @@ import {
   type AmazonDetailPageExtraction,
   type AmazonProductInfoExtraction,
 } from "@/tools/collectors/amazon/detail-page-extract";
+import { AMAZON_RETAIL_ORIGINS } from "@/tools/collectors/amazon/page-diagnostics";
 import { BrowserEvidenceError, type BrowserEvidenceSnapshot } from "@/lib/server/browserEvidence";
 import type { AccessContext } from "@/lib/server/accessPassword";
+import { buildAmazonSellerContentExtractionExpression } from "@/tools/collectors/amazon/seller-content-expression-source";
+import { normalizeSellerBlocks } from "@/lib/server/amazonFactEnrichment/mapping";
+import type { AmazonSellerContentBlockV1 } from "@/lib/server/amazonFactEnrichment/contract";
 
-export const BROWSER_EVIDENCE_ALLOWED_ORIGINS = ["https://www.amazon.com"] as const;
+export const BROWSER_EVIDENCE_ALLOWED_ORIGINS = AMAZON_RETAIL_ORIGINS;
 export const BROWSER_EVIDENCE_COLLECTOR_VERSION = "amazon-detail-page-extractor.v1";
 
 export type BrowserEvidenceNavigation = {
@@ -42,6 +46,7 @@ export type BrowserEvidenceCollectPreview = {
   calibration: AmazonEnvironmentCalibration | null;
   /** V3 Final PHASE 1：Product Information 提取（规格行 + canonical 映射；实体绑定前提；失败时 null） */
   productInfo?: AmazonProductInfoExtraction | null;
+  sellerContent?: AmazonSellerContentBlockV1[];
 };
 
 export type BrowserEvidenceStoredPreview = {
@@ -78,14 +83,42 @@ class PreviewStore {
     this.entries.set(input.evidenceId, input);
   }
 
-  take(evidenceId: string, claim: { subjectKey: string; taskId: string }): BrowserEvidenceStoredPreview | null {
+  peek(evidenceId: string, claim: { subjectKey: string; taskId: string }): BrowserEvidenceStoredPreview | null {
     this.prune();
     const entry = this.entries.get(evidenceId);
     if (!entry) return null;
     // 跨主体 / 跨任务一律视为不可用（fail-closed，不泄漏 Preview 存在性之外的信息）
     if (entry.subjectKey !== claim.subjectKey || entry.taskId !== claim.taskId) return null;
-    this.entries.delete(evidenceId);
     return entry;
+  }
+
+  consume(evidenceId: string, claim: { subjectKey: string; taskId: string }): boolean {
+    const entry = this.peek(evidenceId, claim);
+    if (!entry) return false;
+    this.entries.delete(evidenceId);
+    return true;
+  }
+
+  findPending(query: { subjectKey: string; taskId: string; asin: string }): BrowserEvidenceStoredPreview | null {
+    this.prune();
+    const normalizedAsin = query.asin.trim().toUpperCase();
+    const now = Date.now();
+    let match: BrowserEvidenceStoredPreview | null = null;
+    for (const entry of this.entries.values()) {
+      if (
+        entry.subjectKey === query.subjectKey &&
+        entry.taskId === query.taskId &&
+        entry.asin.trim().toUpperCase() === normalizedAsin &&
+        entry.expiresAt > now
+      ) {
+        match = entry;
+      }
+    }
+    return match;
+  }
+
+  clearForTests(): void {
+    this.entries.clear();
   }
 
   private prune(): void {
@@ -106,7 +139,38 @@ export function takeBrowserEvidencePreview(
   evidenceId: string,
   claim: { subjectKey: string; taskId: string },
 ): BrowserEvidenceStoredPreview | null {
-  return previewStore.take(evidenceId, claim);
+  const entry = previewStore.peek(evidenceId, claim);
+  if (!entry) return null;
+  previewStore.consume(evidenceId, claim);
+  return entry;
+}
+
+/** 只读读取 Preview；校验或持久化失败时不得消耗，供保存流程在成功后 consume。 */
+export function peekBrowserEvidencePreview(
+  evidenceId: string,
+  claim: { subjectKey: string; taskId: string },
+): BrowserEvidenceStoredPreview | null {
+  return previewStore.peek(evidenceId, claim);
+}
+
+/** 仅在正式证据写入成功后作废 Preview；跨主体/跨任务调用不会删除。 */
+export function consumeBrowserEvidencePreview(
+  evidenceId: string,
+  claim: { subjectKey: string; taskId: string },
+): boolean {
+  return previewStore.consume(evidenceId, claim);
+}
+
+export function findPendingBrowserEvidencePreview(query: {
+  subjectKey: string;
+  taskId: string;
+  asin: string;
+}): BrowserEvidenceStoredPreview | null {
+  return previewStore.findPending(query);
+}
+
+export function resetBrowserEvidencePreviewStoreForTests(): void {
+  previewStore.clearForTests();
 }
 
 export class BrowserEvidenceCollectError extends Error {
@@ -127,6 +191,9 @@ export function browserEvidenceFailClosedCode(
   switch (pageStatus) {
     case "ok": return null;
     case "captcha": return "page_blocked_captcha";
+    // Amazon 自动化访问校验中间页（/errors_page/validateCaptcha + "Continue shopping"）：
+    // 独立错误码，避免被当成登录墙而给出"请登录"的错误指引。
+    case "automation_blocked": return "automation_blocked";
     case "login_wall": return "page_blocked_login_wall";
     case "error_page": return "page_error";
     case "unknown_page": return "page_unknown";
@@ -136,6 +203,7 @@ export function browserEvidenceFailClosedCode(
 function failClosedMessage(code: string): string {
   switch (code) {
     case "page_blocked_captcha": return "页面要求验证码（CAPTCHA）。我们不自动绕过验证码：请在本机浏览器手动打开该商品页并确认是否为正常商品页后重试。";
+    case "automation_blocked": return "Amazon 触发了自动化访问校验（“Continue shopping”中间页）。系统不会绕过该校验：请在本机浏览器手动打开该商品页确认，或稍后重试。";
     case "page_blocked_login_wall": return "页面要求登录。我们不自动登录：请确认该商品页可公开访问后重试。";
     case "page_error": return "页面返回错误页（商品可能不存在、下架或访问受限）。请确认 ASIN 后重试。";
     case "page_unknown": return "页面不是可识别的 Amazon 商品详情页。请确认 ASIN 与站点后重试。";
@@ -180,7 +248,7 @@ export async function collectBrowserEvidencePreview(input: {
       throw new BrowserEvidenceCollectError(
         "navigation_not_allowed",
         502,
-        "页面导航被重定向到白名单外地址，已停止采集（可能为验证码/登录墙/错误页）。请在本机浏览器手动检查该商品页。",
+        "页面导航被重定向到白名单外地址，已停止采集。该状态不等同于登录墙或验证码，请检查站点或网络后重试。",
       );
     }
     const extraction = await session.evaluateDomByValue<AmazonDetailPageExtraction>(
@@ -208,8 +276,20 @@ export async function collectBrowserEvidencePreview(input: {
     } catch {
       productInfo = null;
     }
+    // Seller-authored 内容富化：同一页面、同一实体绑定；提取失败只降级为空块，不阻断基础证据。
+    let sellerContent: AmazonSellerContentBlockV1[] = [];
+    if (extraction.entityBound) {
+      try {
+        const raw = await session.evaluateDomByValue<AmazonSellerContentBlockV1[]>(
+          buildAmazonSellerContentExtractionExpression(),
+        );
+        sellerContent = normalizeSellerBlocks(Array.isArray(raw) ? raw : []);
+      } catch {
+        sellerContent = [];
+      }
+    }
     // 币种校准结果随 preview 返回（UI 展示"已校准配送地/币种"或"仍非 Amazon US 价格环境"）
-    return { extraction, navigation, calibration: session.calibration, productInfo };
+    return { extraction, navigation, calibration: session.calibration, productInfo, sellerContent };
   } catch (error) {
     if (error instanceof BrowserEvidenceCollectError) throw error;
     const message = error instanceof Error ? error.message : "unknown_error";

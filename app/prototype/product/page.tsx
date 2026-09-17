@@ -1,7 +1,6 @@
 /** 本地 Owner 视觉样板（原型）：商品研究结果。真实数据同上（Listing 草稿/图片检查来自真实 run）。 */
-import { promises as fsp } from "node:fs";
-import path from "node:path";
 import Link from "next/link";
+import { loadPrototypeData } from "../protoData";
 import "../prototype.css";
 
 const THUMB_BIG = (
@@ -15,8 +14,7 @@ const THUMB_BIG = (
 );
 
 async function loadData() {
-  const raw = await fsp.readFile(path.join(process.cwd(), "docs", "v4.1", "proto-data.json"), "utf8");
-  return JSON.parse(raw) as Array<Record<string, unknown>>;
+  return loadPrototypeData();
 }
 
 /** 缺口 → 用户语言（无内部码/枚举）。 */

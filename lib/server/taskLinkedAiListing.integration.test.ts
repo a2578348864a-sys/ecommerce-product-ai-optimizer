@@ -305,8 +305,6 @@ describe("Quality.2 Task-linked AI integration", () => {
     const valid = validAiClient();
     const countingClient: TaskLinkedAiListingClient = async (input) => {
       providerCalls += 1;
-      console.log("DBG-PLAN", JSON.stringify((input.plan?.bulletPlans ?? []).map((bp: { role?: string; featureFactIds?: string[] }) => ({ role: bp.role, fids: bp.featureFactIds }))));
-      console.log("DBG-FACTS", JSON.stringify((input.facts ?? []).filter((f: { field?: string }) => f.field !== "brand" && f.field !== "product_type" && f.field !== "series_or_model").map((f: { field?: string; value?: string }) => ({ f: f.field, v: f.value }))));
       const out = await valid(input);
       return out;
     };

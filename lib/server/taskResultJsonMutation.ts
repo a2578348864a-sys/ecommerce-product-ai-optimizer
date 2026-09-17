@@ -34,6 +34,7 @@ export type TaskResultJsonWriter =
   | "browser-evidence"
   | "review-evidence"
   | "sourcing-evidence"
+  | "listing-v5"
   | "research-save"
   | "fact-candidates"
   | "listing-creation-brief";
@@ -60,6 +61,7 @@ const OWNED_NAMESPACES: Record<TaskResultJsonWriter, readonly string[]> = {
   "browser-evidence": ["browserEvidence"],
   "review-evidence": ["reviewEvidence", "vocAnalysis"],
   "sourcing-evidence": ["sourcingEvidence"],
+  "listing-v5": ["listingV5"],
   // F1：研究保存（save-task update）整体回写研究骨架任务（start-research 创建）。
   // 拥有 save-task 组装的全部顶层键；researchRecord 追加语义由 research-decision 保留。
   "research-save": [

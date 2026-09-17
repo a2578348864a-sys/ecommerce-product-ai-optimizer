@@ -71,8 +71,8 @@ export function deriveHeroCtas(runtime: HomeRuntime): {
   if (runtime.mode === "local_owner") {
     if (runtime.v4Graph) {
       return {
-        primary: { label: "开始商品研究", href: "/v4/runs", primary: true },
-        secondary: { label: "查看研究任务", href: "/v4/runs", primary: false },
+        primary: { label: "选择商品开始研究", href: "/opportunity-candidates", primary: true },
+        secondary: { label: "查看决策复盘", href: "/tasks", primary: false },
       };
     }
     // Local flag OFF：不得渲染 Live CTA / 不泄露 Live 入口。

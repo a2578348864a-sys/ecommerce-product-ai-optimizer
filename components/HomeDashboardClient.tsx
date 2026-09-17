@@ -37,6 +37,8 @@ import type { ResearchProductImageDisplay } from "@/lib/productResearchImage";
 import { resolveTaskProductDisplayName } from "@/lib/productDisplayName";
 import { deriveResearchHistoryStatus, type ResearchHistoryStatus } from "@/lib/taskResearchHistoryPresentation";
 import { collectPagedTasks, deriveProductProjectGroup, ProductResearchTasksUnavailableError } from "@/lib/researchLifecycle";
+// 只读类型：列表 DTO 的服务端 Reader 快照（Bridge V1），工作台状态展示与详情页同源。
+import type { ResearchLifecycleSnapshot } from "@/lib/server/researchLifecycleReader";
 export { collectPagedTasks, ProductResearchTasksUnavailableError } from "@/lib/researchLifecycle";
 
 async function collectStartableCandidateCount(): Promise<number> {
@@ -135,44 +137,36 @@ function StatCard({
 
 export const homeWorkflowSteps = [
   {
-    id: "discover-products",
-    label: "发现商品",
+    id: "import-candidates",
+    label: "导入商品数据",
     href: "/opportunities",
-    cta: "去发现商品",
-    description: "上传报表，筛选候选商品。",
+    cta: "去导入商品",
+    description: "上传商品数据，建立待研究候选池。",
     icon: Search,
   },
   {
-    id: "research-products",
-    label: "商品研究",
+    id: "select-candidate",
+    label: "选择候选商品",
     href: "/opportunity-candidates",
-    cta: "打开待研究商品",
-    description: "整理信息，评估风险，恢复或开始研究。",
+    cta: "打开候选池",
+    description: "挑选具备潜力的候选商品开始研判。",
     icon: Sparkles,
   },
   {
-    id: "make-research-decision",
-    label: "人工决策",
-    href: "/tasks",
-    cta: "打开研究记录",
-    description: "在任务详情确认继续、暂缓或放弃。",
+    id: "research-decision",
+    label: "商品决策研判",
+    href: "/opportunity-candidates",
+    cta: "进入研判详情",
+    description: "验证市场需求、供应链与合规风险证据。",
     icon: ClipboardCheck,
   },
   {
-    id: "prepare-creative-materials",
-    label: "创作资料",
+    id: "human-decision-tasks",
+    label: "人工拍板与复盘",
     href: "/tasks",
-    cta: "在任务详情确认",
-    description: "确认事实与视觉参考，准备创作资料。",
+    cta: "查看决策复盘",
+    description: "在任务详情确认推进/暂缓/放弃；完成决策后方可生成资产。",
     icon: FileText,
-  },
-  {
-    id: "review-content-drafts",
-    label: "内容草稿",
-    href: "/tasks",
-    cta: "在任务详情生成",
-    description: "生成 Listing 草稿与产品图片，人工复核。",
-    icon: Image,
   },
 ] as const;
 
@@ -209,6 +203,8 @@ export type LocalTaskItem = {
   aiRunStatus?: string;
   /** 服务端从该候选最新 V4ResearchRun 给出的 run.updatedAt（研究尝试真正时间源）；无 run 时不下发。 */
   runUpdatedAt?: string;
+  /** Bridge V1 服务端 Reader 生命周期快照（列表行同名投影）：工作台状态展示的唯一口径，与商品详情页同源。 */
+  researchLifecycle?: ResearchLifecycleSnapshot | null;
 };
 
 type LocalTasksResponse =
@@ -280,7 +276,9 @@ function localProductMeta(result: unknown) {
   };
 }
 
-function localConclusion(task: LocalTaskItem) {
+function localConclusion(task: LocalTaskItem): string {
+  // 第十一轮（Bug 1）：与任务详情同口径——只允许真实 AI/研究结论字段；
+  // oneLineSummary 是任务摘要不是 AI 判断；无真实结论返回空串（不渲染假文案）。
   const result = isLocalRecord(task.result) ? task.result : null;
   const legacy = result && isLocalRecord(result.legacyListSummary) ? result.legacyListSummary : null;
   const presentation = legacy && isLocalRecord(legacy.presentation) ? legacy.presentation : null;
@@ -291,18 +289,24 @@ function localConclusion(task: LocalTaskItem) {
   const workflow = legacy && isLocalRecord(legacy.workflow) ? legacy.workflow : null;
   const verdict = localText(workflow?.verdictLabel);
   if (verdict && !["暂无", "未知", "待确认"].includes(verdict)) return verdict;
-  const storedSummary = localText(task.oneLineSummary);
-  return storedSummary || "AI 研究结论尚未取得。";
+  if (result) {
+    const summary = isLocalRecord(result.summary) ? result.summary : null;
+    const decisionReason = localText(summary?.decisionReason);
+    if (decisionReason) return decisionReason;
+  }
+  return "";
 }
 
 /** 服务端正式投影状态 → 三组语义。失败/取消终态优先于旧研究/决定（§2.4）。 */
-function localProjectState(task: LocalTaskItem, researchStatus: ResearchHistoryStatus) {
-  // 轮 6：与 /research 共用同一口径（唯一分类器）
+function localProjectState(task: LocalTaskItem) {
+  // 轮 6：与 /research 共用同一口径（唯一分类器）。
+  // 第十二轮：快照优先——列表 DTO 已带服务端 Reader 快照时，卡片状态与商品详情页同一 Snapshot 同语义。
   return deriveProductProjectGroup({
     aiRunStatus: task.aiRunStatus,
     decisionStatus: task.decisionStatus,
     result: task.result,
     oneLineSummary: task.oneLineSummary,
+    lifecycle: task.researchLifecycle ?? null,
   });
 }
 
@@ -379,7 +383,7 @@ export function buildLocalProductProjects(tasks: LocalTaskItem[]): LocalProductP
         decisionStatus: task.decisionStatus,
         oneLineSummary: task.oneLineSummary,
       });
-      const state = localProjectState(task, researchStatus);
+      const state = localProjectState(task);
       return {
         key,
         task,
@@ -719,20 +723,20 @@ function PublicDashboard({
               >
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div>
-                    <p className="linear-kicker">现有研究入口</p>
+                    <p className="linear-kicker">核心决策链路</p>
                     <h3 id="home-workflow-title" className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
-                      五步完成一次商品研究
+                      四大核心步骤：从候选到决策
                     </h3>
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                      从发现商品开始，研究、创作，最后由你人工确认是否继续。
+                      聚焦新品开发决策：从导入候选到研判决策，完成决策后方可准备 Listing 与图片。
                     </p>
                   </div>
                   <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-700">
-                    AI 辅助 · 人工确认
+                    AI 辅助 · 人工决策
                   </span>
                 </div>
 
-                <ol className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                <ol className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   {homeWorkflowSteps.map((step, index) => {
                     const Icon = step.icon;
                     const isRecommended = recommendation.href === step.href;
@@ -1001,7 +1005,9 @@ function LocalProductSection({
                         {project.statusLabel}
                       </span>
                     </div>
-                    <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-700">{project.conclusion}</p>
+                    {project.conclusion ? (
+                      <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-700">{project.conclusion}</p>
+                    ) : null}
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                       {project.taskCount > 1 ? (
                         <span className="text-xs text-slate-400">同一商品的 {project.taskCount} 次研究已合并</span>
@@ -1098,9 +1104,54 @@ function LocalWorkspace({ runtime }: { runtime: HomeRuntime }) {
           <WorkspaceMobileNav />
 
           <header className="space-y-2">
-            <h1 className="text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">工作台</h1>
-            <p className="text-sm leading-6 text-slate-600">了解你的商品研究进度，下一步由你决定。</p>
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">商品开发决策工作台</h1>
+            <p className="text-sm leading-6 text-slate-600">
+              了解你的商品研究进度，下一步由你决定。聚焦新品开发决策：聚合市场需求、供应链与合规风险证据，帮助你判断商品是否值得开发，最终由你人工确认。
+            </p>
           </header>
+
+          {/* 四大核心步骤导航指引 */}
+          <section className="surface-card p-4 sm:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="flex size-6 items-center justify-center rounded-full bg-teal-600 text-xs font-bold text-white">4</span>
+                <h2 className="text-sm font-semibold text-slate-900">商品开发决策核心链路</h2>
+              </div>
+              <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-0.5 text-xs font-medium text-teal-700">
+                完成决策后，才进入 Listing 与图片准备
+              </span>
+            </div>
+            <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+              <Link href="/opportunities" className="group flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 transition hover:border-teal-300 hover:bg-teal-50/30">
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-xs font-bold text-teal-700 group-hover:bg-teal-600 group-hover:text-white">01</span>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-slate-900 group-hover:text-teal-700">步骤一：导入商品候选</p>
+                  <p className="truncate text-[11px] text-slate-500">上传建立候选池 (/opportunities)</p>
+                </div>
+              </Link>
+              <Link href="/opportunity-candidates" className="group flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 transition hover:border-teal-300 hover:bg-teal-50/30">
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-xs font-bold text-teal-700 group-hover:bg-teal-600 group-hover:text-white">02</span>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-slate-900 group-hover:text-teal-700">步骤二：选择候选商品</p>
+                  <p className="truncate text-[11px] text-slate-500">挑选高潜标的 (/opportunity-candidates)</p>
+                </div>
+              </Link>
+              <Link href="/opportunity-candidates" className="group flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 transition hover:border-teal-300 hover:bg-teal-50/30">
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-xs font-bold text-teal-700 group-hover:bg-teal-600 group-hover:text-white">03</span>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-slate-900 group-hover:text-teal-700">步骤三：商品决策研判</p>
+                  <p className="truncate text-[11px] text-slate-500">需求、供应链与风险研判</p>
+                </div>
+              </Link>
+              <Link href="/tasks" className="group flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 transition hover:border-teal-300 hover:bg-teal-50/30">
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-xs font-bold text-teal-700 group-hover:bg-teal-600 group-hover:text-white">04</span>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-slate-900 group-hover:text-teal-700">步骤四：人工拍板与复盘</p>
+                  <p className="truncate text-[11px] text-slate-500">推进/暂缓/放弃与沉淀 (/tasks)</p>
+                </div>
+              </Link>
+            </div>
+          </section>
 
           {runtime.v4Graph ? (
             <>
@@ -1111,7 +1162,7 @@ function LocalWorkspace({ runtime }: { runtime: HomeRuntime }) {
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm leading-6 text-slate-600">从一个真实候选商品开始，AI 整理证据，关键决定由你确认。</p>
+                    <p className="text-sm leading-6 text-slate-600">从一个真实候选商品开始，AI 整理证据，关键决定由你确认。梳理市场、供应链与风险证据并生成决策建议，商业决策由你确认。</p>
                   </div>
                   {startableState.status === "unavailable" ? (
                     <div className="flex flex-wrap items-center gap-3" data-testid="local-start-research-unavailable">
@@ -1124,11 +1175,11 @@ function LocalWorkspace({ runtime }: { runtime: HomeRuntime }) {
                     <span className="inline-flex h-11 items-center px-2 text-sm text-slate-500" data-testid="local-start-research-loading">正在确认可研究商品…</span>
                   ) : resolveStartResearchHref(startableState.count).href ? (
                     <Link
-                      href={resolveStartResearchHref(startableState.count).href as string}
+                      href={startableState.count === 0 ? "/opportunities" : "/opportunity-candidates"}
                       className="linear-button-primary inline-flex h-11 items-center justify-center gap-2 px-5 text-sm font-semibold"
                       data-testid="local-start-research-cta"
                     >
-                      {startableState.count === 0 ? "去发现商品" : "开始研究一个商品"}
+                      {startableState.count === 0 ? "导入商品建立候选池" : "选择商品开始研究"}
                       <ArrowRight className="size-4" aria-hidden="true" />
                     </Link>
                   ) : null}
@@ -1137,31 +1188,31 @@ function LocalWorkspace({ runtime }: { runtime: HomeRuntime }) {
 
               <div className="grid min-w-0 gap-4 xl:grid-cols-3">
                 <LocalProductSection
-                  title="需要我处理"
-                  description="等你的决定，研究才能进入下一步。"
+                  title="待人工拍板（需要我处理）"
+                  description="等你拍板才能继续：待确认证据、合规风险待核对或人工决定待保存的商品都在这里，它们不属于「研究中」。"
                   items={needsAction}
                   loading={loading}
                   unavailable={unavailable}
                   testId="local-status-needs-action"
-                  emptyHint="当前没有等待你处理的商品。"
+                  emptyHint="当前没有等待你拍板的商品。"
                 />
                 <LocalProductSection
-                  title="AI 研究中"
-                  description="资料仍在整理，结论尚未完成。"
+                  title="证据采集中（研究中）"
+                  description="AI 正在自动采集市场数据、1688货源与合规风险，还没有需要你决定的事情。"
                   items={researching}
                   loading={loading}
                   unavailable={unavailable}
                   testId="local-status-researching"
-                  emptyHint="当前没有正在研究的商品。"
+                  emptyHint="当前没有正在研究的商品（暂无采集中商品）。"
                 />
                 <LocalProductSection
-                  title="已完成"
-                  description="研究和人工决定都已保存。"
+                  title="已出决策（已完成）"
+                  description="已形成商品开发决策卡并保存到档案，可查看建议推进、补充验证或暂不建议结论。"
                   items={completed}
                   loading={loading}
                   unavailable={unavailable}
                   testId="local-status-completed"
-                  emptyHint="当前还没有已完成的商品。"
+                  emptyHint="当前还没有已出决策的商品。"
                 />
               </div>
             </>

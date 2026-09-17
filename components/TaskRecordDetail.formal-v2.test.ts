@@ -8,6 +8,13 @@ import {
 } from "@/components/TaskRecordDetail";
 
 describe("formal v2 task result", () => {
+  it("研究工作台首次进入默认展开，同时保留 details 折叠控制", async () => {
+    const source = await readFile("components/TaskRecordDetail.tsx", "utf8");
+    expect(source).toContain("const [primaryOpen, setPrimaryOpen] = useState(true);");
+    expect(source).toContain("open={primaryOpen || undefined}");
+    expect(source).toContain("onToggle={(event) => setPrimaryOpen(event.currentTarget.open)}");
+  });
+
   it("maps the safe formal task projection into the four confirmed business modules", () => {
     const view = deriveFormalV2ResearchView({
       id: "task-formal-1",
@@ -26,6 +33,7 @@ describe("formal v2 task result", () => {
       productImage: null,
       result: {
         productName: "THERMOS Food Jar",
+        researchCompletion: { schema: "research-completion.v1", status: "completed" },
         productResearchSummary: { schema: "product-research-record.v1", status: "creative_ready" },
         sourceMeta: {
           productBatchSnapshot: {
@@ -101,6 +109,32 @@ describe("formal v2 task result", () => {
     expect(nonWorkflowAwaiting.targetId).toBe("formal-v2-materials");
     const nonWorkflowCompleted = deriveFormalV2PrimaryAction({ statusKey: "completed", researchStale: false, taskType: "viral" });
     expect(nonWorkflowCompleted.targetId).toBe("listing-and-images");
+  });
+
+  it("recognizes a persisted Listing V5 draft in the research summary", () => {
+    const view = deriveFormalV2ResearchView({
+      id: "task-listing-v5",
+      createdAt: "2026-09-12T00:00:00.000Z",
+      updatedAt: "2026-09-12T00:00:00.000Z",
+      type: "workflow",
+      decisionStatus: "continue",
+      title: "Listing V5 task",
+      platform: "amazon",
+      productUrl: null,
+      materialText: "",
+      source: "opportunity",
+      score: 0,
+      level: "",
+      oneLineSummary: "",
+      productImage: null,
+      result: {
+        researchCompletion: { schema: "research-completion.v1", status: "completed" },
+        productResearchSummary: { schema: "product-research-record.v1", status: "creative_ready" },
+        listingV5: { version: "listing-v5.snapshot.v1", listing: { title: { text: "A generated title" } } },
+      },
+    });
+
+    expect(view.hasListingDraft).toBe(true);
   });
 
   it("does not show AI-image verification reasons when no image draft exists", () => {

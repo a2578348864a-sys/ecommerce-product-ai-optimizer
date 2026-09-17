@@ -43,20 +43,30 @@ function buildRoot(input: {
   newBuyboxPriceText?: string | null;
   ratingText?: string | null;
   reviewsText?: string | null;
-  detailRows?: Array<{ text: string }>;
+  detailRows?: Array<{ text: string; th?: string; td?: string }>;
+  containerSelector?: string;
   includeRecommended?: boolean;
+  /** Amazon 自动化访问校验中间页：存在 `form[action*='validateCaptcha']`（无登录表单） */
+  automationForm?: boolean;
 }): AmazonDetailDomRoot {
   const rows = input.detailRows ?? [
     { text: `Best Sellers Rank: #2,541 in Kitchen & Dining (See Top 100 in Kitchen & Dining)` },
     { text: `ASIN: ${ASIN}` },
   ];
   const detailContainer = node(null, {
-    "tr, li[]": rows.map((row) => node(row.text)),
+    "tr, li[]": rows.map((row) => {
+      const children: Record<string, Node> = {};
+      if (row.th) children["th"] = node(row.th);
+      if (row.td) children["td"] = node(row.td);
+      return node(row.text, children);
+    }),
     "tr, li": node(rows[0].text),
   });
+  const containerId = input.containerSelector ?? "#detailBullets_feature_div";
   const root: AmazonDetailDomRoot = {
     body: { innerText: input.bodyText ?? "" },
     querySelector(selector: string) {
+      if (selector === containerId) return detailContainer;
       switch (selector) {
         case "#productTitle": return input.title ? node(input.title) : null;
         case "#corePriceDisplay_desktop_feature_div .a-price .a-offscreen": return input.newBuyboxPriceText ? node(input.newBuyboxPriceText) : null;
@@ -68,10 +78,12 @@ function buildRoot(input: {
         case "#priceblock_dealprice": return null;
         case "#acrPopover .a-icon-alt": return input.ratingText ? node(input.ratingText) : null;
         case "#acrCustomerReviewText": return input.reviewsText ? node(input.reviewsText) : null;
-        case "#detailBullets_feature_div": return detailContainer;
+        case "#detailBullets_feature_div": return containerId === "#detailBullets_feature_div" ? detailContainer : null;
         case "#productDetails_detailBullets_sections1": return null;
         case "#prodDetails": return null;
+        case "#productDetails_techSpec_section_1": return containerId === "#productDetails_techSpec_section_1" ? detailContainer : null;
         case "#detailBulletsWrapper_feature_div": return null;
+        case "form[action*='validateCaptcha']": return input.automationForm ? node(null) : null;
         default: return null;
       }
     },
@@ -190,6 +202,43 @@ describe("Amazon detail page extractor (V3.1 Spike)", () => {
     }
   });
 
+  it.each([
+    "Click the button below to continue shopping",
+    "Continue shopping",
+  ])("classifies Amazon %s interstitial as automation_blocked (never a login wall)", (bodyText) => {
+    const root = buildRoot({ bodyText });
+    const result = extractAmazonDetailPage(root, URL, options());
+    expect(result.pageStatus).toBe("automation_blocked");
+    expect(result.pageStatus).not.toBe("login_wall");
+    expect(result.entityBound).toBe(false);
+    expect(result.fields.title.reason).toBe("page_status_automation_blocked");
+  });
+
+  it("classifies the /errors_page/validateCaptcha gateway as automation_blocked even without interstitial copy", () => {
+    // 实测形态：HTML 极小，可见文本只有 "Amazon.com" + 页脚，唯一表单 action 含 validateCaptcha
+    const root = buildRoot({ bodyText: "Amazon.com Conditions of Use Privacy Policy", automationForm: true });
+    const result = extractAmazonDetailPage(root, URL, options());
+    expect(result.pageStatus).toBe("automation_blocked");
+    expect(result.pageStatus).not.toBe("login_wall");
+  });
+
+  it("keeps a real sign-in wall classified as login_wall", () => {
+    const root = buildRoot({ bodyText: "Please sign in to continue" });
+    const result = extractAmazonDetailPage(root, URL, options());
+    expect(result.pageStatus).toBe("login_wall");
+    expect(result.fields.title.reason).toBe("page_status_login_wall");
+  });
+
+  it("does not classify a normal product page with incidental 'continue shopping' copy as a blocker", () => {
+    const root = buildRoot({
+      bodyText: "Continue shopping with this bundle and save more",
+      title: "Owala FreeSip 24 oz",
+      priceText: "$32.99",
+    });
+    const result = extractAmazonDetailPage(root, URL, options());
+    expect(result.pageStatus).toBe("ok");
+  });
+
   it("fails closed on unknown pages (no product container)", () => {
     const root = buildRoot({});
     const result = extractAmazonDetailPage(root, URL, options());
@@ -295,5 +344,48 @@ describe("Amazon product info extractor (PHASE 1)", () => {
     expect(bad.entityBound).toBe(false);
     expect(bad.rows).toEqual([]);
     expect(bad.canonicalFacts).toEqual({});
+  });
+
+  it("extracts ASIN correctly when row has Unicode LRM mark (\\u200E) and no colon (AirPods Pro B0BDHWDR12 layout)", () => {
+    const root = buildRoot({
+      title: "Apple AirPods Pro (2nd Gen)",
+      detailRows: [
+        { text: "ASIN \u200EB0BDHWDR12", th: "ASIN", td: "\u200EB0BDHWDR12" },
+      ],
+      containerSelector: "#productDetails_techSpec_section_1",
+    });
+    const result = extractAmazonDetailPage(root, "https://www.amazon.com/dp/B0BDHWDR12", options("B0BDHWDR12"));
+    expect(result.entityBound).toBe(true);
+    expect(result.expectedAsin).toBe("B0BDHWDR12");
+    expect(result.pageAsin).toBe("B0BDHWDR12");
+    expect(result.bindingProof.pageAnchorMatchesExpected).toBe(true);
+    expect(result.bindingProof.productContainerFound).toBe(true);
+    expect(result.fields.asin).toMatchObject({ status: "correct", value: "B0BDHWDR12" });
+    expect(result.fields.title).toMatchObject({ status: "correct", value: "Apple AirPods Pro (2nd Gen)" });
+  });
+
+  it("fails closed when detail page is an error page", () => {
+    const root = buildRoot({
+      bodyText: "Sorry, something went wrong. Internal server error.",
+      title: null,
+    });
+    const result = extractAmazonDetailPage(root, URL, options());
+    expect(result.entityBound).toBe(false);
+    expect(result.pageStatus).toBe("error_page");
+    expect(result.fields.asin.reason).toBe("page_status_error_page");
+  });
+
+  it("fails closed when page ASIN anchor does not match expected ASIN", () => {
+    const root = buildRoot({
+      title: "Some Product",
+      detailRows: [
+        { text: "ASIN: B000DIFF00", th: "ASIN", td: "B000DIFF00" },
+      ],
+    });
+    const result = extractAmazonDetailPage(root, "https://www.amazon.com/dp/B000EXPECT", options("B000EXPECT"));
+    expect(result.entityBound).toBe(false);
+    expect(result.bindingProof.urlMatchesExpected).toBe(true);
+    expect(result.bindingProof.pageAnchorMatchesExpected).toBe(false);
+    expect(result.fields.asin.reason).toBe("page_asin_anchor_mismatch");
   });
 });

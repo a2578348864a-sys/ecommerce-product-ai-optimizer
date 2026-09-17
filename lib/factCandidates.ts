@@ -48,11 +48,35 @@ export type ConfirmedFactCandidate = FactCandidate & {
   confirmedBy: string;
 };
 
+/**
+ * Amazon 研究 Preview 的闭环记录。
+ *
+ * 该记录只描述「哪一个已绑定 Preview 的候选集合已经被人工处理完」，
+ * 不替代 Confirmed Fact，也不改变 factCandidates 的事实权威。它让编排器
+ * 在 Preview 被消费后，仍能从持久化 resultJson 判断这个 Amazon 来源已经
+ * 完成闭环；所有身份字段均为服务端生成并校验的绑定信息。
+ */
+export type AmazonPreviewResolutionV1 = {
+  previewId: string;
+  taskId: string;
+  asin: string;
+  subjectKey: string;
+  candidateRefs: Array<{
+    candidateId: string;
+    field: string;
+    sourceKind: FactCandidateSourceKind;
+    sourceRef: string;
+  }>;
+  resolvedAt: string;
+};
+
 export type FactCandidatesV1 = {
   schema: typeof FACT_CANDIDATES_SCHEMA;
   version: typeof FACT_CANDIDATES_VERSION;
   /** 已确认候选（持久化权威；确认即从候选升级，来源与值保留） */
   confirmed: ConfirmedFactCandidate[];
+  /** 已完成身份闭环的 Amazon Pending Preview（兼容旧数据，可缺省） */
+  amazonPreviewResolutions?: AmazonPreviewResolutionV1[];
   updatedAt: string;
 };
 
@@ -292,12 +316,104 @@ export function getFactCandidates(resultJson: unknown): FactCandidatesV1 | null 
     if (typeof item.confirmedAt !== "string" || typeof item.confirmedBy !== "string") return null;
     confirmed.push(item as unknown as ConfirmedFactCandidate);
   }
+  const resolutions: AmazonPreviewResolutionV1[] = [];
+  if (raw.amazonPreviewResolutions !== undefined) {
+    if (!Array.isArray(raw.amazonPreviewResolutions)) return null;
+    for (const item of raw.amazonPreviewResolutions) {
+      if (!isRecord(item)) return null;
+      if (
+        typeof item.previewId !== "string" || !item.previewId.trim()
+        || typeof item.taskId !== "string" || !item.taskId.trim()
+        || typeof item.asin !== "string" || !item.asin.trim()
+        || typeof item.subjectKey !== "string" || !item.subjectKey.trim()
+        || typeof item.resolvedAt !== "string" || !item.resolvedAt.trim()
+        || !Array.isArray(item.candidateRefs)
+      ) return null;
+      const candidateRefs: AmazonPreviewResolutionV1["candidateRefs"] = [];
+      for (const ref of item.candidateRefs) {
+        if (!isRecord(ref)) return null;
+        if (
+          typeof ref.candidateId !== "string" || !ref.candidateId.trim()
+          || typeof ref.field !== "string" || !ref.field.trim()
+          || typeof ref.sourceKind !== "string" || !ref.sourceKind.trim()
+          || typeof ref.sourceRef !== "string" || !ref.sourceRef.trim()
+        ) return null;
+        candidateRefs.push({
+          candidateId: ref.candidateId,
+          field: ref.field,
+          sourceKind: ref.sourceKind as FactCandidateSourceKind,
+          sourceRef: ref.sourceRef,
+        });
+      }
+      resolutions.push({
+        previewId: item.previewId,
+        taskId: item.taskId,
+        asin: item.asin.toUpperCase(),
+        subjectKey: item.subjectKey,
+        candidateRefs,
+        resolvedAt: item.resolvedAt,
+      });
+    }
+  }
   return {
     schema: FACT_CANDIDATES_SCHEMA,
     version: FACT_CANDIDATES_VERSION,
     confirmed,
+    ...(resolutions.length > 0 ? { amazonPreviewResolutions: resolutions } : {}),
     updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : "",
   };
+}
+
+export function hasAmazonPreviewResolution(
+  resultJson: unknown,
+  query: { previewId: string; taskId: string; asin: string; subjectKey: string },
+): boolean {
+  const stored = getFactCandidates(resultJson);
+  const normalizedAsin = query.asin.trim().toUpperCase();
+  return (stored?.amazonPreviewResolutions ?? []).some((resolution) => (
+    resolution.previewId === query.previewId
+    && resolution.taskId === query.taskId
+    && resolution.asin === normalizedAsin
+    && resolution.subjectKey === query.subjectKey
+    && resolution.candidateRefs.length > 0
+  ));
+}
+
+export function findAmazonPreviewResolution(query: {
+  resultJson: unknown;
+  taskId: string;
+  asin: string;
+  subjectKey: string;
+}): AmazonPreviewResolutionV1 | null {
+  const stored = getFactCandidates(query.resultJson);
+  const normalizedAsin = query.asin.trim().toUpperCase();
+  const matches = (stored?.amazonPreviewResolutions ?? []).filter((resolution) => (
+    resolution.taskId === query.taskId
+    && resolution.asin === normalizedAsin
+    && resolution.subjectKey === query.subjectKey
+    && resolution.candidateRefs.length > 0
+  ));
+  return matches.length > 0 ? matches[matches.length - 1] : null;
+}
+
+/**
+ * 旧版本兼容：早期事实确认已经保留了 Amazon provenance，但没有保存
+ * Preview identity。仅当至少一条已确认事实明确来自受限的
+ * browserEvidence.snapshots[...] 引用，且当前候选集合中不存在未确认的
+ * Amazon 来源候选时才认为该存量闭环完成；绝不以 pendingCount 单独判断。
+ */
+export function hasLegacyAmazonFactClosure(resultJson: unknown): boolean {
+  const stored = getFactCandidates(resultJson);
+  if (!stored || stored.confirmed.length === 0) return false;
+  const amazonConfirmed = stored.confirmed.filter((item) => (
+    (item.sourceKind === "amazon_browser_evidence" || item.sourceKind === "amazon_product_info")
+    && /^browserEvidence\.snapshots\[\d+\]\./.test(item.sourceRef)
+  ));
+  if (amazonConfirmed.length === 0) return false;
+  const remainingAmazonCandidates = buildFactCandidateView(resultJson).candidates.filter((item) => (
+    item.sourceKind === "amazon_browser_evidence" || item.sourceKind === "amazon_product_info"
+  ));
+  return remainingAmazonCandidates.length === 0;
 }
 
 /** 合并视图：候选（未确认）+ 已确认（权威持久化） */

@@ -14,6 +14,12 @@ import { extractDecisionEvidenceSnapshot } from "@/lib/decisionEvidence";
 /**
  * Phase 5 — AI 证据总结（ai-evidence-summary.v1）
  *
+ * 【治理规范 / AI Re-summary Retirement 说明】：
+ * - 正常业务主链路（采集编排、研究详情、人工决策、Listing 交接）全面退休主动 AI Re-summary；
+ * - Provider 调用归零门禁：研究主链路全程 callAiJson calls = 0；
+ * - 本模块保留作为兼容 backend，供历史数据安全读取（getAiEvidenceSummary 纯读零调用）与既有测试隔离验证；
+ * - generateAiEvidenceSummary 仅保留用于既有单测兼容，禁止任何主链路、定时器、编排器隐式触发。
+ *
  * AI 只读 Evidence，不成为事实来源：
  * - 输入：决策证据（decisionEvidence）+ 关键词证据 + 研究决定 + 商品身份，
  *   全部作为 user message 数据字段（Prompt Injection 隔离）；

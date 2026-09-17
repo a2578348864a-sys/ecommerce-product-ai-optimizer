@@ -8,6 +8,7 @@ import { createTrustedSandboxTask, getSandboxTask } from "@/lib/server/demoSandb
 import { POST as routePost, GET as routeGet } from "@/app/api/tasks/[id]/review-evidence/route";
 import { callAiJson } from "@/lib/server/aiClient";
 import { resolveSystemBrowser } from "@/tools/collectors/amazon/browser-control";
+import { resetReviewCollectPreviewStoreForTests } from "@/lib/server/reviewCollector";
 
 vi.hoisted(() => {
   const { join } = require("node:path");
@@ -77,9 +78,11 @@ vi.mock("@/lib/server/aiClient", () => ({
 }));
 
 // Package C：半自动采集——mock 隔离浏览器会话（真实浏览器由授权 smoke 覆盖）
+// finalUrl 是真实会话必返字段（browser-control 由捕获的最终 URL 计算 allowedFinalOrigin）；
+// 采集器用它确认没有被 marketplace redirect 换到别的市场，所以 mock 也按契约返回。
 const collectState = vi.hoisted(() => ({
   session: {
-    navigate: vi.fn(async () => ({ allowedFinalOrigin: true })),
+    navigate: vi.fn(async () => ({ finalUrl: "https://www.amazon.com/dp/B0A1B2C3D4?language=en_US&currency=USD", allowedFinalOrigin: true })),
     evaluateDomByValue: vi.fn(async () => [
       { rating: 5, date: "August 1, 2026", title: "Fits perfectly and feels premium." },
       { rating: 2, date: "July 15, 2026", title: "Assembly instructions are confusing." },
@@ -116,6 +119,14 @@ async function postJson(body: unknown, taskId: string, token = `tok-${DEMO}`) {
   return routePost(request, { params: Promise.resolve({ id: taskId }) });
 }
 
+async function getJson(taskId: string, token = `tok-${DEMO}`) {
+  const request = new NextRequest("http://localhost/api/tasks/x/review-evidence", {
+    method: "GET",
+    headers: { "x-access-token": token },
+  });
+  return routeGet(request, { params: Promise.resolve({ id: taskId }) });
+}
+
 function aiOk(data: unknown) {
   return {
     ok: true as const,
@@ -141,6 +152,7 @@ let taskId: string;
 let root: string;
 
 beforeEach(async () => {
+  resetReviewCollectPreviewStoreForTests();
   vi.mocked(callAiJson).mockReset();
   root = mkdtempSync(join(tmpdir(), "review-evidence-route-"));
   const task = await createTrustedSandboxTask(DEMO, {
@@ -332,7 +344,7 @@ describe("isolation", () => {
 describe("POST collect / collect-confirm（Package C 半自动采集）", () => {
   beforeEach(() => {
     vi.mocked(collectState.session.navigate).mockReset();
-    vi.mocked(collectState.session.navigate).mockResolvedValue({ allowedFinalOrigin: true });
+    vi.mocked(collectState.session.navigate).mockResolvedValue({ finalUrl: "https://www.amazon.com/dp/B0A1B2C3D4?language=en_US&currency=USD", allowedFinalOrigin: true });
     vi.mocked(collectState.session.evaluateDomByValue).mockReset();
     vi.mocked(collectState.session.evaluateDomByValue).mockResolvedValue([
       { rating: 5, date: "August 1, 2026", title: "Fits perfectly and feels premium." },
@@ -363,6 +375,26 @@ describe("POST collect / collect-confirm（Package C 半自动采集）", () => 
       { params: Promise.resolve({ id: taskId }) },
     );
     expect((await get.json()).data.evidence.dataset.reviews).toHaveLength(1);
+  });
+
+  it("同任务同主体同 ASIN 已有 Pending Preview 时，局部采集只复用、不重复启动浏览器", async () => {
+    const first = await postJson({
+      action: "collect",
+      asins: [{ asin: ASIN, sourceProductRole: "current_candidate" }],
+    }, taskId);
+    expect(first.status).toBe(200);
+    const firstBody = await first.json();
+    const navigateCalls = vi.mocked(collectState.session.navigate).mock.calls.length;
+
+    const second = await postJson({
+      action: "collect",
+      asins: [{ asin: ASIN, sourceProductRole: "current_candidate" }],
+    }, taskId);
+    expect(second.status).toBe(200);
+    const secondBody = await second.json();
+    expect(secondBody.data.reused).toBe(true);
+    expect(secondBody.data.preview.previewId).toBe(firstBody.data.preview.previewId);
+    expect(vi.mocked(collectState.session.navigate).mock.calls.length).toBe(navigateCalls);
   });
 
   it("collect-confirm writes browser-bound reviews with dedupe", async () => {
@@ -475,5 +507,71 @@ describe("POST collect / collect-confirm（Package C 半自动采集）", () => 
       if (saved === undefined) delete process.env.LOCAL_ACQUISITION_ENABLED;
       else process.env.LOCAL_ACQUISITION_ENABLED = saved;
     }
+  });
+
+  it("GET 路由：无 pending 缓存时返回 pendingPreview: null", async () => {
+    const res = await getJson(taskId);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.data.pendingPreview).toBeNull();
+  });
+
+  it("GET 路由：collect 生成 Preview 后，GET 返回 pendingPreview 且纯只读不消费", async () => {
+    const collectRes = await postJson({
+      action: "collect",
+      asins: [{ asin: ASIN, sourceProductRole: "current_candidate" }],
+    }, taskId);
+    expect(collectRes.status).toBe(200);
+    const collectBody = await collectRes.json();
+    const previewId = collectBody.data.preview.previewId;
+
+    const res1 = await getJson(taskId);
+    expect(res1.status).toBe(200);
+    const body1 = await res1.json();
+    expect(body1.ok).toBe(true);
+    expect(body1.data.pendingPreview).not.toBeNull();
+    expect(body1.data.pendingPreview.previewId).toBe(previewId);
+    expect(body1.data.pendingPreview.items.length).toBeGreaterThan(0);
+    expect(body1.data.pendingPreview.items[0]).toMatchObject({
+      asin: ASIN,
+      role: "current_candidate",
+      duplicate: false,
+    });
+    expect(body1.data.pendingPreview.pageResults.length).toBeGreaterThan(0);
+    expect(body1.data.pendingPreview.expiresAt).toBeDefined();
+
+    // 纯只读验证：二次读取仍存在
+    const res2 = await getJson(taskId);
+    expect(res2.status).toBe(200);
+    const body2 = await res2.json();
+    expect(body2.data.pendingPreview).toEqual(body1.data.pendingPreview);
+
+    // 严禁泄露内部 subjectKey / taskId / 凭证
+    expect(body1.data.pendingPreview.subjectKey).toBeUndefined();
+    expect(body1.data.pendingPreview.taskId).toBeUndefined();
+  });
+
+  it("GET 路由：collect-confirm 消费后，GET 再次查询返回 pendingPreview: null", async () => {
+    const collectRes = await postJson({
+      action: "collect",
+      asins: [{ asin: ASIN, sourceProductRole: "current_candidate" }],
+    }, taskId);
+    const previewId = (await collectRes.json()).data.preview.previewId;
+
+    // 人工确认写入（take 消费）
+    const confirmRes = await postJson({
+      action: "collect-confirm",
+      previewId,
+      selectedIndices: [0],
+      expectedStorageVersion: toStorageVersion(taskId),
+    }, taskId);
+    expect(confirmRes.status).toBe(200);
+
+    // 消费后再 GET，pendingPreview 应当为 null
+    const resAfterConfirm = await getJson(taskId);
+    const body = await resAfterConfirm.json();
+    expect(body.ok).toBe(true);
+    expect(body.data.pendingPreview).toBeNull();
   });
 });

@@ -7,7 +7,7 @@ Phase 2-B.2 已完成、已部署，并通过生产最小验收。
 当前生产 HEAD：
 
 ```text
-1fd894c4706ac9dc676c1fbd20a094d7ee613fd5
+<redacted-hash>
 ```
 
 本阶段可以正式收口。项目已经具备：
@@ -130,15 +130,15 @@ pending
 
 生产部署信息：
 
-- 部署前 HEAD：`1dedc41ba6267f5f8cf41c3121a45cbfcb458450`
-- 当前生产 HEAD：`1fd894c4706ac9dc676c1fbd20a094d7ee613fd5`
+- 部署前 HEAD：`<redacted-hash>`
+- 当前生产 HEAD：`<redacted-hash>`
 - commit：`feat: persist workflow review state on task save`
 - `npm run build`：通过，`37/37` pages。
 - PM2：`alibaba-ai-assistant` online。
 - `/api/health`：200，返回 `{"ok":true}`。
 - `/workflow`：200。
 - `/tasks`：200。
-- 公网 `3005`：未暴露。
+- 公网 `<PORT>`：未暴露。
 - 无密码访问受保护 API：仍返回 401。
 
 本次部署没有执行 `npm ci`，因为 `package.json` / `package-lock.json` 未变。

@@ -23,17 +23,18 @@ describe("Phase 3 research history information architecture", () => {
   });
 
   it("keeps formal-v2 research modules, decision and creative review as separate sections", () => {
-    for (const heading of ["市场机会", "买家需求与差评", "货源与商品匹配", "成本与风险", "人工决定", "Listing 与商品图片"]) {
+    for (const heading of ["人工决定", "Listing 与商品图片"]) {
       expect(detail).toContain(heading);
     }
-    expect(detail).toContain('aria-label="研究模块"');
+    // RESEARCH_DETAIL_SLIMDOWN_V1: 顶部四张重复 Summary 大卡已退役
+    expect(detail).not.toContain('aria-label="研究模块"');
     expect(detail).toContain('data-testid="formal-v2-materials"');
     expect(detail).toContain("ProductResearchDecisionPanel");
     expect(detail).toContain("/listing-studio?taskId=${encodeURIComponent(record.id)}");
     expect(detail).toContain("/image-studio?taskId=${encodeURIComponent(record.id)}");
     expect(detail).toContain("AI Listing 草稿已生成（未人工核实，暂不可发布）。");
     expect(detail).toContain("发布前需人工确认");
-    expect(detail).toContain("前往 Listing Studio 人工核对");
+    expect(detail).toContain("前往文案工作台确认资料");
     expect(detail).not.toContain("/prototype");
   });
 

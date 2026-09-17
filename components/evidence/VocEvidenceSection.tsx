@@ -261,6 +261,77 @@ export function parseVocEvidenceView(value: unknown): VocEvidenceView | null {
   };
 }
 
+export type VocCollectPreviewView = {
+  previewId: string;
+  items: Array<{
+    asin: string;
+    role: "current_candidate" | "competitor";
+    rating: number | null;
+    date: string | null;
+    title: string;
+    duplicate: boolean;
+  }>;
+  pageResults: Array<{
+    asin: string;
+    status: string;
+    note: string | null;
+    extractedCount: number;
+    reviewNodeCount?: number;
+    finalUrl?: string;
+    pageTitle?: string;
+    waitElapsedMs?: number;
+    retryAttempt?: number;
+    scrollTriggered?: boolean;
+    pageStatus?: string | null;
+  }>;
+  capturedAt: string;
+  expiresAt?: string;
+};
+
+export function parseVocCollectPreviewView(value: unknown): VocCollectPreviewView | null {
+  if (!isRecord(value)) return null;
+  const previewId = asString(value.previewId);
+  if (!previewId) return null;
+  const rawItems = Array.isArray(value.items) ? value.items : [];
+  const items = rawItems.map((raw): VocCollectPreviewView["items"][number] | null => {
+    if (!isRecord(raw)) return null;
+    const role = raw.role === "competitor" ? "competitor" : "current_candidate";
+    return {
+      asin: asString(raw.asin),
+      role,
+      rating: asNumber(raw.rating),
+      date: raw.date === null || raw.date === undefined ? null : asString(raw.date) || null,
+      title: asString(raw.title),
+      duplicate: raw.duplicate === true,
+    };
+  }).filter((item): item is VocCollectPreviewView["items"][number] => item !== null);
+  const rawPages = Array.isArray(value.pageResults) ? value.pageResults : [];
+  const pageResults = rawPages.map((raw): VocCollectPreviewView["pageResults"][number] | null => {
+    if (!isRecord(raw)) return null;
+    return {
+      asin: asString(raw.asin),
+      status: asString(raw.status, "unknown"),
+      note: raw.note === null || raw.note === undefined ? null : asString(raw.note) || null,
+      extractedCount: asNumber(raw.extractedCount) ?? 0,
+      reviewNodeCount: asNumber(raw.reviewNodeCount) ?? 0,
+      finalUrl: asString(raw.finalUrl),
+      pageTitle: asString(raw.pageTitle),
+      waitElapsedMs: asNumber(raw.waitElapsedMs) ?? 0,
+      retryAttempt: asNumber(raw.retryAttempt) ?? 0,
+      scrollTriggered: raw.scrollTriggered === true,
+      pageStatus: raw.pageStatus === null || raw.pageStatus === undefined ? null : asString(raw.pageStatus) || null,
+    };
+  }).filter((page): page is VocCollectPreviewView["pageResults"][number] => page !== null);
+
+  return {
+    previewId,
+    items,
+    pageResults,
+    capturedAt: asString(value.capturedAt, new Date().toISOString()),
+    expiresAt: value.expiresAt === null || value.expiresAt === undefined ? undefined : asString(value.expiresAt),
+  };
+}
+
 /* ── 展示工具 ── */
 
 const STRENGTH_LABEL: Record<VocThemeView["strength"], string> = {
@@ -503,7 +574,7 @@ export function resolveVocAsinInput(
 
 /** 轮 12：当前商品未采到评论时的诚实空态（不再诱导换商品）。 */
 export function noReviewsEmptyMessage(): string {
-  return "当前商品暂未采到公开评论，可重试或粘贴该商品评论。";
+  return "评论尚未完成提取，可重试或粘贴该商品评论。";
 }
 export function VocEvidenceSection({
   taskId,
@@ -512,7 +583,9 @@ export function VocEvidenceSection({
   analysis,
   storageVersion,
   capability,
+  pendingPreview,
   onChanged,
+  showCollectTrigger = true,
 }: {
   taskId: string;
   /** Package C：任务绑定的商品 ASIN（角色=当前商品时预填） */
@@ -522,7 +595,11 @@ export function VocEvidenceSection({
   storageVersion: { resultJsonHash: string; updatedAt: string } | null;
   /** 浏览器采集能力（服务端 DTO；自动采集评论依赖它；粘贴导入与 VOC 分析不受影响） */
   capability?: AcquisitionCapabilityView | null;
+  /** 服务端已就绪的待确认评论预览（Hydration 契约） */
+  pendingPreview?: VocCollectPreviewView | null;
   onChanged: () => void;
+  /** 统一由研究资料编排入口触发评论采集时，隐藏局部采集入口。 */
+  showCollectTrigger?: boolean;
 }) {
   const [importOpen, setImportOpen] = useState(false);
   const [showHistoricEnglish, setShowHistoricEnglish] = useState(false);
@@ -552,20 +629,26 @@ export function VocEvidenceSection({
   const demoMode = getAccessMode() === "demo";
   const canCollectReviews = capability?.state === "available"
     || (capability?.state === "local_env_required" && demoMode);
-  const [collectPreview, setCollectPreview] = useState<{
-    previewId: string;
-    items: Array<{
-      asin: string;
-      role: "current_candidate" | "competitor";
-      rating: number | null;
-      date: string | null;
-      title: string;
-      duplicate: boolean;
-    }>;
-    pageResults: Array<{ asin: string; status: string; note: string | null; extractedCount: number }>;
-    capturedAt: string;
-  } | null>(null);
+  const [collectPreview, setCollectPreview] = useState<VocCollectPreviewView | null>(null);
   const [collectSelected, setCollectSelected] = useState<Set<number>>(new Set());
+  const userDismissedPreviewRef = useRef<string | null>(null);
+
+  // 服务端 Pending Preview 水合（Hydration）：用户从待确认入口进入或刷新页面时恢复
+  useEffect(() => {
+    if (!evidence && pendingPreview) {
+      if (userDismissedPreviewRef.current !== pendingPreview.previewId) {
+        setCollectPreview(pendingPreview);
+        const selected = new Set<number>();
+        pendingPreview.items.forEach((item, index) => {
+          if (!item.duplicate) {
+            selected.add(index);
+          }
+        });
+        setCollectSelected(selected);
+        setCollectOpen(true);
+      }
+    }
+  }, [evidence, pendingPreview]);
 
   // Package C：ASIN 预填——角色=当前商品且任务有 ASIN 时，填入并跟随任务 ASIN 更新
   useEffect(() => {
@@ -761,7 +844,7 @@ export function VocEvidenceSection({
         signal: AbortSignal.timeout(150_000),
       });
       const json = await res.json() as
-        | { ok: true; data: { preview: { previewId: string; items: Array<{ asin: string; role: "current_candidate" | "competitor"; rating: number | null; date: string | null; title: string; duplicate: boolean }>; pageResults: Array<{ asin: string; status: string; note: string | null; extractedCount: number }>; capturedAt: string }; demo?: boolean } }
+        | { ok: true; data: { preview: { previewId: string; items: Array<{ asin: string; role: "current_candidate" | "competitor"; rating: number | null; date: string | null; title: string; duplicate: boolean }>; pageResults: VocCollectPreviewView["pageResults"]; capturedAt: string }; demo?: boolean } }
         | { ok: false; error?: { code?: string; message?: string } };
       if (!res.ok || !json.ok) {
         const code = (json as { error?: { code?: string } }).error?.code ?? "";
@@ -887,14 +970,16 @@ export function VocEvidenceSection({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={busy || analyzing || collecting || !canCollectReviews}
-              onClick={() => { setCollectOpen((open) => !open); setError(""); }}
-              className="inline-flex items-center gap-1 rounded-lg border border-sky-300 bg-white px-3 py-1.5 text-sm font-semibold text-sky-700 hover:bg-sky-50 disabled:opacity-50"
-            >
-              <BarChart3 className="size-4" />采集评论
-            </button>
+            {showCollectTrigger ? (
+              <button
+                type="button"
+                disabled={busy || analyzing || collecting || !canCollectReviews}
+                onClick={() => { setCollectOpen((open) => !open); setError(""); }}
+                className="inline-flex items-center gap-1 rounded-lg border border-sky-300 bg-white px-3 py-1.5 text-sm font-semibold text-sky-700 hover:bg-sky-50 disabled:opacity-50"
+              >
+                <BarChart3 className="size-4" />采集评论
+              </button>
+            ) : null}
             <button
               type="button"
               disabled={busy || analyzing || collecting}
@@ -1058,13 +1143,28 @@ export function VocEvidenceSection({
                   <p key={page.asin} className="text-xs text-slate-600">
                     ASIN {page.asin}：
                     {page.status === "ok" ? `提取 ${page.extractedCount} 条`
-                      : page.status === "blocked_redirect" ? "需要登录/验证，未提取（系统不绕过登录墙）"
-                        : page.status === "no_reviews_extracted" ? "未发现公开评论片段"
-                          : `采集异常（${page.note ?? "未知"}）`}
+                      : page.status === "blocked_redirect" ? "页面导航被安全白名单阻断，未判定为登录墙"
+                        : page.status === "login_required" ? "需要登录，未提取（系统不绕过登录墙）"
+                        : page.status === "captcha_required" ? "需要完成验证码，未提取（系统不绕过验证码）"
+                          : page.status === "confirmed_no_reviews" ? "页面明确显示无公开评论"
+                            : page.status === "extraction_empty" || page.status === "no_reviews_extracted" ? "评论片段未完成提取，无法确认无评论"
+                            : page.status === "page_error" || page.status === "page_unknown" ? "页面不可识别，未提取"
+                              : `采集异常（${page.note ?? "未知"}）`}
                   </p>
                 ))}
                 {collectPreview.items.length === 0 ? (
-                  <p className="mt-2 text-sm text-amber-700">{noReviewsEmptyMessage()}（也可以改用「粘贴导入」粘贴该商品公开评论。）</p>
+                  <p className="mt-2 text-sm text-amber-700">
+                    {collectPreview.pageResults.some((page) => page.status === "blocked_redirect")
+                      ? "页面导航被安全白名单阻断，未判定为登录墙；请检查站点或网络后重试。"
+                      : collectPreview.pageResults.some((page) => page.status === "login_required")
+                        ? "需要登录后重试，系统不会绕过登录墙。"
+                      : collectPreview.pageResults.some((page) => page.status === "captcha_required")
+                        ? "需要完成验证码后重试，系统不会绕过验证码。"
+                        : collectPreview.pageResults.some((page) => page.status === "confirmed_no_reviews")
+                          ? "页面明确显示暂无公开评论。"
+                          : "评论模块未完成提取，暂时无法确认是否无评论，请重试。"}
+                    （也可以改用「粘贴导入」粘贴该商品公开评论。）
+                  </p>
                 ) : (
                   <>
                     <p className="mt-2 text-xs font-semibold text-slate-700">
@@ -1105,7 +1205,13 @@ export function VocEvidenceSection({
                       </button>
                       <button
                         type="button"
-                        onClick={() => { setCollectPreview(null); setCollectSelected(new Set()); }}
+                        onClick={() => {
+                          if (collectPreview) {
+                            userDismissedPreviewRef.current = collectPreview.previewId;
+                          }
+                          setCollectPreview(null);
+                          setCollectSelected(new Set());
+                        }}
                         className="text-xs font-semibold text-slate-400 hover:text-slate-600"
                       >
                         取消

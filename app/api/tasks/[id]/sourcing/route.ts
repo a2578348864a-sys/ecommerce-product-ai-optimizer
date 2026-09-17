@@ -28,6 +28,8 @@ import {
   takeSourcingPreview,
   peekSourcingPreview,
   consumeSourcingPreview,
+  findPendingSourcingPreview,
+  sourcingPreviewSubjectKey,
 } from "@/lib/server/sourcingEvidence";
 import {
   SOURCING_CLI_DRIVER_VERSION,
@@ -41,6 +43,10 @@ import {
   acquireByImage,
   normalizeImageAcquisitionError,
 } from "@/lib/server/sourcingImageAcquisition";
+import { getTaskProductImageBuffer } from "@/lib/server/taskProductImage";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   SourcingAcquisitionError,
   type AcquisitionCandidate,
@@ -91,6 +97,17 @@ function toStorageVersion(snapshot: { resultJson: string; updatedAt: Date | stri
     updatedAt: snapshot.updatedAt instanceof Date
       ? snapshot.updatedAt.toISOString()
       : String(snapshot.updatedAt),
+  };
+}
+
+function toPendingPreviewDto(preview: ReturnType<typeof findPendingSourcingPreview>) {
+  if (!preview) return null;
+  return {
+    previewId: preview.previewId,
+    method: preview.method,
+    query: preview.query,
+    candidates: preview.candidates,
+    expiresAt: preview.expiresAt,
   };
 }
 
@@ -226,6 +243,7 @@ export async function GET(
   try {
     const evidence = await getSourcingEvidence(resolved.context, id);
     const snapshot = await readSourcingEvidenceSnapshot(resolved.context, id);
+    const pendingPreview = toPendingPreviewDto(findPendingSourcingPreview(id, sourcingPreviewSubjectKey(resolved.context)));
     // Acquisition Capability（§16/§17）：非本地 runtime 直接返回 local_env_required，
     // 不触发 CLI/bridge 探测（避免公网反复 spawn/探测）；已保存证据仍正常读取。
     if (!isLocalAcquisitionEnabled()) {
@@ -234,6 +252,7 @@ export async function GET(
         ok: true,
         data: {
           evidence,
+          pendingPreview,
           storageVersion: toStorageVersion(snapshot),
           toolStatus: {
             loggedIn: false,
@@ -258,6 +277,7 @@ export async function GET(
       ok: true,
       data: {
         evidence,
+        pendingPreview,
         storageVersion: toStorageVersion(snapshot),
         toolStatus: {
           ...login,
@@ -304,7 +324,19 @@ async function probeImageCapability(): Promise<{
       bridge.start(process.env),
       new Promise((resolve) => setTimeout(resolve, 3_000)),
     ]);
-    const status = await bridge.getStatus();
+    let status = await bridge.getStatus();
+    if (!status.extensionSeen) {
+      const deadline = Date.now() + 1200;
+      while (Date.now() < deadline) {
+        await new Promise((resolveWait) => setTimeout(resolveWait, 200));
+        try {
+          status = await bridge.getStatus();
+          if (status.extensionSeen) break;
+        } catch {
+          // ignore
+        }
+      }
+    }
     if (!status.extensionSeen) {
       return { extensionAvailable: false, versionCompatible: false, extensionSwVersion: null, reasonCode: "extension_not_seen" };
     }
@@ -395,10 +427,19 @@ export async function POST(
   // ── action=begin-keyword-login：R1——固定安全登录 capability（打开 1688 登录窗口）──
   if (action === "begin-keyword-login") {
     try {
-      await begin1688KeywordLogin();
+      const login = await begin1688KeywordLogin();
+      const hint =
+        login.visibility === "detected"
+          ? "1688 登录窗口已打开，请完成登录；完成后点击「重新检测」确认。"
+          : "已发起 1688 登录窗口，请查看桌面并完成登录；若未看到窗口，请检查任务栏后重试。";
       return jsonResponse({
         ok: true,
-        data: { started: true, hint: "已在电脑上打开 1688 登录窗口，请完成扫码；完成后点击「重新检测」确认登录。" },
+        data: {
+          started: login.started,
+          state: "login_window_requested",
+          visibility: login.visibility ?? "unknown",
+          hint,
+        },
       });
     } catch (error) {
       return errorResponseFrom(error);
@@ -501,10 +542,26 @@ export async function POST(
     const imageUrl = asString(bodyRecord.imageUrl);
     if (!imageUrl) return errorResponse(400, "invalid_image_url", "缺少候选图片链接。");
     if (imageUrl.length > 2_048) return errorResponse(400, "invalid_image_url", "图片链接过长。");
+    let localImagePath: string | undefined;
+    let tempDirToClean: string | undefined;
     try {
+      if (imageUrl.startsWith("/api/tasks/") || imageUrl.startsWith("/api/") || imageUrl.includes("/api/tasks/")) {
+        const taskImage = await getTaskProductImageBuffer(id);
+        if (!taskImage) {
+          return errorResponse(400, "invalid_image_url", "当前任务无可用商品图片素材。");
+        }
+        const tempDir = await mkdtemp(join(tmpdir(), "v35-sourcing-task-img-"));
+        tempDirToClean = tempDir;
+        const ext = taskImage.mimeType === "image/png" ? "png" : "jpg";
+        const tempFile = join(tempDir, `task-image.${ext}`);
+        await writeFile(tempFile, taskImage.buffer);
+        localImagePath = tempFile;
+      }
+
       // §48：job 绑定 actor 的任务与候选身份（candidateId 由任务派生）
       const { candidates, trace } = await acquireByImage({
-        imageUrl,
+        imageUrl: localImagePath ? undefined : imageUrl,
+        localImagePath,
         taskId: id,
         candidateId: `task:${id}`,
       });
@@ -543,7 +600,17 @@ export async function POST(
       });
     } catch (error) {
       const normalized = normalizeImageAcquisitionError(error);
+      if (normalized.diagnosticCode) {
+        console.error("[1688-image] acquisition failed", {
+          code: normalized.code,
+          diagnosticCode: normalized.diagnosticCode,
+        });
+      }
       return errorResponse(normalized.status, normalized.code, normalized.message);
+    } finally {
+      if (tempDirToClean) {
+        await rm(tempDirToClean, { recursive: true, force: true }).catch(() => undefined);
+      }
     }
   }
 

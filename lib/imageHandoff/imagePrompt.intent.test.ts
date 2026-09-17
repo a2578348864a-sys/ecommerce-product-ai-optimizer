@@ -285,3 +285,18 @@ describe("V4 Fact Authority — Prompt 事实层门禁", () => {
     expect(prompt).not.toContain("resultJson");
   });
 });
+describe("Provider creative-description boundary", () => {
+  it("lifestyle_in_use 在最终 Provider Prompt 中作为主用途，场景仅作辅助", () => {
+    const prompt = buildProductVisualPrompt(baseInput({
+      slotType: "lifestyle_in_use",
+      primaryPurpose: "lifestyle_in_use",
+      lifestyleScene: "home_lifestyle",
+      stylePresetId: "lifestyle_home",
+    }));
+    expect(prompt).toContain("PRIMARY CREATIVE PURPOSE: Lifestyle-in-use ecommerce image");
+    expect(prompt).toContain("CURRENT VISUAL SLOT: 真实生活使用场景图 (lifestyle_in_use)");
+    expect(prompt).toContain("SECONDARY SCENE: Home living environment as supporting context");
+    expect(prompt).not.toContain("PRIMARY CREATIVE PURPOSE: Selling-point infographic layout");
+  });
+
+});

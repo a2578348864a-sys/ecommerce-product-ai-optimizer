@@ -38,6 +38,8 @@ import type { RiskPrecheckInput, RiskReviewSnapshot } from "@/lib/riskReview";
 import { buildAgentRunSnapshot, buildListingPrepSnapshot } from "@/lib/agentRunSnapshot";
 import { buildDecisionCard } from "@/lib/decisionCard";
 import { DecisionCard as DecisionCardUI } from "@/components/DecisionCard";
+import { buildProductDevelopmentBrief } from "@/lib/productDevelopmentBrief";
+import { ProductDevelopmentBriefCard } from "@/components/evidence/ProductDevelopmentBriefCard";
 import { readJsonApiResponse } from "@/lib/client/safeApiResponse";
 import {
   clearAgentRunCandidateCaches,
@@ -179,7 +181,7 @@ type TimelineStep = {
 };
 
 type ResearchStage = {
-  key: "understanding" | "market" | "creative";
+  key: "understanding" | "market" | "supply_risk" | "decision" | "creative";
   title: string;
   description: string;
   completedContent: string;
@@ -253,35 +255,46 @@ const RESEARCH_STAGES: ResearchStage[] = [
   {
     key: "understanding",
     title: "商品理解",
-    description: "整理商品信息、用户场景和已有的基础市场信息。",
-    completedContent: "商品信息、用户场景和基础市场信息已整理。",
-    nextAction: "先确认商品是什么、面向谁，以及哪些信息仍需补充。",
-    actionLabel: "填写商品信息",
+    description: "整理商品信息、规格属性与用户使用场景。",
+    completedContent: "商品基础信息与用户画像已整理完成。",
+    nextAction: "确认商品基本属性与使用场景。",
+    actionLabel: "查看商品信息",
     actionHref: "#product-research-input",
     stepKeys: ["normalize"],
     icon: Search,
   },
   {
     key: "market",
-    title: "市场研究",
-    description: "查看市场机会、竞争情况和风险提示。",
-    completedContent: "市场机会、竞争情况和风险提示已整理。",
-    nextAction: "结合现有证据判断哪些方向值得继续人工研究。",
-    actionLabel: "开始市场研究",
+    title: "市场需求验证",
+    description: "研判痛点机会、搜索热度、市场规模与竞品壁垒。",
+    completedContent: "市场需求与竞争格局已验证完成。",
+    nextAction: "评估需求真实性与进入空间。",
+    actionLabel: "查看需求数据",
     actionHref: "#product-research-input",
-    stepKeys: ["market", "sourcing", "profit", "risk"],
+    stepKeys: ["market"],
     icon: Target,
   },
   {
-    key: "creative",
-    title: "创作准备",
-    description: "整理 Listing、关键词和图片需求，等待人工确认。",
-    completedContent: "Listing、关键词和图片需求草稿已整理。",
-    nextAction: "内容只作为草稿，不会自动保存、发布或上架。",
-    actionLabel: "保存后在任务详情准备",
+    key: "supply_risk",
+    title: "供应链与风险验证",
+    description: "核查1688货源成本、毛利测算与合规侵权风险预筛。",
+    completedContent: "货源成本、利润测算与合规风险已完成研判。",
+    nextAction: "核验供应链稳定性与合规底线。",
+    actionLabel: "查看供应链与风险",
+    actionHref: "#product-research-input",
+    stepKeys: ["sourcing", "profit", "risk"],
+    icon: ShieldAlert,
+  },
+  {
+    key: "decision",
+    title: "决策建议与拍板",
+    description: "生成推进/暂缓/放弃建议，人工拍板确认；完成后方可生成资产。",
+    completedContent: "决策建议已生成，等待人工确认拍板。",
+    nextAction: "决策确认后，下一步可在任务复盘生成 Listing 与图片资产。",
+    actionLabel: "前往决策拍板",
     actionHref: "/tasks",
     stepKeys: ["listing", "report", "manual"],
-    icon: Sparkles,
+    icon: ClipboardCheck,
   },
 ];
 
@@ -323,18 +336,18 @@ const PRODUCT_RESEARCH_DECISION_OPTIONS: Array<{
 }> = [
   {
     value: "creative_ready",
-    label: "进入创作准备",
-    description: "仅表示可以开始内容准备，不代表采购、盈利、合规或上架成立；不会自动创建 Listing、图片或发布任务。",
+    label: "建议推进开发（完成决策）",
+    description: "人工确认推进开发。决策完成后，方可开启 Listing 与图片资产生成；不代表自动采购或上架。",
   },
   {
     value: "needs_information",
-    label: "待补信息",
-    description: "记录仍缺少的证据和明确的下一步补充动作。",
+    label: "补充验证（暂缓）",
+    description: "记录仍缺少的证据和明确的下一步补充动作；暂不进入资产生成。",
   },
   {
     value: "abandoned",
-    label: "放弃研究",
-    description: "保留原因和历史，不删除 Candidate 或已有研究证据。",
+    label: "放弃开发（终止）",
+    description: "保留原因和历史，判定不值开发；资产生成已锁定。",
   },
 ];
 
@@ -657,6 +670,19 @@ export function AgentRunClient({
       humanDecision: humanDecisionDraft,
     });
   }, [result, sourceMeta, profitSnapshot, riskReviewSnapshot, manualChecked, manualReady, humanDecisionDraft]);
+
+  const productDevelopmentBrief = useMemo(() => {
+    if (!result) return null;
+    return buildProductDevelopmentBrief({
+      workflowResult: result,
+      profitSnapshot,
+      riskReviewSnapshot,
+      productName,
+      decisionStatus: candidateMode
+        ? compatibilityDecisionStatus(productResearchDecisionStatus)
+        : manualDecisionStatus,
+    });
+  }, [result, profitSnapshot, riskReviewSnapshot, productName, candidateMode, productResearchDecisionStatus, manualDecisionStatus]);
 
   const resetRun = useCallback(() => {
     setPhase("idle");
@@ -1178,19 +1204,19 @@ export function AgentRunClient({
           >
             <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
               <div>
-                <p className="linear-kicker">三阶段商品研究</p>
+                <p className="linear-kicker">四阶段商品决策研判</p>
                 <h2 id="agent-run-research-flow-title" className="mt-1 text-xl font-semibold tracking-tight text-slate-950">
-                  先理解，再研究，最后准备创作
+                  从需求、供应链到合规风险，辅助人工拍板
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-slate-500">
-                  页面只展示你需要的结论和下一步；系统内部步骤仅用于研究过程，不在此展示。
+                  页面只展示决策研判所需的结论和证据；人工拍板确认后方可准备后续 Listing 与图片资产。
                 </p>
               </div>
               <span className={`rounded-full border px-3 py-1 text-xs font-bold ${statusClass(phase === "failed" ? "failed" : needsManualReview ? "needs_manual_review" : isRunning ? "running" : "idle")}`}>
-                {phase === "failed" ? "研究未完成，可重新开始" : needsManualReview ? "等待人工确认" : isRunning ? "研究中" : "从商品理解开始"}
+                {phase === "failed" ? "研究未完成，可重新开始" : needsManualReview ? "等待人工拍板" : isRunning ? "研判中" : "从商品理解开始"}
               </span>
             </div>
-            <div className="grid gap-3 lg:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {RESEARCH_STAGES.map((stage, index) => (
                 <ResearchStageCard
                   key={stage.key}
@@ -1487,6 +1513,11 @@ export function AgentRunClient({
 
           {result && report ? (
             <>
+              {/* 商品开发决策卡 (Product Development Decision Brief) */}
+              {productDevelopmentBrief ? (
+                <ProductDevelopmentBriefCard brief={productDevelopmentBrief} className="mb-4" />
+              ) : null}
+
               {/* 商品研究结论（主阅读流）：先看结论，再展开过程细节 */}
               <section ref={summaryRef} className="surface-card border-teal-200 bg-gradient-to-b from-teal-50/80 to-white p-5 sm:p-6 scroll-mt-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-teal-600">商品研究结论 · {result.productName}</p>

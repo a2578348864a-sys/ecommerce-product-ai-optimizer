@@ -19,6 +19,7 @@ import {
 import {
   buildAmazonPageDiagnostic,
   buildAmazonPageDiagnosticDomExpression,
+  AMAZON_RETAIL_HOSTS,
   type AmazonPageClassification,
   type AmazonPageDiagnosticInput,
   type AmazonPageDomSignals,
@@ -289,7 +290,8 @@ export function validatePublicDomExpression(expression: string): void {
 function isAllowedAmazonHostUrl(value: string): boolean {
   try {
     const url = new URL(value);
-    return url.protocol === "https:" && (url.hostname === "www.amazon.com" || url.hostname === "amazon.com");
+    const hostname = url.hostname.toLowerCase().replace(/^www\./, "");
+    return url.protocol === "https:" && AMAZON_RETAIL_HOSTS.includes(hostname as (typeof AMAZON_RETAIL_HOSTS)[number]);
   } catch {
     return false;
   }

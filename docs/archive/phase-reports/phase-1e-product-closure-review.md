@@ -6,9 +6,9 @@
 
 - **复核时间**：2026-06-21
 - **复核人**：Claude（只读复核）
-- **origin/main HEAD**：`2c1558e`
-- **服务器 HEAD**：`0ba2860`（对齐 origin/main）
-- **服务器**：112.124.54.81
+- **origin/main HEAD**：`<redacted-hash>`
+- **服务器 HEAD**：`<redacted-hash>`（对齐 origin/main）
+- **服务器**：your-server-ip
 - **PM2**：online
 - **生产代码**：Phase 1E 最新
 
@@ -16,13 +16,13 @@
 
 | 指标 | 值 |
 |------|-----|
-| 服务器 git HEAD | `0ba2860`（干净，对齐 origin/main） |
+| 服务器 git HEAD | `<redacted-hash>`（干净，对齐 origin/main） |
 | PM2 | online |
 | /api/health | `{"ok":true}` |
 
 ### 页面（全部 200）
 
-| 页面 | 本机 3005 | 公网 |
+| 页面 | 本机 <PORT> | 公网 |
 |------|----------|------|
 | `/` | 200 | 200 |
 | `/opportunities` | 200 | 200 |
@@ -95,7 +95,7 @@
 | 调用 AI | **否** ✅ — 评分纯规则（radarScore.ts） |
 | 支持数据源 | HTML / RSS / sitemap / 公开 URL |
 | 不支持数据源 | 登录态、验证码、Cookie、代理池、强反爬平台 |
-| SSRF 阻断 | ✅ 127.0.0.1 / localhost / 169.254.169.254 全部阻止 |
+| SSRF 阻断 | ✅ 127.0.0.1 / localhost / your-server-ip 全部阻止 |
 | robots.txt | ✅ 自动检查 Disallow |
 | 超时 | ✅ 10 秒 |
 | 响应大小限制 | ✅ 1MB |
@@ -112,7 +112,7 @@
 | Sitemap (w3.org) | ok=true, 8 candidates, 无 500 ✅ |
 | SSRF 127.0.0.1 | blocked ✅ |
 | SSRF localhost | blocked ✅ |
-| SSRF 169.254.169.254 | blocked ✅ |
+| SSRF your-server-ip | blocked ✅ |
 | 数据库写入 | 0 条（确认不变） ✅ |
 | AI 调用 | 0 次 ✅ |
 

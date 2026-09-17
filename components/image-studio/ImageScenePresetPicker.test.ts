@@ -5,6 +5,19 @@ import { ImageScenePresetPicker } from "@/components/image-studio/ImageScenePres
 import { normalizeStudioImageCreativeIntent } from "@/lib/studioImageCreativeIntent";
 
 describe("ImageScenePresetPicker lifestyle state contract", () => {
+  it("标准模板入口展示七个用户可理解的图片用途，并保留使用场景映射", () => {
+    const html = renderToStaticMarkup(createElement(ImageScenePresetPicker, {
+      value: { primaryImagePurpose: "white_studio", lifestyleScene: "none", customImagePurpose: "" },
+      onChange: () => undefined,
+    }));
+
+    expect((html.match(/data-template-id=/g) ?? []).length).toBe(7);
+    for (const label of ["白底主图", "卖点展示", "尺寸规格", "细节特写", "使用场景", "包装清单", "使用步骤"]) {
+      expect(html).toContain(label);
+    }
+    expect(html).toContain('data-template-id="lifestyle_in_use"');
+  });
+
   it("白底禁用生活场景并显示清楚原因", () => {
     const html = renderToStaticMarkup(createElement(ImageScenePresetPicker, {
       value: { primaryImagePurpose: "white_studio", lifestyleScene: "none", customImagePurpose: "" },
@@ -16,11 +29,24 @@ describe("ImageScenePresetPicker lifestyle state contract", () => {
     expect(html).toContain("切换到其他图片用途后即可选择。");
   });
 
+  it("使用场景模板写入独立主用途并选中对应入口", () => {
+    const html = renderToStaticMarkup(createElement(ImageScenePresetPicker, {
+      value: { primaryImagePurpose: "lifestyle_in_use", lifestyleScene: "home_lifestyle", customImagePurpose: "" },
+      onChange: () => undefined,
+    }));
+
+    expect(html).toContain('data-template-id="lifestyle_in_use" data-selected="true"');
+    expect(html).toContain('value="lifestyle_in_use"');
+    expect(html).not.toContain('data-template-id="selling_points" data-selected="true"');
+  });
+
   it("白底到细节图可选择户外场景，再切回白底会重置且禁用", () => {
     const detail = normalizeStudioImageCreativeIntent({
       primaryImagePurpose: "detail_closeup",
       lifestyleScene: "none",
       customImagePurpose: "",
+      // 显式选择的视觉方向：归一化只保留，不注入默认值（共享意图对象不得带 Studio 专属字段）。
+      stylePresetId: "premium_editorial",
     });
     const outdoor = normalizeStudioImageCreativeIntent({ ...detail, lifestyleScene: "outdoor_travel" });
     const white = normalizeStudioImageCreativeIntent({ ...outdoor, primaryImagePurpose: "white_studio" });
@@ -31,6 +57,8 @@ describe("ImageScenePresetPicker lifestyle state contract", () => {
       primaryImagePurpose: "white_studio",
       lifestyleScene: "none",
       customImagePurpose: "",
+      // 视觉方向与图片用途正交：切回白底不会重置用户显式选择的风格。
+      stylePresetId: "premium_editorial",
     });
 
     const detailHtml = renderToStaticMarkup(createElement(ImageScenePresetPicker, {

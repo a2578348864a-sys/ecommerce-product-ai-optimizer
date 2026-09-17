@@ -9,6 +9,8 @@ import { createHash } from "node:crypto";
 import { NextRequest } from "next/server";
 import { createTrustedSandboxTask, getSandboxTask, updateSandboxTaskResultJson } from "@/lib/server/demoSandbox";
 import { GET, POST } from "./route";
+import { buildDemoBrowserCollectPreview } from "@/lib/server/demoAcquisitionSamples";
+import { findPendingBrowserEvidencePreview, resetBrowserEvidencePreviewStoreForTests, storeBrowserEvidencePreview } from "@/lib/server/browserEvidenceCollect";
 
 vi.hoisted(() => {
   const { join } = require("node:path");
@@ -83,9 +85,11 @@ beforeEach(async () => {
   authState.context = { mode: "demo", demoAccessId: DEMO };
   const task = await createTrustedSandboxTask(DEMO, {
     title: "THERMOS Demo",
+    productUrl: "https://www.amazon.com/dp/B0SAMPLE01",
     resultJson: JSON.stringify(thermosResultJson()),
   });
   taskId = task.id;
+  resetBrowserEvidencePreviewStoreForTests();
 });
 
 afterEach(() => {
@@ -104,6 +108,242 @@ describe("GET /fact-candidates", () => {
     expect(fields).toContain("category");
     expect(fields).not.toContain("voc_theme");
     expect(body.data.confirmed).toEqual([]);
+  });
+
+  it("研究编排生成的 Amazon Pending Preview 会进入待确认候选，并保留 Amazon 来源引用", async () => {
+    const capturedAt = new Date().toISOString();
+    storeBrowserEvidencePreview({
+      evidenceId: "bev_preview_fact_bridge_001",
+      preview: buildDemoBrowserCollectPreview("B0SAMPLE01"),
+      capturedAt,
+      expiresAt: Date.now() + 15 * 60 * 1000,
+      subjectKey: `visitor:${DEMO}`,
+      taskId,
+      asin: "B0SAMPLE01",
+    });
+    const response = await getJson();
+    const body = await response.json();
+    expect(body.ok).toBe(true);
+    const title = body.data.candidates.find((c: { field: string }) => c.field === "brand");
+    expect(title).toBeTruthy();
+    expect(title.sourceKind).toBe("seller_sprite_product_facts");
+    const amazonCandidate = body.data.candidates.find((c: { alternateSources?: Array<{ sourceKind: string; sourceRef: string }> }) =>
+      c.alternateSources?.some((source) => source.sourceKind === "amazon_browser_evidence"),
+    );
+    expect(amazonCandidate).toBeTruthy();
+    expect(amazonCandidate.alternateSources[0].sourceRef).toContain("browserEvidence.snapshots[0].fields");
+  });
+
+  it("确认 Pending Amazon 预览候选后移入已确认，并保留 Amazon provenance", async () => {
+    // 使用只含任务绑定 URL 的最小 resultJson，确保 price 候选唯一来自 Amazon Preview。
+    await updateSandboxTaskResultJson(DEMO, taskId, JSON.stringify({}));
+    storeBrowserEvidencePreview({
+      evidenceId: "bev_preview_fact_bridge_confirm_001",
+      preview: buildDemoBrowserCollectPreview("B0SAMPLE01"),
+      capturedAt: new Date().toISOString(),
+      expiresAt: Date.now() + 15 * 60 * 1000,
+      subjectKey: `visitor:${DEMO}`,
+      taskId,
+      asin: "B0SAMPLE01",
+    });
+
+    const get1 = await (await getJson()).json();
+    const price = get1.data.candidates.find((c: { field: string }) => c.field === "price");
+    expect(price?.sourceKind).toBe("amazon_browser_evidence");
+    const post = await postJson({
+      selections: [{ candidateId: price.candidateId, confirmed: true, value: price.value }],
+      expectedStorageVersion: get1.data.storageVersion,
+    });
+    expect(post.status).toBe(200);
+
+    const get2 = await (await getJson()).json();
+    expect(get2.data.candidates.some((c: { candidateId: string }) => c.candidateId === price.candidateId)).toBe(false);
+    const confirmed = get2.data.confirmed.find((c: { candidateId: string }) => c.candidateId === price.candidateId);
+    expect(confirmed?.sourceKind).toBe("amazon_browser_evidence");
+    expect(confirmed?.sourceRef).toContain("browserEvidence.snapshots[0].fields.price");
+  });
+
+  it("全部 Amazon Preview 候选完成确认后，按 Preview 身份消费且持久化闭环记录", async () => {
+    await updateSandboxTaskResultJson(DEMO, taskId, JSON.stringify({}));
+    const previewId = "bev_preview_fact_bridge_resolution_001";
+    storeBrowserEvidencePreview({
+      evidenceId: previewId,
+      preview: buildDemoBrowserCollectPreview("B0SAMPLE01"),
+      capturedAt: new Date().toISOString(),
+      expiresAt: Date.now() + 15 * 60 * 1000,
+      subjectKey: `visitor:${DEMO}`,
+      taskId,
+      asin: "B0SAMPLE01",
+    });
+
+    const get1 = await (await getJson()).json();
+    const amazonCandidates = get1.data.candidates.filter((candidate: { sourceKind: string }) =>
+      candidate.sourceKind === "amazon_browser_evidence" || candidate.sourceKind === "amazon_product_info",
+    );
+    expect(amazonCandidates.length).toBeGreaterThan(0);
+    const post = await postJson({
+      selections: amazonCandidates.map((candidate: { candidateId: string; value: string | number }) => ({
+        candidateId: candidate.candidateId,
+        confirmed: true,
+        value: candidate.value,
+      })),
+      expectedStorageVersion: get1.data.storageVersion,
+    });
+    expect(post.status).toBe(200);
+    expect(findPendingBrowserEvidencePreview({
+      subjectKey: `visitor:${DEMO}`,
+      taskId,
+      asin: "B0SAMPLE01",
+    })).toBeNull();
+
+    const stored = getSandboxTask(DEMO, taskId);
+    const result = JSON.parse(stored!.resultJson) as {
+      factCandidates?: { amazonPreviewResolutions?: Array<{ previewId: string; taskId: string; asin: string; subjectKey: string; candidateRefs: unknown[] }> };
+    };
+    const resolution = result.factCandidates?.amazonPreviewResolutions?.[0];
+    expect(resolution?.previewId).toBe(previewId);
+    expect(resolution?.taskId).toBe(taskId);
+    expect(resolution?.asin).toBe("B0SAMPLE01");
+    expect(resolution?.subjectKey).toBe(`visitor:${DEMO}`);
+    expect(resolution?.candidateRefs.length).toBe(amazonCandidates.length);
+
+    const get2 = await (await getJson()).json();
+    expect(get2.data.confirmed).toEqual(expect.arrayContaining(
+      amazonCandidates.map((candidate: { candidateId: string }) => expect.objectContaining({ candidateId: candidate.candidateId })),
+    ));
+  });
+
+  it("同字段合并后以主候选确认，也能按 alternate Amazon provenance 收口 Preview", async () => {
+    await updateSandboxTaskResultJson(DEMO, taskId, JSON.stringify({
+      productName: "Stainless Steel Toaster",
+      candidateAnalysisContext: {
+        facts: { productFacts: { productTitle: "Stainless Steel Toaster" } },
+      },
+    }));
+    const preview = buildDemoBrowserCollectPreview("B0SAMPLE01");
+    preview.extraction.fields.title.value = null;
+    preview.extraction.fields.price.value = null;
+    preview.extraction.fields.bsr.value = null;
+    preview.extraction.fields.rating.value = null;
+    preview.extraction.fields.reviews.value = null;
+    preview.productInfo = {
+      schemaVersion: "amazon-product-info-extraction.v1",
+      entityBound: true,
+      bindingReason: null,
+      rows: [{ label: "Material", value: "Stainless Steel", sourceSection: "productOverview_feature_div" }],
+      canonicalFacts: { material: "Stainless Steel" },
+      capturedAt: new Date().toISOString(),
+      collectorVersion: "test",
+    };
+    const previewId = "bev_preview_alternate_source_001";
+    storeBrowserEvidencePreview({
+      evidenceId: previewId,
+      preview,
+      capturedAt: new Date().toISOString(),
+      expiresAt: Date.now() + 15 * 60 * 1000,
+      subjectKey: `visitor:${DEMO}`,
+      taskId,
+      asin: "B0SAMPLE01",
+    });
+    const get1 = await (await getJson()).json();
+    const material = get1.data.candidates.find((candidate: { field: string }) => candidate.field === "material");
+    expect(material?.sourceKind).toBe("product_title");
+    expect(material?.alternateSources?.some((source: { sourceKind: string }) => source.sourceKind === "amazon_product_info")).toBe(true);
+    const post = await postJson({
+      selections: [{ candidateId: material.candidateId, confirmed: true, value: material.value }],
+      expectedStorageVersion: get1.data.storageVersion,
+    });
+    expect(post.status).toBe(200);
+    expect(findPendingBrowserEvidencePreview({
+      subjectKey: `visitor:${DEMO}`,
+      taskId,
+      asin: "B0SAMPLE01",
+    })).toBeNull();
+    const stored = getSandboxTask(DEMO, taskId);
+    const result = JSON.parse(stored!.resultJson) as { factCandidates?: { amazonPreviewResolutions?: Array<{ previewId: string }> } };
+    expect(result.factCandidates?.amazonPreviewResolutions?.some((item) => item.previewId === previewId)).toBe(true);
+    const get2 = await (await getJson()).json();
+    const confirmed = get2.data.confirmed.find((candidate: { field: string }) => candidate.field === "material");
+    expect(confirmed?.alternateSources?.some((source: { sourceKind: string; sourceRef: string }) => (
+      source.sourceKind === "amazon_product_info"
+      && source.sourceRef.includes("browserEvidence.snapshots[0].productInfo.material")
+    ))).toBe(true);
+  });
+
+  it("同值已确认事实可单独确认 Amazon 新来源并消费 Preview", async () => {
+    await updateSandboxTaskResultJson(DEMO, taskId, JSON.stringify({
+      productName: "Stainless Steel Toaster",
+      candidateAnalysisContext: { facts: { productFacts: { productTitle: "Stainless Steel Toaster" } } },
+      factCandidates: {
+        schema: "fact-candidates.v1",
+        version: 1,
+        confirmed: [{
+          candidateId: "product_title:material",
+          field: "material",
+          label: "材质",
+          value: "Stainless Steel",
+          sourceKind: "product_title",
+          sourceRef: "product_title.derived",
+          humanConfirmationRequired: true,
+          confirmedAt: new Date().toISOString(),
+          confirmedBy: `visitor:${DEMO}`,
+        }],
+        updatedAt: new Date().toISOString(),
+      },
+    }));
+    const preview = buildDemoBrowserCollectPreview("B0SAMPLE01");
+    preview.extraction.fields.title.value = null;
+    preview.extraction.fields.price.value = null;
+    preview.extraction.fields.bsr.value = null;
+    preview.extraction.fields.rating.value = null;
+    preview.extraction.fields.reviews.value = null;
+    preview.productInfo = {
+      schemaVersion: "amazon-product-info-extraction.v1",
+      entityBound: true,
+      bindingReason: null,
+      rows: [{ label: "Material", value: "Stainless Steel", sourceSection: "productOverview_feature_div" }],
+      canonicalFacts: { material: "Stainless Steel" },
+      capturedAt: new Date().toISOString(),
+      collectorVersion: "test",
+    };
+    const previewId = "bev_preview_source_confirmation_001";
+    storeBrowserEvidencePreview({
+      evidenceId: previewId,
+      preview,
+      capturedAt: new Date().toISOString(),
+      expiresAt: Date.now() + 15 * 60 * 1000,
+      subjectKey: `visitor:${DEMO}`,
+      taskId,
+      asin: "B0SAMPLE01",
+    });
+    const review = await (await getJson()).json();
+    expect(review.data.candidates.some((candidate: { field: string }) => candidate.field === "material")).toBe(false);
+    expect(review.data.amazonSourceReview.previewId).toBe(previewId);
+    expect(review.data.amazonSourceReview.matchingConfirmedFacts).toHaveLength(1);
+    const confirmSource = await postJson({
+      amazonSourceConfirmation: { previewId },
+      expectedStorageVersion: review.data.storageVersion,
+    });
+    expect(confirmSource.status).toBe(200);
+    const sourceBody = await confirmSource.json();
+    expect(sourceBody.data.alreadyConfirmedCount).toBe(1);
+    expect(findPendingBrowserEvidencePreview({ subjectKey: `visitor:${DEMO}`, taskId, asin: "B0SAMPLE01" })).toBeNull();
+    const stored = getSandboxTask(DEMO, taskId);
+    const storedResult = JSON.parse(stored!.resultJson) as {
+      factCandidates?: {
+        confirmed?: Array<{ field: string; alternateSources?: Array<{ sourceKind: string; sourceRef: string }> }>;
+        amazonPreviewResolutions?: Array<{ previewId: string }>;
+      };
+    };
+    const storedMaterial = storedResult.factCandidates?.confirmed?.find((candidate) => candidate.field === "material");
+    expect(storedMaterial?.alternateSources?.some((source) => source.sourceKind === "amazon_product_info")).toBe(true);
+    expect(storedResult.factCandidates?.amazonPreviewResolutions?.some((item) => item.previewId === previewId)).toBe(true);
+
+    const repeat = await postJson({
+      amazonSourceConfirmation: { previewId },
+      expectedStorageVersion: toStorageVersion(),
+    });
+    expect(repeat.status).toBe(200);
   });
 });
 

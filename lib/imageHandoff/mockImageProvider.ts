@@ -83,7 +83,7 @@ function buildCompositionDraft(input: ImageGenerationInput): Record<string, unkn
       imageMaterialNeeds: [],
     },
     handoffMode: modeLabel,
-    compositionSummary: cleanText(`Abstract composition concept for listing material planning. Background direction, scene mood, whitespace areas and colour direction only. ${prefs.backgroundPreference ?? ""}`.trim()),
+    compositionSummary: cleanText(`构图概念草稿：用于探索画面背景方向、场景氛围与留白布局。${prefs.backgroundPreference ? ` 背景偏好：${prefs.backgroundPreference}` : ""}`.trim()),
   };
 }
 
@@ -116,7 +116,7 @@ function buildVisualDraft(input: ImageGenerationInput): Record<string, unknown> 
     },
     handoffMode: "product_visual_draft",
     approvedReferenceFingerprint: ref?.referenceFingerprint,
-    compositionSummary: cleanText("Product visual draft derived strictly from the approved visual reference."),
+    compositionSummary: cleanText("已基于批准的视觉参考生成，严格锁定商品真实外观与关键特征。"),
   };
 }
 
@@ -170,13 +170,13 @@ export function createMockImageProvider() {
         let draft: Record<string, unknown> = {
           ...baseDraft,
           id: `${String(baseDraft.id)}-${options.tag ?? "candidate"}-${index + 1}`,
-          compositionSummary: `${String(baseDraft.compositionSummary)} Candidate ${index + 1}.`,
+          compositionSummary: `${String(baseDraft.compositionSummary)} 方案 ${index + 1}。`,
         };
         if (options.forceMissingReference && input.mode === "product_visual_draft") {
           draft = { ...draft, approvedReferenceFingerprint: undefined };
         }
         if (options.forceProductAssertion && input.mode === "composition_concept") {
-          draft = { ...draft, compositionSummary: "Real product photo with exact colour and material as photographed." };
+          draft = { ...draft, compositionSummary: "商品真实照片：严格展示真实颜色与材质细节。" };
         }
         if (options.persist) {
           const [{ default: sharp }, { storeAiImage }] = await Promise.all([

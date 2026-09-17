@@ -14,6 +14,11 @@ import {
 import { buildRequestFingerprint } from "@/lib/creativeHandoffRequestLedger";
 import type { ProductCreativeHandoffCandidate } from "@/lib/productCreativeHandoff";
 import { ProductCreativeHandoffError } from "@/lib/productCreativeHandoff";
+import { readBrowserEvidenceTaskAsin } from "@/lib/server/browserEvidence";
+import {
+  resolveAmazonFactEnrichmentSelections,
+  AmazonFactEnrichmentPreviewError,
+} from "@/lib/server/amazonFactEnrichment/previewStore";
 import {
   isManualFactField,
   normalizeManualFactValue,
@@ -46,6 +51,7 @@ const CREATE_TOP_LEVEL_FIELDS = new Set([
   "selectedFactCandidateIds",
   "selectedVisualReferenceCandidateIds",
   "manualConfirmedFacts",
+  "amazonFactEnrichmentSelection",
   "confirmed",
   "creativePreferences",
 ]);
@@ -184,6 +190,14 @@ function parseRequestId(value: unknown): string | null {
   if (typeof value !== "string" || value.length === 0 || value.length > 128) return null;
   if (!UUID_PATTERN.test(value)) return null;
   return value.toLowerCase();
+}
+
+function parseAmazonFactEnrichmentSelection(value: unknown): { evidenceId: string; selectionIds: string[] } | null {
+  if (!isRecord(value) || Object.keys(value).length !== 2) return null;
+  const evidenceId = parseRequestId(value.evidenceId);
+  const selectionIds = parseSelectionIds(value.selectionIds);
+  if (!evidenceId || !selectionIds) return null;
+  return { evidenceId, selectionIds };
 }
 
 function parseExpectedRevision(value: unknown): number | null {
@@ -394,9 +408,10 @@ export async function POST(
     if (gate.handoffContractInvalid) {
       return errorResponse(500, "handoff_contract_invalid", "创作交接合同结构异常，已阻止覆盖。");
     }
-    // Fix.5: no_confirmed_facts 是合法研究状态（来源层可见，可提交 confirmable selectionId），
-    // 由锁内确认转换决定成败；其他拒绝状态才阻断。
-    if (!gate.allowed && gate.reason !== "no_confirmed_facts") {
+    // 无创作交接确认时仍允许提交现有确认表单；研究事实本身不能绕过该步骤。
+    if (!gate.allowed
+      && gate.reason !== "no_confirmed_facts"
+      && gate.reason !== "creative_confirmation_required") {
       // Micro-Gate: 跨身份/不存在资源统一 404 — 不泄露 legacy_not_supported 等业务状态
       if (gate.reason === "legacy_not_supported") {
         return errorResponse(404, "task_not_found", "任务不存在。");
@@ -413,6 +428,29 @@ export async function POST(
     if (manualConfirmedFacts === null) {
       return errorResponse(400, "invalid_manual_fact", "手工商品事实无效。");
     }
+    const amazonFactEnrichmentSelection = body.amazonFactEnrichmentSelection === undefined
+      ? undefined
+      : parseAmazonFactEnrichmentSelection(body.amazonFactEnrichmentSelection);
+    if (body.amazonFactEnrichmentSelection !== undefined && !amazonFactEnrichmentSelection) {
+      return errorResponse(400, "invalid_amazon_enrichment_selection", "Amazon 商品事实选择无效。");
+    }
+    let amazonConfirmedCandidates: import("@/lib/server/amazonFactEnrichment/contract").AmazonFactCandidateV1[] = [];
+    if (amazonFactEnrichmentSelection) {
+      const asin = await readBrowserEvidenceTaskAsin(ctx, id);
+      if (!asin) return errorResponse(422, "task_asin_unbound", "当前任务缺少权威 Amazon ASIN。");
+      try {
+        amazonConfirmedCandidates = resolveAmazonFactEnrichmentSelections({
+          context: ctx,
+          taskId: id,
+          authoritativeAsin: asin,
+          evidenceId: amazonFactEnrichmentSelection.evidenceId,
+          selectionIds: amazonFactEnrichmentSelection.selectionIds,
+        });
+      } catch (err) {
+        if (err instanceof AmazonFactEnrichmentPreviewError) return errorResponse(err.status, err.code, err.message);
+        throw err;
+      }
+    }
     // V2 Final Integration: 视觉参考候选选择（用户勾选「批准作为产品视觉参考」；未提供=空=不批准）
     const selectedVisualReferenceIds = body.selectedVisualReferenceCandidateIds === undefined
       ? []
@@ -421,9 +459,16 @@ export async function POST(
       return errorResponse(400, "invalid_visual_reference_selection", "视觉参考选择无效。");
     }
 
-    // 纯视觉参考批准（无新事实）合法 — 与 Persistence 锁内 visualApprovalOnly 分支一致
-    // （继承当前 Handoff 的 confirmedFacts；若尚无 Handoff 则无事实可继承 → 拒绝）
-    if (selectedFactCandidateIds.length < 1 && manualConfirmedFacts.length < 1 && selectedVisualReferenceIds.length < 1) {
+    // 候选选择、手工事实、纯视觉参考批准，或研究已确认事实（Research Human Confirmed Facts）
+    // 至少一项成立时允许创建；均无事实基础时阻断
+    const hasResearchConfirmed = (gate.workbenchConfirmedFacts?.length ?? 0) > 0;
+    if (
+      selectedFactCandidateIds.length < 1 &&
+      manualConfirmedFacts.length < 1 &&
+      selectedVisualReferenceIds.length < 1 &&
+      amazonConfirmedCandidates.length < 1 &&
+      !hasResearchConfirmed
+    ) {
       return errorResponse(400, "no_facts_selected", "请至少选择一项或填写一项可用的商品事实。");
     }
 
@@ -432,6 +477,7 @@ export async function POST(
       selectedFactIds: selectedFactCandidateIds,
       selectedVisualReferenceIds: selectedVisualReferenceIds,
       ...(manualConfirmedFacts.length > 0 ? { manualConfirmedFacts } : {}),
+      ...(amazonFactEnrichmentSelection ? { amazonFactEnrichmentSelection } : {}),
       creativePreferences,
       expectedStorageVersion,
       expectedResearchRevision,
@@ -447,6 +493,7 @@ export async function POST(
       selectedFactCandidateIds,
       selectedVisualReferenceCandidateIds: selectedVisualReferenceIds,
       ...(manualConfirmedFacts.length > 0 ? { manualConfirmedFacts } : {}),
+      ...(amazonConfirmedCandidates.length > 0 ? { amazonConfirmedCandidates } : {}),
       ...(creativePreferences && Object.keys(creativePreferences).length > 0
         ? { creativePreferences: creativePreferences as Record<string, string> }
         : {}),

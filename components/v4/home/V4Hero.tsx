@@ -27,10 +27,10 @@ export function V4Hero({ runtime }: { runtime: HomeRuntime }) {
             id="v4-hero-title"
             className="mt-3 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl"
           >
-            AI 跨境商品研究与上架准备工作台
+            AI 跨境新品开发决策工作台
           </h1>
           <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
-            从市场机会、证据、产品事实到 Listing / Image；AI 完成研究，人做关键决策。
+            从市场机会、供应链证据到开发决策；AI 完成研判，人做关键决策。完成决策后方可准备后续资产。
           </p>
           <p className="mt-2 text-sm leading-6 text-slate-500">
             不预测爆款，不承诺盈利，不自动采购或上架。

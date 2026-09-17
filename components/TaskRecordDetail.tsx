@@ -16,7 +16,10 @@ import { isAgentRunTask, extractAgentRunSnapshot, extractListingPrepSnapshot } f
 import { extractAgentOutputSnapshotFromTask } from "@/lib/agentOutputSnapshot";
 import { AgentOutputSnapshotCard } from "@/components/AgentOutputSnapshotCard";
 import { DecisionEvidencePanel } from "@/components/DecisionEvidencePanel";
-import { EvidenceWorkbench, type ResearchMaterialRow } from "@/components/evidence/EvidenceWorkbench";
+import { EvidenceWorkbench, type EvidenceTabKey, type ResearchMaterialRow } from "@/components/evidence/EvidenceWorkbench";
+import { ProductDevelopmentBriefCard } from "@/components/evidence/ProductDevelopmentBriefCard";
+import { buildProductDevelopmentBrief } from "@/lib/productDevelopmentBrief";
+import { ReferenceListingDraftPanel } from "@/components/evidence/ReferenceListingDraftPanel";
 import { extractDecisionEvidenceSnapshot } from "@/lib/decisionEvidence";
 import { AgentRunTimeline } from "@/components/AgentRunTimeline";
 import { TaskDecisionHero } from "@/components/TaskDecisionHero";
@@ -73,6 +76,11 @@ import {
   type ResearchHistoryStatus,
 } from "@/lib/taskResearchHistoryPresentation";
 import { StudioNavigationLink } from "@/components/studio/StudioNavigationLink";
+import {
+  ProductCreationFlowStatus,
+  type ProductCreationFlowStates,
+} from "@/components/studio/ProductCreationFlowStatus";
+import type { ResearchLifecycleSnapshot } from "@/lib/server/researchLifecycleReader";
 
 type TaskCenterItem = {
   id: string;
@@ -96,6 +104,28 @@ type DetailResponse =
   | { ok: true; data: TaskCenterItem }
   | { ok: false; error: { code: string; message: string } };
 
+type ResearchLifecycleResponse =
+  | { ok: true; data: ResearchLifecycleSnapshot }
+  | { ok: false; error: { code: string; message: string } };
+
+function parseResearchLifecycleSnapshot(value: unknown): ResearchLifecycleSnapshot | null {
+  if (!isRecordValue(value)
+    || typeof value.phase !== "string"
+    || typeof value.collectionStatus !== "string"
+    || typeof value.confirmationStatus !== "string"
+    || typeof value.decisionStatus !== "string"
+    || typeof value.completionStatus !== "string"
+    || typeof value.creativeReadiness !== "string"
+    || typeof value.stale !== "boolean"
+    || !Array.isArray(value.blockers)
+    || !value.blockers.every((item) => typeof item === "string")
+    || typeof value.nextAction !== "string"
+    || typeof value.contractMode !== "string") {
+    return null;
+  }
+  return value as unknown as ResearchLifecycleSnapshot;
+}
+
 type DeleteResponse =
   | { ok: true; data: { id: string } }
   | { ok: false; error: { code: string; message: string } };
@@ -114,7 +144,9 @@ function formatDate(value: string) {
 }
 
 function sourceLabel(source: string) {
-  return source === "ai" ? "AI 深度拆解" : source ? `系统分析 · ${source}` : "系统分析";
+  if (source === "ai") return "AI 深度拆解";
+  if (source === "candidate_research") return "系统分析 · 候选商品研究";
+  return source ? `系统分析 · ${source}` : "系统分析";
 }
 
 /**
@@ -224,6 +256,44 @@ function safePublicHttpUrl(value: string | null | undefined) {
   }
 }
 
+/** Research Lifecycle v1：快照只投影到已有 UI 目标，不重新计算事实、证据或门禁。 */
+function lifecycleStatusLabel(snapshot: ResearchLifecycleSnapshot): string {
+  if (snapshot.stale) return "研究资料需重新确认";
+  if (snapshot.phase === "completed") return "研究已完成";
+  if (snapshot.phase === "abandoned") return "已放弃";
+  if (snapshot.phase === "awaiting_confirmation") return "待确认事实";
+  if (snapshot.phase === "collecting") return "资料采集中";
+  if (snapshot.phase === "ready_to_complete") return "待完成研究";
+  if (snapshot.phase === "blocked") return "研究受阻";
+  if (snapshot.phase === "awaiting_decision") return "待人工决定";
+  return "待补充研究资料";
+}
+
+function deriveLifecyclePrimaryAction(snapshot: ResearchLifecycleSnapshot, taskType: string): FormalV2PrimaryAction {
+  if (snapshot.stale && taskType === "workflow") {
+    return { label: "重新确认研究资料", targetId: "product-research-decision", focusSelector: '[data-testid="research-stale-notice"] button' };
+  }
+  if (snapshot.phase === "completed" && snapshot.creativeReadiness === "ready") {
+    return { label: "查看开发决策卡", targetId: "product-development-brief", focusSelector: "h2" };
+  }
+  if (snapshot.phase === "completed") {
+    return { label: "核对研究状态", targetId: "formal-v2-materials", focusSelector: "summary" };
+  }
+  if (snapshot.phase === "ready_to_complete") {
+    return { label: "完成研究", targetId: "product-research-decision", focusSelector: '[data-testid="research-completion-control"] h2' };
+  }
+  if (snapshot.phase === "awaiting_confirmation") {
+    return { label: "确认待确认事实", targetId: "formal-v2-materials", focusSelector: "summary" };
+  }
+  if (snapshot.phase === "collecting") {
+    return { label: "等待资料采集完成", targetId: "formal-v2-materials", focusSelector: "summary" };
+  }
+  if (snapshot.phase === "blocked") {
+    return { label: "核对研究状态", targetId: "formal-v2-materials", focusSelector: "summary" };
+  }
+  return { label: "补充研究资料", targetId: "formal-v2-materials", focusSelector: "summary" };
+}
+
 /**
  * V3 Current Research Normalization：Research Completion 控件（Active → 研究记录）。
  * - researchCompletion 已存在 → "研究已完成并保存到研究记录。" + [查看研究记录]（幂等展示）；
@@ -236,6 +306,7 @@ function ResearchCompletionControl({
   taskId,
   result,
   researchStale,
+  lifecycleSnapshot,
   evidenceChangesSinceCompletion = [],
   onCompleted,
 }: {
@@ -243,6 +314,8 @@ function ResearchCompletionControl({
   result: Record<string, unknown>;
   /** 服务端计算的 stale 状态（client 无法计算 evidence hash） */
   researchStale?: boolean;
+  /** 服务端统一研究生命周期快照；只读，不参与任何写入。 */
+  lifecycleSnapshot?: ResearchLifecycleSnapshot | null;
   /** V3 Research Staleness UX Closure：完成研究后新增/变更的证据明细（服务端投影） */
   evidenceChangesSinceCompletion?: Array<{
     evidenceType: string;
@@ -258,17 +331,82 @@ function ResearchCompletionControl({
   // 轮 15 修复：不再用 window.confirm（自动化/headless 环境静默返回 false → 按钮无响应）；
   // 改为组件内自定义确认对话框（React 状态控制，任何环境都工作）。
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [keywordPlanConfirmed, setKeywordPlanConfirmed] = useState<boolean | null>(null);
 
   const completion = isRecordValue(result.researchCompletion) ? result.researchCompletion as Record<string, unknown> : null;
-  const completionStatus = completion && typeof completion.status === "string" ? completion.status : null;
+  const completionStatus = lifecycleSnapshot
+    ? lifecycleSnapshot.completionStatus
+    : (completion && typeof completion.status === "string" ? completion.status : null);
   // 浏览器投影只暴露 productResearchSummary（researchRecord 仅服务端内部）；
   // 决策状态以投影 summary 为准，researchRecord 仅作兜底（完整 result 传入时）。
   const summary = isRecordValue(result.productResearchSummary) ? result.productResearchSummary as Record<string, unknown> : null;
   const record = isRecordValue(result.researchRecord) ? result.researchRecord as Record<string, unknown> : null;
   const latest = record && isRecordValue(record.latestDecision) ? record.latestDecision as Record<string, unknown> : null;
-  const latestStatus = typeof summary?.status === "string"
-    ? summary.status
-    : (latest && typeof latest.status === "string" ? latest.status : null);
+  const latestStatus = lifecycleSnapshot
+    ? (lifecycleSnapshot.decisionStatus === "none" ? null : lifecycleSnapshot.decisionStatus)
+    : (typeof summary?.status === "string"
+      ? summary.status
+      : (latest && typeof latest.status === "string" ? latest.status : null));
+  const effectiveResearchStale = lifecycleSnapshot?.stale ?? researchStale === true;
+
+  useEffect(() => {
+    if (completionStatus !== "completed") {
+      setKeywordPlanConfirmed(null);
+      return;
+    }
+    let active = true;
+    void fetch(`/api/tasks/${encodeURIComponent(taskId)}/listing-handoff`, {
+      cache: "no-store",
+      headers: buildAccessHeaders(),
+    })
+      .then(async (response) => ({ response, json: await response.json().catch(() => null) }))
+      .then(({ response, json }) => {
+        if (!active) return;
+        setKeywordPlanConfirmed(
+          response.ok && json?.ok === true && Boolean(json?.data?.keywordBriefSummary),
+        );
+      })
+      .catch(() => {
+        if (active) setKeywordPlanConfirmed(null);
+      });
+    return () => {
+      active = false;
+    };
+    // result 必须参与依赖：关键词方案确认成功后父级 refreshRecord 会替换 result 对象，
+    // 这里要重新读取 listing-handoff 的 keywordBriefSummary，否则创作流程第 02 步
+    // 会一直停留在保存前的「待完成」（详情 DTO 并不投影 listingKeywordBrief）。
+  }, [completionStatus, taskId, result]);
+
+  const completedListingDraft = isRecordValue(result.aiListingPackSnapshot)
+    || isRecordValue(result.listingPackSnapshot)
+    || isRecordValue(result.listing)
+    || (isRecordValue(result.listingV5) && isRecordValue(result.listingV5.listing));
+  const completedImageDraft = isRecordValue(result.aiImageDraftSnapshot)
+    && Array.isArray(result.aiImageDraftSnapshot.items)
+    && result.aiImageDraftSnapshot.items.length > 0;
+  const creationFlowStates = deriveProductCreationFlowStates(result, completedListingDraft, completedImageDraft, keywordPlanConfirmed);
+  const creationFlowAction = creationFlowStates.facts !== "complete"
+    ? { href: "#formal-v2-materials", label: "确认商品事实", description: "先在研究资料区确认商品事实。" }
+    : creationFlowStates.keywords === "pending"
+      ? { href: "#workbench-keyword-strategy", label: "确认关键词方案", description: "研究事实已具备，请先确认关键词方案；关键词方案确认不等于创作资料确认。" }
+      : creationFlowStates.creative === "pending"
+        ? { href: `/listing-studio?taskId=${encodeURIComponent(taskId)}`, label: "进入创作资料确认", description: "关键词方案已确认。下一步请进入 Listing Studio，完成一次创作资料确认。" }
+        : creationFlowStates.listing === "pending"
+          ? { href: `/listing-studio?taskId=${encodeURIComponent(taskId)}`, label: "进入 Listing 生成", description: "创作资料已确认，可以进入 Listing Studio 生成文案草稿。" }
+          : creationFlowStates.image === "pending"
+            ? { href: `/image-studio?taskId=${encodeURIComponent(taskId)}`, label: "进入图片生成", description: "Listing 已生成，可以继续进入 Image Studio 生成图片候选。" }
+            : null;
+  const creationFlowActiveStep = creationFlowStates.facts !== "complete"
+    ? "facts"
+    : creationFlowStates.keywords !== "complete"
+      ? "keywords"
+      : creationFlowStates.creative !== "complete"
+        ? "creative"
+        : creationFlowStates.listing !== "complete"
+          ? "listing"
+          : creationFlowStates.image !== "complete"
+            ? "image"
+            : undefined;
 
   const canComplete = latestStatus === "creative_ready" || latestStatus === "abandoned";
   const blockReason = !latestStatus
@@ -279,7 +417,7 @@ function ResearchCompletionControl({
 
   if (completionStatus === "completed" || completionStatus === "abandoned" || done) {
     // V3 UX Closure Staleness：完成研究后证据内容发生变化 → 明确提示 + 重新确认
-    const staleState = { stale: researchStale === true };
+    const staleState = { stale: effectiveResearchStale };
     if (completionStatus === "completed" && staleState.stale) {
       return (
         <section className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4" data-testid="research-stale-notice">
@@ -338,7 +476,7 @@ function ResearchCompletionControl({
                 确认研究结论仍然有效？
               </p>
               <p className="mt-1 text-xs leading-5 text-slate-600">
-                {researchStale === true
+                {effectiveResearchStale
                   ? "确认后创建新的 Research Completion 版本（Version N+1），当前资料与结论对齐；不会删除任何证据 / 事实 / 人工决定，历史完成版本保留。"
                   : "完成后，该商品会从『商品研究』移动到『研究记录』。现有研究资料不会删除，仍可查看并使用创作工具。"}
               </p>
@@ -374,12 +512,42 @@ function ResearchCompletionControl({
     return (
       <section className="mt-4 rounded-2xl border border-teal-200 bg-teal-50/60 p-4" data-testid="research-completed">
         <p className="text-sm font-bold text-teal-800">研究已完成并保存到研究记录。</p>
-        <Link
-          href="/tasks"
-          className="mt-2 inline-flex h-9 items-center rounded-lg border border-teal-300 bg-white px-3 text-xs font-semibold text-teal-700 hover:bg-teal-50"
-        >
-          查看研究记录
-        </Link>
+        <p className="mt-1 text-xs leading-5 text-teal-900/80">
+          {creationFlowStates.creative === "complete"
+            ? "创作资料已确认；可继续生成 Listing，或进入 Image Studio 生成图片候选。"
+            : "下一步：研究事实确认完成后，还需进入 Listing Studio 完成一次创作资料确认，才能继续生成 Listing。"}
+        </p>
+        <div className="mt-4">
+          <ProductCreationFlowStatus
+            states={creationFlowStates}
+            activeStep={creationFlowActiveStep}
+            actionHref={creationFlowAction?.href}
+            actionLabel={creationFlowAction?.label}
+            actionDescription={creationFlowAction?.description}
+            onAction={
+              creationFlowAction && creationFlowAction.href.startsWith("#")
+                ? () => activateFlowHashTarget(creationFlowAction.href)
+                : undefined
+            }
+          />
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {creationFlowAction ? (
+            <Link
+              href={creationFlowAction.href}
+              data-testid={creationFlowAction.label === "进入创作资料确认" ? "enter-creative-confirmation" : "research-next-flow-action"}
+              className="linear-button inline-flex h-9 items-center justify-center px-3 text-xs font-semibold"
+            >
+              {creationFlowAction.label}
+            </Link>
+          ) : null}
+          <Link
+            href="/tasks"
+            className="inline-flex h-9 items-center rounded-lg border border-teal-300 bg-white px-3 text-xs font-semibold text-teal-700 hover:bg-teal-50"
+          >
+            查看研究记录
+          </Link>
+        </div>
       </section>
     );
   }
@@ -589,6 +757,14 @@ function WorkflowDecisionSummary({
     profitSnapshot: hasProfitSnapshot ? result.profitSnapshot : undefined,
   }), [result, hasRiskReviewSnapshot, hasProfitSnapshot]);
 
+  const productDevelopmentBrief = useMemo(() => buildProductDevelopmentBrief({
+    resultJson: result,
+    riskReviewSnapshot: hasRiskReviewSnapshot ? result.riskReviewSnapshot : undefined,
+    profitSnapshot: hasProfitSnapshot ? result.profitSnapshot : undefined,
+    productName: fallbackTitle,
+    decisionStatus,
+  }), [result, hasRiskReviewSnapshot, hasProfitSnapshot, fallbackTitle, decisionStatus]);
+
   // Scroll refs for anchor navigation
   const evidenceRef = useRef<HTMLDivElement | null>(null);
   const listingRef = useRef<HTMLDivElement | null>(null);
@@ -628,6 +804,9 @@ function WorkflowDecisionSummary({
         onScrollToListing={hasListingPrep ? () => scrollToRef(listingRef) : undefined}
       />
 
+      {/* ── Section 1.5: 商品开发决策卡 (Product Development Decision Brief) ── */}
+      <ProductDevelopmentBriefCard brief={productDevelopmentBrief} />
+
       {/* ── Section 2: 为什么得到这个结论 — Evidence + Decision Card ── */}
       <div ref={evidenceRef} className="scroll-mt-6">
         <DecisionCardUI card={decisionCard} compact />
@@ -642,7 +821,7 @@ function WorkflowDecisionSummary({
       </div>
 
       {/* ── Phase 2: Evidence Workbench（商品证据工作台） ── */}
-      <EvidenceWorkbench taskId={taskId} result={result} />
+      <EvidenceWorkbench taskId={taskId} result={result} sourceImageUrl={resolvePublicSourceImageUrl(result, taskId, null)} />
 
       {/* ── Section 3: 接下来可以使用什么 — Listing ── */}
       {hasListingPrep && (
@@ -818,31 +997,40 @@ function WorkflowDecisionSummary({
         </div>
       )}
 
-      {/* 历史 Listing 包（只读展示，生成走「Listing 草稿」区） */}
-      <ListingPackCard
-        productName={summary.productName}
-        resultJson={result}
-        riskReviewSnapshot={hasRiskReviewSnapshot ? result.riskReviewSnapshot : undefined}
-        profitSnapshot={hasProfitSnapshot ? result.profitSnapshot : undefined}
-        disabled={decisionCard?.recommendation === "reject" || decisionCard?.recommendation === "needs_more_info"}
-        taskId={taskId}
-        existingSnapshot={(() => {
-          try {
-            const snap = (result as Record<string,unknown>)?.listingPackSnapshot as Record<string,unknown> | undefined;
-            if (snap?.pack) {
-              return { savedAt: snap.savedAt as string, source: snap.source as string, pack: snap.pack as ListingPack };
-            }
-          } catch { /* ignore */ }
-          return null;
-        })()}
-      />
+      {/* 历史与参考（默认折叠）：历史 Listing 包 + 已保存图片草稿 + 参考草稿统一收纳，减少重复展示 */}
+      <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-4" data-testid="history-and-reference">
+        <summary className="cursor-pointer text-sm font-bold text-slate-800">
+          历史与参考（历史 Listing / 历史图片 / 参考草稿）
+        </summary>
+        <p className="mt-1 text-xs leading-5 text-slate-500">
+          以下内容仅作历史留痕与参考，不参与创作资料确认与生成门禁；数据读取与生成能力保持不变。
+        </p>
+        <div className="mt-3 space-y-3">
+          <ListingPackCard
+            productName={summary.productName}
+            resultJson={result}
+            riskReviewSnapshot={hasRiskReviewSnapshot ? result.riskReviewSnapshot : undefined}
+            profitSnapshot={hasProfitSnapshot ? result.profitSnapshot : undefined}
+            disabled={decisionCard?.recommendation === "reject" || decisionCard?.recommendation === "needs_more_info"}
+            taskId={taskId}
+            existingSnapshot={(() => {
+              try {
+                const snap = (result as Record<string,unknown>)?.listingPackSnapshot as Record<string,unknown> | undefined;
+                if (snap?.pack) {
+                  return { savedAt: snap.savedAt as string, source: snap.source as string, pack: snap.pack as ListingPack };
+                }
+              } catch { /* ignore */ }
+              return null;
+            })()}
+          />
 
-      {/* 已保存图片草稿（只读展示；生成统一走上方「AI 生成图片草稿」Handoff 区） */}
-      <AiImageDraftCard
-        taskId={taskId}
-        initialSnapshot={extractAiImageDraftSnapshot(result)}
-        readOnly
-      />
+          <AiImageDraftCard
+            taskId={taskId}
+            initialSnapshot={extractAiImageDraftSnapshot(result)}
+            readOnly
+          />
+        </div>
+      </details>
 
       {/* ── Section 4: 运营推进与状态 ── */}
       <section className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -1396,6 +1584,34 @@ function formalText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function deriveProductCreationFlowStates(
+  result: Record<string, unknown>,
+  hasListingDraft: boolean,
+  hasImageDraft: boolean,
+  keywordPlanConfirmed: boolean | null,
+): ProductCreationFlowStates {
+  const factCandidates = formalRecord(result.factCandidates);
+  const confirmedFacts = Array.isArray(factCandidates?.confirmed) ? factCandidates.confirmed : [];
+  // 详情投影不返回 result.listingKeywordBrief（只有 listing-handoff 接口给 keywordBriefSummary），
+  // 因此关键词步骤以关键词卡片同源的 keywordPlanConfirmed 为准；这一项在父级刷新后会重新读取。
+  const creativeHandoff = formalRecord(result.creativeHandoff);
+  const creativeControlState = formalText(creativeHandoff?.controlState);
+
+  return {
+    facts: confirmedFacts.length > 0 ? "complete" : "pending",
+    // 关键词确认状态唯一来自 listing-handoff GET。详情 result 可能携带历史
+    // listingKeywordBrief，不能用它覆盖当前证据版本的 pending 判定。
+    keywords: keywordPlanConfirmed === true
+      ? "complete"
+      : keywordPlanConfirmed === false
+        ? "pending"
+        : "unknown",
+    creative: creativeControlState === "active" ? "complete" : "pending",
+    listing: hasListingDraft ? "complete" : "pending",
+    image: hasImageDraft ? "complete" : "pending",
+  };
+}
+
 function formalTexts(value: unknown, limit = 3) {
   if (!Array.isArray(value)) return [];
   return uniqueStrings(value.map((item) => {
@@ -1484,12 +1700,15 @@ export function deriveFormalV2ResearchView(record: TaskCenterItem): FormalV2Rese
     decisionStatus: record.decisionStatus,
     result,
   });
-  const headline = formalText(summary?.decisionReason)
+  // 第十一轮（Bug 1）：AI 辅助判断 nullable——只允许真实 AI/研究结论字段；
+  // 无真实结论时 headline 为空，整个「AI 辅助判断」卡不渲染，
+  // 不得用 oneLineSummary 或假文案冒充 AI 判断。
+  const headline =
+    formalText(summary?.decisionReason)
     || formalText(finalReport?.finalVerdict)
     || formalText(finalReport?.decisionReason)
     || presentation.researchConclusions[0]
-    || formalText(record.oneLineSummary)
-    || "AI 研究结论尚未取得。";
+    || "";
 
   const buyerSignals = uniqueStrings([
     ...formalTexts(summary?.concerns, 2),
@@ -1567,7 +1786,12 @@ export function deriveFormalV2ResearchView(record: TaskCenterItem): FormalV2Rese
         nextHref: "#formal-v2-materials",
       },
     ],
-    hasListingDraft: isRecordValue(result.aiListingPackSnapshot) || isRecordValue(result.listingPackSnapshot) || isRecordValue(result.listing),
+    // Listing V5 persists its authoritative draft under result.listingV5.listing;
+    // expose that state in the research summary as well as the legacy fields.
+    hasListingDraft: isRecordValue(result.aiListingPackSnapshot)
+      || isRecordValue(result.listingPackSnapshot)
+      || isRecordValue(result.listing)
+      || (isRecordValue(result.listingV5) && isRecordValue((result.listingV5 as Record<string, unknown>).listing)),
     hasImageDraft: isRecordValue(result.aiImageDraftSnapshot)
         && Array.isArray((result.aiImageDraftSnapshot as Record<string, unknown>).items)
         && ((result.aiImageDraftSnapshot as Record<string, unknown>).items as unknown[]).length > 0,
@@ -1696,6 +1920,28 @@ export function activateFormalV2Target(targetId: string, focusSelector: string):
   return true;
 }
 
+/**
+ * 创作流程卡里的 hash 动作（例如「确认关键词方案」指向 #workbench-keyword-strategy）。
+ *
+ * 之前它只是裸锚点：目标位于研究资料的 details 内、甚至位于未激活的工作台 tab 里，
+ * 而且 hash 已经等于该值时浏览器不会再次触发 hashchange —— 用户会看到「点击没有反馈」。
+ * 这里改为主动激活目标（展开祖先 details + 滚动 + 聚焦）；目标暂时不存在（tab 未切换）
+ * 时先用 hash 触发一次 tab 同步，再重试一次。
+ */
+function activateFlowHashTarget(href: string): void {
+  const targetId = href.replace(/^#/, "");
+  if (!targetId) return;
+  if (activateFormalV2Target(targetId, "summary, h3")) return;
+  try {
+    window.location.hash = targetId;
+  } catch {
+    // 测试环境或受限环境没有可写的 location.hash：忽略，仅做一次重试。
+  }
+  setTimeout(() => {
+    activateFormalV2Target(targetId, "summary, h3");
+  }, 200);
+}
+
 /** 四张业务卡 → 各自真实资料目标（按钮去向真实准确优先于其它）。 */
 const MODULE_EVIDENCE_TARGETS: Readonly<Record<string, string>> = {
   market: "formal-v2-market-evidence",
@@ -1706,30 +1952,37 @@ const MODULE_EVIDENCE_TARGETS: Readonly<Record<string, string>> = {
 
 function FormalV2ModuleCard({ module, onNext }: { module: FormalV2Module; onNext: () => void }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4" data-testid={`formal-v2-module-${module.key}`}>
-      <div className="flex items-center gap-2">
-        <span className="text-xs font-semibold text-slate-400">{module.number}</span>
-        <h3 className="text-base font-semibold text-slate-950">{module.title}</h3>
+    <section className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs flex flex-col justify-between hover:border-emerald-300 hover:shadow-sm transition-all" data-testid={`formal-v2-module-${module.key}`}>
+      <div>
+        <div className="flex items-center gap-2">
+          <span className="flex size-6 items-center justify-center rounded-lg bg-emerald-50 text-xs font-bold text-emerald-700">{module.number}</span>
+          <h3 className="text-base font-bold text-slate-900">{module.title}</h3>
+        </div>
+        <div className="mt-3.5 space-y-3 text-sm leading-6">
+          <div>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">AI 结论</p>
+            <p className="mt-0.5 text-xs sm:text-sm font-medium text-slate-800">{module.conclusion}</p>
+          </div>
+          <div>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">关键依据</p>
+            {module.evidence.length ? (
+              <ul className="mt-1 space-y-1 text-xs text-slate-600">
+                {module.evidence.map((item) => (
+                  <li key={item} className="flex items-start gap-1.5">
+                    <span className="text-emerald-500 font-bold">·</span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="mt-1 text-xs text-slate-400 italic">尚未取得可核实的关键依据。</p>}
+          </div>
+          <div className="rounded-xl border border-amber-200/60 bg-amber-50/50 p-2.5">
+            <p className="text-[11px] font-bold text-amber-800">缺什么</p>
+            <p className="mt-0.5 text-xs leading-5 text-amber-900/90">{module.missing}</p>
+          </div>
+        </div>
       </div>
-      <div className="mt-4 space-y-3 text-sm leading-6">
-        <div>
-          <p className="text-xs font-semibold text-slate-400">AI 结论</p>
-          <p className="mt-1 text-slate-700">{module.conclusion}</p>
-        </div>
-        <div>
-          <p className="text-xs font-semibold text-slate-400">关键依据</p>
-          {module.evidence.length ? (
-            <ul className="mt-1 space-y-1 text-slate-700">
-              {module.evidence.map((item) => <li key={item}>· {item}</li>)}
-            </ul>
-          ) : <p className="mt-1 text-slate-500">尚未取得可核实的关键依据。</p>}
-        </div>
-        <div>
-          <p className="text-xs font-semibold text-amber-700">缺什么</p>
-          <p className="mt-1 text-amber-800">{module.missing}</p>
-        </div>
-      </div>
-      <button type="button" aria-controls={MODULE_EVIDENCE_TARGETS[module.key] ?? "formal-v2-materials"} onClick={onNext} className="linear-button mt-4 inline-flex h-9 items-center justify-center px-3 text-sm font-semibold">
+      <button type="button" aria-controls={MODULE_EVIDENCE_TARGETS[module.key] ?? "formal-v2-materials"} onClick={onNext} className="linear-button mt-4 inline-flex h-9 items-center justify-center px-3 text-xs sm:text-sm font-semibold">
         {module.nextLabel}
       </button>
     </section>
@@ -1786,6 +2039,14 @@ function LegacyRecordContent({
     decisionStatus: record.decisionStatus,
     oneLineSummary: record.oneLineSummary,
   }) : null;
+  const productDevelopmentBrief = useMemo(() => {
+    if (!result) return null;
+    return buildProductDevelopmentBrief({
+      resultJson: result,
+      productName: getTitle(record),
+      decisionStatus: record.decisionStatus,
+    });
+  }, [result, record]);
   return (
     <section className="surface-card p-5 sm:p-6" data-testid="legacy-record-content">
       <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
@@ -1810,9 +2071,13 @@ function LegacyRecordContent({
           </div>
         </div>
       </section>
+      {productDevelopmentBrief ? <ProductDevelopmentBriefCard brief={productDevelopmentBrief} className="mt-4" /> : null}
       {decisionEvidence ? <DecisionEvidencePanel evidence={decisionEvidence} compact /> : null}
-      {result ? <EvidenceWorkbench taskId={record.id} result={result} onDataChanged={onUpdated} /> : null}
+      {result ? <EvidenceWorkbench taskId={record.id} result={result} sourceImageUrl={resolvePublicSourceImageUrl(result, record.id, record.productImage)} onDataChanged={onUpdated} /> : null}
       {result ? <WorkflowResultSection result={result} /> : null}
+      <section className="mt-6 border-t border-slate-200 pt-6" aria-label="下一步：创作资料交接">
+        <ReferenceListingDraftPanel taskId={record.id} onDraftGenerated={onUpdated} />
+      </section>
       <RecordFooter isActiveResearchView={isActiveResearchView} deleting={deleting} deleteError={deleteError} onDelete={onDelete} />
     </section>
   );
@@ -1870,6 +2135,7 @@ export function applyLiveMaterialRows(
 function FormalV2RecordContent({
   record,
   researchStale,
+  lifecycleSnapshot,
   studioLegacyUnsupported,
   deleting,
   deleteError,
@@ -1879,6 +2145,7 @@ function FormalV2RecordContent({
 }: {
   record: TaskCenterItem;
   researchStale: boolean;
+  lifecycleSnapshot: ResearchLifecycleSnapshot | null;
   studioLegacyUnsupported: boolean;
   deleting: boolean;
   deleteError: string;
@@ -1888,10 +2155,72 @@ function FormalV2RecordContent({
 }) {
   const view = deriveFormalV2ResearchView(record);
   const result = formalRecord(record.result) ?? {};
+  const productDevelopmentBrief = useMemo(() => buildProductDevelopmentBrief({
+    productName: view.productName,
+    resultJson: result,
+  }), [view.productName, result]);
   const publicProductUrl = safePublicHttpUrl(record.productUrl) || safePublicHttpUrl(getProductIdentity(result).productUrl);
-  const primary = deriveFormalV2PrimaryAction({ statusKey: view.status.key, researchStale, taskType: record.type });
+  const primary = lifecycleSnapshot
+    ? deriveLifecyclePrimaryAction(lifecycleSnapshot, record.type)
+    : deriveFormalV2PrimaryAction({ statusKey: view.status.key, researchStale, taskType: record.type });
+  const effectiveResearchStale = lifecycleSnapshot?.stale ?? researchStale;
   const imageCopy = formalV2ImageCopy(view.hasImageDraft);
-  const [primaryOpen, setPrimaryOpen] = useState(false);
+  // 研究工作台是商品研究页的主工作区：首次进入直接展开；用户仍可通过
+  // 原有 details 开关折叠，且 hash 导航继续显式展开。
+  const [primaryOpen, setPrimaryOpen] = useState(true);
+  const [activeTab, setActiveTab] = useState<EvidenceTabKey>("market");
+
+  useEffect(() => {
+    function syncWithHash() {
+      if (typeof window === "undefined") return;
+      const rawHash = (window.location.hash || "").replace(/^#/, "");
+      if (!rawHash) return;
+
+      let matchedTab: EvidenceTabKey | null = null;
+      if (
+        rawHash === "formal-v2-market-evidence" ||
+        rawHash.startsWith("workbench-browser") ||
+        rawHash.startsWith("workbench-competitor") ||
+        rawHash.startsWith("workbench-keyword") ||
+        rawHash === "workbench-overview"
+      ) {
+        matchedTab = "market";
+      } else if (rawHash === "formal-v2-buyer-evidence" || rawHash.startsWith("workbench-voc")) {
+        matchedTab = "buyers";
+      } else if (rawHash === "formal-v2-sourcing-evidence" || rawHash.startsWith("workbench-sourcing")) {
+        matchedTab = "sourcing";
+      } else if (
+        rawHash === "formal-v2-cost-risk-evidence" ||
+        rawHash.startsWith("workbench-cost-risk") ||
+        rawHash === "commercial-inputs-card"
+      ) {
+        matchedTab = "cost-risk";
+      }
+
+      if (matchedTab) {
+        setActiveTab(matchedTab);
+      }
+
+      if (
+        matchedTab ||
+        rawHash === "formal-v2-materials" ||
+        rawHash === "research-collection-orchestrator" ||
+        rawHash === "fact-candidate-review"
+      ) {
+        setPrimaryOpen(true);
+        setTimeout(() => {
+          activateFormalV2Target(rawHash, "summary, h3");
+        }, 0);
+      }
+    }
+
+    syncWithHash();
+    window.addEventListener("hashchange", syncWithHash);
+    return () => {
+      window.removeEventListener("hashchange", syncWithHash);
+    };
+  }, []);
+
   // 轮 13 一致性：EvidenceWorkbench live 研究资料清单（模块卡「缺什么」据此刷新）
   const [liveMaterial, setLiveMaterial] = useState<LiveMaterialState | null>(null);
   const materialSigRef = useRef("");
@@ -1905,21 +2234,43 @@ function FormalV2RecordContent({
   const liveModules = applyLiveMaterialRows(view.modules, liveMaterial);
 
   return (
-    <section className="surface-card p-5 sm:p-6" data-testid="formal-v2-product-result">
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5" aria-label="商品结论">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex min-w-0 items-start gap-4">
-            <ResearchProductImage image={record.productImage} alt={view.productName} size="detail" />
+    <section className="surface-card p-4 sm:p-6" data-testid="formal-v2-product-result">
+      {/* ── 01: 商品决策看板 Hero ── */}
+      <section className="rounded-2xl border border-slate-200/90 bg-white p-5 sm:p-6 shadow-xs" aria-label="商品结论">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 items-start gap-4 sm:gap-5">
+            <div className="shrink-0 rounded-xl border border-slate-100 overflow-hidden shadow-xs">
+              <ResearchProductImage image={record.productImage} alt={view.productName} size="detail" />
+            </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700">{researchStale ? "研究资料需重新确认" : view.status.label}</span>
-                <span className="text-xs text-slate-500">{view.category} · {view.market}</span>
+                <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${effectiveResearchStale ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
+                  {lifecycleSnapshot ? lifecycleStatusLabel(lifecycleSnapshot) : (researchStale ? "研究资料需重新确认" : view.status.label)}
+                </span>
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+                  {view.category} · {view.market}
+                </span>
+                {view.asin ? (
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-mono text-slate-600">
+                    ASIN（Amazon 商品编号）: {view.asin}
+                  </span>
+                ) : null}
               </div>
-              <h2 className="mt-2 break-words text-2xl font-semibold tracking-tight text-slate-950">{view.productName}</h2>
-              {view.asin ? <p className="mt-1 text-xs text-slate-500">ASIN：{view.asin}</p> : null}
-              <p className="mt-3 max-w-4xl text-sm font-semibold leading-6 text-slate-700">{view.headline}</p>
+              <h2 className="mt-2.5 break-words text-xl sm:text-2xl font-bold tracking-tight text-slate-950">{view.productName}</h2>
+              {view.headline ? (
+                <div className="mt-3 rounded-xl border-l-4 border-emerald-500 bg-emerald-50/50 p-3 text-sm font-medium leading-relaxed text-slate-700">
+                  <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider block mb-0.5">AI 辅助判断</span>
+                  {view.headline}
+                </div>
+              ) : null}
+              {!view.headline && formalText(record.oneLineSummary) ? (
+                <p className="mt-2 text-xs leading-5 text-slate-500">{formalText(record.oneLineSummary)}</p>
+              ) : null}
               {publicProductUrl ? (
-                <a href={publicProductUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex text-sm font-semibold text-teal-700 hover:text-teal-900">查看商品来源</a>
+                <a href={publicProductUrl} target="_blank" rel="noopener noreferrer" className="mt-2.5 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-900 transition-colors">
+                  <span>查看商品来源链接</span>
+                  <span aria-hidden="true">↗</span>
+                </a>
               ) : null}
             </div>
           </div>
@@ -1934,78 +2285,145 @@ function FormalV2RecordContent({
         </div>
       </section>
 
-      <section className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4" aria-label="研究模块">
-        {liveModules.map((module) => (
-          <FormalV2ModuleCard
-            key={module.key}
-            module={module}
-            onNext={() => activateFormalV2Target(MODULE_EVIDENCE_TARGETS[module.key] ?? "formal-v2-materials", "h3")}
-          />
-        ))}
-      </section>
+      {/* ── 01.5: 商品开发决策卡 (Product Development Decision Brief) 提升至第一视觉区域 ── */}
+      <div id="product-development-brief" className="mt-5" data-testid="formal-v2-decision-brief">
+        <ProductDevelopmentBriefCard brief={productDevelopmentBrief} />
+      </div>
 
+      {/* ── 02: 核对与补充当前研究资料（四维度工作台） ── */}
       <details
         id="formal-v2-materials"
-        className="mt-5 rounded-2xl border border-slate-200 bg-white p-4"
+        className="mt-5 rounded-2xl border border-slate-200/90 bg-white shadow-xs overflow-hidden"
         data-testid="formal-v2-materials"
+        open={primaryOpen || undefined}
         onToggle={(event) => setPrimaryOpen(event.currentTarget.open)}
       >
-        <summary className="cursor-pointer text-sm font-semibold text-slate-800">核对与补充当前研究资料</summary>
-        <p className="mt-2 text-xs leading-5 text-slate-500">这里只显示当前正式研究记录；缺失数据不会由 AI 猜测补齐。</p>
-        <div className="mt-4">
-          <EvidenceWorkbench taskId={record.id} result={result} sourceImageUrl={resolvePublicSourceImageUrl(result)} onDataChanged={onUpdated} onMaterialRowsChange={onMaterialRowsChange} />
+        <summary className="cursor-pointer bg-slate-50/70 px-5 py-3.5 text-sm font-semibold text-slate-800 hover:bg-slate-100/70 transition-colors flex items-center justify-between select-none">
+          <div className="flex items-center gap-2.5">
+            <span className="flex size-6 items-center justify-center rounded-lg bg-emerald-50 text-xs font-bold text-emerald-700">02</span>
+            <span>核对与补充研究资料（市场 / 评论 / 货源 / 成本）</span>
+          </div>
+          <span className="text-xs font-normal text-slate-500">展开可核对证据并补充资料</span>
+        </summary>
+        <div className="p-4 sm:p-5 border-t border-slate-100">
+          <p className="text-xs leading-5 text-slate-500 mb-3">这里只显示当前正式研究记录；缺失数据不会由 AI 猜测补齐。</p>
+          <EvidenceWorkbench
+            taskId={record.id}
+            result={result}
+            lifecycleSnapshot={lifecycleSnapshot}
+            sourceImageUrl={resolvePublicSourceImageUrl(result, record.id, record.productImage)}
+            onDataChanged={onUpdated}
+            onMaterialRowsChange={onMaterialRowsChange}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+          />
         </div>
       </details>
 
+      {/* ── 03: 人工决定与状态门禁 ── */}
       {record.type === "workflow" ? (
-        <section id="product-research-decision" className="mt-5 rounded-2xl border border-slate-200 bg-white p-4" data-testid="research-decision-section">
-          <h2 className="text-base font-semibold text-slate-950">人工决定</h2>
-          <p className="mt-1 text-sm leading-6 text-slate-500">AI 只整理依据，是否继续由你确认。</p>
-          <ProductResearchDecisionPanel taskId={record.id} onUpdated={onUpdated} />
+        <section id="product-research-decision" className="mt-5 rounded-2xl border border-slate-200/90 bg-white p-5 sm:p-6 shadow-xs" data-testid="research-decision-section">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="flex size-6 items-center justify-center rounded-lg bg-emerald-50 text-xs font-bold text-emerald-700">03</span>
+            <h2 className="text-base font-bold text-slate-950">人工决定</h2>
+          </div>
+          <p className="mt-1 text-xs sm:text-sm leading-6 text-slate-500">AI 只整理依据，是否继续由你确认。</p>
+          <div className="mt-4">
+            <ProductResearchDecisionPanel taskId={record.id} onUpdated={onUpdated} />
+          </div>
           <ResearchCompletionControl
             taskId={record.id}
             result={result}
             researchStale={researchStale}
+            lifecycleSnapshot={lifecycleSnapshot}
             evidenceChangesSinceCompletion={(record as { evidenceChangesSinceCompletion?: Array<{ evidenceType: string; source: string; capturedAt: string; summary: string }> }).evidenceChangesSinceCompletion}
             onCompleted={onUpdated}
           />
         </section>
       ) : null}
 
-      <section id="listing-and-images" className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5" aria-label="Listing 与商品图片" data-testid="formal-v2-listing-images">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-base font-semibold text-slate-950">Listing 与商品图片</h2>
-          <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">发布前需人工确认</span>
+      {/* ── 历史与参考（默认折叠）：参考草稿收纳，避免与正式创作入口重复 ── */}
+      <details className="mt-6 rounded-2xl border border-slate-200/90 bg-slate-50/60 p-4 sm:p-5" data-testid="history-and-reference">
+        <summary className="cursor-pointer text-sm font-bold text-slate-800">
+          历史与参考（参考草稿）
+        </summary>
+        <p className="mt-1 text-xs leading-5 text-slate-500">
+          参考草稿仅供对照，不参与创作资料确认，也不影响生成结果；数据读取与生成能力保持不变。
+        </p>
+        <div className="mt-3">
+          <ReferenceListingDraftPanel
+            taskId={record.id}
+            onDraftGenerated={onUpdated}
+          />
         </div>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <div className="rounded-xl border border-rose-100 bg-rose-50/50 p-4">
-            <p className="text-sm font-semibold text-rose-700">Listing</p>
-            <p className="mt-2 text-sm font-semibold leading-6 text-rose-700">
-              {view.hasListingDraft ? "AI Listing 草稿已生成（未人工核实，暂不可发布）。" : "Listing 草稿尚未取得。"}
+      </details>
+
+      {/* ── 04: 已批准资产（Listing 与商品图片）（门禁：仅在决策「推进开发」后可用） ── */}
+      <section id="listing-and-images" className="mt-5 rounded-2xl border border-slate-200/80 bg-slate-50/50 p-4 sm:p-5" aria-label="已批准资产" data-testid="formal-v2-listing-images">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2">
+            <span className="flex size-6 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-500">04</span>
+            <h2 className="text-base font-bold text-slate-950">已批准资产（Listing 与商品图片）</h2>
+            <span className="rounded border border-slate-200 bg-white px-2 py-0.5 text-xs font-medium text-slate-500">辅助工具</span>
+          </div>
+          <span className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${
+            record.decisionStatus === "continue"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-slate-200 bg-white text-slate-500"
+          }`}>
+            {record.decisionStatus === "continue" ? "决策已推进 · 允许生成" : "门禁锁定"}
+          </span>
+        </div>
+        <p className="text-xs text-slate-500 mb-4">商品开发决策是核心；确定推进开发后，才可在此前往辅助工具生成文案草稿与视觉参考。</p>
+
+        {record.decisionStatus !== "continue" ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-sm text-amber-800" data-testid="studio-gate-locked-notice">
+            <p className="font-semibold">当前决策为「暂缓/放弃」，后续资产生成已锁定。需调整为「推进开发」后方可使用。</p>
+            <p className="mt-1.5 text-xs text-amber-700">
+              请在上方「01 商品开发决策研判卡」或「人工拍板确认」区中将决策状态变更为「可继续 / 推进开发」并保存后，方可解锁 Listing 与图片资产生成入口。
             </p>
-            <p className="mt-2 text-xs leading-5 text-slate-600">人工核实入口：点击下方「前往 Listing Studio 人工核对」，在「确认创作资料」区勾选「人工确认」并保存后，才可发布。</p>
-            {!studioLegacyUnsupported && !researchStale ? (
-              <Link href={`/listing-studio?taskId=${encodeURIComponent(record.id)}`} className="linear-button mt-4 inline-flex h-9 items-center justify-center px-3 text-sm font-semibold">前往 Listing Studio 人工核对</Link>
-            ) : <p className="mt-3 text-xs font-semibold text-amber-700">{researchStale ? "研究资料已变化，请先重新确认研究。" : "当前记录的创作资料尚未取得。"}</p>}
           </div>
-          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-            <p className="text-sm font-semibold text-slate-900">商品图片</p>
-            <p className="mt-2 text-sm font-semibold leading-6 text-slate-800">{imageCopy.headline}</p>
-            <p className="mt-2 text-xs leading-5 text-slate-600">{imageCopy.guidance}</p>
-            {imageCopy.verificationReasons.length ? (
-              <ul className="mt-2 space-y-1 text-xs leading-5 text-slate-600">
-                {imageCopy.verificationReasons.map((reason) => <li key={reason}>· {reason}</li>)}
-              </ul>
-            ) : null}
-            {!studioLegacyUnsupported && !researchStale ? (
-              <Link href={`/image-studio?taskId=${encodeURIComponent(record.id)}`} className="linear-button mt-4 inline-flex h-9 items-center justify-center px-3 text-sm font-semibold">
-                {view.hasImageDraft ? "补充清晰参考图后重新检查" : "提供清晰参考图"}
-              </Link>
-            ) : (
-              <p className="mt-3 text-xs font-semibold text-amber-700">{researchStale ? "研究资料已变化，请先重新确认研究。" : "当前记录暂无可用的补图入口（历史记录未生成创作上下文）。"}</p>
-            )}
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-slate-900">Listing 文本草稿</p>
+                <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${view.hasListingDraft ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>
+                  {view.hasListingDraft ? "已生成" : "待生成"}
+                </span>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-slate-700 font-medium">
+                {view.hasListingDraft ? "AI Listing 草稿已生成（未人工核实，暂不可发布）。" : "Listing 草稿尚未取得。"}
+              </p>
+              <p className="mt-2 text-xs leading-5 text-slate-500">人工核实入口：点击下方「前往文案工作台确认资料」，在「确认创作资料」区勾选「人工确认」并保存后，才可发布。</p>
+              {!studioLegacyUnsupported && !effectiveResearchStale ? (
+                <Link href={`/listing-studio?taskId=${encodeURIComponent(record.id)}`} className="linear-button mt-4 inline-flex h-9 items-center justify-center px-3 text-sm font-semibold">前往文案工作台确认资料</Link>
+              ) : <p className="mt-3 text-xs font-semibold text-amber-700">{effectiveResearchStale ? "研究资料已变化，请先重新确认研究。" : "当前记录的创作资料尚未取得。"}</p>}
+            </div>
+            <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-slate-900">商品图片素材</p>
+                <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${view.hasImageDraft ? "border-amber-200 bg-amber-50 text-amber-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>
+                  {view.hasImageDraft ? "AI 图片待核验" : "无参考图"}
+                </span>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-slate-800 font-medium">{imageCopy.headline}</p>
+              <p className="mt-2 text-xs leading-5 text-slate-500">{imageCopy.guidance}</p>
+              {imageCopy.verificationReasons.length ? (
+                <ul className="mt-2 space-y-1 text-xs leading-5 text-slate-600">
+                  {imageCopy.verificationReasons.map((reason) => <li key={reason}>· {reason}</li>)}
+                </ul>
+              ) : null}
+              {!studioLegacyUnsupported && !effectiveResearchStale ? (
+                <Link href={`/image-studio?taskId=${encodeURIComponent(record.id)}`} className="linear-button mt-4 inline-flex h-9 items-center justify-center px-3 text-sm font-semibold">
+                  {view.hasImageDraft ? "补充清晰参考图后重新检查" : "提供清晰参考图"}
+                </Link>
+              ) : (
+                <p className="mt-3 text-xs font-semibold text-amber-700">{effectiveResearchStale ? "研究资料已变化，请先重新确认研究。" : "当前记录暂无可用的补图入口（历史记录未生成创作上下文）。"}</p>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </section>
 
       <RecordFooter isActiveResearchView={isActiveResearchView} deleting={deleting} deleteError={deleteError} onDelete={onDelete} />
@@ -2020,13 +2438,18 @@ export function TaskRecordDetail({ id }: { id: string }) {
   const unlocked = ((isAccessPasswordReady && accessPassword.trim().length > 0) || isGuestMode()) || noAuthOwner;
   const router = useRouter();
   const [record, setRecord] = useState<TaskCenterItem | null>(null);
+  const [lifecycleSnapshot, setLifecycleSnapshot] = useState<ResearchLifecycleSnapshot | null>(null);
 
   // F1：研究骨架判定 + AI 研究执行入口（无 researchRecord 时显示引导卡）
   // R5：统一生命周期分类（breadcrumb/h1/返回链接/Studio gate 复用）
   const researchLifecycle = useMemo(() => record
     ? classifyResearchLifecycle({ decisionStatus: record.decisionStatus, result: isRecordValue(record.result) ? record.result : null, type: record.type })
     : { lifecycle: "active" as const, detail: "active_open" as const }, [record]);
-  const isActiveResearchView = researchLifecycle.lifecycle === "active";
+  const isActiveResearchView = lifecycleSnapshot
+    ? lifecycleSnapshot.contractMode === "modern"
+      && lifecycleSnapshot.phase !== "completed"
+      && lifecycleSnapshot.phase !== "abandoned"
+    : researchLifecycle.lifecycle === "active";
   const recordHasResearchRecord = useMemo(() => {
     if (!record || !isRecordValue(record.result)) return false;
     return Object.prototype.hasOwnProperty.call(record.result, "researchRecord")
@@ -2034,9 +2457,12 @@ export function TaskRecordDetail({ id }: { id: string }) {
       || hasVersionedProductResearchRecord(record.result);
   }, [record]);
   // V3 Legacy Removal：早期候选任务（无新版创作上下文）→ 不显示创作工具区
-  const studioLegacyUnsupported = record !== null && !hasVersionedProductResearchRecord(record.result);
+  const studioLegacyUnsupported = record !== null && (lifecycleSnapshot
+    ? lifecycleSnapshot.contractMode !== "modern"
+    : !hasVersionedProductResearchRecord(record.result));
   // V3 Research Staleness UX Closure：研究资料在完成研究后发生变化 → 创作 CTA 禁用（需重新确认研究）
-  const researchStale = (record as { researchStale?: boolean } | null)?.researchStale === true;
+  const researchStale = lifecycleSnapshot?.stale
+    ?? ((record as { researchStale?: boolean } | null)?.researchStale === true);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
@@ -2056,15 +2482,22 @@ export function TaskRecordDetail({ id }: { id: string }) {
     reqIdRef.current += 1;
     const currentId = reqIdRef.current;
     try {
-      const response = await fetch(`/api/tasks/${encodeURIComponent(id)}`, {
-        cache: "no-store",
-        headers: { ...buildAccessHeaders() },
-      });
+      const headers = { ...buildAccessHeaders() };
+      const [response, lifecycleResponse] = await Promise.all([
+        fetch(`/api/tasks/${encodeURIComponent(id)}`, { cache: "no-store", headers }),
+        fetch(`/api/tasks/${encodeURIComponent(id)}/research-lifecycle`, { cache: "no-store", headers }).catch(() => null),
+      ]);
       if (currentId !== reqIdRef.current) return;
       const data = await response.json() as DetailResponse;
+      const lifecycleData = lifecycleResponse
+        ? await lifecycleResponse.json().catch(() => null) as ResearchLifecycleResponse | null
+        : null;
       if (currentId !== reqIdRef.current) return;
       if (!response.ok || !data.ok || !data.data) return;
       setRecord(data.data);
+      const lifecycleSnapshot = lifecycleData?.ok ? parseResearchLifecycleSnapshot(lifecycleData.data) : null;
+      // 详情已刷新但生命周期接口失败时清空旧快照，避免旧阶段覆盖新详情。
+      setLifecycleSnapshot(lifecycleSnapshot);
       setLoading(false);
     } catch {
       // 刷新失败保持现有内容（进度摘要保留旧值，不打断用户）
@@ -2099,15 +2532,20 @@ export function TaskRecordDetail({ id }: { id: string }) {
       setLoading(true);
       setError("");
       setRecord(null);
+      setLifecycleSnapshot(null);
       try {
-        const response = await fetch(`/api/tasks/${encodeURIComponent(id)}`, {
-          cache: "no-store",
-          headers: { ...buildAccessHeaders() },
-        });
+        const headers = { ...buildAccessHeaders() };
+        const [response, lifecycleResponse] = await Promise.all([
+          fetch(`/api/tasks/${encodeURIComponent(id)}`, { cache: "no-store", headers }),
+          fetch(`/api/tasks/${encodeURIComponent(id)}/research-lifecycle`, { cache: "no-store", headers }).catch(() => null),
+        ]);
         // Discard if a newer request has already started
         if (cancelled || currentId !== reqIdRef.current) return;
 
         const data = await response.json() as DetailResponse;
+        const lifecycleData = lifecycleResponse
+          ? await lifecycleResponse.json().catch(() => null) as ResearchLifecycleResponse | null
+          : null;
         if (cancelled || currentId !== reqIdRef.current) return;
 
         if (!response.ok || !data.ok) {
@@ -2116,6 +2554,8 @@ export function TaskRecordDetail({ id }: { id: string }) {
           return;
         }
         setRecord(data.data);
+        const lifecycleSnapshot = lifecycleData?.ok ? parseResearchLifecycleSnapshot(lifecycleData.data) : null;
+        setLifecycleSnapshot(lifecycleSnapshot);
       } catch {
         if (cancelled || currentId !== reqIdRef.current) return;
         setRecord(null);
@@ -2264,25 +2704,25 @@ export function TaskRecordDetail({ id }: { id: string }) {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <nav className="flex items-center gap-1.5 text-sm text-slate-400">
-                  {/* R5：Active=商品研究 / Historical=研究记录 */}
-                  <Link href={isActiveResearchView ? "/research" : "/tasks"} className="hover:text-teal-600">{isActiveResearchView ? "商品研究" : "研究记录"}</Link>
+                  {/* R5：Active=商品研究 / Historical=决策复盘 */}
+                  <Link href={isActiveResearchView ? "/opportunity-candidates" : "/tasks"} className="hover:text-teal-600">{isActiveResearchView ? "商品研究" : "决策复盘"}</Link>
                   <span>/</span>
                   {record && <span className="font-medium text-slate-700 truncate max-w-[200px]">{getTitle(record)}</span>}
 
                 </nav>
                 <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">
-                  {isActiveResearchView ? "商品研究" : "研究记录"}
+                  {isActiveResearchView ? "商品研判详情" : "决策报告详情"}
                 </h1>
                 <p className="mt-1 text-sm text-slate-500">
-                  {record ? `${getTitle(record)} · ` : ""}{recordHasResearchRecord ? "查看研究结论、风险、待确认信息和人工决定；创作工具按需单独使用。" : "商品研究工作台：收集资料、让 AI 整理、最后做人工决定。"}
+                  {record ? `${getTitle(record)} · ` : ""}{recordHasResearchRecord ? "查看开发决策建议、供应链与风险证据及人工拍板记录；确定推进后可使用辅助工具生成资产。" : "商品开发决策复盘：汇总研判证据，记录人工商业拍板。"}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Link
-                  href={isActiveResearchView ? "/research" : "/tasks"}
+                  href={isActiveResearchView ? "/opportunity-candidates" : "/tasks"}
                   className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
                 >
-                  {isActiveResearchView ? "返回商品研究" : "返回研究记录"}
+                  {isActiveResearchView ? "返回商品研究" : "返回决策复盘"}
                 </Link>
                 {record?.type === "workflow" && isRecordValue(record.result) && (
                   <button
@@ -2315,6 +2755,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
                 <FormalV2RecordContent
                   record={record}
                   researchStale={researchStale}
+                  lifecycleSnapshot={lifecycleSnapshot}
                   studioLegacyUnsupported={studioLegacyUnsupported}
                   deleting={deleting}
                   deleteError={deleteError}

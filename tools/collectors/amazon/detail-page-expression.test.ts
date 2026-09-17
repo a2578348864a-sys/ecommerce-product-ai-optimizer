@@ -53,13 +53,13 @@ function options(overrides: Partial<AmazonDetailPageExtractionOptions> = {}): Am
   };
 }
 
-function runExpression(dom: unknown, opts: AmazonDetailPageExtractionOptions) {
+function runExpression(dom: unknown, opts: AmazonDetailPageExtractionOptions, url = "https://www.amazon.com/dp/B0TEST0001") {
   const expression = buildAmazonDetailPageExtractionExpression(opts);
   const runner = Function("document", "location", `return ${expression}`) as (
     doc: unknown,
     loc: { href: string },
   ) => unknown;
-  return runner(dom, { href: "https://www.amazon.com/dp/B0TEST0001" });
+  return runner(dom, { href: url });
 }
 
 describe("detail-page expression source（P1-A）", () => {
@@ -104,6 +104,30 @@ describe("detail-page expression source（P1-A）", () => {
     expect(fromExpression.fields.reviews.value).toBe(1234);
   });
 
+  it("matches on AirPods Pro B0BDHWDR12 layout with Unicode LRM mark in techSpec table", () => {
+    const dom = fakeDom({
+      "#body": { innerText: "Apple AirPods Pro product page" },
+      "#productTitle": { textContent: "Apple AirPods Pro (2nd Gen)" },
+      "#productDetails_techSpec_section_1": {
+        rows: [{ textContent: "ASIN \u200EB0BDHWDR12" }],
+      },
+      "#corePriceDisplay_desktop_feature_div .a-price .a-offscreen": { textContent: "$199.00" },
+      "#acrPopover .a-icon-alt": { textContent: "4.7 out of 5 stars" },
+      "#acrCustomerReviewText": { textContent: "57,930 ratings" },
+    });
+    const opts = options({ expectedAsin: "B0BDHWDR12" });
+    const fromExpression = runExpression(dom, opts, "https://www.amazon.com/dp/B0BDHWDR12") as ReturnType<typeof extractAmazonDetailPage>;
+    const fromNode = extractAmazonDetailPage(dom as never, "https://www.amazon.com/dp/B0BDHWDR12", opts);
+    expect(fromExpression).toEqual(fromNode);
+    expect(fromExpression.entityBound).toBe(true);
+    expect(fromExpression.expectedAsin).toBe("B0BDHWDR12");
+    expect(fromExpression.pageAsin).toBe("B0BDHWDR12");
+    expect(fromExpression.fields.asin.value).toBe("B0BDHWDR12");
+    expect(fromExpression.fields.price.value).toBe(199.0);
+    expect(fromExpression.fields.rating.value).toBe(4.7);
+    expect(fromExpression.fields.reviews.value).toBe(57930);
+  });
+
   it("matches on new buybox price container (V3R)", () => {
     const dom = fakeDom({
       "#body": { innerText: "Test Bottle product page" },
@@ -139,6 +163,42 @@ describe("detail-page expression source（P1-A）", () => {
     const dom = fakeDom({
       "#body": { innerText: "Please sign in to continue" },
     });
+    const opts = options();
+    const fromExpression = runExpression(dom, opts) as ReturnType<typeof extractAmazonDetailPage>;
+    const fromNode = extractAmazonDetailPage(dom as never, "https://www.amazon.com/dp/B0TEST0001", opts);
+    expect(fromExpression).toEqual(fromNode);
+    expect(fromExpression.pageStatus).toBe("login_wall");
+  });
+
+  it.each([
+    "Click the button below to continue shopping",
+    "Continue shopping",
+  ])("classifies Amazon %s interstitial as automation_blocked (not a login wall)", (bodyText) => {
+    const dom = fakeDom({ "#body": { innerText: bodyText } });
+    const opts = options();
+    const fromExpression = runExpression(dom, opts) as ReturnType<typeof extractAmazonDetailPage>;
+    const fromNode = extractAmazonDetailPage(dom as never, "https://www.amazon.com/dp/B0TEST0001", opts);
+    expect(fromExpression).toEqual(fromNode);
+    expect(fromExpression.pageStatus).toBe("automation_blocked");
+    expect(fromExpression.pageStatus).not.toBe("login_wall");
+    expect(fromExpression.entityBound).toBe(false);
+  });
+
+  it("classifies the /errors_page/validateCaptcha gateway as automation_blocked from the form action alone", () => {
+    const dom = fakeDom({
+      "#body": { innerText: "Amazon.com Conditions of Use Privacy Policy" },
+      "form[action*='validateCaptcha']": { textContent: "Continue shopping" },
+    });
+    const opts = options();
+    const fromExpression = runExpression(dom, opts) as ReturnType<typeof extractAmazonDetailPage>;
+    const fromNode = extractAmazonDetailPage(dom as never, "https://www.amazon.com/dp/B0TEST0001", opts);
+    expect(fromExpression).toEqual(fromNode);
+    expect(fromExpression.pageStatus).toBe("automation_blocked");
+    expect(fromExpression.pageStatus).not.toBe("login_wall");
+  });
+
+  it("keeps a real sign-in wall as login_wall", () => {
+    const dom = fakeDom({ "#body": { innerText: "Please sign in to continue" } });
     const opts = options();
     const fromExpression = runExpression(dom, opts) as ReturnType<typeof extractAmazonDetailPage>;
     const fromNode = extractAmazonDetailPage(dom as never, "https://www.amazon.com/dp/B0TEST0001", opts);

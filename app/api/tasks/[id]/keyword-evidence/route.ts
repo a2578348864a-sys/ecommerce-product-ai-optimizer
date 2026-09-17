@@ -24,15 +24,41 @@ import {
   claimBrowserUsePreview,
   restoreBrowserUsePreviewClaim,
   takeBrowserUsePreview,
+  getPendingKeywordPreviewDto,
+  browserUseSubjectKey,
   type BrowserUsePreviewClaim,
+  type PendingKeywordPreviewDto,
 } from "@/lib/server/browserUseResearch";
+import { readBrowserEvidenceTaskAsin } from "@/lib/server/browserEvidence";
 import { getRuntimeMode } from "@/lib/server/runtimeMode";
 
 export const runtime = "nodejs";
 
 type StorageVersion = { resultJsonHash: string; updatedAt: string };
 
-function jsonResponse(body: unknown, status = 200) {
+type ApiResponse =
+  | {
+      ok: true;
+      data: {
+        evidence: KeywordEvidenceV1 | null;
+        storageVersion: StorageVersion;
+        pendingPreview: PendingKeywordPreviewDto | null;
+      };
+    }
+  | {
+      ok: true;
+      data: {
+        evidence: KeywordEvidenceV1;
+        storageVersion: StorageVersion;
+        saved: string[];
+      };
+    }
+  | {
+      ok: false;
+      error: { code: string; message: string };
+    };
+
+function jsonResponse(body: ApiResponse, status = 200) {
   return NextResponse.json(body, { status });
 }
 
@@ -114,9 +140,35 @@ export async function GET(
   try {
     const evidence = await getKeywordEvidence(resolved.context, id);
     const snapshot = await readKeywordEvidenceSnapshot(resolved.context, id);
+    let seedAsin: string | null = null;
+    try {
+      const record = (() => {
+        try {
+          const parsed = JSON.parse(snapshot.resultJson) as unknown;
+          return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+            ? (parsed as Record<string, unknown>)
+            : null;
+        } catch {
+          return null;
+        }
+      })();
+      seedAsin = resolveBrowserUseSeed(record)?.asin ?? null;
+    } catch {
+      seedAsin = null;
+    }
+    if (!seedAsin) {
+      seedAsin = await readBrowserEvidenceTaskAsin(resolved.context, id);
+    }
+    const pendingPreview = seedAsin
+      ? getPendingKeywordPreviewDto(seedAsin, { subjectKey: browserUseSubjectKey(resolved.context), taskId: id })
+      : null;
     return jsonResponse({
       ok: true,
-      data: { evidence, storageVersion: toStorageVersion(snapshot) },
+      data: {
+        evidence,
+        storageVersion: toStorageVersion(snapshot),
+        pendingPreview,
+      },
     });
   } catch (error) {
     return errorResponseFrom(error);
@@ -164,7 +216,8 @@ export async function POST(
     if (!previewId) return errorResponse(400, "preview_id_required", "缺少预览 ID。");
     const expectedStorageVersion = parseStorageVersionInput(bodyRecord.expectedStorageVersion);
     if (expectedStorageVersion === null) return errorResponse(400, "storage_version_required", "内容刚在其他位置更新，请刷新后重试。");
-    claim = claimBrowserUsePreview(previewId);
+    const previewBinding = { subjectKey: browserUseSubjectKey(resolved.context), taskId: id };
+    claim = claimBrowserUsePreview(previewId, previewBinding);
     if (!claim) return errorResponse(400, "preview_not_found", "预览不存在或已过期，请重新采集。");
     const preview = claim.preview;
     if (preview.kind !== "keyword") return errorResponse(400, "preview_kind_mismatch", "预览类型与保存目标不一致。");
@@ -195,7 +248,7 @@ export async function POST(
   } catch (error) {
     // 仅在确证未落库（CAS / storageVersion 冲突）时 restore claim，保留原 TTL
     if (claim && previewId && error instanceof KeywordEvidenceError && (error.code === "task_result_conflict" || error.status === 409)) {
-      restoreBrowserUsePreviewClaim(previewId, claim);
+      restoreBrowserUsePreviewClaim(previewId, claim, { subjectKey: browserUseSubjectKey(resolved.context), taskId: id });
     }
     if (error && typeof error === "object" && (error as { code?: unknown }).code === "browser_use_local_owner_only") {
       return errorResponse(403, "browser_use_local_owner_only", "Browser Use 自动采集仅限本机 Owner 使用。");
@@ -204,4 +257,4 @@ export async function POST(
   }
 }
 
-export type { KeywordEvidenceV1 };
+export type { KeywordEvidenceV1, PendingKeywordPreviewDto, ApiResponse };

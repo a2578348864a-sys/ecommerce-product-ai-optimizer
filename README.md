@@ -1,232 +1,279 @@
 <div align="center">
 
-# 🛒 轻选工作台
-### Evidence-driven AI Commerce Workbench
+# 轻选工作台 (QingXuan Workbench)
 
-**面向跨境电商商品研究与 Amazon 上架准备的 Evidence-driven AI Workbench**
+**面向跨境电商（Amazon）的证据驱动型商品研究与 Listing / 视觉素材创作工作台**  
+*Evidence-Driven AI Workbench for Amazon Product Research, Listing & Visual Asset Creation*
 
-把真实多源采集、证据链治理、人工事实裁决与受控内容生成，组织成一条**可复核、降低 AI 事实幻觉风险、符合平台合规标准**的商品研究与上架准备主链。
-
-<p>
-  <b>Product line: V4.1</b> · <b>Package version: 2.2.16</b>
+<p align="center">
+  <a href="https://nextjs.org"><img src="https://img.shields.io/badge/Next.js-16.3-000000?style=for-the-badge&logo=nextdotjs&logoColor=white" alt="Next.js 16" /></a>
+  <a href="https://react.dev"><img src="https://img.shields.io/badge/React-19.0-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React 19" /></a>
+  <a href="https://www.typescriptlang.org"><img src="https://img.shields.io/badge/TypeScript-5.x-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript 5" /></a>
+  <a href="https://tailwindcss.com"><img src="https://img.shields.io/badge/Tailwind_CSS-3.4-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind CSS" /></a>
+  <a href="https://www.prisma.io"><img src="https://img.shields.io/badge/Prisma-SQLite-2D3748?style=for-the-badge&logo=prisma&logoColor=white" alt="Prisma SQLite" /></a>
+  <a href="https://vitest.dev"><img src="https://img.shields.io/badge/Vitest-260+_Tests-6E9F18?style=for-the-badge&logo=vitest&logoColor=white" alt="Tests" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="MIT License" /></a>
 </p>
 
----
+<p align="center">
+  <a href="#-为什么需要轻选工作台">核心价值</a> •
+  <a href="#-系统主链与工作流">系统架构</a> •
+  <a href="#-核心能力矩阵">核心功能</a> •
+  <a href="#-快速上手">快速启动</a> •
+  <a href="#-技术栈与工程防线">技术架构</a> •
+  <a href="#-完整文档导航">文档体系</a>
+</p>
 
-[![Next.js 16](https://img.shields.io/badge/Next.js-16.3-black?style=flat-square&logo=next.js)](https://nextjs.org/)
-[![React 19](https://img.shields.io/badge/React-19.0-blue?style=flat-square&logo=react)](https://react.dev/)
-[![TypeScript 5](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
-[![Prisma SQLite](https://img.shields.io/badge/Prisma-5.22-teal?style=flat-square&logo=prisma)](https://www.prisma.io/)
-[![CI](https://github.com/a2578348864a-sys/ecommerce-product-ai-optimizer/actions/workflows/ci.yml/badge.svg)](https://github.com/a2578348864a-sys/ecommerce-product-ai-optimizer/actions/workflows/ci.yml)
-[![License MIT](https://img.shields.io/badge/License-MIT-orange?style=flat-square)](LICENSE)
 
 </div>
 
 ---
 
-> **💡 一句话定位**：  
-> 轻选工作台面向跨境电商商品研究与 Amazon 上架准备。它不是“输入标题就无脑写文案”的套壳 Demo，而是先整合 **SellerSprite 选品报表、Amazon 竞品、真实买家评论 (VOC) 与 1688 货源线索**，由运营人员最终打勾核准商品真实事实，再由代码级安全门禁驱动生成合规的 **Listing 与图片策划草稿**。
+## 💡 为什么需要轻选工作台？
 
----
+在 Amazon 运营与上架流程中，团队常常面临两难拉扯：
 
-## 🎯 核心设计哲学：证据不等于事实（Evidence ≠ Fact）
+* **文案要打动买家**：需要深刻洞察痛点、场景化表达与吸引点击的卖点提炼；
+* **事实必须严格可查**：尺寸、材质、认证、配件与承重数据绝不能凭空捏造，否则将直接面临退货纠纷、差评甚至平台下架处罚。
 
-在真实跨境电商上架中，AI 最致命的缺陷是**把外部推测、竞品夸大和买家主观情绪当成了本商品的物理规格**。  
-为此，轻选工作台在系统底层确立了**不可逾越的事实隔离红线**：
+通用大模型（如 ChatGPT / Claude 简单对话）在撰写电商文案时极易产生**无依据幻觉**（编造认证、夸大耐用度或虚构参数）。**轻选工作台**从底层重塑了人机协作分工：**AI 负责表达，代码负责检验，人类负责确权**。
 
-```text
-  Evidence ≠ Fact               # 采集到的文本仅作为参考证据，不自动升格为商品事实
-  VOC ≠ Fact                    # 买家评论与吐槽是主观感知，不等于商品的物理属性
-  AI Summary ≠ Fact             # AI 的推演与归纳只是参谋意见，不能直接作为上架规格
-  Competitor Evidence ≠ Fact    # 竞品详情页的卖点是竞品特性，严禁直接挪用至本品
-  Sourcing Evidence ≠ Fact      # 1688 批发商的声明不能等同于 Amazon 最终合规规格
-  Keyword Evidence ≠ Fact       # 搜索关键词只提供流量靶向，不代表商品自带该项功能
-```
+### 对比：传统大模型对话 vs 轻选工作台受控证据链
 
-### 📊 传统 AI 生成 vs 轻选工作台证据治理
-
-| 维度 | 传统套壳 AI 工具 (Prompt-only) | 轻选工作台 (Evidence-driven) |
+| 评估维度 | 传统通用 AI 提示词生成 | 轻选工作台 (QingXuan Workbench) |
 | :--- | :--- | :--- |
-| **事实依据** | 模型自带知识或模糊网页推断（容易产生幻觉） | **严格 Positive-Allow**，每条事实必在证据索引中逐字可溯 |
-| **竞品挪用** | 容易将竞品专有特性、专利卖点照抄到本品 | **实体隔离**，竞品五点仅作为市场定位参考，不进入本品事实库 |
-| **文案质量** | 机器味浓重、容易生成语法结构病句（假通过） | **Copy Quality 语法引擎**，正则级拦截 5 类僵硬病句 |
-| **审核机制** | 全黑盒一键生成，运营人员无法溯源证据 | **人机协同确认**，事实由运营打勾确认并加盖 CAS 锁 |
-| **供应链关联** | 脱离采购与成本现实 | **打通 1688 受控线索**，记录和分析采购价、物流成本与合规状态 |
+| **事实准确性** | ❌ 容易幻觉虚构参数、虚假承诺（如盲目声称“终身防水”、“军工级耐用”） | ✅ **强事实绑定**：仅允许使用经过人工逐项确认的客观事实（Confirmed Facts） |
+| **可解释与溯源** | ❌ 黑盒输出，无法知晓每个卖点源自哪条评论或规格数据 | ✅ **端到端可追溯**：每句话带证据引用快照与版本指纹（`contextFingerprint`） |
+| **质量安全门禁** | ❌ 生成即结束，好坏对错全靠人工肉眼逐字纠偏排查 | ✅ **确定性双重质检**：自动化 Validator 硬门禁拦截违规词、未锚定声明，支持安全回退 |
+| **合规与风控防护** | ❌ 容易误用违禁词、侵权竞品商标或夸大功效 | ✅ **安全词库与边界策略**：内置 Amazon 敏感词与语义边界过滤，杜绝违规踩坑 |
+| **业务流连续性** | ❌ 散碎对话，无法沉淀商品研究成果，数据无法复用 | ✅ **完整研发闭环**：多源研究 → 事实确权 → 创作交接 → 文案生成 → 视觉规划 |
+| **数据与隐私安全** | ❌ 商业研究数据直接暴露于公网云端对话框 | ✅ **Local-First**：本地 SQLite 存储，敏感密钥仅留本地，支持完全离线 Mock 演练 |
 
 ---
 
-## 🔄 核心运行主链路 (Master Workflow)
+## 🔄 系统主链与工作流
 
-系统将复杂的跨境选品、调研与创作解构为五步高可信数据流：
+轻选工作台严格贯彻 **`Evidence ≠ Fact`（证据不等于事实）** 的工程铁律。外部采集的 Amazon 页面、关键词词根、VOC 买家评论与 1688 供应链线索先沉淀为**参考证据集**；唯有经过运营人员逐条确权，方能转化为商品事实，进而驱动 Listing 与图像创作。
 
-```text
- ┌─────────────────┐
- │ 外部多源真实数据 │ ──> SellerSprite 报表 / Amazon CDP 详情 / 1688 批发线索 / 买家真实评论
- └────────┬────────┘
-          │ (美区环境校准 + 字段白名单 + 实体绑定 + 错误风控隔离)
-          ▼
- ┌─────────────────┐
- │ Evidence 证据治理│ ──> 结构化归一化、来源溯源哈希、广告剔除、买家真实 VOC 洞察
- └────────┬────────┘
-          │ (AI 深度归纳与风险推演)
-          ▼
- ┌─────────────────┐
- │ 运营人工裁决门禁 │ ──> 人机协同核对、事实候选筛查、解决冲突、打勾确认 (CAS 乐观锁防踩踏)
- └────────┬────────┘
-          │ (沉淀为版本化、可追溯的 Human Confirmed Facts)
-          ▼
- ┌─────────────────┐
- │ 受控创作双工坊   │ ──> 阶段 A 事实语义渲染 ──> 阶段 B 运营自然润色 ──> 视觉策略生成
- └────────┬────────┘
-          │
-          ├─► [Listing Studio] ──► Positive-Allow 证据回溯门禁 + Copy Quality 语法防假通过
-          └─► [Image Studio]   ──► 视觉参考审批 + 受控 Prompt 契约 + 多尺寸自适应
+```mermaid
+graph TD
+    classDef source fill:#f8fafc,stroke:#94a3b8,stroke-width:1px,color:#334155;
+    classDef gate fill:#fef3c7,stroke:#f59e0b,stroke-width:2px,color:#92400e;
+    classDef engine fill:#e0f2fe,stroke:#0284c7,stroke-width:1.5px,color:#0369a1;
+    classDef output fill:#f0fdf4,stroke:#16a34a,stroke-width:1.5px,color:#15803d;
+
+    subgraph Research [1. 多源研究编排 Multi-Source Research]
+        S1[Amazon 页面数据]:::source
+        S2[关键词与竞品差异]:::source
+        S3[VOC 买家真实原声]:::source
+        S4[1688 货源采购线索]:::source
+    end
+
+    Research -->|统一归集| EV[证据资料集 Evidence Pool]:::source
+    EV -->|派生提取| FC[事实候选 Fact Candidates]:::source
+
+    subgraph Gate [2. 人工事实门禁 Human-in-the-Loop Gate]
+        FC --> HG{运营逐项核对确权?}:::gate
+        HG -->|通过确认| CF[已确认事实 Confirmed Facts]:::gate
+        HG -->|存疑 / 拒绝| REJ[隔离存放 / 仅作表达灵感]:::gate
+    end
+
+    CF --> CH[创作资料交接 Creative Handoff]:::gate
+
+    subgraph Studios [3. 双引擎创作工作台 Dual Creative Engines]
+        CH --> LS[Listing Studio V5<br/>文案策划与生成]:::engine
+        CH --> IS[Image Studio<br/>7大商用用途视觉规划]:::engine
+    end
+
+    subgraph Guard [4. 确定性质量检验与交付 Quality Gate & Output]
+        LS --> VAL{Validator 硬门禁<br/>事实锚定与禁用词校验}:::gate
+        VAL -->|质检通过| OUT1[Amazon Listing 成品草稿]:::output
+        VAL -->|存在瑕疵| REP[Bounded Repair / 确定性安全模板兜底]:::gate
+        REP --> OUT1
+        IS --> OUT2[商用视觉分镜与提示词]:::output
+    end
 ```
 
-1. **机会发现与导入**：解析 SellerSprite 市场报表与选品雷达，建立候选商品池（`OpportunityCandidate`）。
-2. **多源真实取证与分析**：采集真实关键词、竞品五点、真实 VOC 评论、1688 供应链货源及采购物流成本。
-3. **人工决策与事实锁定**：由人做最终裁决，将推测性信息与物理事实严格剥离，确认硬性规格并加盖 CAS 版本印章。
-4. **Listing Studio 受控创作**：基于已确认事实生成标题、五点、描述与后台搜索词；受事实安全与英文语法双重门禁护航。
-5. **Image Studio 视觉策划**：基于已批准视觉参考与确认事实生成合规提示词与分镜设计，成果由运营最终审核。
+> [!IMPORTANT]
+> **核心铁律：Evidence ≠ Fact**  
+> 外部采集的页面资料、竞品文案、VOC 评论或供应链信息均仅为参考材料（Evidence）。未经运营人员逐项确认，任何内容绝不允许晋升为目标商品的硬事实（Confirmed Facts），从根源杜绝 AI 凭空捏造。
 
 ---
 
-## 🛡️ 四大工程核心支柱（核心工程能力）
+## ✨ 核心能力矩阵
 
-### 1. 有约束的 Web Acquisition 工程（受约束的本地采集流程）
-- **真实环境校准**：通过独立 Chrome CDP Session 驱动，注入美国真实 ZIP 邮区（90001）与 USD 货币环境校准；
-- **实体强制绑定**：页面抽取与 ASIN、变体 Key 严格绑定；非 USD 币种不私自汇率换算，主动 Fail-Closed 熔断；
-- **反爬与噪声防御**：自动识别并剔除 Sponsored 广告；遭遇验证码（Captcha）、登录墙、异常重定向立即安全退出。
+### 1. 🔍 多源商品研究编排 (Research Orchestrator)
+* **多源结构化数据聚合**：一站式归集 Amazon 页面核心参数、核心搜索词与长尾词库、竞品差异化卖点以及 VOC（Voice of Customer）真实买家评论痛点。
+* **供应链货源辅助**：支持联动 1688 货源线索与采购参考。
+* **故障隔离机制**：外部 Sourcing 或辅助工具连接异常时，系统诚实展示失败并提供重试入口，绝不伪造成功假象，且绝不阻塞 Listing 主链推进。
 
-### 2. 受控 1688 货源线索引擎（供应链受控接入）
-- **安全命令白名单**：只读 CLI 命令白名单执行，实施版本握手、超时控制与最大输出体积限制；
-- **风控与 Schema 归一化**：将供应商接口风控错误精准映射为业务状态；搜索结果必须经过运营 Preview 确认后才进入 Evidence；
-- **访客权限隔离**：在 Public / Visitor 模式下物理切断外部命令执行，严防私有供应链资产泄露。
+### 2. 🛡️ 事实门禁与确权 (Human-in-the-Loop Fact Gate)
+* **逐项审核确权**：每项候选事实支持独立人工确认、编辑修订或拒绝隔离。
+* **修订版本追溯 (CAS Revision)**：每一次事实变更生成独立版本快照，状态持久化至本地数据库，刷新无缝恢复。
+* **资料交接把关 (Creative Handoff Gate)**：未完成事实核验的任务严禁触发正式文案生成，防止脏数据污染。
 
-### 3. 代码级 Positive-Allow 门禁与 Copy Quality 语法防假通过
-- **Positive Allow 原则**：文案中出现的任何事实性 Claim（材质、隔层数、尺寸、容量），必须能在 Evidence 索引中找到逐字支持依据；无依据推断材质等级、认证、夸大性能一律**代码级拦截拒绝**；
-- **语法级防假通过 (Copy Quality Engine)**：突破“词数达标就放行”的虚假门禁，构建严格的模式识别引擎，深度拦截 5 类机器容易犯的僵硬病句：
-  - 动词机制套壳（如 `opens through its ... mechanism`）
-  - 介词与搭配错误（如 `suitable for use at daily hydration`）
-  - 场景复读口吃（如 `suitable for use at ... desk use`）
-  - 主客体逻辑倒置（如 `fits cup holder-friendly base`）
-  - 单数可数名词无冠词裸奔（如 `features MagSlider lid`）
-- **跨商品形态泛化**：针对 **Organizer（刀叉收纳盒）**、**Water Bottle（吸管水杯）**、**Tumbler（车载咖啡杯）** 三类差异明显的形态，通过全套红绿泛化测试验收。
+### 3. ✍️ Listing Studio V5 (确定性表达工程)
+* **全套标准文案输出**：高辨识度标题（Title）、5 维核心五点描述（Bullet Points）、长篇商品描述（Description）以及后台精准搜索词（Backend Search Terms）。
+* **唯一真理源 `approvedBenefits`**：生成过程与质检阶段统一遵循单源事实授权矩阵，杜绝非授权的语义过度外推（如尺寸规格不得随意推论为“完美适配所有背包”）。
+* **Validator 硬门禁自动质检**：
+  * 逐句校验事实锚点（Fact Anchoring）；
+  * 实时过滤虚假宣传、绝对化用语与违禁词；
+  * 校验失败时自动触发有限度自愈修复（Bounded Repair），极端情况下无缝降级为确定性安全兜底模板。
 
-### 4. 双运行模式与状态版本治理（Dual Runtimes & State Governance）
-- **两套运行模式**：
-  - `local_owner`：本机 Owner 免密完整工作台，本地 SQLite CAS 乐观锁版本并发控制（零脏写、防踩踏）；
-  - `public_showcase`：公开脱敏演示沙箱，仅对外呈现静态案例与快照，物理阻断实时采集与数据库写入；
-- **历史快照读取动态重判（Historical Draft Read Guard）**：即使旧数据库中曾将某份草稿标记为 `pass`，新版本在读取历史快照时依然实时执行最新门禁，一旦检测到坏文案立即自动清空正文并提示重审，阻断劣质历史草稿放行。
+### 4. 🎨 Image Studio (视觉资产生成辅助)
+* **7 大电商标准视觉用途**：白底棚拍图 (`white_studio`)、尺寸规格图 (`dimension_specs`)、使用步骤图 (`usage_steps`)、生活场景图 (`lifestyle`)、细节特写图 (`macro_detail`)、包装套装图 (`packaging_set`)、卖点解析图 (`feature_board`)。
+* **8 种高级商用摄影光影风格**：从杂志质感、自然家庭采光到户外商业叙事，满足全方位视觉调性需求。
+* **30 秒极简决策流**：首屏清晰聚焦“事实依据 → 推荐槽位 → 视觉用途 → 方案摘要 → 创作意图 → 一键生成”，技术调试参数默认折叠收口。
+* **参考图硬门禁 (Reference Gate)**：在缺少已批准实拍参考图时实施安全拦截，防止 AI 凭空篡改商品的形状、结构或物理特征。
 
 ---
 
-## 📂 仓库全景架构与模块职责
+## 🛠️ 技术栈与工程防线
 
-```text
-ecommerce-product-ai-optimizer/
-├── app/                              # Next.js 16 App Router 前端与服务层 (29 页面 + 83 API)
-│   ├── (studios)/                    # Listing Studio 与 Image Studio 受控工坊
-│   ├── opportunities/                # 市场发现、选品雷达与 SellerSprite 报表透视
-│   ├── tasks/                        # 商品深度研究主控台 (7 大证据锚点与事实确认)
-│   └── v4/runs/                      # LangGraph 流程执行追踪与调试面板
-├── components/                       # 模块化 UI 组件库 (Tailwind CSS + Lucide)
-│   ├── creative-handoff/             # 创作交接与事实候选审核交互
-│   ├── cross-border/                 # 竞品分析、买家评论 VOC、1688 货源面板
-│   └── listing-handoff/              # Listing 运营编辑器与质量检测卡片
-├── lib/                              # 核心业务与领域逻辑层
-│   ├── listingHandoff/               # Listing 阶段 A 渲染、阶段 B 运营润色、Copy Quality 引擎
-│   ├── imageHandoff/                 # 视觉参考匹配、Prompt 拼装与图片元数据
-│   └── server/                       # 权限契约、SQLite CAS 锁、Fail-Closed 防护与安全 DTO
-├── tools/                            # 外部采集实现 (Chrome CDP 采集器、SellerSprite 解析器)
-├── prisma/                           # 混合数据架构 (任务表、批次表、原子事实表 schema.prisma)
-├── scripts/                          # 本地守护进程管理、构建代理与数据库备份脚本
-├── docs/                             # 规范文档库 (架构总览、权限契约、发布冻结清单)
-│   ├── architecture/                 # 架构总览与核心契约
-│   └── v4.1/                         # V4.1 里程碑验收与实测证据截图
-└── FINAL_FREEZE.md                   # 项目最终结项基线与审计记录
-```
+### 技术架构全景
+
+| 架构层级 | 技术选型 | 说明 |
+| :--- | :--- | :--- |
+| **前端框架** | Next.js 16.3 (App Router) + React 19 | 现代化服务端组件流式渲染与极速客户端交互 |
+| **界面样式** | Tailwind CSS 3.4 + Lucide Icons | 响应式设计（完美适配 1440×900 桌面端与 390×844 移动端） |
+| **服务端与编排** | Next.js Route Handlers + TypeScript 5 | 纯 TypeScript 严谨类型系统，全链路运行时合同校验 |
+| **数据持久化** | Prisma ORM + SQLite | 本地轻量、零配置安装、支持多任务持久化与快照 |
+| **版本并发控制** | CAS (Compare-And-Swap) Revision 控制 | 防多标签页冲突覆盖，保障长流程状态一致性 |
+| **质量保证** | Vitest (260+ 单元/契约测试) + Playwright | 严苛的自动化测试套件覆盖事实门禁、Prompt 生成与浏览器全旅程 |
+
+### 三大工程守卫原则
+
+1. **Local-First & 数据隐私**：核心数据持久化于本地 SQLite，不私自上传业务数据；支持离线 Mock 模式，无需配置真实付费 API 即可体验完整闭环。
+2. **Fail-Closed 安全防线**：所有外部采集、AI 生成与校验逻辑均实行“失败即断开”策略，任何异常均明确提示，绝不静默伪造“绿灯”。
+3. **诚实与免责约束**：系统定位为运营人员的“专业辅助提效工具”，生成的所有内容均为待人工复核草稿，绝不宣称不切实际的“一键爆款”或“转化率翻倍”。
 
 ---
 
-## 📊 工程基线与质量表现
+## 🚀 快速上手
 
-| 质量维度 | 测量标准与实际指标 | 状态 |
-| :--- | :--- | :---: |
-| **自动化测试套件** | **6,701 项测试通过**（561 个测试套件通过，CI 模拟执行模式） | ✅ 通过 |
-| **应用源码类型检查** | `app/`, `components/`, `lib/`, `hooks/` 源码全量 `tsc --noEmit`，**0 错误** | ✅ 纯净 |
-| **代码规范扫描** | 全库源码执行 ESLint，**0 错误** | ✅ 纯净 |
-| **真实浏览器端到端** | 无头 Chrome (CDP) 走查 8 大主页面（1440 宽屏 / 390 手机端），**0 控制台错误 / 0 横向滚动** | ✅ 完美 |
-| **生产打包构建** | Next.js 16 Webpack 生产构建成功，生成确定性 `BUILD_ID` | ✅ 通过 |
-| **数据安全基线** | SQLite 混合结构 + CAS 乐观锁版本并发控制，全流程主库 **0 脏写** | ✅ 安全 |
+### 环境要求
 
----
+* **Node.js**：`>= 20.9.0` (推荐 LTS 版本)
+* **npm**：`>= 10.0.0`
+* **操作系统**：macOS / Linux / Windows 10/11 (PowerShell 或 WSL2 均可)
 
-## 🚀 极简快速上手 (Getting Started)
+### 1. 克隆仓库并安装依赖
 
-### 1. 环境准备
-- **Node.js**: 20.9.0 或更高版本
-- **npm**: 10.0.0 或更高版本
-
-### 2. 安装与配置
 ```bash
-# 克隆代码仓库
 git clone https://github.com/a2578348864a-sys/ecommerce-product-ai-optimizer.git
 cd ecommerce-product-ai-optimizer
+npm ci
+```
 
-# 安装依赖
-npm install
+### 2. 初始化本地数据库
 
-# 初始化本地数据库
+```bash
 npx prisma generate
 npx prisma db push
+```
 
-# 配置本地环境变量 (默认开启免密安全 Mock 模式，零成本体验完整闭环)
+> [!NOTE]
+> `prisma db push` 仅用于快速构建本地 SQLite 数据库文件，零复杂配置。
+
+### 3. 配置环境变量
+
+```bash
 cp .env.example .env.local
 ```
 
-`.env.local` 基础默认配置：
-```dotenv
+开箱即用的默认配置采用 `mock` 模式，无需配置任何第三方付费 API Key 即可跑通完整业务流。  
+若需接入真实大模型进行生成，可在 `.env.local` 中填入对应凭据：
+
+```ini
+# 运行模式：local_owner（本地开发）或 public_showcase（受限演示）
 QX_RUNTIME_MODE=local_owner
-DATABASE_URL="file:./dev.db"
+
+# AI 模式配置：mock（离线模拟）或 real（真实 Provider）
 LISTING_PROVIDER_MODE=mock
 IMAGE_PROVIDER_MODE=mock
+
+# 真实 Provider 密钥（仅 real 模式需要）
+DEEPSEEK_API_KEY=
+OPENAI_API_KEY=
 ```
 
-### 3. 启动工作台
+### 4. 启动本地工作台
+
+推荐使用内置了环境与端口守护的专属命令启动：
+
 ```bash
-# 本地守护进程启动 (推荐，带 SQLite 门禁保护)
-npm run start:local
+# 检查本地端口占用与 SQLite 就绪情况
+npm run check:local
 
-# 或使用开发模式
+# 开发模式启动 (热更新)
 npm run dev:local
+
+# 或 生产构建并启动生产环境预览 (推荐)
+npm run build
+npm run start:local
 ```
 
-打开浏览器访问：**<http://127.0.0.1:3005>**
+启动完成后，在浏览器访问终端打印的本地服务地址（如 `http://127.0.0.1:3005` 或 `http://localhost:3000`）。
 
 ---
 
-## 💡 操盘手四步走指引（极简大白话）
+## 🧪 代码检查与自动化测试
 
-- **Step 1. 挑选商品与导入线索**：上传一份 SellerSprite 市场报表，系统自动解析市场体量与价格分布，沉淀至候选池。
-- **Step 2. 深度查证并确认事实**：启动商品研究，系统抓取竞品五点与真实 VOC 评论。你在页面中只做一件事：**为当前商品真实具备的物理特性打勾（确认事实）**。
-- **Step 3. 一键生成合规 Listing**：进入 Listing Studio，系统严格基于确认事实进行自然渲染与润色，一键复制符合 Amazon 规范的标题、五点与描述。
-- **Step 4. 策划营销视觉方案**：进入 Image Studio，依据确认事实与批准的视觉风格生成图片策略与合规分镜，导出交付美工。
+项目拥有严苛的自动化测试体系，任何代码变更均需满足 100% 绿灯：
+
+```bash
+# 运行全部测试套件 (Vitest 260+ 测试)
+npm test
+
+# 执行 TypeScript 严格类型检查 (0 错误基准)
+npx tsc --noEmit --pretty false
+
+# 执行 ESLint 代码规范扫描
+npm run lint
+
+# 执行生产打包验证
+npm run build
+```
+
+针对单个核心模块进行精准单测验证：
+
+```bash
+# 运行 Listing V5 事实与质检测试
+npx vitest run lib/listingV5
+
+# 运行 Image Studio 视觉门禁测试
+npx vitest run components/image-handoff/ lib/imageHandoff/
+```
 
 ---
 
-## 🧭 进阶与权威文档索引
+## 📚 完整文档导航
 
-- **结项与基线冻结报告**：[FINAL_FREEZE.md](FINAL_FREEZE.md)
-- **文档中心全景索引**：[docs/README.md](docs/README.md)
-- **系统架构与数据流**：[docs/architecture/overview.md](docs/architecture/overview.md)
-- **权限隔离与配额契约**：[docs/architecture/auth-and-quota-contract.md](docs/architecture/auth-and-quota-contract.md)
-- **生产环境部署手册**：[docs/deployment/production-runbook.md](docs/deployment/production-runbook.md)
-- **安全策略与漏洞报告**：[SECURITY.md](SECURITY.md)
-- **版本历史记录**：[CHANGELOG.md](CHANGELOG.md)
+| 分类 | 核心文档 | 说明 |
+| :--- | :--- | :--- |
+| **架构设计** | [系统架构总览 (Architecture)](docs/architecture/overview.md) | 系统分层设计、微内核数据流与组件职责边界 |
+| | [证据链与事实隔离 (Evidence Chain)](docs/architecture/evidence-chain.md) | Evidence、Fact Candidates 与 Confirmed Facts 隔离原则 |
+| | [安全与并发控制 (Security)](docs/architecture/security.md) | Fail-Closed 策略、CAS 版本控制与安全围栏规范 |
+| | [工程决策记录 (ADR)](docs/decisions/engineering-decisions.md) | 关键架构权衡与技术决策历史 |
+| **业务与产品** | [产品全景与业务场景](docs/product/product-overview.md) | 核心业务流拆解与跨端体验指南 |
+| | [Listing V5 核心说明](docs/listing-v5/FINAL_CLOSE_V9.md) | Writer v9、Blueprint v2 与 Validator v6 落地标准 |
+| | [核心操作流程手册](docs/guides/workflow.md) | 从选品导入到 Listing 导出的标准操作指南 (SOP) |
+| **部署与开发** | [本地开发指南 (Development)](docs/development/local-development.md) | 本地开发规范、脚本工具集与调试技巧 |
+| | [环境变量完全指南 (Config)](docs/guides/configuration.md) | 所有配置项详解与脱敏规范 |
+| | [生产部署手册 (Deploy)](docs/deployment/production-runbook.md) | 生产服务部署、PM2/进程守护与本地自启动配置 |
+| | [历史版本与归档记录](docs/archive/README.md) | 历史实验版本（V3 / V4 / 阶段性验收证据）归档追溯 |
 
 ---
 
-## 📄 开源许可证
+## ⚖️ 合规声明与边界约束
 
-本项目基于 [MIT License](LICENSE) 开源发布。
+1. **非自动发布系统**：轻选工作台生成的文案与视觉方案均为**待人工复核的准备草稿**，不代表最终在 Amazon 上架的发布承诺，必须由运营人员最终确认并对合规性负责。
+2. **不宣称转化率提升**：项目坚守技术诚实原则，不作出任何 CTR（点击率）、CVR（转化率）或销量翻倍等不切实际的商业承诺。
+3. **外部网络与反爬风控**：Amazon、1688 等外部渠道的数据抓取依赖真实网络环境与登录态；当触发风控或扩展掉线时，系统保持真实失败提示，绝不使用伪造数据欺骗用户。
+4. **视觉素材参考性质**：Image Studio 生成的视觉草稿用于构图、布光及视觉意图表达参考，不构成实物检验认证或真实商用产品实拍图。
+
+---
+
+## 📄 许可证
+
+本项目基于 [MIT License](LICENSE) 协议开源。第三方依赖项与素材规范详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

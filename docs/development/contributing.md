@@ -5,10 +5,11 @@
 ## 开发环境
 
 ```bash
-npm install
+npm ci
 npx prisma generate
 npx prisma db push
-npm run dev
+npm run check:local
+npm run dev:local
 ```
 
 ## 代码检查
@@ -30,7 +31,7 @@ components/    React 组件
 lib/           业务逻辑与服务
 lib/server/    服务端专用逻辑
 prisma/        数据模型与迁移
-scripts/       开发与运维脚本
+scripts/       本地开发与运维脚本（历史验收脚本见 scripts/archive/）
 tools/         上游数据处理工具
 docs/          文档
 ```

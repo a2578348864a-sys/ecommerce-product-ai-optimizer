@@ -805,7 +805,7 @@ function PreviewSection({
                   if (productFacts.length === 0) return null;
                   return (
                     <div className="mt-2">
-                      <p className="text-xs font-semibold text-teal-700">商品内容事实（用于 Listing 草稿的商品信息）</p>
+                      <p className="text-xs font-semibold text-teal-700">商品内容事实（Listing 草稿商品信息）</p>
                       <ul className="mt-1 space-y-2">
                         {productFacts.map((item) => (
                           <li key={item.selectionId} className="flex items-start gap-2 rounded-lg bg-teal-50/50 px-2 py-1.5">

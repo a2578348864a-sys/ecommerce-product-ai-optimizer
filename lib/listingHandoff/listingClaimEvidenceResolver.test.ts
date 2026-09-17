@@ -263,6 +263,45 @@ describe("R3 confirmed facts 自然组合", () => {
   });
 });
 
+describe("R17 列表型确认功能事实的保守原子化", () => {
+  const diymagInput = () => baseInput({
+    productFacts: [
+      { field: "brand", label: "品牌", value: "DIYMAG" },
+      { field: "product_type", label: "商品类型", value: "Hook" },
+      { field: "color_or_variant", label: "颜色/款式", value: "Black" },
+      { field: "quantity_or_pack_size", label: "包装数量", value: "4-Pack" },
+      { field: "functional_feature", label: "功能特性", value: "Heavy Duty, Lockable, Magnetic, Rust Resistant" },
+    ],
+  });
+
+  it("确认功能列表中的原子可作为性能词逐字依据", () => {
+    const result = verifyListingClaims(baseDraft({
+      titles: ["DIYMAG Hook, Black, 4-Pack"],
+      bullets: [
+        "Heavy Duty Magnetic Hook.",
+        "Lockable Magnetic Hook.",
+        "Rust Resistant Hook.",
+      ],
+      description: "This Hook is Heavy Duty, Lockable, Magnetic, Rust Resistant.",
+    }), diymagInput());
+    expect(result.unsupportedClaims).toEqual([]);
+    expect(listingClaimsHaveEvidence(result)).toBe(true);
+  });
+
+  it("原子化不放行未确认的强化词", () => {
+    const result = verifyListingClaims(baseDraft({ bullets: ["Super Heavy Duty Hook for everyday storage."] }), diymagInput());
+    expect(result.unsupportedClaims.length).toBeGreaterThan(0);
+    expect(result.unsupportedClaims[0]?.reason).toBe("unsupported_performance_claim");
+  });
+
+  it("原子化不改变输入事实或来源字段", () => {
+    const input = diymagInput();
+    const before = JSON.stringify(input);
+    verifyListingClaims(baseDraft({ bullets: ["Heavy Duty Hook"] }), input);
+    expect(JSON.stringify(input)).toBe(before);
+  });
+});
+
 /** 纯函数性质 */
 describe("Claim Evidence Mapping — 纯函数性质", () => {
   it("PF1. 同输入同输出（确定性）", () => {

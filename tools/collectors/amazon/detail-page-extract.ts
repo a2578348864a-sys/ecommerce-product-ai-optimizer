@@ -9,7 +9,7 @@
  * 不使用 LLM 猜字段；页面结构变化 → fail-closed。
  */
 
-export type AmazonDetailPageStatus = "ok" | "captcha" | "login_wall" | "error_page" | "unknown_page";
+export type AmazonDetailPageStatus = "ok" | "captcha" | "automation_blocked" | "login_wall" | "error_page" | "unknown_page";
 
 export type AmazonDetailFieldStatus = "correct" | "unknown";
 
@@ -77,7 +77,10 @@ export function parseAsinFromDetailUrl(url: string): string | null {
 
 function sanitizeDetailText(value: string | null | undefined, maxLength: number): string | null {
   if (typeof value !== "string") return null;
-  const normalized = value.replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim();
+  const normalized = value
+    .replace(/[\u0000-\u001F\u007F\u200B-\u200F\uFEFF\u202A-\u202E]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   return normalized ? normalized.slice(0, maxLength) : null;
 }
 
@@ -129,7 +132,12 @@ export function parseDetailBsr(value: string | null | undefined): number | null 
 
 /**
  * 详情页分类（fail-closed）：
- * - captcha / login_wall / error_page：文本信号
+ * - captcha：出现可交互验证码/机器人校验文案
+ * - automation_blocked：Amazon 自动化访问校验中间页（如 `/errors_page/validateCaptcha` +
+ *   "Click the button below to continue shopping"）。它是**同源访问校验网关**，
+ *   没有登录表单/登录链接，因此**不能**归类为 login_wall（避免 UI 指引用户去登录）。
+ * - login_wall：真实登录墙文案
+ * - error_page：服务错误页
  * - ok：商品主容器 `#productTitle` 存在
  * - 其余 unknown_page
  */
@@ -141,16 +149,32 @@ export function detectDetailPageStatus(root: {
   if (/captcha|robot check|enter the characters you see|type the characters you see|验证码|机器人/i.test(bodyText)) {
     return "captcha";
   }
-  if (/sign in to continue|login to continue|please sign in|登录后继续/i.test(bodyText)) {
+  // 商品主容器存在 → 正常商品页；只有缺失时才判定为阻断页，避免正常页面里的偶然措辞被误分类。
+  const productContainer = root.querySelector("#productTitle");
+  // Amazon "Continue shopping" 自动化校验中间页：页面通常只含一个
+  // `GET /errors_page/validateCaptcha` 表单（无登录表单、无验证码输入控件）。
+  if (
+    !productContainer
+    && (
+      root.querySelector("form[action*='validateCaptcha']")
+      || /click the button below to continue shopping|continue shopping/i.test(bodyText)
+    )
+  ) {
+    return "automation_blocked";
+  }
+  if (
+    !productContainer
+    && /sign in to continue|login to continue|please sign in|登录后继续/i.test(bodyText)
+  ) {
     return "login_wall";
   }
   if (/sorry[, ]+something went wrong|service unavailable|internal server error|页面出错/i.test(bodyText)) {
     return "error_page";
   }
-  return root.querySelector("#productTitle") ? "ok" : "unknown_page";
+  return productContainer ? "ok" : "unknown_page";
 }
 
-/** 从详情子弹表提取 ASIN 锚点（"ASIN" 行值）；找不到 → null */
+/** 从详情子弹表或技术参数表提取 ASIN 锚点（"ASIN" 行值）；找不到 → null */
 export function readDetailPageAsinAnchor(root: {
   querySelector: (selector: string) => unknown;
   querySelectorAll: (selector: string) => ReadonlyArray<unknown>;
@@ -159,6 +183,11 @@ export function readDetailPageAsinAnchor(root: {
     "#detailBullets_feature_div",
     "#productDetails_detailBullets_sections1",
     "#prodDetails",
+    "#productDetails_techSpec_section_1",
+    "#productDetails_techSpec_section_2",
+    "#productDetails_db_sections",
+    "#productDetails_feature_div",
+    "#technicalSpecifications_section_1",
     "#detailBulletsWrapper_feature_div",
   ];
   for (const containerSelector of containers) {
@@ -167,8 +196,22 @@ export function readDetailPageAsinAnchor(root: {
     const rows = (container as { querySelectorAll?: (s: string) => ReadonlyArray<unknown> })
       .querySelectorAll?.("tr, li") ?? [];
     for (const row of rows) {
-      const text = sanitizeDetailText((row as { textContent?: string | null }).textContent, 240) ?? "";
-      const asinMatch = /(?:^|\s)ASIN\s*[:：]\s*([A-Z0-9]{10})(?:\s|$)/i.exec(text);
+      const rowNode = row as {
+        textContent?: string | null;
+        querySelector?: (selector: string) => { textContent?: string | null } | null;
+      };
+      // 1. 若为表格行且具有 th 和 td，直接结构化比对
+      if (typeof rowNode.querySelector === "function") {
+        const thText = sanitizeDetailText(rowNode.querySelector("th")?.textContent, 100);
+        const tdText = sanitizeDetailText(rowNode.querySelector("td")?.textContent, 100);
+        if (thText && /ASIN/i.test(thText) && tdText) {
+          const match = /(?:^|\s)([A-Z0-9]{10})(?:\s|$)/.exec(tdText);
+          if (match) return match[1].toUpperCase();
+        }
+      }
+      // 2. 通用文本匹配（支持子弹列表及无冒号表格拼接格式）
+      const text = sanitizeDetailText(rowNode.textContent, 240) ?? "";
+      const asinMatch = /(?:^|\s)ASIN\s*[:：]?\s*([A-Z0-9]{10})(?:\s|$)/i.exec(text);
       if (asinMatch) return asinMatch[1].toUpperCase();
       const valueOnly = /(?:^|\s)([A-Z0-9]{10})(?:\s|$)/.exec(text);
       const label = /ASIN/i.test(text);
@@ -178,7 +221,7 @@ export function readDetailPageAsinAnchor(root: {
   return null;
 }
 
-/** 从详情子弹表提取 "Best Sellers Rank" 文本（可能含多类目排名，返回拼接后首个 # 数字） */
+/** 从详情子弹表或技术参数表提取 "Best Sellers Rank" 文本（可能含多类目排名，返回拼接后首个 # 数字） */
 export function readDetailPageBsrText(root: {
   querySelector: (selector: string) => unknown;
   querySelectorAll: (selector: string) => ReadonlyArray<unknown>;
@@ -187,6 +230,11 @@ export function readDetailPageBsrText(root: {
     "#detailBullets_feature_div",
     "#productDetails_detailBullets_sections1",
     "#prodDetails",
+    "#productDetails_techSpec_section_1",
+    "#productDetails_techSpec_section_2",
+    "#productDetails_db_sections",
+    "#productDetails_feature_div",
+    "#technicalSpecifications_section_1",
     "#detailBulletsWrapper_feature_div",
   ];
   for (const containerSelector of containers) {
@@ -369,15 +417,18 @@ export const PRODUCT_INFO_LABEL_MAP: ReadonlyArray<readonly [string, readonly st
   ["product_type", ["Item Type Name", "Bottle Type"]],
   ["series_or_model", ["Model Name", "Model Number"]],
   ["material", ["Material Type", "Material"]],
-  ["capacity", ["Total Capacity", "Capacity"]],
+  ["capacity", ["Total Capacity", "Capacity", "Item Capacity", "Volume", "Metric Capacity"]],
   ["dimensions", ["Item Dimensions L x W x H", "Item Dimensions L x W x Thickness", "Item Dimensions W x H", "Product Dimensions", "Size (inches)"]],
   ["weight", ["Item Weight"]],
   ["color_or_variant", ["Color", "Theme"]],
   ["quantity_or_pack_size", ["Unit Count", "Number of Items", "Package Quantity"]],
-  ["functional_feature", ["Other Special Features of the Product", "Additional Features", "Special Feature", "Material Features", "Material Feature"]],
+  ["functional_feature", ["Other Special Features of the Product", "Additional Features", "Special Feature", "Material Features", "Material Feature", "Features"]],
   ["care", ["Product Care Instructions", "Care Instructions"]],
   ["included_components", ["Included Components"]],
-  ["operation", ["Lid Type", "Cap Type", "Closure Type"]],
+  ["operation", ["Lid Type", "Cap Type", "Closure Type", "Operation Mode", "Installation Type", "Assembly Required"]],
+  ["use_scenario", ["Recommended Uses For Product", "Recommended Uses", "Uses"]],
+  ["compatibility", ["Compatible Devices", "Compatible With", "Compatibility"]],
+  ["construction", ["Construction Type", "Finish Type"]],
 ];
 
 const PRODUCT_INFO_CONTAINER_SELECTORS = [
@@ -523,3 +574,7 @@ export { buildAmazonDetailPageExtractionExpression } from "@/tools/collectors/am
 export type { AmazonDetailPageExpressionOptions } from "@/tools/collectors/amazon/detail-page-expression-source";
 export { buildAmazonProductInfoExtractionExpression } from "@/tools/collectors/amazon/detail-page-expression-source";
 export type { AmazonProductInfoExpressionOptions } from "@/tools/collectors/amazon/detail-page-expression-source";
+
+export { extractAmazonSellerContent } from '@/lib/server/amazonFactEnrichment/sellerContent';
+export type { AmazonSellerContentBlockV1 } from '@/lib/server/amazonFactEnrichment/contract';
+

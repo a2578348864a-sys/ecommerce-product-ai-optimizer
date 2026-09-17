@@ -5,20 +5,20 @@
 ## 元数据
 
 - **日期**：2026-06-21
-- **origin/main HEAD**：`0ba2860`
-- **服务器对齐后 HEAD**：`0ba2860`
-- **服务器**：112.124.54.81
+- **origin/main HEAD**：`<redacted-hash>`
+- **服务器对齐后 HEAD**：`<redacted-hash>`
+- **服务器**：your-server-ip
 
 ## 问题
 
-上一轮 Phase 1E 部署时 GitHub 从服务器不可达（TLS connection timeout），使用 SCP 直传 8 个文件部署。导致服务器 git HEAD 停留在 `7b83cdf`，而运行代码为 `0ba2860` 版本，存在下次部署覆盖/混乱风险。
+上一轮 Phase 1E 部署时 GitHub 从服务器不可达（TLS connection timeout），使用 SCP 直传 8 个文件部署。导致服务器 git HEAD 停留在 `<redacted-hash>`，而运行代码为 `<redacted-hash>` 版本，存在下次部署覆盖/混乱风险。
 
 ## 处理结果
 
 ### GitHub 连接恢复
 
 ```
-git ls-remote origin main → 0ba2860 ✅
+git ls-remote origin main → <redacted-hash> ✅
 ```
 
 GitHub 连接已恢复。
@@ -26,13 +26,13 @@ GitHub 连接已恢复。
 ### Git 对齐
 
 ```
-git fetch origin main → 7b83cdf..0ba2860
-git reset --hard origin/main → HEAD is now at 0ba2860
+git fetch origin main → <redacted-hash>..<redacted-hash>
+git reset --hard origin/main → HEAD is now at <redacted-hash>
 git status -sb → main...origin/main (clean)
 ```
 
 服务器 git 已完成对齐：
-- HEAD：`0ba2860` ✅
+- HEAD：`<redacted-hash>` ✅
 - 工作区：干净 ✅
 - 与 origin/main 一致 ✅
 
@@ -62,7 +62,7 @@ pm2 restart alibaba-ai-assistant → online ✅
 | 测试项 | 输入 | 结果 |
 |--------|------|------|
 | 无密码 | `https://example.com` | **401** — `{"ok":false,"error":{"code":"unauthorized"}}` ✅ |
-| SSRF 阻断 | `http://169.254.169.254` | **blocked** — `warnings: ["内网地址已阻止：169.254.169.254"]` ✅ |
+| SSRF 阻断 | `http://your-server-ip` | **blocked** — `warnings: ["内网地址已阻止：your-server-ip"]` ✅ |
 | 公开 HTML | `https://httpbin.org/html` | **ok=true** — totalCrawled=1, totalOk=1, totalCandidates=1, score=52 ✅ |
 | 公开 RSS | `https://hnrss.org/frontpage` | **ok=true** — totalCrawled=1, totalOk=1, totalCandidates=0（RSS 解析正常，无匹配 item）✅ |
 | 公开 Sitemap | `https://www.w3.org/sitemap.xml` | **ok=true** — totalCrawled=1, totalOk=1, totalCandidates=8 ✅ |
@@ -72,7 +72,7 @@ pm2 restart alibaba-ai-assistant → online ✅
 | 检查项 | 结果 |
 |--------|------|
 | 密码保护 | ✅ 无密码 → 401 |
-| SSRF 阻断（7/7） | ✅ 已验证 169.254.169.254 |
+| SSRF 阻断（7/7） | ✅ 已验证 your-server-ip |
 | 不写数据库 | ✅ crawl API 无 Prisma import |
 | 不调用 AI | ✅ 无 OpenAI/DeepSeek import |
 | 500 错误 | ✅ 所有测试无 500 |
@@ -88,7 +88,7 @@ pm2 restart alibaba-ai-assistant → online ✅
 
 ## 页面复查
 
-| 页面 | 本机 3005 | 公网 |
+| 页面 | 本机 <PORT> | 公网 |
 |------|----------|------|
 | `/` | 200 | 200 |
 | `/opportunities` | 200 | 200 |

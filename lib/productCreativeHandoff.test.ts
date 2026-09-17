@@ -422,3 +422,31 @@ describe("product-creative-handoff.v1 contract", () => {
     expect(again.versions[0].handoffFingerprint).toBe(handoff.versions[0].handoffFingerprint);
   });
 });
+
+
+describe("Amazon confirmation provenance contract", () => {
+  it("accepts legacy manual confirmation without origin", () => {
+    const handoff = createProductCreativeHandoff({ handoffId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", taskId: "task-provenance", candidateId: "candidate-synthetic-1", createdAt: CREATED_AT, createdBy: OWNER, candidate: validHandoffCandidate() });
+    expect(parseProductCreativeHandoff(handoff)).not.toBeNull();
+  });
+
+  it("accepts bounded Amazon origin and rejects forged extra fields", () => {
+    const candidate = validHandoffCandidate();
+    const fact = candidate.confirmedFacts[0];
+    fact.sourceRef = { ...fact.sourceRef, origin: { kind: "amazon_fact_enrichment", asin: "B0CKQNP26P", capturedAt: CREATED_AT, sources: [{ sourceUrl: "https://www.amazon.com/dp/B0CKQNP26P", sourceSection: "product_information", sourceLabel: "Product Information", sourceBlockId: "structured:material", evidenceText: "Recycled paperboard" }] } };
+    const handoff = createProductCreativeHandoff({ handoffId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", taskId: "task-provenance", candidateId: "candidate-synthetic-1", createdAt: CREATED_AT, createdBy: OWNER, candidate });
+    expect(parseProductCreativeHandoff(handoff)).not.toBeNull();
+    const forged = structuredClone(handoff) as any;
+    forged.versions[0].confirmedFacts[0].sourceRef.origin.sources[0].rawProvenance = "forged";
+    expect(parseProductCreativeHandoff(forged)).toBeNull();
+  });
+
+  it("requires structured Amazon source URL to bind the origin ASIN", () => {
+    const candidate = validHandoffCandidate();
+    candidate.confirmedFacts[0].sourceRef = { ...candidate.confirmedFacts[0].sourceRef, origin: { kind: "amazon_fact_enrichment", asin: "B0CKQNP26P", capturedAt: CREATED_AT, sources: [{ sourceUrl: "https://www.amazon.com/dp/B0CKQNP26P", sourceSection: "product_information", sourceLabel: "Product Information", sourceBlockId: "structured:material", evidenceText: "Material" }] } };
+    const handoff = createProductCreativeHandoff({ handoffId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", taskId: "task-provenance", candidateId: "candidate-synthetic-1", createdAt: CREATED_AT, createdBy: OWNER, candidate });
+    const tampered = structuredClone(handoff) as any;
+    tampered.versions[0].confirmedFacts[0].sourceRef.origin.sources[0].sourceUrl = "https://www.amazon.com/dp/B0WRONG000";
+    expect(parseProductCreativeHandoff(tampered)).toBeNull();
+  });
+});

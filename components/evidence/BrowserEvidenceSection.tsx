@@ -11,7 +11,7 @@
  * 无"仍然保存"按钮。字段性质全部为 snapshot（capturedAt 页面观察值）。
  */
 import { useCallback, useRef, useEffect, useState } from "react";
-import { Camera, Check, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Camera, Check, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 import { buildAccessHeaders, getAccessMode } from "@/lib/client/accessToken";
 import type { AcquisitionCapabilityView } from "@/lib/client/acquisitionCapability";
 import { CapabilityNotice } from "@/components/evidence/CapabilityNotice";
@@ -325,6 +325,8 @@ export function BrowserEvidenceSection({
   storageVersion,
   capability,
   onChanged,
+  showCollectTrigger = true,
+  initialPreview = null,
 }: {
   taskId: string;
   evidence: BrowserEvidenceView | null;
@@ -333,15 +335,24 @@ export function BrowserEvidenceSection({
   /** 浏览器采集能力（服务端 capability DTO；local_env_required → 按钮禁用 + 产品提示） */
   capability?: AcquisitionCapabilityView | null;
   onChanged: () => void;
+  /** 统一由研究资料编排入口触发采集时，隐藏此局部触发器。 */
+  showCollectTrigger?: boolean;
+  initialPreview?: BrowserCollectPreviewView | null;
 }) {
   const [collecting, setCollecting] = useState(false);
-  const [preview, setPreview] = useState<BrowserCollectPreviewView | null>(null);
+  const [preview, setPreview] = useState<BrowserCollectPreviewView | null>(initialPreview);
   const [previewEvidenceId, setPreviewEvidenceId] = useState<string | null>(null);
   const [previewDemo, setPreviewDemo] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [conflictPending, setConflictPending] = useState(false);
   const lastVersionRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (initialPreview) {
+      setPreview(initialPreview);
+    }
+  }, [initialPreview]);
 
   // 演示模式（Visitor）：本地采集能力不可用（local_env_required）时，仍可体验
   // “演示采集”——服务端回放预置真实采集样本（demo 分支），结果标注“演示数据”。
@@ -447,34 +458,38 @@ export function BrowserEvidenceSection({
 
   return (
     <section id="workbench-browser-evidence" data-testid="workbench-browser-evidence" className="scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-4">
-      <details id="amazon-source-evidence" data-testid="amazon-source-evidence" className="group">
+      <details id="amazon-source-evidence" data-testid="amazon-source-evidence" className="group" open={preview !== null || undefined}>
         <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 rounded-lg px-1 py-1 text-sm font-bold text-slate-900 marker:hidden">
           <span>Amazon 原始页面证据</span>
-          <span className="text-xs font-normal text-slate-500">来源资料 · 默认收起，供核对与采集</span>
+          <span className="text-xs font-normal text-slate-500">来源资料 · 默认收起，供核对</span>
         </summary>
         <div className="mt-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-slate-500">原始页面快照仅用于核对来源，不会自动变成已确认商品事实。</p>
-        <button
-          type="button"
-          disabled={collecting || saving || !canCollect}
-          onClick={() => void collect()}
-          className="inline-flex items-center gap-1 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
-        >
-          {collecting ? <Loader2 className="size-4 animate-spin" /> : <Camera className="size-4" />}
-          {collecting ? "采集中…" : (capability?.state === "local_env_required" && demoMode ? "演示采集" : "采集页面证据")}
-        </button>
-      </div>
+      {showCollectTrigger ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-slate-500">原始页面快照仅用于核对来源，不会自动变成已确认商品事实。</p>
+          <button
+            type="button"
+            disabled={collecting || saving || !canCollect}
+            onClick={() => void collect()}
+            className="inline-flex items-center gap-1 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+          >
+            {collecting ? <Loader2 className="size-4 animate-spin" /> : <Camera className="size-4" />}
+            {collecting ? "采集中…" : (capability?.state === "local_env_required" && demoMode ? "演示采集" : "采集页面证据")}
+          </button>
+        </div>
+      ) : (
+        <p className="text-xs text-slate-500">原始页面快照仅用于核对来源，不会自动变成已确认商品事实。请使用上方「补齐研究资料」统一采集。</p>
+      )}
       <p className="mt-1 text-xs text-slate-500">
-        自动打开本机受控浏览器，导航到任务绑定商品页（{taskAsin ?? "未绑定 ASIN"}）单页提取 6 个字段；
-        结果先预览、人工确认后才保存。不自动搜索、不批量、不绕验证码。
+        「补齐研究资料」会按任务绑定商品页（{taskAsin ?? "未绑定 ASIN"}）统一整理 6 个字段；
+        结果先进入待确认资料，不自动搜索、不批量、不绕验证码。
       </p>
 
       {/* Acquisition Capability（§8/§10）：公网环境不提供实时采集 → 明确提示，不显示"采集失败" */}
       <CapabilityNotice
         capability={capability}
         localEnvMessage={demoMode
-          ? "演示模式：当前环境不执行实时浏览器采集，可点击「演示采集」回放示例采集结果（演示数据，非实时采集）。"
+          ? "演示模式：当前环境不执行实时浏览器采集；「补齐研究资料」会回放示例结果并标注为演示数据。"
           : "实时页面采集需要在本地研究环境使用。已保存的页面证据仍可正常查看。"}
         unavailableMessage={capability?.reasonCategory === "not_installed"
           ? "本机未检测到可用的 Chrome/Edge 浏览器，无法进行页面采集。"
@@ -540,11 +555,53 @@ export function BrowserEvidenceSection({
                 {saving ? "保存中…" : "我确认这是目标商品，保存证据"}
               </button>
             </>
+          ) : pageOk ? (
+            <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50/70 p-3 text-sm text-rose-800" data-testid="entity-binding-failed-alert">
+              <div className="flex items-center gap-1.5 font-semibold text-rose-900">
+                <AlertTriangle className="size-4 shrink-0 text-rose-600" />
+                <span>页面打开成功，但商品身份确认失败</span>
+              </div>
+              <p className="mt-1 text-xs text-rose-700">
+                系统严格遵守实体绑定门禁（Fail-closed 原则）：当无法确认页面内容属于目标商品时，禁止保存快照，防止污染商品事实。
+              </p>
+              <div className="mt-2 space-y-1 rounded bg-white/70 p-2 text-xs text-slate-700">
+                <p className="font-medium text-slate-900">具体校验详情：</p>
+                <div className="flex items-center gap-1.5">
+                  <span className={preview.extraction.bindingProof.productContainerFound ? "font-medium text-emerald-600" : "font-medium text-rose-600"}>
+                    {preview.extraction.bindingProof.productContainerFound ? "✓" : "✗"} 商品主容器：{preview.extraction.bindingProof.productContainerFound ? "已定位（#productTitle）" : "未找到商品标题容器"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className={preview.extraction.bindingProof.urlMatchesExpected ? "font-medium text-emerald-600" : "font-medium text-rose-600"}>
+                    {preview.extraction.bindingProof.urlMatchesExpected ? "✓" : "✗"} URL ASIN：{preview.extraction.urlAsin ?? "未识别"}（目标：{preview.extraction.expectedAsin ?? "未设置"}）
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className={preview.extraction.bindingProof.pageAnchorMatchesExpected ? "font-medium text-emerald-600" : "font-medium text-rose-600"}>
+                    {preview.extraction.bindingProof.pageAnchorMatchesExpected ? "✓" : "✗"} 页面锚点 ASIN：{preview.extraction.pageAsin ?? "未找到锚点"}（目标：{preview.extraction.expectedAsin ?? "未设置"}）
+                  </span>
+                </div>
+              </div>
+              <p className="mt-2 text-xs text-slate-600">
+                排查建议：请在浏览器手动打开该商品页确认是否存在包含该 ASIN 的规格表格，或确认商品链接是否发生重定向。
+              </p>
+            </div>
           ) : (
-            <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-              页面未通过身份检查（{preview.extraction.pageStatus}），已 fail-closed 停止，本次不保存任何字段。
-              请在本机浏览器手动打开该商品页确认后重试。
-            </p>
+            <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50/70 p-3 text-sm text-rose-800" data-testid="page-blocked-alert">
+              <div className="flex items-center gap-1.5 font-semibold text-rose-900">
+                <AlertTriangle className="size-4 shrink-0 text-rose-600" />
+                <span>
+                  {preview.extraction.pageStatus === "captcha" && "页面要求验证码（CAPTCHA）"}
+                  {preview.extraction.pageStatus === "automation_blocked" && "Amazon 触发了自动化访问校验（Continue shopping）"}
+                  {preview.extraction.pageStatus === "login_wall" && "页面要求登录后继续"}
+                  {preview.extraction.pageStatus === "error_page" && "页面返回服务错误页（商品可能不存在或下架）"}
+                  {preview.extraction.pageStatus === "unknown_page" && "页面不是可识别的 Amazon 商品详情页"}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-rose-700">
+                已触发安全阻断（Fail-closed），本次不保存任何字段。请在本机浏览器手动打开该商品页确认后重试。
+              </p>
+            </div>
           )}
           {preview.navigation.finalUrl && (
             <p className="mt-2 truncate text-[11px] text-slate-400" title={preview.navigation.finalUrl}>

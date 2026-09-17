@@ -16,9 +16,9 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { existsSync, statSync } from "node:fs";
+import { realpathSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { validateProxyAwareHttpsUrl } from "@/lib/server/ssrfGuard";
 import type { TargetDnsLookup } from "@/lib/server/ssrfGuard";
 import { SourcingAcquisitionError, type AcquisitionCandidate } from "@/lib/upstream/1688/contracts";
@@ -37,9 +37,32 @@ const ALLOWED_IMAGE_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/w
 const UPLOAD_RETRIES = 3;
 const RESULT_PAGE_WAIT_MS = 45_000;
 const MAX_IMAGE_REDIRECT_HOPS = 5;
+const APPROVED_LOCAL_IMAGE_TEMP_PREFIXES = [
+  "v35-1688-image-",
+  "v35-sourcing-task-img-",
+  "v35-orch-sourcing-img-",
+  "v35-driver-test-",
+] as const;
 
-function fail(code: string, status: number, message: string): never {
-  throw new SourcingAcquisitionError(code, status, message);
+type ImageAcquisitionDiagnostic =
+  | "submit_trigger_failed"
+  | "result_page_proof_failed"
+  | "extension_not_ready"
+  /** 助手在线，但 Chrome 里没有可用的 1688 页面（与"未安装助手"是两件事） */
+  | "extension_ready_no_tab"
+  /** 1688 页面已打开但助手脚本无响应（页面在助手之后打开 / 脚本上下文失效） */
+  | "content_script_unreachable"
+  /** 助手找不到上传控件；已尝试自动刷新页面一次 */
+  | "upload_target_not_found"
+  /** 自动刷新后仍找不到上传控件（页面结构确定不兼容） */
+  | "upload_target_not_found_after_reload";
+
+function fail(code: string, status: number, message: string, diagnosticCode?: ImageAcquisitionDiagnostic): never {
+  const error = new SourcingAcquisitionError(code, status, message) as SourcingAcquisitionError & {
+    diagnosticCode?: ImageAcquisitionDiagnostic;
+  };
+  if (diagnosticCode) error.diagnosticCode = diagnosticCode;
+  throw error;
 }
 
 /**
@@ -56,6 +79,10 @@ export async function fetchImageWithRedirectGuard(
 ): Promise<Response> {
   let current = initialUrl;
   for (let hop = 0; ; hop++) {
+    const verdict = await validateProxyAwareHttpsUrl(current, lookup);
+    if (!verdict.ok) {
+      fail("invalid_image_url", 400, "候选图片链接未通过安全校验（禁止内网/本地地址）。");
+    }
     const response = await fetch(current, { signal, redirect: "manual" });
     if (response.status >= 300 && response.status < 400) {
       if (hop >= MAX_IMAGE_REDIRECT_HOPS) {
@@ -75,15 +102,47 @@ export async function fetchImageWithRedirectGuard(
       if (next.protocol !== "https:") {
         fail("image_redirect_downgrade", 400, "候选图片跳转目标仅支持 https。");
       }
-      const verdict = await validateProxyAwareHttpsUrl(next, lookup);
-      if (!verdict.ok) {
-        fail("invalid_image_url", 400, "候选图片链接未通过安全校验（禁止内网/本地地址）。");
-      }
       current = next;
       continue;
     }
     return response;
   }
+}
+
+function assertApprovedLocalImagePath(inputPath: string): string {
+  if (!isAbsolute(inputPath)) {
+    fail("invalid_image_url", 400, "本地图片路径必须是绝对路径。");
+  }
+  if (inputPath.split(/[\\/]+/u).some((segment) => segment === "..")) {
+    fail("invalid_image_url", 400, "本地图片路径非法。");
+  }
+
+  let resolvedPath: string;
+  try {
+    resolvedPath = realpathSync(inputPath);
+  } catch {
+    fail("invalid_image_url", 400, "候选图片文件不存在。");
+  }
+  const tempRoot = realpathSync(tmpdir());
+  const relativePath = relative(tempRoot, resolvedPath);
+  const firstSegment = relativePath.split(sep)[0] ?? "";
+  const insideApprovedTempDir = relativePath.length > 0
+    && !relativePath.startsWith(`..${sep}`)
+    && !isAbsolute(relativePath)
+    && APPROVED_LOCAL_IMAGE_TEMP_PREFIXES.some((prefix) => firstSegment.startsWith(prefix));
+  if (!insideApprovedTempDir) {
+    fail("invalid_image_url", 400, "本地图片路径必须位于受批准的服务端临时目录内。");
+  }
+  let fileStats: ReturnType<typeof statSync>;
+  try {
+    fileStats = statSync(resolvedPath);
+  } catch {
+    fail("invalid_image_url", 400, "候选图片文件不存在。");
+  }
+  if (!fileStats.isFile()) {
+    fail("invalid_image_url", 400, "本地图片路径必须指向文件。");
+  }
+  return resolvedPath;
 }
 
 /** 下载候选图片到临时目录（SSRF 守卫 + 类型/大小限制） */
@@ -138,11 +197,26 @@ function assertNotAborted(signal?: AbortSignal): void {
 /** 扩展/桥错误归一化（§25/§26/§27 状态语义） */
 function mapBridgeFailure(code: string, status: { extensionSeen: boolean; lastExtensionSeenAt: number }): never {
   if (!status.extensionSeen) {
-    fail("extension_not_installed", 503, "未检测到轻选 1688 助手，请先在普通 Chrome 中安装助手并打开 1688 页面。");
+    fail("extension_not_installed", 503, "未检测到轻选 1688 助手，请先在普通 Chrome 中安装助手并打开 1688 页面。", "extension_not_ready");
   }
   // P1-B：内部码不进用户文案（只进日志）
    
   console.error("[1688-image] extension disconnected", { detail: code });
+
+  // 助手在线但拿不到 1688 页面：这两个门禁必须与"助手连接中断"分开表达，
+  // 否则用户会被指引去重装助手，而真实下一步只是"打开一个 1688 页面"。
+  if (code === "no_1688_tab") {
+    fail("no_1688_tab", 409, "1688 助手已连接，但普通 Chrome 里没有可用的 1688 页面。请打开 1688 网站后重试。", "extension_ready_no_tab");
+  }
+  if (code === "content_script_unreachable") {
+    fail(
+      "page_identity_unknown",
+      422,
+      "1688 页面已打开，但助手脚本没有响应（通常是页面在助手之后才打开）。请刷新该 1688 页面后重试。",
+      "content_script_unreachable",
+    );
+  }
+
   fail("extension_disconnected", 503, "1688 图片助手连接中断，请检查 Chrome 窗口与助手状态后重试。");
 }
 
@@ -151,9 +225,12 @@ type PageState = {
   ok: boolean;
   pageKind?: string;
   pageUrl?: string;
+  documentReadyState?: string;
   uploadTarget?: { found?: boolean; unique?: boolean };
   preview?: { confirmed?: boolean; srcLength?: number };
   resultPage?: { resultsReady?: boolean };
+  /** 助手侧诊断字段（严格白名单，仅结构性信息；用于区分"上下文被拒"与"页面无入口"） */
+  diagnostic?: { strictContext?: boolean; fileInputCount?: number; readyState?: string; hostname?: string };
   code?: string;
 };
 
@@ -163,9 +240,13 @@ function parsePageState(value: Record<string, unknown>): PageState {
     ok: value.ok === true,
     pageKind: typeof value.pageKind === "string" ? value.pageKind : undefined,
     pageUrl: typeof value.pageUrl === "string" ? value.pageUrl : undefined,
+    documentReadyState: typeof value.documentReadyState === "string" ? value.documentReadyState : undefined,
     uploadTarget: isRecord(value.uploadTarget) ? value.uploadTarget as PageState["uploadTarget"] : undefined,
     preview: isRecord(value.preview) ? value.preview as PageState["preview"] : undefined,
     resultPage: isRecord(value.resultPage) ? value.resultPage as PageState["resultPage"] : undefined,
+    diagnostic: isRecord(value.uploadTarget) && isRecord((value.uploadTarget as Record<string, unknown>).diagnostic)
+      ? (value.uploadTarget as Record<string, unknown>).diagnostic as PageState["diagnostic"]
+      : undefined,
     code: typeof value.code === "string" ? value.code : undefined,
   };
 }
@@ -196,13 +277,13 @@ export async function acquireByImage(input: {
   let contentType: string;
   let tempDir = "";
   if (input.localImagePath) {
-    if (!existsSync(input.localImagePath)) fail("invalid_image_url", 400, "候选图片文件不存在。");
-    const size = statSync(input.localImagePath).size;
+    const localImagePath = assertApprovedLocalImagePath(input.localImagePath);
+    const size = statSync(localImagePath).size;
     if (size < 1 || size > MAX_IMAGE_BYTES) fail("invalid_image_url", 400, "本地图片大小超出限制（≤30MB）。");
-    const ext = input.localImagePath.split(".").pop()?.toLowerCase() ?? "";
+    const ext = localImagePath.split(".").pop()?.toLowerCase() ?? "";
     contentType = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : ext === "gif" ? "image/gif" : "image/jpeg";
     if (!ALLOWED_IMAGE_CONTENT_TYPES.has(contentType)) fail("invalid_image_url", 400, `本地图片类型不支持（${ext}）。`);
-    imageBytes = Buffer.from(await readFile(input.localImagePath));
+    imageBytes = Buffer.from(await readFile(localImagePath));
   } else if (input.imageUrl) {
     const downloaded = await downloadCandidateImage(input.imageUrl);
     tempDir = downloaded.path.split("candidate-image.bin")[0];
@@ -248,6 +329,51 @@ export async function acquireByImage(input: {
       s.ok && s.pageKind === "upload_page" && s.uploadTarget?.found === true && s.uploadTarget?.unique === true;
     let state = parsePageState({ ok: false });
     let pageReady = false;
+    // 页面"结构未识别"时的自救：助手 content script 与页面不同步时
+    // （页面在助手之后才打开、或 SPA 换页后脚本上下文失效），刷新一次通常即可恢复。
+    // 只允许一次；刷新必须由助手在它自己持有的 1688 tab 上执行（服务端无法定位该 tab）。
+    let reloadRecoveryUsed = false;
+    /**
+     * 采集失败时必须可在服务端日志里复盘：助手实际看到的页面身份与结构诊断。
+     * 只记录结构性字段，不含图片/页面内容/任何凭证。
+     */
+    const pageIdentityDiagnostic = (source: PageState) => ({
+      pageKind: source.pageKind ?? null,
+      hostname: source.diagnostic?.hostname ?? null,
+      readyState: source.diagnostic?.readyState ?? source.documentReadyState ?? null,
+      strictContext: source.diagnostic?.strictContext ?? null,
+      fileInputCount: source.diagnostic?.fileInputCount ?? null,
+      uploadTargetFound: source.uploadTarget?.found ?? null,
+      uploadTargetUnique: source.uploadTarget?.unique ?? null,
+      reloadRecoveryUsed,
+    });
+    const failPageIdentity = (source: PageState) => {
+      console.error("[1688-image] page identity not recognized", pageIdentityDiagnostic(source));
+      if (reloadRecoveryUsed) {
+        fail(
+          "page_identity_unknown",
+          422,
+          "无法识别 1688 图搜上传入口：已刷新 1688 页面一次，助手仍然找不到上传控件。请确认该 1688 页面可以正常上传图片（页面结构可能已改版），或改用手动粘贴 1688 商品链接；若刚更新过助手，请在 chrome://extensions 重新加载助手后重试。",
+          "upload_target_not_found_after_reload",
+        );
+      }
+      fail(
+        "page_identity_unknown",
+        422,
+        "无法识别 1688 图搜上传入口：页面已加载完成，但助手找不到上传控件（页面结构可能已改版，或助手与页面不同步）。已尝试刷新 1688 页面；若仍失败，请确认该 1688 页面可以正常上传图片，或改用手动粘贴 1688 商品链接。",
+        "upload_target_not_found",
+      );
+    };
+    const startReloadRecovery = async (): Promise<boolean> => {
+      if (reloadRecoveryUsed) return false;
+      reloadRecoveryUsed = true;
+      // 必须 await 入队：命令真正到达 bridge 的 pending 队列后，助手 SW 才会取走执行。
+      await bridge.enqueue(jobId, { type: "reloadTab" });
+      // 给浏览器真正开始导航与重新注入 content script 留出时间，
+      // 否则下一轮 getState 很可能还落在旧文档上，导致误判为"刷新无效"。
+      await sleep(4_000, signal);
+      return true;
+    };
     for (let pageAttempt = 0; pageAttempt < 2 && !pageReady; pageAttempt++) {
       assertNotAborted(signal);
       await bridge.enqueue(jobId, { type: "getState" });
@@ -275,6 +401,39 @@ export async function acquireByImage(input: {
       if (state.pageKind === "risk_control") {
         fail("risk_control_required", 403, "1688 触发了验证，请在页面完成验证后重试（系统不会绕过）。");
       }
+      // 确定性不支持 DOM 的快速失败（Fast-Fail）：
+      // 场景：页面已处于上传页（pageKind === "upload_page"）、DOM 状态 complete、且非登录墙/非风控。
+      // 若 uploadTarget 明确未找到，短时复核一次（1s 吸收框架异步 hydration 延迟），
+      // 若复核依然 complete 且 uploadTarget 不存在，说明当前页面 DOM 结构确定性不兼容，
+      // 必须快速失败为 page_identity_unknown，禁止继续执行 30s 导航与重复多轮死等。
+      if (
+        state.pageKind === "upload_page" &&
+        state.documentReadyState === "complete" &&
+        state.uploadTarget?.found === false
+      ) {
+        await sleep(1_000, signal);
+        await bridge.enqueue(jobId, { type: "getState" });
+        const recheck = parsePageState(await bridge.waitResult(jobId, 10_000));
+        if (uploadPageReady(recheck)) {
+          state = recheck;
+          pageReady = true;
+          break;
+        }
+        if (
+          recheck.pageKind === "upload_page" &&
+          recheck.documentReadyState === "complete" &&
+          recheck.uploadTarget?.found === false
+        ) {
+          // 结构确定性不兼容（非 hydration 延迟）：先尝试一次页面刷新自救，
+          // 刷新后由外层循环重新探测；helper 返回 false 表示自救机会已用完。
+          if (await startReloadRecovery()) {
+            continue;
+          }
+          failPageIdentity(recheck);
+        }
+        // 复核后页面已不在上传页（如被跳到结果页）→ 交给下方导航分支
+      }
+
       // 非上传页（如停留在结果页）→ 自动导航回上传页（固定能力）
       await bridge.enqueue(jobId, { type: "navigateUploadPage" });
       const nav = await bridge.waitResult(jobId, 20_000); // 导航结果用于诊断；页面验证交给轮询 getState
@@ -283,6 +442,7 @@ export async function acquireByImage(input: {
       }
       // 导航后轮询确认上传页就绪（吸收页面加载/重注入延迟；≤30s）
       const navDeadline = Date.now() + 30_000;
+      let completeNotFoundStreak = 0;
       while (Date.now() < navDeadline) {
         assertNotAborted(signal);
         await sleep(2_000, signal);
@@ -298,10 +458,42 @@ export async function acquireByImage(input: {
           pageReady = true;
           break;
         }
+        // 导航后若页面已在 upload_page 且 documentReadyState === "complete"，连续 2 次仍 found === false → 判定为确定性不支持，快速失败
+        if (state.pageKind === "upload_page" && state.documentReadyState === "complete" && state.uploadTarget?.found === false) {
+          completeNotFoundStreak++;
+          if (completeNotFoundStreak >= 2) {
+            if (await startReloadRecovery()) {
+              break;
+            }
+            failPageIdentity(state);
+          }
+        } else {
+          completeNotFoundStreak = 0;
+        }
       }
     }
     if (!pageReady) {
-      fail("page_identity_unknown", 422, "1688 图搜页面未就绪，请确认已打开图搜页且助手已刷新后重试。");
+      // 导航重试已用尽。若助手明确报告"页面是上传页、文档已 complete、但没有上传控件"，
+      // 这不是加载慢，而是助手脚本与页面不同步：先做一次刷新自救（重新注入 content
+      // script），再探测一轮；否则直接失败。绝不无限刷新。
+      const targetMissing =
+        state.ok &&
+        state.pageKind === "upload_page" &&
+        state.documentReadyState === "complete" &&
+        state.uploadTarget?.found === false;
+      if (targetMissing && (await startReloadRecovery())) {
+        await bridge.enqueue(jobId, { type: "getState" });
+        const afterReload = parsePageState(await bridge.waitResult(jobId, 20_000));
+        if (uploadPageReady(afterReload)) {
+          pageReady = true;
+          state = afterReload;
+        } else {
+          state = afterReload;
+        }
+      }
+    }
+    if (!pageReady) {
+      failPageIdentity(state);
     }
 
     // 5) upload + Upload Identity Proof（§15；重试 ≤3）
@@ -361,7 +553,7 @@ export async function acquireByImage(input: {
       // P1-B：内部码不进用户文案
        
       console.error("[1688-image] submit failed", { code: String(submit.code ?? "unknown") });
-      fail("search_trigger_not_confirmed", 422, "「搜索图片」未成功触发，请确认图搜页面后重试。");
+      fail("search_trigger_not_confirmed", 422, "「搜索图片」未成功触发，请确认图搜页面后重试。", "submit_trigger_failed");
     }
 
     // 7) 结果页证明（§19：imageId + result route + 非推荐流；≤45s）
@@ -378,7 +570,7 @@ export async function acquireByImage(input: {
       }
     }
     if (!resultReady) {
-      fail("search_trigger_not_confirmed", 422, "未进入真实图搜结果页（疑似推荐流或提交未生效），已停止。");
+      fail("search_trigger_not_confirmed", 422, "未进入真实图搜结果页（疑似推荐流或提交未生效），已停止。", "result_page_proof_failed");
     }
 
     // 8) collect（§20：data-renderkey offerId；同卡片绑定；bounded；dedupe）
@@ -435,7 +627,7 @@ export async function acquireByImage(input: {
       query: input.imageUrl ?? input.localImagePath ?? "",
       timestamp: new Date().toISOString(),
       driverVersion: NATIVE_1688_EXTENSION_DRIVER_VERSION,
-      resolverVersion: "native-1688-upload-resolver.v2|native-1688-image-submit-resolver.v2|native-1688-result-extractor.v2",
+      resolverVersion: "native-1688-upload-resolver.v3|native-1688-image-submit-resolver.v2|native-1688-result-extractor.v2",
       success: true,
       failClosedReason: null,
       pageState: "results_ready",
@@ -451,9 +643,17 @@ export async function acquireByImage(input: {
 }
 
 /** 错误归一化（业务错误分类 §53；扩展状态语义 §25-§27） */
-export function normalizeImageAcquisitionError(error: unknown): { code: string; status: number; message: string } {
+export function normalizeImageAcquisitionError(error: unknown): { code: string; status: number; message: string; diagnosticCode?: ImageAcquisitionDiagnostic } {
   if (error instanceof SourcingAcquisitionError) {
-    return { code: error.code, status: error.status, message: error.message };
+    const diagnosticCode =
+      (error as SourcingAcquisitionError & { diagnosticCode?: ImageAcquisitionDiagnostic }).diagnosticCode ??
+      (error.code === "extension_bridge_not_available" ? "extension_not_ready" : undefined);
+    return {
+      code: error.code,
+      status: error.status,
+      message: error.message,
+      ...(diagnosticCode ? { diagnosticCode } : {}),
+    };
   }
   // P1-A：未知异常不把原始 message 拼进用户文案（只进日志）
    

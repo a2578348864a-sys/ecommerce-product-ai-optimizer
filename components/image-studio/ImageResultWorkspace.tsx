@@ -10,6 +10,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import type { StudioImageResultMeta } from "@/lib/studioImageInput";
+import { imageStylePresetLabel, isImageStylePresetId } from "@/lib/imageStyleLibrary";
 import styles from "./ImageStudioPolish.module.css";
 
 export type ImageStudioData = {
@@ -91,12 +92,16 @@ export function ImageResultWorkspace({
   const styleLabel = meta.creationMode === "prompt"
     ? "服务端整理"
     : STYLE_LABELS[meta.input.visualStyle];
+  // 兼容历史/外部结果：缺失或非法预设 id 时降级为「未标注」，绝不在渲染期抛错。
+  const stylePresetLabel = isImageStylePresetId(meta.input.stylePresetId)
+    ? imageStylePresetLabel(meta.input.stylePresetId)
+    : "未标注";
   const downloadKind = meta.creationMode === "prompt" ? "prompt" : meta.input.imageType;
   const productAltName = input.productName.trim() || (isPrompt ? "自由提示词方案" : "未命名商品");
   const localCheckText = isMock ? {
-    logo: "Mock 模板未添加 Logo",
-    text: isPrompt ? "仅展示整理摘要与 Mock 标识" : "仅含商品名与 Mock 标识",
-    watermark: "Mock 模板未添加水印",
+    logo: "本地预览模板未添加 Logo",
+    text: isPrompt ? "仅展示整理摘要与本地预览标识" : "仅含商品名与本地预览标识",
+    watermark: "本地预览模板未添加水印",
     description: "请求上下文已写入预览",
   } : {
     logo: "未自动检查，请人工查看",
@@ -110,11 +115,12 @@ export function ImageResultWorkspace({
       <div className={styles.strategyStrip} aria-label="本次图片策略">
         <span>{imageTypeLabel}</span>
         <span>{styleLabel}</span>
+        <span data-testid="image-result-style-preset">视觉方向：{stylePresetLabel}</span>
         <span>{RATIO_LABELS[input.aspectRatio]}</span>
         <span>{result.images.length} 张方案</span>
       </div>
 
-      <div className={styles.contactSheet}>
+      <div className={styles.contactSheet} data-count={result.images.length}>
         {result.images.map((image, index) => {
           const selected = selectedIndices.includes(index);
           const extension = downloadExtension(image.base64);
@@ -127,14 +133,14 @@ export function ImageResultWorkspace({
               <div className={styles.imageStage} data-aspect={input.aspectRatio}>
                 <Image
                   src={image.base64}
-                  alt={`${productAltName}的${isMock ? "本地 Mock 预览" : "AI 概念草稿"} ${index + 1}`}
+                  alt={`${productAltName}的${isMock ? "本地预览稿" : "AI 概念草稿"} ${index + 1}`}
                   width={image.width || 800}
                   height={image.height || 800}
                   unoptimized
                   className={styles.previewImage}
                 />
                 <span className={styles.mockWaterline}>
-                  {isMock ? "LOCAL MOCK" : "REAL AI DRAFT"}
+                  {isMock ? "本地预览" : "真实 AI 草稿"}
                 </span>
               </div>
               <figcaption className={styles.imageCaption}>
@@ -153,6 +159,20 @@ export function ImageResultWorkspace({
                     <p><strong>避免元素</strong><span>{meta.avoidElementsSummary}</span></p>
                   </div>
                 ) : null}
+                <div className={styles.candidateAttributes}>
+                  <p>
+                    <span className={styles.attrBadgeTeal}>推荐用途</span>
+                    <span>{imageTypeLabel} · 电商展示概念</span>
+                  </p>
+                  <p>
+                    <span className={styles.attrBadgeSlate}>适用原因</span>
+                    <span>用途优先匹配电商视觉层级，风格辅助强化质感</span>
+                  </p>
+                  <p>
+                    <span className={styles.attrBadgeAmber}>必要限制</span>
+                    <span>独立创作未绑定商品研究，上线前需核查商品真实性</span>
+                  </p>
+                </div>
                 <div className={styles.cardActions}>
                   <button
                     type="button"
@@ -183,7 +203,7 @@ export function ImageResultWorkspace({
         <div className={styles.qualityHeader}>
           <span className={styles.qualityMark}><ShieldCheck aria-hidden="true" /></span>
           <div>
-            <p className={styles.sectionEyebrow}>Local review aid</p>
+            <p className={styles.sectionEyebrow}>本地质检辅助</p>
             <h3 id="image-quality-title">图片质量检查</h3>
             <p>本地辅助检查，不等于平台审核，也不替代对真实商品素材的人工核验。</p>
           </div>

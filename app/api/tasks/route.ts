@@ -26,6 +26,10 @@ import {
 import { projectTaskResultForBrowser } from "@/lib/productResearchPublicDto";
 import { getResearchStaleState } from "@/lib/productResearchRecord";
 import { classifyResearchLifecycle } from "@/lib/researchLifecycle";
+import {
+  getResearchLifecycleState,
+  type ResearchLifecycleSnapshot,
+} from "@/lib/server/researchLifecycleReader";
 import { parseMarketScreeningCandidateIdentity } from "@/lib/server/opportunityCandidateService";
 import { parseProductBatchCandidateSource } from "@/lib/server/productBatchCandidateSource";
 import {
@@ -62,6 +66,12 @@ type ViralTaskItem = {
   result: unknown;
   productImage: ResearchProductImageDisplay | null;
   productProjectKey: string;
+  /**
+   * Bridge V1：列表 DTO 携带的统一研究生命周期投影。
+   * 值直接来自 getResearchLifecycleState(...)（与 /research-lifecycle 及详情页同一 Reader），
+   * 由服务端在行投影时基于原始 result 计算；SQL scope 与查询语义不受影响。
+   */
+  researchLifecycle: ResearchLifecycleSnapshot;
   /** §2.3 服务端正式安全投影的 AI 运行状态（仅 product-research scope 下发）。 */
   aiRunStatus?: AiRunStatusSafe;
 };
@@ -238,10 +248,22 @@ function productProjectKey(
   return `ppk_${createHash("sha256").update(stableBinding, "utf8").digest("base64url")}`;
 }
 
-/** §2.3 product-research scope：移除通用 result.status（客户端不得信任），只保留服务端 stale 信号。 */
+/** §2.3 product-research scope：移除通用 result.status（客户端不得信任），只保留服务端 stale 信号与 safe researchCompletion。 */
 function stripRawProjectedStatus(formalScope: boolean, projected: Record<string, unknown>, rawResult: unknown): Record<string, unknown> {
   if (!formalScope) return projected;
   const { status: rawStatus, ...rest } = projected;
+  if (isRecord(rawResult) && isRecord(rawResult.researchCompletion)) {
+    const rc = rawResult.researchCompletion;
+    if (rc.schema === "research-completion.v1" && (rc.status === "completed" || rc.status === "abandoned")) {
+      rest.researchCompletion = {
+        schema: rc.schema,
+        status: rc.status,
+        ...(typeof rc.completedAt === "string" ? { completedAt: rc.completedAt } : {}),
+        ...(typeof rc.revision === "number" ? { revision: rc.revision } : {}),
+        ...(typeof rc.finalStatus === "string" ? { finalStatus: rc.finalStatus } : {}),
+      };
+    }
+  }
   return rest;
 }
 
@@ -265,13 +287,14 @@ function toTaskItem(record: {
     ...record,
     resultJson: record.resultJson,
   });
+  const itemDecisionStatus = normalizeDecisionStatus(record.decisionStatus);
 
   return {
     id: normalized.id,
     createdAt: normalized.createdAt,
     updatedAt: normalized.updatedAt,
     type: normalized.type,
-    decisionStatus: normalizeDecisionStatus(record.decisionStatus),
+    decisionStatus: itemDecisionStatus,
     title: normalized.title,
     platform: normalized.platform,
     productUrl: normalized.productUrl || null,
@@ -289,13 +312,27 @@ function toTaskItem(record: {
         materialText: normalized.materialText,
         oneLineSummary: normalized.oneLineSummary,
         level: normalized.level,
-        decisionStatus: normalizeDecisionStatus(record.decisionStatus),
+        decisionStatus: itemDecisionStatus,
       }) as Record<string, unknown>,
       normalized.result,
     ),
     productImage: null,
     productProjectKey: productProjectKey(normalized.id, normalized.result, subject),
+    researchLifecycle: projectResearchLifecycleForList(normalized.result, itemDecisionStatus, normalized.type),
   };
+}
+
+/**
+ * Bridge V1：列表行统一生命周期投影。
+ * 输入为数据库行的原始 result（投影前），与 /research-lifecycle 及详情页 Reader 输入一致；
+ * 同步纯计算，不产生额外 DB/API 请求（无 N+1）。
+ */
+function projectResearchLifecycleForList(
+  rawResult: unknown,
+  decisionStatus: DecisionStatus,
+  type: string,
+): ResearchLifecycleSnapshot {
+  return getResearchLifecycleState({ result: rawResult, decisionStatus, type });
 }
 
 function addProductImage(
@@ -521,6 +558,11 @@ export async function GET(request: NextRequest) {
           result: stripRawProjectedStatus(formalScope, result as Record<string, unknown>, rawResult),
           productImage: null,
           productProjectKey: productProjectKey(listedTask.id, rawResult, subject, sandboxCandidates),
+          researchLifecycle: projectResearchLifecycleForList(
+            rawResult,
+            normalizeDecisionStatus(listedTask.decisionStatus),
+            listedTask.type,
+          ),
           aiRunStatus: formalScope ? (stale ? "research_stale" as const : deriveSafeAiRunStatus(runRow?.status ?? null)) : undefined,
           runUpdatedAt: formalScope && runRow ? runRow.updatedAt : undefined,
         } as unknown as ViralTaskItem;
@@ -758,6 +800,11 @@ export async function POST(request: NextRequest) {
         }),
         productImage: null,
         productProjectKey: productProjectKey(sandboxTask.id, body.result, accessSubject(auth.context)),
+        researchLifecycle: projectResearchLifecycleForList(
+          body.result,
+          normalizeDecisionStatus(sandboxTask.decisionStatus),
+          sandboxTask.type,
+        ),
       } as unknown as ViralTaskItem,
     });
   }

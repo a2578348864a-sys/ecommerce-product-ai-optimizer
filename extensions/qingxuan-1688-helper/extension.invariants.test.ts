@@ -72,9 +72,9 @@ describe("content.js 关键机制 invariant（R1 实证锁定）", () => {
     expect(source).not.toMatch(/\bfetch\s*\(/);
   });
 
-  it("resolver 版本化（v2）", () => {
+  it("resolver 版本化（upload v3 + submit v2 + extractor v2）", () => {
     const source = readContent();
-    expect(source).toContain("native-1688-upload-resolver.v2");
+    expect(source).toContain("native-1688-upload-resolver.v3");
     expect(source).toContain("native-1688-image-submit-resolver.v2");
     expect(source).toContain("native-1688-result-extractor.v2");
   });

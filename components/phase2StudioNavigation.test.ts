@@ -7,30 +7,28 @@ function source(path: string) {
 }
 
 describe("Phase 2 Studio entry points", () => {
-  it("renders Listing Studio in Manual and Task modes instead of redirecting", () => {
+  it("renders the V5 Listing Studio entry point instead of redirecting", () => {
     const page = source("app/listing-studio/page.tsx");
     expect(page).not.toContain("redirect(");
-    expect(page).toContain("ListingStudioClient");
+    expect(page).toContain("ListingStudioV5Client");
     expect(page).toContain("taskId");
-    expect(page).toContain("独立创作");
-    expect(page).toContain("来自研究记录");
+    expect(page).toContain("基于服务端重新核验的研究事实生成 Listing 草稿");
   });
 
-  it("renders Image Studio in Manual and Task modes instead of redirecting", () => {
+  it("renders task-linked Image Studio and an explicit research-task guidance state", () => {
     const page = source("app/image-studio/page.tsx");
     expect(page).not.toContain("redirect(");
     expect(page).toContain("ImageStudioClient");
     expect(page).toContain("taskId");
-    expect(page).toContain("独立创作");
+    expect(page).toContain("请先选择研究任务");
     expect(page).toContain("来自研究记录");
+    expect(page).toContain("请先从商品研究选择一个任务");
   });
 
-  it("groups research and creative tools in desktop and mobile navigation", () => {
+  it("groups core process and auxiliary tools in desktop and mobile navigation", () => {
     const sidebar = source("components/WorkspaceSidebar.tsx");
-    expect(sidebar).toContain("商品研究");
-    expect(sidebar).toContain("待研究商品");
-    expect(sidebar).toContain("创作工具");
-    expect(sidebar).toContain("创作工具");
+    expect(sidebar).toContain("核心流程");
+    expect(sidebar).toContain("辅助工具");
     expect(sidebar).toContain("/listing-studio");
     expect(sidebar).toContain("/image-studio");
     expect(sidebar).toContain("WorkspaceMobileNav");
@@ -46,7 +44,7 @@ describe("Phase 2 Studio entry points", () => {
     expect(detail).not.toContain("ImageHandoffSection");
     expect(detail).toContain('data-testid="formal-v2-listing-images"');
     expect(detail).toContain("Listing 与商品图片");
-    expect(detail).toContain("前往 Listing Studio 人工核对");
+    expect(detail).toContain("前往文案工作台确认资料");
     expect(detail).toContain("补充清晰参考图后重新检查");
     expect(detail).not.toContain("/prototype");
   });

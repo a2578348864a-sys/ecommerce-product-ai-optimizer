@@ -165,6 +165,9 @@ describe("amazon collector isolated browser control", () => {
     expect(isAllowedPublicNavigationUrl("http://www.alibaba.com/trade/search", ["https://www.alibaba.com"])).toBe(false);
     expect(isAllowedPublicNavigationUrl("https://www.alibaba.com.evil.example/", ["https://www.alibaba.com"])).toBe(false);
     expect(isAllowedPublicNavigationUrl("https://user:secret@www.alibaba.com/", ["https://www.alibaba.com"])).toBe(false);
+    expect(isAllowedPublicNavigationUrl("https://www.amazon.co.jp/dp/B00063QBL8", ["https://www.amazon.co.jp"])).toBe(true);
+    expect(isAllowedPublicNavigationUrl("https://www.amazon.co.jp/product-reviews/B00063QBL8", ["https://www.amazon.co.jp"])).toBe(true);
+    expect(isAllowedPublicNavigationUrl("https://www.amazon.co.jp.evil.example/dp/B00063QBL8", ["https://www.amazon.co.jp"])).toBe(false);
   });
 
   it("rejects DOM probes that could read private browser state", () => {

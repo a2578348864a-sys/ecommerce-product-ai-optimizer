@@ -7,6 +7,7 @@ import {
   prefillManualValues,
   changedManualFacts,
   runCreativeHandoffCreate,
+  prepareSelectableAmazonCandidates,
   type HandoffNotice,
 } from "./ListingFactSupplementPanel";
 import { ListingFactSupplementPanel } from "@/components/studio/ListingFactSupplementPanel";
@@ -33,6 +34,26 @@ function previewWith(candidates: Array<{ field: string; value: string; scopes: s
 }
 
 describe("ListingFactSupplementPanel", () => {
+  it("filters existing fields, removes duplicate cards, and leaves every visible radio enabled", () => {
+    const prepared = prepareSelectableAmazonCandidates([
+      { id: "care-1", field: "care", value: "Hand wash only" },
+      { id: "feature-1", field: "functional_feature", value: "Leak-proof", evidenceTexts: ["Leak-proof"] },
+      { id: "feature-2", field: "functional_feature", value: "Leak-proof", evidenceTexts: ["Leak-proof"] },
+    ], new Set(["care"]));
+    expect(prepared.candidates.map((candidate) => candidate.id)).toEqual(["feature-1"]);
+    expect(prepared.hiddenCount).toBe(2);
+  });
+
+  it("keeps two different values in one field as selectable radio options", () => {
+    const prepared = prepareSelectableAmazonCandidates([
+      { id: "capacity-1", field: "capacity", value: "10 utensils" },
+      { id: "capacity-2", field: "capacity", value: "15 utensils" },
+      { id: "care-1", field: "care", value: "Hand wash only" },
+    ], new Set());
+    expect(prepared.candidates).toHaveLength(3);
+    expect(prepared.candidates.every((candidate) => candidate.field !== "capacity" || candidate.id.startsWith("capacity"))).toBe(true);
+  });
+
   it("listing-eligible 候选展示且标记需人工核实；market_signal 候选被过滤", () => {
     const html = renderToStaticMarkup(createElement(ListingFactSupplementPanel, {
       taskId: "sandbox-task-1",
@@ -86,6 +107,51 @@ describe("ListingFactSupplementPanel", () => {
       expect(html).toContain(label);
     }
     expect(html).toContain("我已核对，这是商品真实信息");
+  });
+
+  it("默认折叠已确认事实与手动补充输入，避免喧宾夺主", () => {
+    const html = renderToStaticMarkup(createElement(ListingFactSupplementPanel, {
+      taskId: "sandbox-task-collapsed",
+      preview: previewWith([
+        { field: "material", value: "Stainless Steel", scopes: ["internal", "listing"] },
+      ]),
+      create: async () => ({}),
+      refresh: async () => ({}),
+      existingFacts: [
+        { field: "brand", label: "品牌", value: "Owala", usageScopes: ["listing"], sourceKind: "candidate_snapshot" },
+      ],
+    }));
+
+    // 两处均使用 details 标签包裹
+    expect(html).toContain("data-testid=\"confirmed-facts-details\"");
+    expect(html).toContain("data-testid=\"supplement-facts-details\"");
+    // 默认均不带 open 属性（折叠状态）
+    expect(html).not.toMatch(/<details[^>]+data-testid="confirmed-facts-details"[^>]*open/);
+    expect(html).not.toMatch(/<details[^>]+data-testid="supplement-facts-details"[^>]*open/);
+    // 外部 summary 依然渲染关键提示
+    expect(html).toContain("已确认商品事实");
+    expect(html).toContain("建议补充商品事实");
+  });
+
+  it("研究侧已确认事实与创作快照不一致时提供安全桥接入口", () => {
+    const html = renderToStaticMarkup(createElement(ListingFactSupplementPanel, {
+      taskId: "sandbox-task-bridge",
+      preview: previewWith([]),
+      create: async () => ({}),
+      refresh: async () => ({}),
+      existingFacts: [
+        { field: "brand", label: "品牌", value: "John Boos", usageScopes: ["listing"], sourceKind: "user_confirmation" },
+      ],
+      workbenchConfirmedFacts: [
+        { field: "brand", label: "品牌", value: "John Boos", sourceKind: "seller_sprite_product_facts" },
+        { field: "material", label: "材质", value: "Wood", sourceKind: "amazon_product_info" },
+      ],
+    }));
+
+    expect(html).toContain('data-testid="research-fact-bridge"');
+    expect(html).toContain('data-testid="sync-research-confirmed-facts"');
+    expect(html).toContain("研究页已确认 1 项当前商品事实");
+    expect(html).toContain("不新增或修改事实");
   });
 });
 

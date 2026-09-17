@@ -17,6 +17,7 @@ import {
   mergeConfirmedIntoOverview,
   natureForField,
   compactOverviewItems,
+  researchLifecyclePhaseLabel,
   type ResearchMaterialRow,
 } from "./EvidenceWorkbench";
 import { buildKeywordBriefDraft } from "./keywordBriefDraft";
@@ -164,6 +165,41 @@ describe("EvidenceWorkbench extractors", () => {
     expect(natureForField("rating")).toBe("snapshot");
     expect(natureForField("estimatedMonthlySales")).toBe("estimate");
     expect(natureForField("brand")).toBe("unknown");
+  });
+});
+
+describe("EvidenceWorkbench 研究生命周期只读桥接", () => {
+  it("事实确认面板只挂载一次且位于 Tab 01 市场与竞品区域", () => {
+    const marketPanelIndex = wbSource.indexOf('data-testid="workbench-panel-market"');
+    const buyersPanelIndex = wbSource.indexOf('data-testid="workbench-panel-buyers"');
+    const factReviewIndex = wbSource.indexOf("<FactCandidateReview");
+    expect(marketPanelIndex).toBeGreaterThan(-1);
+    expect(factReviewIndex).toBeGreaterThan(marketPanelIndex);
+    expect(factReviewIndex).toBeLessThan(buyersPanelIndex);
+    expect(wbSource.match(/<FactCandidateReview/g)).toHaveLength(1);
+  });
+
+  it("只把上层快照 phase 翻译为展示标签，不在 workbench 内重算生命周期", () => {
+    expect(researchLifecyclePhaseLabel("awaiting_confirmation")).toBe("等待确认事实");
+    expect(researchLifecyclePhaseLabel("completed")).toBe("研究已完成");
+    expect(wbSource).toContain("lifecycleSnapshot?: ResearchLifecycleSnapshot | null");
+    expect(wbSource).toContain("lifecycleSnapshot?.nextAction || decision?.nextAction");
+    expect(wbSource).toContain("lifecycleSnapshot?.stale");
+    expect(wbSource).toContain("lifecycleSnapshot.blockers");
+  });
+
+  it("stale 快照（完成研究后证据变化）不得再显示「研究已完成」", () => {
+    // 第十二轮：同一 Snapshot 在详情页顶部 / 工作台卡片 / workbench 必须同一语义。
+    expect(researchLifecyclePhaseLabel("completed", true)).toBe("研究资料需重新确认");
+    expect(researchLifecyclePhaseLabel("completed", false)).toBe("研究已完成");
+    expect(wbSource).toContain("researchLifecyclePhaseLabel(lifecycleSnapshot.phase, lifecycleSnapshot.stale)");
+  });
+
+  it("生命周期桥接不迁移资料行、事实候选或来源细节", () => {
+    const snapshotSection = wbSource.slice(wbSource.indexOf("lifecycleSnapshot"), wbSource.indexOf("lifecycleSnapshot") + 3000);
+    expect(snapshotSection).not.toContain("materialRows");
+    expect(snapshotSection).not.toContain("FactCandidateReview");
+    expect(snapshotSection).not.toContain("orchestrator");
   });
 });
 
@@ -429,7 +465,7 @@ describe("轮 10 合并：竞品与关键词自动化（源码结构契约）", 
   });
   it("轮 13 一致性：live 研究资料清单冒泡给外层（onMaterialRowsChange 接线）", () => {
     expect(wbSource).toContain("onMaterialRowsChange");
-    expect(wbSource).toContain("onMaterialRowsChange?.({ rows: materialRows, counts: liveCounts, hasAiSummary: aiSummary })");
+    expect(wbSource).toContain("onMaterialRowsChange?.({ rows: materialRows, counts: liveCounts, hasAiSummary: false })");
     expect(wbSource).toContain("LiveEvidenceCounts");
     expect(wbSource).toContain("materialRowsJson");
   });

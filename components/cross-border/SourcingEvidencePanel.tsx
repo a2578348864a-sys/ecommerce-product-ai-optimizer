@@ -187,6 +187,9 @@ export function SourcingEvidencePanel({
   amazonContext,
   onConfirmed,
   onEvidenceChange,
+  refreshToken,
+  /** 正式研究流程由 Orchestrator 统一发起；保留 true 供内部调试/兼容页面使用。 */
+  showManualImageSearch = true,
 }: {
   taskId: string;
   amazonContext?: { title?: string | null; image?: string | null; asin?: string | null };
@@ -194,6 +197,9 @@ export function SourcingEvidencePanel({
   onConfirmed?: () => void;
   /** R7：供应线索 evidence 状态变化上报（供 Workbench 顶部清单实时派生） */
   onEvidenceChange?: (hasConfirmed: boolean) => void;
+  /** 研究编排完成后的刷新令牌；用于把 task 绑定的待确认图片预览装载到面板。 */
+  refreshToken?: number;
+  showManualImageSearch?: boolean;
 }) {
   const [accessPassword, , accessHydrated, , noAuthOwner] = useAccessPassword();
   const [status, setStatus] = useState<PanelStatus>("idle");
@@ -229,6 +235,7 @@ export function SourcingEvidencePanel({
   const isSearchingRef = useRef(false);
   const previousPreviewRef = useRef<PreviewPayload | null>(null);
   const [retrying, setRetrying] = useState(false);
+  const lastRefreshTokenRef = useRef(0);
 
   // 演示模式（Visitor）：本地采集能力不可用（local_env_required）时，搜索入口仍可
   // 体验“演示找货”——服务端回放预置真实 1688 供应线索样本（demo 分支），结果标注“演示数据”。
@@ -259,6 +266,7 @@ export function SourcingEvidencePanel({
         storageVersion: { resultJsonHash: string; updatedAt: string };
         toolStatus: ToolStatus;
         capabilities?: unknown;
+        pendingPreview?: PreviewPayload | null;
       }>(response);
       if (currentId !== reqIdRef.current) {
         return {
@@ -297,6 +305,17 @@ export function SourcingEvidencePanel({
       setStorageVersion(payload.storageVersion);
       setToolStatus(payload.toolStatus);
       setCapabilities(parseSourcingCapabilities(payload.capabilities));
+      const pendingPreview = payload.pendingPreview;
+      const hasPendingPreview = Boolean(
+        pendingPreview &&
+        typeof pendingPreview.previewId === "string" &&
+        Array.isArray(pendingPreview.candidates),
+      );
+      if (hasPendingPreview) {
+        setPreview(pendingPreview ?? null);
+        setPreviewDemo(false);
+        setStatus("preview");
+      }
       setCapabilityLoadFailed(false);
       setErrorDetail((prev) => (prev?.layer === "供应能力状态读取失败" ? null : prev));
       setErrorMessage((prev) => (status === "error" ? "" : prev));
@@ -306,7 +325,9 @@ export function SourcingEvidencePanel({
       // §16：公网（capabilities=local_env_required）不进入 need_login 诊断态——由 CapabilityNotice 统一提示
       const publicRuntime = parseSourcingCapabilities(payload.capabilities)?.keyword.state === "local_env_required";
       setStatus((prev) => (
-        publicRuntime ? "idle" : (caps.cliReady ? (prev === "need_login" || prev === "error" ? "idle" : prev) : "need_login")
+        hasPendingPreview
+          ? "preview"
+          : (publicRuntime ? "idle" : (caps.cliReady ? (prev === "need_login" || prev === "error" ? "idle" : prev) : "need_login"))
       ));
       return { ok: true, toolStatus: payload.toolStatus };
     } catch (err) {
@@ -341,9 +362,19 @@ export function SourcingEvidencePanel({
   useEffect(() => {
     if (!panelOpen.current) {
       panelOpen.current = true;
-      void loadInitial();
+      setCheckingTools(true);
+      void loadInitial().finally(() => {
+        setCheckingTools(false);
+      });
     }
   }, [loadInitial]);
+
+  // 编排器在面板已挂载后才生成 Preview；dataRevision 变化时重新读取同 task 的待确认预览。
+  useEffect(() => {
+    if (typeof refreshToken !== "number" || refreshToken <= 0 || refreshToken === lastRefreshTokenRef.current) return;
+    lastRefreshTokenRef.current = refreshToken;
+    void loadInitial();
+  }, [refreshToken, loadInitial]);
 
   // V3 Final R9（§151）：Task 已确认的主图自动预填图片找货输入框（用户可替换）。
   // 只在用户尚未手动编辑时预填；用户一旦输入，不再覆盖。
@@ -395,16 +426,20 @@ export function SourcingEvidencePanel({
       if (!response.ok || !data.ok) {
         const classified = classifySourcingRequestError({
           status: response.status,
-          code: data.error?.code,
-          message: data.error?.message,
+          code: data?.error?.code,
+          message: data?.error?.message,
           method: "keyword",
         });
+        setLoginNotice("");
         setErrorMessage(classified.message || "无法打开 1688 登录窗口，请稍后重试。");
         setErrorDetail(classified);
         return;
       }
-      setLoginNotice((data.data as { hint?: string }).hint ?? "已在电脑上打开 1688 登录窗口，请完成扫码。");
+      setErrorMessage("");
+      setErrorDetail(null);
+      setLoginNotice((data.data as { hint?: string })?.hint ?? "已发起 1688 登录窗口，请查看桌面并完成登录；完成后点击「重新检测」。");
     } catch (err) {
+      setLoginNotice("");
       const classified = classifySourcingRequestError({ error: err, method: "keyword" });
       setErrorMessage(classified.message || "无法打开 1688 登录窗口，请稍后重试。");
       setErrorDetail(classified);
@@ -648,9 +683,15 @@ export function SourcingEvidencePanel({
           {/* R1：两套独立登录说明（常驻，任何状态下可见；公网不展示本地工具概念） */}
           {!localEnvRequired && (
             <p className="mt-3 text-xs leading-5 text-slate-500" data-testid="sourcing-dual-login-note">
-            1688 有两套相互独立的登录：<span className="font-semibold">关键词找货 / 链接读取</span>需要完成「关键词登录」；
-            <span className="font-semibold">图片找货</span>只需要浏览器助手 + 普通 Chrome 登录 1688，互不影响。
-            图片找货需确认已在普通 Chrome 中登录 1688（系统无法代替确认登录态）。
+              {showManualImageSearch ? (
+                <>
+                  1688 有两套相互独立的登录：<span className="font-semibold">关键词找货 / 链接读取</span>需要完成「关键词登录」；
+                  <span className="font-semibold">图片找货</span>只需要浏览器助手 + 普通 Chrome 登录 1688，互不影响。
+                  图片找货需确认已在普通 Chrome 中登录 1688（系统无法代替确认登录态）。
+                </>
+              ) : (
+                <>关键词找货与链接读取需要完成「关键词登录」；图片供应链结果由「补齐研究资料」统一整理。</>
+              )}
             </p>
           )}
 
@@ -699,7 +740,12 @@ export function SourcingEvidencePanel({
                   </button>
                 </div>
               )}
-              {loginNotice ? <p className="mt-2 text-sm font-semibold text-teal-700">{loginNotice}</p> : null}
+              {errorMessage ? (
+                <p data-testid="sourcing-login-error" className="mt-2 text-xs text-rose-600">
+                  {errorMessage}
+                </p>
+              ) : null}
+              {loginNotice ? <p className="mt-2 text-sm font-semibold text-teal-700" data-testid="sourcing-login-notice">{loginNotice}</p> : null}
               {caps.cliToolAvailable ? (
                 <details className="mt-2">
                   <summary className="cursor-pointer text-sm font-semibold text-amber-700">登录步骤（2 步）</summary>
@@ -789,6 +835,8 @@ export function SourcingEvidencePanel({
                     <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">需要本地研究环境</span>
                   ) : capabilityLoadFailed ? (
                     <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700" data-testid="sourcing-kw-status-failed">状态未知 / 检测失败</span>
+                  ) : checkingTools ? (
+                    <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600" data-testid="sourcing-kw-status-checking">正在检测…</span>
                   ) : caps.cliReady ? (
                     <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-700">1688 登录 ✓</span>
                   ) : caps.cliToolAvailable ? (
@@ -816,7 +864,7 @@ export function SourcingEvidencePanel({
                     搜索
                   </button>
                 </div>
-                {!localEnvRequired && !capabilityLoadFailed ? (
+                {!localEnvRequired && !capabilityLoadFailed && !checkingTools ? (
                   !caps.cliToolAvailable ? (
                     <p className="mt-1.5 text-xs text-amber-600">关键词找货组件尚未安装，安装完成后即可使用（见顶部提示）。</p>
                   ) : !caps.cliReady ? (
@@ -825,13 +873,15 @@ export function SourcingEvidencePanel({
                 ) : null}
               </div>
 
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              {showManualImageSearch ? <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs font-bold text-slate-500">图片找货</p>
                   {localEnvRequired ? (
                     <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">需要本地研究环境</span>
                   ) : capabilityLoadFailed ? (
                     <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700" data-testid="sourcing-img-status-failed">状态未知 / 检测失败</span>
+                  ) : checkingTools ? (
+                    <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600" data-testid="sourcing-img-status-checking">正在检测浏览器助手…</span>
                   ) : caps.imageReady ? (
                     <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-700">浏览器助手 ✓</span>
                   ) : caps.imageReasonCode === "extension_version_mismatch" || (caps.imageExtensionSwVersion !== null && !caps.imageVersionCompatible) ? (
@@ -872,7 +922,7 @@ export function SourcingEvidencePanel({
                     </button>
                   </p>
                 ) : null}
-                {!localEnvRequired && !capabilityLoadFailed && !caps.imageReady ? (
+                {!localEnvRequired && !capabilityLoadFailed && !checkingTools && !caps.imageReady ? (
                   caps.imageReasonCode === "extension_version_mismatch" || (caps.imageExtensionSwVersion !== null && !caps.imageVersionCompatible) ? (
                     <div className="mt-1.5">
                       <p className="text-xs font-semibold text-rose-700" data-testid="sourcing-helper-outdated">
@@ -923,7 +973,7 @@ export function SourcingEvidencePanel({
                     浏览器助手已连接。请确认已在普通 Chrome 中登录 1688（系统无法代替确认登录态）；1688 图搜会打开本地浏览器窗口（需前台运行）。
                   </p>
                 ) : null}
-              </div>
+              </div> : null}
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <div className="flex items-center justify-between gap-2">

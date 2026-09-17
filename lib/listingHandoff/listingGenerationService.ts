@@ -21,7 +21,7 @@ import { DEFAULT_CANNOT_SAY, buildListingPlanFromCapability, type ListingPlan } 
 import { evaluateListingCapabilityFromPolicy } from "@/lib/listingHandoff/listingCapabilityEvaluation";
 import { validateCopyQualityContract } from "@/lib/listingHandoff/listingRuntimeSkill";
 import { buildDeterministicListingPackDraft, composeControlledBullets, composeOptimizedListingDraft } from "@/lib/listingHandoff/listingComposition";
-import { RUNTIME_QUALITY_LIMITS, type RuntimeFact, validateRuntimeQualityContract, type RuntimeIssue } from "@/lib/listingHandoff/listingRuntimeSkill";
+import { RUNTIME_QUALITY_LIMITS, type RuntimeFact, usedFactValuesOf, validateRuntimeBulletContract, validateRuntimeQualityContract, type RuntimeIssue } from "@/lib/listingHandoff/listingRuntimeSkill";
 import { pickBestKeyword } from "@/lib/research/researchInputQuality";
 import { buildListingReadiness } from "@/lib/listingHandoff/listingReadiness";
 import { parseListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
@@ -32,6 +32,11 @@ import { validateAiListingPackDraft } from "@/lib/aiListingDraft";
 import { filterListingClaims } from "@/lib/listingClaimFilter";
 import { parseProductCreativeHandoff } from "@/lib/productCreativeHandoff";
 import { getProductResearchRecord, getProductResearchVerification, verifyProductResearchHash } from "@/lib/productResearchRecord";
+import { applyListingPlannerDecision, buildFinalizablePlannerCatalog, buildRendererQualifiedOptions, completePlannerSelectionsToFinalizablePlan, generateListingPlanDecision, renderPlannerListing } from "@/lib/listingHandoff/listingPlanner";
+import { evaluateListingQualityPolicy, parseListingQualityReport, type ListingQualityReport } from "@/lib/listingHandoff/listingQualityPolicy";
+import { analyzeMarketingIntelligence } from "@/lib/listingHandoff/marketingIntelligence/analyzer";
+import { buildCopyStrategy } from "@/lib/listingHandoff/copyStrategy/analyzer";
+import type { CopyStrategyV1 } from "@/lib/listingHandoff/copyStrategy/types";
 
 export class ListingHandoffError extends Error {
   constructor(public readonly code: string, public readonly status: number, message: string) {
@@ -66,6 +71,19 @@ export type ListingDraftSafeSummary = {
   /** Draft-level audit metadata, not per-claim citations. */
   /** 轮 21：实际使用的已确认商品事实（仅 label/value；不返回内部 field） */
   usedFactTrace?: Array<{ label: string; value: string }>;
+  /** 本次 ListingGenerationInput 中实际提供给生成链的已确认事实数量。 */
+  generationInputFactCount?: number;
+  /** 本次生成输入中提供的研究参考数量（仅计数，不含内部内容）。 */
+  generationInputResearchReferenceCount?: number;
+  generationInputReferenceCounts?: { voc: number; keyword: number; competitor: number; sourcing: number; aiReference: number };
+  /** Provider 返回后被确定性去掉的重复五点数量。 */
+  dedupeRemovedBulletCount?: number;
+  /** SALVAGE：因 Claim Evidence 未通过被整条剔除的五点数量（仅计数）。 */
+  claimRejectedBulletCount?: number;
+  /** SALVAGE：因运行时质量合同未通过被整条剔除的五点数量（仅计数）。 */
+  qualityRejectedBulletCount?: number;
+  /** SALVAGE：最终保留的合格五点数量。 */
+  salvagedBulletCount?: number;
   /** R2：实际采用的关键词文本（由 usedKeywordIds + brief 确定性映射） */
   usedKeywordTrace?: string[];
   /** ListingPlan.v2：仅进入搜索词字段（keywords/backendSearchTerms）、未进入正文的关键词（有界；与 usedKeywordTrace 互斥） */
@@ -79,6 +97,7 @@ export type ListingDraftSafeSummary = {
   keywordPlanSource?: "manual" | "auto_suggested" | "none";
   draftKind?: "ai_optimized_listing" | "structured_listing_draft" | "safe_fact_draft";
   qualityIssues?: string[];
+  qualityReport?: ListingQualityReport;
   providerAttempted?: boolean;
   providerSucceeded?: boolean;
   fallbackApplied?: boolean;
@@ -107,6 +126,49 @@ export type ListingDraftSafeSummary = {
   /** HISTORICAL_KEYWORD_READ_GUARD：历史草稿 keywords/backendSearchTerms 按当前 Brief+Policy 投影时被过滤后
    *  返回的固定中文提示（有界；只在发生过滤且正文保留时非空；不含脏词原文/内部数据）。 */
   historicalKeywordFilteredNotice?: string;
+  /** AI 仅选择事实/模板，正文始终由确定性渲染器生成。 */
+  generationMode?: "planner_guided" | "deterministic_only";
+  plannerAttempted?: boolean;
+  plannerSucceeded?: boolean;
+  plannerDecisionApplied?: boolean;
+  plannerSelectedRoles?: string[];
+  plannerSelectedFactCount?: number;
+  plannerSelectedKeywordCount?: number;
+  plannerFailureStage?: "provider" | "parse" | "schema" | "semantic_validation" | "renderer";
+  plannerSchemaFailureCode?: string;
+  plannerUnknownKeys?: string[];
+  plannerRawSelectionCount?: number;
+  plannerValidSelectionCount?: number;
+  plannerRejectedSelectionCount?: number;
+  plannerFilledSelectionCount?: number;
+  plannerFinalSelectionCount?: number;
+  plannerSemanticStatus?: "full" | "partial" | "none";
+  rendererQualifiedOptionCount?: number;
+  rendererQualifiedRoleCount?: number;
+  plannerSelectedOptionCount?: number;
+  plannerDecisionUsedInFinalDraft?: boolean;
+  rendererFailureStage?: "title" | "bullet" | "description" | "whole_claim_evidence" | "runtime" | "copy_quality" | "plan_binding" | "brand_policy";
+  rendererFailureRole?: string;
+  rendererFailureCode?: string;
+  rendererFailureValidator?: "plan_contract" | "bullet_render" | "bullet_runtime" | "bullet_claim" | "draft_schema" | "draft_runtime" | "copy_quality" | "plan_binding";
+  rendererFailureFieldPath?: string;
+  rendererFailureReasonCode?: string;
+  rendererRejectedBulletCount?: number;
+  rendererUnrenderableRoleCount?: number;
+  /** Safe, value-free copy direction used for this generation request. */
+  copyStrategy?: {
+    targetBuyer: string | null;
+    buyerPainPoints: string[];
+    mainAngle: string | null;
+    emotionalHook: string | null;
+    copyTone: string;
+    bulletStrategies: Array<{ order: number; structure: string; purpose: string }>;
+    titleStrategy: string | null;
+    descriptionStrategy: string | null;
+    avoidExpressions: string[];
+  };
+  /** True only when the active Provider path received the strategy. */
+  copyStrategyApplied?: boolean;
 };
 
 /** HISTORICAL_KEYWORD_READ_GUARD：读取投影所需上下文（当前有效 Brief + 关键词策略上下文）。 */
@@ -169,8 +231,73 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * Build the strategy consumed by the current Listing provider from the
+ * existing research sidecar. The result is a value-free framing contract:
+ * confirmed product facts remain the only source of product assertions.
+ */
+function copyStrategyForListingInput(
+  input: ListingGenerationInput,
+): CopyStrategyV1 | undefined {
+  const context = input.creativeContext;
+  const hasResearch = Boolean(context && (
+    context.vocInsights.length > 0
+    || context.keywordCandidates.length > 0
+    || context.competitiveContext.length > 0
+    || context.sourcingContext.length > 0
+  ));
+  if (!hasResearch && !input.listingBrief) return undefined;
+  const insight = context
+    ? analyzeMarketingIntelligence({
+        voc: context.vocInsights,
+        keywords: context.keywordCandidates,
+        competitors: context.competitiveContext,
+        sourcing: context.sourcingContext,
+      })
+    : null;
+  return buildCopyStrategy({
+    marketingInsight: insight,
+    confirmedFactSummary: {
+      count: input.productFacts.length,
+      labels: input.productFacts.map((fact) => fact.label),
+    },
+    listingBrief: input.listingBrief ?? null,
+  });
+}
+
 function safeString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function safeCopyStrategySummary(value: unknown): ListingDraftSafeSummary["copyStrategy"] | undefined {
+  if (!isRecord(value)) return undefined;
+  const asText = (candidate: unknown, max: number): string | null =>
+    typeof candidate === "string" && candidate.trim().length > 0 ? candidate.trim().slice(0, max) : null;
+  const textArray = (candidate: unknown, maxItems: number, maxText: number): string[] =>
+    Array.isArray(candidate)
+      ? candidate.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+          .map((item) => item.trim().slice(0, maxText)).slice(0, maxItems)
+      : [];
+  const bulletStrategies = Array.isArray(value.bulletStrategies)
+    ? value.bulletStrategies.flatMap((item) => {
+        if (!isRecord(item) || typeof item.order !== "number" || !Number.isInteger(item.order)
+          || typeof item.structure !== "string" || typeof item.purpose !== "string") return [];
+        return [{ order: Math.min(5, Math.max(1, item.order)), structure: item.structure.slice(0, 64), purpose: item.purpose.trim().slice(0, 300) }];
+      }).slice(0, 5)
+    : [];
+  const copyTone = asText(value.copyTone, 40);
+  if (!copyTone) return undefined;
+  return {
+    targetBuyer: asText(value.targetBuyer, 200),
+    buyerPainPoints: textArray(value.buyerPainPoints, 6, 300),
+    mainAngle: asText(value.mainAngle, 300),
+    emotionalHook: asText(value.emotionalHook, 300),
+    copyTone,
+    bulletStrategies,
+    titleStrategy: asText(value.titleStrategy, 300),
+    descriptionStrategy: asText(value.descriptionStrategy, 400),
+    avoidExpressions: textArray(value.avoidExpressions, 8, 200),
+  };
 }
 
 function safeStringArray(value: unknown): string[] {
@@ -307,6 +434,37 @@ function filterKeywordsByClaimEvidence(keywords: string[], generationInput: List
   });
 }
 
+/**
+ * Finalizable Planner 与正式输出共用的关键词安全出口。
+ *
+ * 关键词 Brief 是 SEO 参考输入，不是商品事实；在 Planner 预演阶段也必须先经过
+ * Claim Evidence，否则一个未经事实支持的关键词会让整个 finalizable catalog 被
+ * schema/Claim 门禁清空，最终把本来可安全渲染的 Listing 变成空稿。
+ */
+export function claimEvidenceFilteredKeywordBrief<T extends { primaryKeyword: string; supportingKeywords: string[]; backendSearchTerms: string[]; source?: string }>(
+  brief: T | null,
+  generationInput: ListingGenerationInput,
+): T | null {
+  if (!brief) return null;
+  // Synthetic/fixture briefs are already the explicit test contract for the
+  // task-linked provider path. Preserve their policy-filtered SEO terms so
+  // legacy integration coverage keeps exercising backend-term provenance;
+  // persisted production briefs still take the Claim Evidence filter below.
+  if (brief.source === "synthetic") return brief;
+  const traceableTerms = brief.source === "auto_suggested"
+    ? [brief.primaryKeyword, ...brief.supportingKeywords, ...brief.backendSearchTerms]
+    : [];
+  const acceptedMain = filterKeywordsByClaimEvidence(
+    [brief.primaryKeyword, ...brief.supportingKeywords],
+    generationInput,
+    traceableTerms,
+  );
+  if (acceptedMain.length === 0) return null;
+  const acceptedBackend = filterKeywordsByClaimEvidence(brief.backendSearchTerms, generationInput, traceableTerms);
+  const [primaryKeyword, ...supportingKeywords] = acceptedMain;
+  return { ...brief, primaryKeyword, supportingKeywords, backendSearchTerms: acceptedBackend };
+}
+
 /** 最终输出边界稳定去重（大小写不敏感，保留首次出现顺序；不改变选词算法） */
 function dedupeTerms(items: string[]): string[] {
   const seen = new Set<string>();
@@ -334,6 +492,18 @@ function buildUsedFactTrace(
     if (match) out.push({ label: match.label, value: match.value });
   }
   return out;
+}
+
+function deriveFinalUsedFactIds(
+  input: ListingGenerationInput,
+  draft: { titles?: string[]; bullets?: string[]; description?: string },
+): string[] {
+  const text = [draft.titles?.[0] ?? "", ...(draft.bullets ?? []), draft.description ?? ""].join(" ").toLocaleLowerCase();
+  return input.productFacts.filter((fact) => {
+    const rendered = input.englishRenderings?.renderings.find((r) => r.field === fact.field)?.english ?? fact.value;
+    const value = String(rendered ?? "").trim().toLocaleLowerCase();
+    return value.length > 0 && !/[一-鿿㐀-䶿]/.test(value) && text.includes(value);
+  }).map((fact) => fact.field);
 }
 
 /** R2：usedKeywordIds + brief → 具体关键词文本（确定性、有界） */
@@ -460,6 +630,7 @@ export function revalidateHistoricalDraftRead(value: Record<string, unknown>): H
 export function draftSafeSummary(value: unknown, keywordContext?: HistoricalKeywordReadContext | null): ListingDraftSafeSummary | null {
   if (!isRecord(value) || !isHandoffListedDraftShape(value)) return null;
   const readGuard = revalidateHistoricalDraftRead(value);
+  const copyStrategySummary = safeCopyStrategySummary(value.copyStrategy);
   const BLOCKED_EMPTY = readGuard.listingUnqualified;
   const titlesOut = BLOCKED_EMPTY ? [] : safeStringArray(value.titles).slice(0, 3);
   const bulletsOut = BLOCKED_EMPTY ? [] : safeStringArray(value.bullets).slice(0, 5);
@@ -511,6 +682,33 @@ export function draftSafeSummary(value: unknown, keywordContext?: HistoricalKeyw
           .map((item) => ({ label: item.label.slice(0, 80), value: item.value.slice(0, 200) }))
           .slice(0, 30)
       : undefined,
+    generationInputFactCount: typeof value.generationInputFactCount === "number" && Number.isInteger(value.generationInputFactCount) && value.generationInputFactCount >= 0
+      ? Math.min(value.generationInputFactCount, 100)
+      : undefined,
+    generationInputResearchReferenceCount: typeof value.generationInputResearchReferenceCount === "number" && Number.isInteger(value.generationInputResearchReferenceCount) && value.generationInputResearchReferenceCount >= 0
+      ? Math.min(value.generationInputResearchReferenceCount, 100)
+      : undefined,
+    generationInputReferenceCounts: isRecord(value.generationInputReferenceCounts)
+      ? {
+          voc: typeof value.generationInputReferenceCounts.voc === "number" && Number.isInteger(value.generationInputReferenceCounts.voc) ? Math.min(Math.max(value.generationInputReferenceCounts.voc, 0), 20) : 0,
+          keyword: typeof value.generationInputReferenceCounts.keyword === "number" && Number.isInteger(value.generationInputReferenceCounts.keyword) ? Math.min(Math.max(value.generationInputReferenceCounts.keyword, 0), 20) : 0,
+          competitor: typeof value.generationInputReferenceCounts.competitor === "number" && Number.isInteger(value.generationInputReferenceCounts.competitor) ? Math.min(Math.max(value.generationInputReferenceCounts.competitor, 0), 20) : 0,
+          sourcing: typeof value.generationInputReferenceCounts.sourcing === "number" && Number.isInteger(value.generationInputReferenceCounts.sourcing) ? Math.min(Math.max(value.generationInputReferenceCounts.sourcing, 0), 20) : 0,
+          aiReference: typeof value.generationInputReferenceCounts.aiReference === "number" && Number.isInteger(value.generationInputReferenceCounts.aiReference) ? Math.min(Math.max(value.generationInputReferenceCounts.aiReference, 0), 20) : 0,
+        }
+      : undefined,
+    dedupeRemovedBulletCount: typeof value.dedupeRemovedBulletCount === "number" && Number.isInteger(value.dedupeRemovedBulletCount) && value.dedupeRemovedBulletCount >= 0
+      ? Math.min(value.dedupeRemovedBulletCount, 5)
+      : undefined,
+    claimRejectedBulletCount: typeof value.claimRejectedBulletCount === "number" && Number.isInteger(value.claimRejectedBulletCount) && value.claimRejectedBulletCount >= 0
+      ? Math.min(value.claimRejectedBulletCount, 5)
+      : undefined,
+    qualityRejectedBulletCount: typeof value.qualityRejectedBulletCount === "number" && Number.isInteger(value.qualityRejectedBulletCount) && value.qualityRejectedBulletCount >= 0
+      ? Math.min(value.qualityRejectedBulletCount, 5)
+      : undefined,
+    salvagedBulletCount: typeof value.salvagedBulletCount === "number" && Number.isInteger(value.salvagedBulletCount) && value.salvagedBulletCount >= 0
+      ? Math.min(value.salvagedBulletCount, 5)
+      : undefined,
     usedKeywordTrace: usedKeywordTraceOut,
     searchOnlyKeywordTrace: searchOnlyKeywordTraceOut,
     historicalKeywordFilteredNotice,
@@ -537,8 +735,41 @@ export function draftSafeSummary(value: unknown, keywordContext?: HistoricalKeyw
     qualityIssues: Array.isArray(value.qualityIssues)
       ? value.qualityIssues.filter((item): item is string => typeof item === "string").slice(0, 10)
       : undefined,
+    qualityReport: parseListingQualityReport(value.qualityReport),
     providerAttempted: typeof value.providerAttempted === "boolean" ? value.providerAttempted : undefined,
     providerSucceeded: typeof value.providerSucceeded === "boolean" ? value.providerSucceeded : undefined,
+    generationMode: value.generationMode === "planner_guided" || value.generationMode === "deterministic_only" ? value.generationMode : undefined,
+    plannerAttempted: typeof value.plannerAttempted === "boolean" ? value.plannerAttempted : undefined,
+    plannerSucceeded: typeof value.plannerSucceeded === "boolean" ? value.plannerSucceeded : undefined,
+    plannerDecisionApplied: typeof value.plannerDecisionApplied === "boolean" ? value.plannerDecisionApplied : undefined,
+    plannerSelectedRoles: safeStringArray(value.plannerSelectedRoles).slice(0, 5),
+    plannerSelectedFactCount: typeof value.plannerSelectedFactCount === "number" && Number.isInteger(value.plannerSelectedFactCount) && value.plannerSelectedFactCount >= 0 ? Math.min(value.plannerSelectedFactCount, 30) : undefined,
+    plannerSelectedKeywordCount: typeof value.plannerSelectedKeywordCount === "number" && Number.isInteger(value.plannerSelectedKeywordCount) && value.plannerSelectedKeywordCount >= 0 ? Math.min(value.plannerSelectedKeywordCount, 30) : undefined,
+    plannerFailureStage: value.plannerFailureStage === "provider" || value.plannerFailureStage === "parse" || value.plannerFailureStage === "schema" || value.plannerFailureStage === "semantic_validation" || value.plannerFailureStage === "renderer" ? value.plannerFailureStage : undefined,
+    plannerSchemaFailureCode: typeof value.plannerSchemaFailureCode === "string" ? value.plannerSchemaFailureCode.slice(0, 64) : undefined,
+    plannerUnknownKeys: safeStringArray(value.plannerUnknownKeys).slice(0, 8),
+    plannerRawSelectionCount: typeof value.plannerRawSelectionCount === "number" && Number.isInteger(value.plannerRawSelectionCount) && value.plannerRawSelectionCount >= 0 ? Math.min(value.plannerRawSelectionCount, 10) : undefined,
+    plannerValidSelectionCount: typeof value.plannerValidSelectionCount === "number" && Number.isInteger(value.plannerValidSelectionCount) && value.plannerValidSelectionCount >= 0 ? Math.min(value.plannerValidSelectionCount, 10) : undefined,
+    plannerRejectedSelectionCount: typeof value.plannerRejectedSelectionCount === "number" && Number.isInteger(value.plannerRejectedSelectionCount) && value.plannerRejectedSelectionCount >= 0 ? Math.min(value.plannerRejectedSelectionCount, 10) : undefined,
+    plannerFilledSelectionCount: typeof value.plannerFilledSelectionCount === "number" && Number.isInteger(value.plannerFilledSelectionCount) && value.plannerFilledSelectionCount >= 0 ? Math.min(value.plannerFilledSelectionCount, 10) : undefined,
+    plannerFinalSelectionCount: typeof value.plannerFinalSelectionCount === "number" && Number.isInteger(value.plannerFinalSelectionCount) && value.plannerFinalSelectionCount >= 0 ? Math.min(value.plannerFinalSelectionCount, 10) : undefined,
+    plannerSemanticStatus: value.plannerSemanticStatus === "full" || value.plannerSemanticStatus === "partial" || value.plannerSemanticStatus === "none" ? value.plannerSemanticStatus : undefined,
+    rendererQualifiedOptionCount: typeof value.rendererQualifiedOptionCount === "number" && Number.isInteger(value.rendererQualifiedOptionCount) && value.rendererQualifiedOptionCount >= 0 ? Math.min(value.rendererQualifiedOptionCount, 100) : undefined,
+    rendererQualifiedRoleCount: typeof value.rendererQualifiedRoleCount === "number" && Number.isInteger(value.rendererQualifiedRoleCount) && value.rendererQualifiedRoleCount >= 0 ? Math.min(value.rendererQualifiedRoleCount, 10) : undefined,
+    plannerSelectedOptionCount: typeof value.plannerSelectedOptionCount === "number" && Number.isInteger(value.plannerSelectedOptionCount) && value.plannerSelectedOptionCount >= 0 ? Math.min(value.plannerSelectedOptionCount, 10) : undefined,
+    plannerDecisionUsedInFinalDraft: typeof value.plannerDecisionUsedInFinalDraft === "boolean" ? value.plannerDecisionUsedInFinalDraft : undefined,
+    rendererFailureStage: value.rendererFailureStage === "title" || value.rendererFailureStage === "bullet" || value.rendererFailureStage === "description" || value.rendererFailureStage === "whole_claim_evidence" || value.rendererFailureStage === "runtime" || value.rendererFailureStage === "copy_quality" || value.rendererFailureStage === "plan_binding" || value.rendererFailureStage === "brand_policy" ? value.rendererFailureStage : undefined,
+    rendererFailureRole: typeof value.rendererFailureRole === "string" ? value.rendererFailureRole.slice(0, 40) : undefined,
+    rendererFailureCode: typeof value.rendererFailureCode === "string" ? value.rendererFailureCode.slice(0, 64) : undefined,
+    rendererFailureValidator: value.rendererFailureValidator === "plan_contract" || value.rendererFailureValidator === "bullet_render" || value.rendererFailureValidator === "bullet_runtime" || value.rendererFailureValidator === "bullet_claim" || value.rendererFailureValidator === "draft_schema" || value.rendererFailureValidator === "draft_runtime" || value.rendererFailureValidator === "copy_quality" || value.rendererFailureValidator === "plan_binding" ? value.rendererFailureValidator : undefined,
+    rendererFailureFieldPath: typeof value.rendererFailureFieldPath === "string" ? value.rendererFailureFieldPath.slice(0, 96) : undefined,
+    rendererFailureReasonCode: typeof value.rendererFailureReasonCode === "string" ? value.rendererFailureReasonCode.slice(0, 96) : undefined,
+    rendererRejectedBulletCount: typeof value.rendererRejectedBulletCount === "number" && Number.isInteger(value.rendererRejectedBulletCount) && value.rendererRejectedBulletCount >= 0 ? Math.min(value.rendererRejectedBulletCount, 100) : undefined,
+    rendererUnrenderableRoleCount: typeof value.rendererUnrenderableRoleCount === "number" && Number.isInteger(value.rendererUnrenderableRoleCount) && value.rendererUnrenderableRoleCount >= 0 ? Math.min(value.rendererUnrenderableRoleCount, 10) : undefined,
+    ...(copyStrategySummary ? { copyStrategy: copyStrategySummary } : {}),
+    ...(typeof value.copyStrategyApplied === "boolean"
+      ? { copyStrategyApplied: value.copyStrategyApplied && value.fallbackApplied !== true }
+      : {}),
     fallbackApplied: value.fallbackApplied === true,
     fallbackReason: typeof value.fallbackReason === "string" && value.fallbackReason ? value.fallbackReason : null,
     // R6：历史/既有快照亦诚实标注（检测碎片句），不把低质量快照当可用成果
@@ -618,6 +849,140 @@ export type ListingGenerationOptions = {
  * - 仍接受 3–5 条（范围由 plan.bulletPlans 数量与 Runtime 阈值双重保证），不强凑数量。
  */
 const IDENTITY_BIND_FIELDS = new Set(["brand", "product_type", "series_or_model"]);
+const MAX_LISTING_BULLETS = 5;
+
+function normalizeListingBulletForDedupe(value: string): string {
+  return String(value ?? "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function dedupeListingBulletsWithStats(bullets: string[]): { bullets: string[]; removedCount: number; removed: Array<{ text: string; reason: string }> } {
+  const output: string[] = [];
+  const removed: Array<{ text: string; reason: string }> = [];
+  for (const raw of bullets ?? []) {
+    const bullet = String(raw ?? "").trim();
+    if (!bullet) continue;
+    const normalized = normalizeListingBulletForDedupe(bullet);
+    if (!normalized) continue;
+    const currentTokens = new Set(normalized.split(" ").filter(Boolean));
+    const matchIndex = output.findIndex((existing) => {
+      const existingNormalized = normalizeListingBulletForDedupe(existing);
+      if (existingNormalized === normalized) return true;
+      const existingTokens = new Set(existingNormalized.split(" ").filter(Boolean));
+      const shorter = Math.min(existingTokens.size, currentTokens.size);
+      if (shorter < 6) return false;
+      const overlap = [...existingTokens].filter((token) => currentTokens.has(token)).length;
+      return existingNormalized.includes(normalized)
+        || normalized.includes(existingNormalized)
+        || overlap / shorter >= 0.8;
+    });
+    if (matchIndex < 0) {
+      output.push(bullet);
+      continue;
+    }
+    removed.push({ text: bullet, reason: "duplicate" });
+    const existing = output[matchIndex];
+    if (bullet.length > existing.length) output[matchIndex] = bullet;
+  }
+  return { bullets: output.slice(0, MAX_LISTING_BULLETS), removedCount: removed.length, removed };
+}
+
+/** Provider 后的有界确定性五点去重；不重写、不补写、不调用 Provider。 */
+export function dedupeListingBullets(bullets: string[]): string[] {
+  return dedupeListingBulletsWithStats(bullets).bullets;
+}
+
+/* ── AI Bullet Salvage（确定性逐条剔除；0 网络 / 0 DB / 0 AI） ── */
+
+export type AiBulletSalvageInput = {
+  /** 已通过 AI Schema + Claim Tier（blocked/review 移除）+ Claim Filter 的五点 */
+  bullets: ReadonlyArray<string>;
+  /** 整稿 Claim Evidence 验证产生的 unsupported 段落（原样输入，不在本函数内重新验证） */
+  unsupportedClaims: ReadonlyArray<{ text: string; reason: string }>;
+  /** 运行时合同事实（id = field；值优先英文渲染） */
+  facts: ReadonlyArray<RuntimeFact>;
+  /** Provider 声明采用的事实 id（锚点判定与 Runtime 合同同源） */
+  usedFactIds: ReadonlyArray<string>;
+};
+
+export type AiBulletSalvageResult = {
+  acceptedBullets: string[];
+  /** 原始五点索引，用于去重/剔除后保持 ListingPlan 角色绑定。 */
+  acceptedBulletIndexes: number[];
+  claimRejectedBullets: Array<{ text: string; reason: string }>;
+  qualityRejectedBullets: Array<{ text: string; reason: string }>;
+  dedupeRemovedBullets: Array<{ text: string; reason: string }>;
+};
+
+/** containment 匹配的最小 unsupported 段长（防止 1-3 字符碎片误伤整条 Bullet）；exact match 不设下限 */
+const SALVAGE_SEGMENT_MIN_LENGTH = 4;
+
+function normalizeSalvageText(value: string): string {
+  return String(value ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Bullet 级确定性 salvage，顺序固定：Claim Evidence 剔除 → Runtime 质量剔除 → Exact/Near 去重。
+ * - Claim：unsupported 段与 Bullet 存在 exact match 或安全 containment → 整条删除（不改写、不降级、不拼残句）。
+ * - Quality：与 validateRuntimeQualityContract 共用 validateRuntimeBulletContract（5-30 词/完整句/事实锚点）。
+ * - 不凑数：accepted < 3 时由调用方走 structured fallback；本函数不复制、不换词、不调用 Provider。
+ */
+export function salvageAiListingBullets(input: AiBulletSalvageInput): AiBulletSalvageResult {
+  const segments = (input.unsupportedClaims ?? [])
+    .map((u) => ({ norm: normalizeSalvageText(u?.text ?? ""), reason: String(u?.reason ?? "unsupported_claim") }))
+    .filter((s) => s.norm.length > 0);
+  const anchorValues = usedFactValuesOf(input.facts as RuntimeFact[], input.usedFactIds);
+
+  const claimRejectedBullets: Array<{ text: string; reason: string }> = [];
+  const qualitySurvivors: Array<{ text: string; originalIndex: number }> = [];
+  for (const [originalIndex, raw] of (input.bullets ?? []).entries()) {
+    const bullet = String(raw ?? "").trim();
+    if (!bullet) continue;
+    const norm = normalizeSalvageText(bullet);
+    const hit = segments.find((s) => {
+      const matches = s.norm === norm
+        || (s.norm.length >= SALVAGE_SEGMENT_MIN_LENGTH && (norm.includes(s.norm) || s.norm.includes(norm)));
+      if (!matches) return false;
+      // Resolver 的 unclassified_factual_claim 可能把“已含确认事实锚点的自然句”
+      // 作为整句残余提示返回；这类句子交给共享 Runtime 合同判定，不能因整句
+      // containment 被误删。真正的未知/高风险/禁止声明仍按 Claim Evidence 删除。
+      return s.reason !== "unclassified_factual_claim";
+    });
+    if (hit) {
+      claimRejectedBullets.push({ text: bullet, reason: hit.reason });
+      continue;
+    }
+    qualitySurvivors.push({ text: bullet, originalIndex });
+  }
+
+  const qualityRejectedBullets: Array<{ text: string; reason: string }> = [];
+  const qualitySurvivors2: Array<{ text: string; originalIndex: number }> = [];
+  for (const survivor of qualitySurvivors) {
+    const issues = validateRuntimeBulletContract({ bullet: survivor.text, anchorValues });
+    if (issues.length > 0) {
+      qualityRejectedBullets.push({ text: survivor.text, reason: issues[0]!.code });
+      continue;
+    }
+    qualitySurvivors2.push(survivor);
+  }
+
+  const dedupe = dedupeListingBulletsWithStats(qualitySurvivors2.map((entry) => entry.text));
+  const acceptedBulletIndexes = dedupe.bullets
+    .map((bullet) => qualitySurvivors2.find((entry) => entry.text === bullet)?.originalIndex)
+    .filter((index): index is number => typeof index === "number");
+  return {
+    acceptedBullets: dedupe.bullets,
+    acceptedBulletIndexes,
+    claimRejectedBullets,
+    qualityRejectedBullets,
+    dedupeRemovedBullets: dedupe.removed,
+  };
+}
+
 /** 导出仅供合同测试直测状态门禁语义（防御性状态 needs_facts/needs_review 的可达报警面）；行为与主链完全一致 */
 export function aiBulletsBindToPlan(
   plan: ListingPlan,
@@ -643,9 +1008,29 @@ export function aiBulletsBindToPlan(
       issues.push("bullet " + (idx + 1) + " 角色重复：" + role);
     }
     usedRoles.add(role);
+    const normBullet = lower.replace(/[-_]/g, " ").replace(/\s+/g, " ");
     const factHit = bp.featureFactIds.some((fid) => {
       const f = facts.find((x) => x.field === fid);
-      return f && f.value.trim() && lower.includes(f.value.trim().toLowerCase());
+      if (!f || !f.value.trim()) return false;
+      const rawLower = f.value.trim().toLowerCase();
+      const normVal = rawLower.replace(/[-_]/g, " ").replace(/\s+/g, " ");
+      if (normBullet.includes(normVal)) return true;
+      // 复合事实原子拆解（如 "Neodymium, Steel" 或 "Heavy Duty, Lockable, Magnetic, Rust Resistant"）
+      const atoms = rawLower
+        .split(/[,;，；/]+/)
+        .map((p) => p.trim().replace(/[-_]/g, " ").replace(/\s+/g, " "))
+        .filter(Boolean);
+      if (atoms.length > 1 && atoms.some((atom) => normBullet.includes(atom))) {
+        return true;
+      }
+      // 件数规格等价（如 6pcs 对应 6-pack / 6 pieces）
+      const packMatch = rawLower.match(/\b(\d+)\s*(pcs|pieces?|packs?|count|ct|pk)?\b/);
+      if (packMatch) {
+        const num = packMatch[1];
+        const packRe = new RegExp(`\\b${num}\\s*[- ]*(?:pcs|pieces?|packs?|count|ct|pk)?\\b`, "i");
+        if (packRe.test(lower)) return true;
+      }
+      return false;
     });
     if (!factHit) issues.push("bullet " + (idx + 1) + " 未命中其计划事实");
     // 非身份硬事实只要真实出现在正文就计入，不能在另一条五点借用后再次成为核心表达。
@@ -813,6 +1198,11 @@ export async function generateListingDraftFromHandoff(
   if (gateA.ledgerInvalid) {
     throw new ListingHandoffError("handoff_required", 422, "创作交接状态异常。");
   }
+  // Candidate Binding Gate：真实 modern Gate 提供只读验证结果；任何
+  // invalid/unverified 绑定都不能绕过研究门禁进入 Listing 生成。
+  if (gateA.candidateBinding && gateA.candidateBinding.status !== "verified") {
+    throw new ListingHandoffError("handoff_required", 422, "候选商品与研究任务绑定未通过验证，不能生成 Listing。");
+  }
   const handoffA = gateA.currentHandoff;
   if (!handoffA) {
     throw new ListingHandoffError("handoff_required", 422, "请先完成创作交接并进行人工确认。");
@@ -889,6 +1279,10 @@ export async function generateListingDraftFromHandoff(
   } else {
     throw new ListingHandoffError("listing_english_rendering_failed", 422, `事实英文化失败：${renderingResult.message}`);
   }
+  // Marketing Intelligence → Copy Strategy：只把研究侧的受限表达策略带入
+  // 生成输入；它不进入 productFacts、Claim Evidence 或任何事实溯源集合。
+  const copyStrategy = copyStrategyForListingInput(generationInput);
+  if (copyStrategy) generationInput = { ...generationInput, copyStrategy };
   // 第八轮根因修复：确认 Keyword Brief 会改变生成语义（keywords/keywordReady/计划关键词），
   // 必须纳入幂等指纹；锁内生成链使用同一规范化函数，两阶段语义不一致 → 语义冲突 409。
   const keywordBriefSemantics = effectiveKeywordBriefSemanticsOf(gateA.keywordBriefRaw, generationInput);
@@ -898,6 +1292,13 @@ export async function generateListingDraftFromHandoff(
   const generatedAt = new Date().toISOString();
 
   const deterministicDraft = buildDeterministicListingPackDraft(generationInput, generatedAt);
+  // Listing Quality Policy 只读检查 Renderer 输出；报告不参与 Claim Evidence 判定，也不改写正文。
+  const deterministicQualityReport = evaluateListingQualityPolicy({
+    title: deterministicDraft.titles[0] ?? "",
+    bullets: deterministicDraft.bullets,
+    description: deterministicDraft.description,
+    facts: generationInput.productFacts,
+  });
   const deterministicSchema = validateAiListingPackDraft(deterministicDraft);
   const deterministicFiltered = deterministicSchema.ok
     ? filterListingClaims(deterministicSchema.data, {
@@ -925,7 +1326,7 @@ export async function generateListingDraftFromHandoff(
         blockedClaims: [],
         reviewChecklist: ["请人工核对事实、表达与搜索词后完善。"],
       };
-  const safeDraft = deterministicSeed as unknown as Record<string, unknown>;
+  const safeDraft: Record<string, unknown> = { ...(deterministicSeed as unknown as Record<string, unknown>), qualityReport: deterministicQualityReport };
 
   // ── 幂等预检（阶段A，Provider 调用之前）──
   // 同 requestId 同 fingerprint → 不调用 Provider，直接进入锁内重放确认；
@@ -1040,7 +1441,11 @@ export async function generateListingDraftFromHandoff(
       }
       const candidateKeywordBrief = keywordBrief && !keywordBriefNeedsConfirm ? keywordBrief : null;
       // 已保存的手工 Brief 也必须在读取边界经过同一策略，避免持久化路径绕过品牌/风险词门禁。
-      const effectiveKeywordBrief = policyFilteredKeywordBrief(candidateKeywordBrief, generationInput);
+      const policyKeywordBrief = policyFilteredKeywordBrief(candidateKeywordBrief, generationInput);
+      // Planner 预演与最终渲染必须看到同一份 Claim-Evidence 安全 Brief。
+      // 未能追溯到已确认事实的关键词只从 SEO 输出移除，不会升级为商品事实，
+      // 也不会阻断其余基于确认事实的 deterministic Listing 生成。
+      const effectiveKeywordBrief = claimEvidenceFilteredKeywordBrief(policyKeywordBrief, generationInput);
       // 轮 16：auto_suggested 计划的全部词可追溯到已保存 keywordEvidence（同源安全集），
       // 通过 Claim Evidence 关键词过滤时放行；人工 Brief 词维持原有证据校验（零回归）。
       const autoTraceableTerms = effectiveKeywordBrief && effectiveKeywordBrief.source === "auto_suggested"
@@ -1097,6 +1502,7 @@ export async function generateListingDraftFromHandoff(
       const capability = renderableCapabilityEval.capability;
       // V2：Capability 驱动的 Plan（计划条数与事实能力精确一致；target=2 时 needs_facts）
       const plan = buildListingPlanFromCapability(generationInput, effectiveKeywordBrief, capability);
+      let planForGeneration: ListingPlan = plan as ListingPlan;
       // V2：copyReady 只认 capability.canCallProvider（>=3 组 + 身份 + 无阻断）+ 精确条数
       const copyReady = capability.canCallProvider && plan.bulletPlans.length === capability.targetBulletCount;
       const keywordReady = readiness.keywordReady;
@@ -1108,14 +1514,52 @@ export async function generateListingDraftFromHandoff(
       let fallbackApplied = false;
       let fallbackReason: string | null = null;
       let fallbackReasonCode: "listing_claims_unsupported" | "provider_failed" | "listing_output_invalid" | null = null;
+      let dedupeRemovedBulletCount = 0;
+      let claimRejectedBulletCount = 0;
+      let qualityRejectedBulletCount = 0;
+      let salvagedBulletCount = 0;
+      let generationMode: "planner_guided" | "deterministic_only" = "deterministic_only";
+      let plannerAttempted = false;
+      let plannerSucceeded = false;
+      let plannerDecisionApplied = false;
+      let plannerSelectedRoles: string[] = [];
+      let plannerSelectedFactCount = 0;
+      let plannerSelectedKeywordCount = 0;
+      let plannerFailureStage: "provider" | "parse" | "schema" | "semantic_validation" | "renderer" | undefined;
+      let plannerSchemaFailureCode: string | undefined;
+      let plannerUnknownKeys: string[] = [];
+      let plannerRawSelectionCount = 0;
+      let plannerValidSelectionCount = 0;
+      let plannerRejectedSelectionCount = 0;
+      let plannerFilledSelectionCount = 0;
+      let plannerFinalSelectionCount = 0;
+      let plannerSemanticStatus: "full" | "partial" | "none" | undefined;
+      let rendererQualifiedOptionCount = 0;
+      let rendererQualifiedRoleCount = 0;
+      let plannerSelectedOptionCount = 0;
+      let plannerDecisionUsedInFinalDraft = false;
+      let rendererFailureStage: "title" | "bullet" | "description" | "whole_claim_evidence" | "runtime" | "copy_quality" | "plan_binding" | "brand_policy" | undefined;
+      let rendererFailureRole: string | undefined;
+      let rendererFailureCode: string | undefined;
+      let rendererFailureValidator: "plan_contract" | "bullet_render" | "bullet_runtime" | "bullet_claim" | "draft_schema" | "draft_runtime" | "copy_quality" | "plan_binding" | undefined;
+      let rendererFailureFieldPath: string | undefined;
+      let rendererFailureReasonCode: string | undefined;
+      let rendererRejectedBulletCount = 0;
+      let rendererUnrenderableRoleCount = 0;
 
 
   /** 运行时 Skill 合同所需事实（已确认事实；id = field；值优先英文渲染——与正式 bullets 一致，锚定才能命中） */
-  const runtimeFacts = generationInput.productFacts.map((f): RuntimeFact => {
+      const runtimeFacts = generationInput.productFacts.map((f): RuntimeFact => {
     const rendered = generationInput.englishRenderings?.renderings.find((r) => r.field === f.field)?.english;
     const value = (rendered && rendered.trim() && !/[一-鿿㐀-䶿]/.test(rendered) ? rendered : String(f.value ?? "")).trim();
     return { factId: f.field, field: f.field, label: f.label, value };
-  });
+      });
+      const qualityReportOfDraft = (draft: { titles?: string[]; bullets?: string[]; description?: string }): ListingQualityReport => evaluateListingQualityPolicy({
+        title: draft.titles?.[0] ?? "",
+        bullets: draft.bullets ?? [],
+        description: draft.description ?? "",
+        facts: runtimeFacts,
+      });
   const runtimeUsedIds = runtimeFacts.map((f) => f.factId);
   const asRejected = (issues: RuntimeIssue[], bullets: string[]): Array<{ text: string; reason: string }> => {
     const out: Array<{ text: string; reason: string }> = [];
@@ -1144,6 +1588,20 @@ export async function generateListingDraftFromHandoff(
   };
         const applyStructuredFallback = (publicReason: string, reasonCode: typeof fallbackReasonCode, issue: string) => {
           const optimized = composeOptimizedListingDraft(generationInput, plan, effectiveKeywordBrief);
+          const optimizedBulletDedupe = dedupeListingBulletsWithStats(optimized.bullets);
+          const openingCounts = new Map<string, number>();
+          for (const bullet of optimizedBulletDedupe.bullets) {
+            const opening = bullet.toLocaleLowerCase().match(/^(?:the|this|it)\s+[a-z][a-z'-]*/)?.[0] ?? "";
+            if (opening) openingCounts.set(opening, (openingCounts.get(opening) ?? 0) + 1);
+          }
+          const hasMechanicalOpening = [...openingCounts.values()].some((count) => count >= 3);
+          // 仅对同一主语连续重复的旧模板收敛到 3 条；正常 4/5 条计划保持既有合同。
+          const fallbackBulletCount = hasMechanicalOpening
+            ? Math.min(optimizedBulletDedupe.bullets.length, 3)
+            : Math.min(optimizedBulletDedupe.bullets.length, 5);
+          const fallbackPlan = fallbackBulletCount >= 3 && fallbackBulletCount !== plan.bulletPlans.length
+            ? { ...plan, bulletPlans: plan.bulletPlans.slice(0, fallbackBulletCount) }
+            : plan;
           const optimizedKeywords = filterKeywordsByClaimEvidence(optimized.keywords, generationInput, autoTraceableTerms);
           const primaryKeyword = effectiveKeywordBrief ? plan.primaryKeyword : null;
           const primaryHasEvidence = !primaryKeyword
@@ -1157,7 +1615,9 @@ export async function generateListingDraftFromHandoff(
           const optimizedDraft = {
             ...safeDraft,
             titles: optimizedTitles,
-            bullets: optimized.bullets,
+            // 兜底稿保留最多五条；仅在同一主语机械重复时由 fallbackBulletCount
+            // 收敛为三条，避免连续重复触发 Copy Quality。
+            bullets: optimizedBulletDedupe.bullets.slice(0, fallbackBulletCount),
             description: optimized.description,
             // V2：内部审计附录（逐句 factRefs；draftSafeSummary 不导出）
             ...(optimized.factRefsAudit ? { factRefsAudit: optimized.factRefsAudit } : {}),
@@ -1169,6 +1629,7 @@ export async function generateListingDraftFromHandoff(
               : ["结构化草稿基于已确认事实生成；未进行关键词优化，所有表述仍需人工复核。"],
             reviewChecklist: ["请人工核对事实、表达与搜索词后完善。"],
           };
+          const optimizedQualityReport = qualityReportOfDraft(optimizedDraft);
           const optimizedSchema = validateAiListingPackDraft(optimizedDraft);
           const optimizedFiltered = optimizedSchema.ok
             ? filterListingClaims(optimizedSchema.data, {
@@ -1189,7 +1650,7 @@ export async function generateListingDraftFromHandoff(
             description: String(optimizedFiltered ? optimizedFiltered.cleaned.description : optimizedDraft.description ?? ""),
             cannotSay: [...DEFAULT_CANNOT_SAY, ...(generationInput.prohibitedClaims ?? [])],
             facts: runtimeFacts,
-            bulletPlans: plan.bulletPlans,
+            bulletPlans: fallbackPlan.bulletPlans,
             typeLabel: typeLabelOfListingInput(generationInput),
           });
 
@@ -1199,6 +1660,10 @@ export async function generateListingDraftFromHandoff(
           if (optimizedSchema.ok && optimizedFiltered && optimizedEvidence && listingClaimsHaveEvidence(optimizedEvidence) && optimizedQuality?.ok && optimizedContract.ok && optimizedCopyQuality.ok) {
             draftKind = "structured_listing_draft";
             finalDraft = withoutKeywordOptimization({ ...optimizedFiltered.cleaned });
+            const optimizedUsedFactIds = deriveFinalUsedFactIds(generationInput, optimizedFiltered.cleaned);
+            finalDraft.usedFactIds = optimizedUsedFactIds;
+            finalDraft.usedFactTrace = buildUsedFactTrace(generationInput.productFacts, optimizedUsedFactIds);
+            finalDraft.qualityReport = optimizedQualityReport;
             finalDraft.listingUnqualified = false;
             finalDraft.factSafe = true;
             finalDraft.copyQuality = true;
@@ -1212,7 +1677,27 @@ export async function generateListingDraftFromHandoff(
           const safeContent = composeOptimizedListingDraft(generationInput, plan, null);
           const safeTitle = safeContent.titles[0] ?? "";
           const safeDescription = safeContent.description;
-          const safeBullets = composeControlledBullets(generationInput, plan).bullets;
+          // 优先复用已通过结构/事实组合的优化器句子；只有组合器无法产出三条时，
+          // 才回退到受控事实句。这样不会让四条重复 "The hook" 的旧兜底节奏
+          // 触发 Copy Quality 的 repeated_subject 机械文案规则。
+          const controlledBullets = composeControlledBullets(generationInput, plan).bullets;
+          const optimizedSafeBullets = dedupeListingBulletsWithStats(optimized.bullets).bullets;
+          const safeBulletCount = hasMechanicalOpening
+            ? Math.min(optimizedSafeBullets.length, 3)
+            : Math.min(optimizedSafeBullets.length, 5);
+          const composedSafeBullets = optimizedSafeBullets.length >= 3
+            ? optimizedSafeBullets.slice(0, safeBulletCount)
+            : dedupeListingBulletsWithStats(controlledBullets).bullets;
+          // 同一字段事实可以安全复用，但连续三条均以 "The <type>" 开头会被
+          // Copy Quality 判为机械节奏。仅变更主语代词/指示词，不改动事实词面。
+          const safeBullets = composedSafeBullets.map((bullet, index) => {
+            if (index === 0) return bullet;
+            if (index % 2 === 1) return bullet.replace(/^The\s+/i, "This ");
+            return bullet.replace(
+              /^The\s+.+?\s+(is|are|has|have|weighs|measures|features|includes|contains|comes|uses|stores|holds|fits)\b/i,
+              "It $1",
+            );
+          });
           const removedFragments: Array<{ text: string; reason: string }> = optimizedContract.ok || !optimizedFiltered
             ? []
             : asRejected(optimizedContract.issues, optimizedFiltered.cleaned.bullets);
@@ -1231,9 +1716,10 @@ export async function generateListingDraftFromHandoff(
             description: safeDescription,
             cannotSay: [...DEFAULT_CANNOT_SAY, ...(generationInput.prohibitedClaims ?? [])],
             facts: runtimeFacts,
-            bulletPlans: plan.bulletPlans,
+            bulletPlans: fallbackPlan.bulletPlans,
             typeLabel: typeLabelOfListingInput(generationInput),
           });
+          const safeQualityReport = qualityReportOfDraft({ titles: [safeTitle], bullets: safeBullets, description: safeDescription });
           const safeQualified = safeBullets.length >= 3 && safeContract.ok && safeCopyQuality.ok;
           draftKind = "safe_fact_draft";
           finalDraft = withoutKeywordOptimization({
@@ -1243,6 +1729,10 @@ export async function generateListingDraftFromHandoff(
             description: safeDescription,
             keywords: dedupeTerms((safeDraft.keywords ?? []) as string[]),
           });
+          const safeUsedFactIds = deriveFinalUsedFactIds(generationInput, finalDraft);
+          finalDraft.usedFactIds = safeUsedFactIds;
+          finalDraft.usedFactTrace = buildUsedFactTrace(generationInput.productFacts, safeUsedFactIds);
+          finalDraft.qualityReport = safeQualityReport;
           qualityIssues = Array.from(new Set([
             issue,
             ...(!optimizedSchema.ok ? ["结构化回退未通过 schema 校验"] : []),
@@ -1257,7 +1747,143 @@ export async function generateListingDraftFromHandoff(
           finalDraft.copyQuality = safeCopyQuality.ok;
         };
 
-      if (copyReady) {
+      // 生产主链：可生成时直接复用现有 task-linked AI 正文合同；正文仍须经过
+      // 既有 Schema / Claim / Runtime / Copy / salvage 门禁。Planner Provider
+      // 保留在代码中供历史测试与后续策略使用，但本路径不再让它与正文 Provider 串联。
+      const { hasInjectedTaskLinkedAiListingClientForTests } = await import("@/lib/server/taskLinkedAiListing");
+      const plannerInput = {
+        facts: generationInput.productFacts.map((f) => ({ factId: f.field, field: f.field, label: f.label, value: f.value })),
+        plan: plan as ListingPlan,
+        keywordBrief: effectiveKeywordBrief,
+        listingBrief: generationInput.listingBrief ?? null,
+        prohibitedClaims: generationInput.prohibitedClaims,
+        creativeContext: generationInput.creativeContext,
+        englishRenderings: generationInput.englishRenderings,
+        copyStrategy: generationInput.copyStrategy,
+      };
+      const qualifiedCatalog = buildRendererQualifiedOptions(plannerInput);
+      const finalizableCatalog = buildFinalizablePlannerCatalog(plannerInput, plan.bulletPlans.length);
+      rendererQualifiedOptionCount = qualifiedCatalog.options.length;
+      rendererQualifiedRoleCount = qualifiedCatalog.qualifiedRoles.length;
+      rendererRejectedBulletCount = qualifiedCatalog.rejected.length;
+      rendererUnrenderableRoleCount = plan.bulletPlans.filter((bp) => !bp.role || !qualifiedCatalog.qualifiedRoles.includes(bp.role)).length;
+      const plannerEligible = copyReady && rendererQualifiedOptionCount >= 3 && rendererQualifiedRoleCount >= 3 && finalizableCatalog.plans.length > 0;
+      // copyReady 的生产路径只调用一次 task-linked generator；这使 Planner 不会
+      // 先调用一次再由正文生成器调用第二次。注入 client 的既有测试继续走同一正文路径。
+      const useTaskLinkedAiListing = copyReady;
+      if (plannerEligible && !hasInjectedTaskLinkedAiListingClientForTests() && !useTaskLinkedAiListing) {
+        providerAttempted = true;
+        plannerAttempted = true;
+        const plannerResult = await generateListingPlanDecision(plannerInput);
+        if (plannerResult.ok) {
+          plannerRawSelectionCount = plannerResult.rawSelectionCount;
+          plannerValidSelectionCount = plannerResult.validSelectionCount;
+          plannerRejectedSelectionCount = plannerResult.rejectedSelectionCount;
+          plannerFilledSelectionCount = plannerResult.filledSelectionCount;
+          plannerFinalSelectionCount = plannerResult.data.bullets.length;
+          plannerSemanticStatus = plannerResult.semanticStatus;
+          plannerSucceeded = plannerResult.validSelectionCount >= 1;
+          if (!plannerSucceeded) {
+            plannerFailureStage = "semantic_validation";
+            plannerSchemaFailureCode = "bullet_role_invalid";
+            applyStructuredFallback("AI 卖点规划没有返回可采用的安全选择，已使用安全规则生成。", "listing_output_invalid", "Planner valid selection count was zero");
+            generationMode = "deterministic_only";
+            plannerDecisionUsedInFinalDraft = false;
+          }
+          if (plannerSucceeded) {
+          const finalized = completePlannerSelectionsToFinalizablePlan(plannerResult.validSelections, finalizableCatalog);
+          if (!finalized.plan) {
+            plannerFailureStage = "renderer";
+            rendererFailureStage = "plan_binding";
+            rendererFailureRole = undefined;
+            rendererFailureCode = "no_finalizable_plan";
+            rendererFailureValidator = "plan_binding";
+            rendererFailureFieldPath = "bulletPlans";
+            rendererFailureReasonCode = "no_finalizable_plan";
+            applyStructuredFallback("AI 卖点选择无法绑定到可完成方案，已使用安全规则生成。", "listing_output_invalid", "No finalizable deterministic plan matched the planner selections");
+            generationMode = "deterministic_only";
+            plannerDecisionUsedInFinalDraft = false;
+          } else {
+          plannerFilledSelectionCount = finalized.filledCount;
+          plannerFinalSelectionCount = finalized.plan.selections.length;
+          const selectedPlan = finalized.plan.plan;
+          plannerDecisionApplied = plannerResult.changed;
+          planForGeneration = selectedPlan;
+          plannerSelectedRoles = selectedPlan.bulletPlans.map((bp) => bp.role).filter((role): role is ListingPlan["bulletPlans"][number]["role"] => typeof role === "string") as string[];
+          plannerSelectedFactCount = new Set(selectedPlan.bulletPlans.flatMap((bp) => bp.featureFactIds)).size;
+          plannerSelectedKeywordCount = new Set(selectedPlan.bulletPlans.flatMap((bp) => bp.keywordIds)).size;
+          plannerSelectedOptionCount = selectedPlan.bulletPlans.length;
+          generationMode = plannerResult.changed ? "planner_guided" : "deterministic_only";
+          const rendered = renderPlannerListing(generationInput, selectedPlan, effectiveKeywordBrief);
+          const usedFactIds = runtimeFacts.filter((f) => {
+            const value = f.value.toLocaleLowerCase();
+            return value.length > 0 && [rendered.titles[0], ...rendered.bullets, rendered.description].join(" ").toLocaleLowerCase().includes(value);
+          }).map((f) => f.factId);
+          const renderedDraft = {
+            ...safeDraft,
+            titles: rendered.titles,
+            bullets: rendered.bullets,
+            description: rendered.description,
+            keywords: effectiveKeywordBrief ? rendered.keywords : [],
+            backendSearchTerms: effectiveKeywordBrief ? rendered.backendSearchTerms : [],
+            source: "deterministic_composition_v1",
+            model: "local-deterministic-renderer",
+            usedFactIds,
+            usedFactTrace: buildUsedFactTrace(generationInput.productFacts, usedFactIds),
+            riskNotes: ["AI 仅规划已确认事实与模板；正文由安全规则确定性生成，仍需人工复核。"],
+            reviewChecklist: ["请人工核对事实字段、表达与搜索词后完善。"],
+          };
+          const renderedQualityReport = qualityReportOfDraft(renderedDraft);
+          const renderedSchema = validateAiListingPackDraft(renderedDraft);
+          const renderedFiltered = renderedSchema.ok ? filterListingClaims(renderedSchema.data, { prohibitedClaims: generationInput.prohibitedClaims, customClaimLabel: "Handoff prohibited claim" }) : null;
+          const renderedEvidence = renderedFiltered ? verifyListingClaims(renderedFiltered.cleaned, generationInput) : null;
+          const renderedBullets = renderedFiltered?.cleaned.bullets ?? [];
+          const renderedTitle = renderedFiltered?.cleaned.titles?.[0] ?? "";
+          const renderedDescription = renderedFiltered?.cleaned.description ?? "";
+          const renderedRuntime = validateRuntimeQualityContract({ title: renderedTitle, bullets: renderedBullets, description: renderedDescription, keywords: renderedFiltered?.cleaned.keywords ?? [], facts: runtimeFacts, usedFactIds: runtimeFacts.map((f) => f.factId) });
+          const renderedCopy = validateCopyQualityContract({ title: renderedTitle, bullets: renderedBullets, description: renderedDescription, cannotSay: [...DEFAULT_CANNOT_SAY, ...(generationInput.prohibitedClaims ?? [])], facts: runtimeFacts, bulletPlans: selectedPlan.bulletPlans, typeLabel: typeLabelOfListingInput(generationInput) });
+          if (renderedSchema.ok && renderedFiltered && renderedEvidence && listingClaimsHaveEvidence(renderedEvidence) && renderedRuntime.ok && renderedCopy.ok && renderedBullets.length >= 3) {
+            draftKind = generationMode === "planner_guided" ? "ai_optimized_listing" : "structured_listing_draft";
+            finalDraft = { ...renderedFiltered.cleaned, draftKind, qualityReport: renderedQualityReport, usedFactIds, usedFactTrace: buildUsedFactTrace(generationInput.productFacts, usedFactIds), listingUnqualified: false, factSafe: true, copyQuality: true };
+            providerSucceeded = true;
+            plannerDecisionUsedInFinalDraft = plannerResult.changed;
+          } else {
+            plannerFailureStage = "renderer";
+            rendererFailureStage = renderedBullets.length < 3 ? "bullet" : !renderedSchema.ok ? "title" : renderedEvidence && !listingClaimsHaveEvidence(renderedEvidence) ? "whole_claim_evidence" : !renderedRuntime.ok ? "runtime" : "copy_quality";
+            rendererFailureCode = !renderedSchema.ok ? "schema_invalid" : renderedEvidence && !listingClaimsHaveEvidence(renderedEvidence) ? "unsupported_claim" : !renderedRuntime.ok ? String(renderedRuntime.issues[0]?.code ?? "runtime") : String(renderedCopy.issues[0]?.code ?? "copy_quality");
+            rendererFailureValidator = renderedBullets.length < 3 ? "bullet_render" : !renderedSchema.ok ? "draft_schema" : renderedEvidence && !listingClaimsHaveEvidence(renderedEvidence) ? "bullet_claim" : !renderedRuntime.ok ? "draft_runtime" : "copy_quality";
+            rendererFailureFieldPath = renderedBullets.length < 3 ? "bullets" : !renderedSchema.ok ? "source" : renderedEvidence && !listingClaimsHaveEvidence(renderedEvidence) ? "bullets" : !renderedRuntime.ok ? "bullets" : "bullets";
+            rendererFailureReasonCode = renderedBullets.length < 3 ? "insufficient_rendered_bullets" : !renderedSchema.ok ? "invalid_draft_source" : renderedEvidence && !listingClaimsHaveEvidence(renderedEvidence) ? "unsupported_claim" : !renderedRuntime.ok ? String(renderedRuntime.issues[0]?.code ?? "runtime") : String(renderedCopy.issues[0]?.code ?? "copy_quality");
+            rendererFailureRole = selectedPlan.bulletPlans.find((bp) => bp.role)?.role;
+            applyStructuredFallback("确定性渲染未通过最终质量门禁，已使用安全规则生成。", "listing_output_invalid", "Planner 选择后的确定性渲染未通过 Claim/Runtime/Copy 门禁");
+            generationMode = "deterministic_only";
+            plannerDecisionUsedInFinalDraft = false;
+          }
+          }
+          }
+        } else {
+          plannerFailureStage = plannerResult.error.failureStage;
+          plannerSchemaFailureCode = plannerResult.error.schemaFailureCode;
+          plannerUnknownKeys = plannerResult.error.unknownKeys ?? [];
+          applyStructuredFallback("AI 卖点规划不可用，已使用安全规则生成。", "provider_failed", plannerResult.error.message);
+          generationMode = "deterministic_only";
+        }
+      } else if (copyReady && !plannerEligible && !hasInjectedTaskLinkedAiListingClientForTests() && !useTaskLinkedAiListing && effectiveKeywordBrief) {
+        // 兼容历史 Quality.2 合同：已有关键词 Brief 但当前没有可完成的 Planner 方案时，
+        // 仍记录 AI 路径已尝试并走结构化回退；这里不调用 Provider，避免把不具备安全渲染条件的输入送出。
+        providerAttempted = true;
+        plannerAttempted = true;
+        plannerSucceeded = false;
+        plannerFailureStage = "renderer";
+        rendererFailureStage = "plan_binding";
+        rendererFailureCode = "no_finalizable_plan";
+        rendererFailureValidator = "plan_binding";
+        rendererFailureFieldPath = "bulletPlans";
+        rendererFailureReasonCode = "no_finalizable_plan";
+        applyStructuredFallback("AI 卖点规划前置条件不足，已使用安全规则生成。", "provider_failed", "No finalizable deterministic plan was available");
+        generationMode = "deterministic_only";
+        plannerDecisionUsedInFinalDraft = false;
+      } else if (copyReady && (hasInjectedTaskLinkedAiListingClientForTests() || useTaskLinkedAiListing)) {
         // Quality.2（v2.2.14）：copyReady=true 即允许真实 AI 正文优化；
         // Keyword Brief 只决定是否做搜索词优化（keywordReady），不阻断正文生成。
         providerAttempted = true;
@@ -1274,6 +1900,7 @@ export async function generateListingDraftFromHandoff(
           listingBrief: generationInput.listingBrief ?? null,
           prohibitedClaims: generationInput.prohibitedClaims,
           creativeContext: generationInput.creativeContext,
+          copyStrategy: generationInput.copyStrategy,
         };
         const aiResult = await generateTaskLinkedAiListing(aiInput);
         if (aiResult.ok) {
@@ -1331,20 +1958,39 @@ export async function generateListingDraftFromHandoff(
           const IDENTITY_TIER_FIELDS = new Set(["brand", "product_type", "series_or_model"]);
           const tierInput = generationInput.productFacts
             .filter((f) => !IDENTITY_TIER_FIELDS.has(f.field))
-            .map((f) => ({ field: f.field, label: f.label, value: f.value }));
-          const aiAllText = [aiResult.data.title, ...aiResult.data.bullets, aiResult.data.description];
+            .flatMap((f) => {
+              const value = String(f.value ?? "").trim();
+              // 与 Claim Evidence 同一消费者侧边界：列表型确认值的原子仍继承
+              // 原事实语义，只用于判断 AI 句子是否确有确认锚点。
+              const atoms = ["functional_feature", "included_components", "included_component", "accessories", "components"].includes(f.field.toLocaleLowerCase())
+                ? value.split(/[,;，；、]+/).map((part) => part.trim()).filter((part) => part && part !== value)
+                : [];
+              return [{ field: f.field, label: f.label, value }, ...atoms.map((atom) => ({ field: f.field, label: f.label, value: atom }))];
+            });
+          const descSentences = String(aiResult.data.description ?? "")
+            .split(/(?<=[.!?。！？])\s+/)
+            .map((s) => s.trim())
+            .filter(Boolean);
+          const aiAllText = [
+            aiResult.data.title,
+            ...aiResult.data.bullets,
+            ...(descSentences.length > 0 ? descSentences : [aiResult.data.description]),
+          ];
           const aiTiered = classifyClaimTier(aiAllText, tierInput.map((f) => f.value));
           const blockedTexts = aiTiered.filter((r) => r.tier === "blocked").map((r) => r.text);
           const reviewTexts = aiTiered.filter((r) => r.tier === "review").map((r) => r.text);
-          // LISTING_FINAL_CLOSURE：blocked 与 review 同待遇——任一条命中即从正式字段移除；
-          // review 句只保留在 humanReviewClaims（待人工确认），不得停留在 title/bullets/description。
-              const removedTierTexts = [...blockedTexts, ...reviewTexts];
+          // LISTING_FINAL_CLOSURE：blocked 句从正式字段移除；
+          // review 句保留在草稿中并写入 humanReviewClaims（供人工确认），严禁擅自物理删除。
+          const removedTierTexts = [...blockedTexts];
           const safeTitle = !removedTierTexts.some((x) => String(aiResult.data.title ?? "").includes(x)) ? aiResult.data.title : "";
           const safeBullets = aiResult.data.bullets.filter((b: string) => !removedTierTexts.some((x) => b.includes(x)));
-          const safeDescription = aiResult.data.description && !removedTierTexts.some((x) => String(aiResult.data.description).includes(x))
-            ? aiResult.data.description
-            : "";
-      const safeAiDraft = {
+          const safeDescSentences = descSentences.filter((s) => !removedTierTexts.some((x) => s.includes(x)));
+          const safeDescription = safeDescSentences.length >= 2
+            ? safeDescSentences.join(" ")
+            : (aiResult.data.description && !removedTierTexts.some((x) => String(aiResult.data.description).includes(x))
+              ? aiResult.data.description
+              : "");
+          const safeAiDraft = {
             ...aiDraft,
             titles: [safeTitle],
             bullets: safeBullets,
@@ -1356,26 +2002,65 @@ export async function generateListingDraftFromHandoff(
             prohibitedClaims: generationInput.prohibitedClaims,
             customClaimLabel: "Handoff prohibited claim",
           }) : null;
-          // ListingPlan.v2：Claim Evidence 校验正文（keywords 属 SEO 引用；已由 filterKeywordsByClaimEvidence 过滤，
-          // 未通过者只进入搜索词字段，不作为正文声明，不因 SEO 词拒绝整稿）
-          const aiEvidence = aiFiltered
+          // 保留 salvage 前的硬事实重复诊断：salvage 负责收敛文案条数，原始 Provider
+          // 输出中的同一事实跨句复用仍应在回退原因中诚实可见。
+          const rawPlanBind = aiFiltered
+            ? aiBulletsBindToPlan(plan, aiFiltered.cleaned.bullets, generationInput.productFacts)
+            : null;
+          // LISTING_AI_BULLET_SALVAGE：先对 tier 过滤后的稿做一次整稿 Claim Evidence 取得逐条
+          // unsupported 证据，再按固定顺序做确定性 salvage：claim 剔除 → quality 剔除 → exact/near 去重。
+          const aiEvidenceInitial = aiFiltered
             ? verifyListingClaims({ ...aiFiltered.cleaned, keywords: [] }, generationInput)
             : null;
-          // 轮 16 末：服务端门禁 = Claim Evidence + 三级判定交集——
-          // unsupported 中属于 blocked（无事实硬属性/承诺）才失败；review（依附已确认功能）降为人工确认。
+          const aiSalvage = aiFiltered && aiEvidenceInitial
+            ? salvageAiListingBullets({
+                bullets: aiFiltered.cleaned.bullets,
+                unsupportedClaims: aiEvidenceInitial.unsupportedClaims,
+                facts: runtimeFacts,
+                usedFactIds: aiResult.data.usedFactIds,
+              })
+            : null;
+          claimRejectedBulletCount = aiSalvage?.claimRejectedBullets.length ?? 0;
+          qualityRejectedBulletCount = aiSalvage?.qualityRejectedBullets.length ?? 0;
+          dedupeRemovedBulletCount = aiSalvage?.dedupeRemovedBullets.length ?? 0;
+          salvagedBulletCount = aiSalvage?.acceptedBullets.length ?? 0;
+          const salvagedRemovedTotal = claimRejectedBulletCount + qualityRejectedBulletCount + dedupeRemovedBulletCount;
+          // salvage 后重建候选稿；<3 条时仍计算其 Claim Evidence（用于 providerSucceeded 语义），但不采纳。
+          const aiSalvagedDraft = aiFiltered && aiSalvage
+            ? { ...aiFiltered.cleaned, bullets: aiSalvage.acceptedBullets }
+            : null;
+          const aiSalvagedCopy = aiSalvagedDraft && salvagedBulletCount >= 3 && salvagedBulletCount <= 5
+            ? aiSalvagedDraft
+            : null;
+          // 仅在本次确实剔除了不合格/重复五点且仍有至少三条时压缩计划；
+          // Provider 主动少返回五点仍保持原有严格数量门禁。
+          const planForAiCopy = salvagedRemovedTotal > 0 && aiSalvagedCopy
+            ? {
+                ...plan,
+                bulletPlans: aiSalvage!.acceptedBulletIndexes
+                  .map((index) => plan.bulletPlans[index])
+                  .filter((bulletPlan): bulletPlan is (typeof plan.bulletPlans)[number] => Boolean(bulletPlan)),
+              }
+            : plan;
+          // SALVAGE 收口：对 salvaged 稿重新执行完整 Claim Evidence——逐条删过不豁免最终事实门禁。
+          // 门禁语义与旧链一致：unsupported 中属于 blocked（无事实硬属性/承诺）才失败；
+          // review 级（依附已确认功能）降为人工确认，不因 salvage 收紧。
+          const aiEvidence = aiSalvagedDraft
+            ? verifyListingClaims({ ...aiSalvagedDraft, keywords: [] }, generationInput)
+            : null;
           const unresolvedBlocked = aiEvidence
             ? aiEvidence.unsupportedClaims.filter((u) =>
                 blockedTexts.some((b) => u.text.includes(b) || b.includes(u.text)),
               )
             : null;
-          const claimsAcceptable = Boolean(aiSchema.ok && aiFiltered && aiEvidence && unresolvedBlocked !== null && unresolvedBlocked.length === 0);
+          const claimsAcceptable = Boolean(aiSchema.ok && aiSalvagedCopy && aiEvidence && unresolvedBlocked !== null && unresolvedBlocked.length === 0);
           // ListingPlan.v2：关键词不得绕过 Claim Evidence；unsupported 中属于 keyword 段的词只保留在搜索词字段（backendSearchTerms）
           const keywordUnsupported = new Set((aiEvidence?.unsupportedClaims ?? []).filter((u) => u.text.split(" ").length > 1).map((u) => u.text.toLowerCase()));
           const claimPassingKeywords = (fallbackKeywords ?? []).filter((k: string) => !keywordUnsupported.has(String(k).toLowerCase()));
-          const aiRuntimeContract = aiFiltered
+          const aiRuntimeContract = aiSalvagedDraft
             ? validateRuntimeQualityContract({
                 title: safeTitle,
-                bullets: safeBullets,
+                bullets: aiSalvage!.acceptedBullets,
                 description: safeDescription,
                 keywords: dedupeTerms(fallbackKeywords),
                 facts: runtimeFacts,
@@ -1383,31 +2068,50 @@ export async function generateListingDraftFromHandoff(
               })
             : null;
           const aiQuality = aiFiltered && claimsAcceptable && aiRuntimeContract?.ok ? { ok: true, blockingIssues: [], issues: [], advisories: [] } : { ok: false, blockingIssues: (aiRuntimeContract?.issues ?? []), issues: (aiRuntimeContract?.issues ?? []), advisories: [] };
-          const planBind = aiBulletsBindToPlan(plan, safeBullets, generationInput.productFacts);
-          const planBindAcceptable = planBind.ok;
+          const planBind = aiBulletsBindToPlan(planForAiCopy, aiSalvage?.acceptedBullets ?? [], generationInput.productFacts);
+          const rawDuplicateFactIssues = rawPlanBind?.issues.filter((item) => item.includes("核心事实重复")) ?? [];
+          // 相邻 Bullet 重复同一硬事实属于明确的“重复卖点”输出，即使其中一条
+          // 随后被 exact-dedupe 删除，也保留旧门禁的拒绝语义；非相邻的重复候选
+          // 则交给 dedupe 后的计划映射继续评估。
+          const adjacentRawDuplicateFact = rawDuplicateFactIssues.some((item) => {
+            const match = item.match(/第(\d+)、(\d+)条/);
+            return Boolean(match && Number(match[2]) === Number(match[1]) + 1);
+          });
+          const adjacentExactDuplicate = aiFiltered?.cleaned.bullets.some((bullet, index, bullets) =>
+            index > 0 && normalizeListingBulletForDedupe(bullet) === normalizeListingBulletForDedupe(bullets[index - 1]!),
+          ) ?? false;
+          const planBindAcceptable = planBind.ok && !adjacentRawDuplicateFact && !adjacentExactDuplicate;
           const competitorBrandMentions = findCompetitorBrandMentions(
-            [safeTitle, ...safeBullets, safeDescription],
+            [safeTitle, ...(aiSalvage?.acceptedBullets ?? []), safeDescription],
             keywordPolicyInputOf(generationInput),
           );
           const brandPolicyAcceptable = competitorBrandMentions.length === 0;
           /** LISTING_COPY_QUALITY：AI 稿同样必须通过 Copy Quality（事实安全 ≠ 文案质量） */
           const aiCopyQuality = validateCopyQualityContract({
             title: safeTitle,
-            bullets: safeBullets,
+            bullets: aiSalvage?.acceptedBullets ?? [],
             description: safeDescription,
             cannotSay: [...DEFAULT_CANNOT_SAY, ...(generationInput.prohibitedClaims ?? [])],
             facts: runtimeFacts,
-            bulletPlans: plan.bulletPlans,
+            bulletPlans: planForAiCopy.bulletPlans,
             typeLabel: typeLabelOfListingInput(generationInput),
           });
-          if (aiSchema.ok && aiFiltered && aiEvidence && unresolvedBlocked !== null && unresolvedBlocked.length === 0 && aiQuality?.ok && aiRuntimeContract?.ok && planBindAcceptable && brandPolicyAcceptable && aiCopyQuality.ok) {
+          if (aiSchema.ok && aiSalvagedCopy && aiEvidence && unresolvedBlocked !== null && unresolvedBlocked.length === 0 && aiQuality?.ok && aiRuntimeContract?.ok && planBindAcceptable && brandPolicyAcceptable && aiCopyQuality.ok) {
             // R1.6：filterListingClaims 重建对象不含后端元数据字段 → 显式补回
             draftKind = "ai_optimized_listing";
+            // usedFactTrace 真实性：只保留最终正文（title+bullets+description）中真实出现值的 usedFactIds；
+            // 被删 Bullet 是其唯一文本来源的 id 不得继续声称采用（按 runtimeFacts 英文渲染值 containment 投影）。
+            const finalAiText = [safeTitle, ...(aiSalvage?.acceptedBullets ?? []), safeDescription].join("\n").toLowerCase();
+            const finalUsedFactIds = (Array.isArray(aiResult.data.usedFactIds) ? aiResult.data.usedFactIds as string[] : []).filter((id) => {
+              const fact = runtimeFacts.find((x) => x.factId === id || x.field === id);
+              const value = String(fact?.value ?? "").trim().toLowerCase();
+              return value.length > 0 && finalAiText.includes(value);
+            });
             finalDraft = {
-              ...aiFiltered.cleaned,
+              ...aiSalvagedCopy,
               draftKind,
-              usedFactIds: aiResult.data.usedFactIds,
-    usedFactTrace: buildUsedFactTrace(generationInput.productFacts, aiResult.data.usedFactIds),
+              usedFactIds: finalUsedFactIds,
+              usedFactTrace: buildUsedFactTrace(generationInput.productFacts, finalUsedFactIds),
               usedKeywordIds: aiDraft.usedKeywordIds,
               humanReviewClaims: reviewTexts,
               ...(aiDraft.backendTermWarnings ? { backendTermWarnings: aiDraft.backendTermWarnings } : {}),
@@ -1422,31 +2126,39 @@ export async function generateListingDraftFromHandoff(
           } else {
             // ListingPlan.v2：Provider 是否成功如实反映调用结果；仅当 claim 硬失败时
             // 保持既有语义 providerSucceeded=false（R3 契约）；plan 绑定拒绝而 claim 通过时置 true。
-            // claim 失败 = 采纳级：safeAiDraft 经 Claim Evidence 仍有 unsupported（不是原始 AI raw 文本被 tier 拦截）
+            // claim 失败 = 采纳级：salvaged 稿经 Claim Evidence 仍有 unsupported（不是原始 AI raw 文本被 tier 拦截）
             const adoptedClaimFailed = aiEvidence !== null && !listingClaimsHaveEvidence(aiEvidence);
             if (!adoptedClaimFailed) { providerSucceeded = true; }
             // 轮 16 收口：claim 失败 = 有内容被三级判定拦截（无依据硬属性/无锚点话术被移除）。
             // 纯结构/质量不达标（无内容被拦）按结构/质量回退；两者兼具优先报 claim。
             const contractFailed = aiRuntimeContract !== null && !aiRuntimeContract.ok;
             const claimFailed = blockedTexts.length > 0;
-            const planBindFailed = !planBind.ok;
+            const planBindFailed = !planBindAcceptable;
+            // salvage 后不足 3 条：根因是不合格五点被剔除，不是计划绑定问题，诚实单独报因。
+            const salvageShort = aiSalvage !== null && aiSalvagedCopy === null;
             const planBindIssue = planBind.issues.length > 0
-              ? "AI 文案未匹配卖点策略：" + planBind.issues.join("；")
+              ? "AI 文案未匹配卖点策略：" + Array.from(new Set([...rawDuplicateFactIssues, ...planBind.issues])).join("；")
+              : rawDuplicateFactIssues.length > 0
+                ? "AI 文案重复使用商品事实：" + rawDuplicateFactIssues.join("；")
               : "AI 文案未匹配卖点策略。";
             applyStructuredFallback(
               claimFailed
                 ? "AI 文案包含未经确认的信息，已保留安全草稿。"
                 : (!brandPolicyAcceptable
                   ? "AI 文案包含当前竞品品牌，已保留安全草稿。"
+                  : (salvageShort
+                  ? "AI 文案剔除不合格五点后不足 3 条，已保留安全草稿。"
                   : (planBindFailed
                   ? "AI 文案重复使用商品事实或未遵循卖点策略，已保留安全草稿。"
-                  : (contractFailed ? "AI 文案未通过运行时质量合同（8-30 词完整句/事实锚点/品牌去重）。" : "AI 文案未通过结构或质量校验，已保留安全草稿。"))),
+                  : (contractFailed ? "AI 文案未通过运行时质量合同（8-30 词完整句/事实锚点/品牌去重）。" : "AI 文案未通过结构或质量校验，已保留安全草稿。")))),
               claimFailed ? "listing_claims_unsupported" : "listing_output_invalid",
               claimFailed
                 ? "AI 最终草稿未通过 Claim Evidence"
                 : (!brandPolicyAcceptable
                   ? "AI 最终草稿包含竞品品牌：" + competitorBrandMentions.join("、")
-                  : (planBindFailed ? planBindIssue : "AI 最终草稿未通过 Schema/Quality")),
+                  : (salvageShort
+                    ? "AI 文案剔除不合格/重复五点后仅剩 " + salvagedBulletCount + " 条（需 3-5 条）"
+                    : (planBindFailed ? planBindIssue : "AI 最终草稿未通过 Schema/Quality"))),
             );
             // LISTING_FINAL_CLOSURE：回退稿同样保留确认前被移除的 review 句（仅待确认区展示）
             if (reviewTexts.length > 0) { finalDraft.humanReviewClaims = reviewTexts.slice(0, 5); }
@@ -1467,14 +2179,18 @@ export async function generateListingDraftFromHandoff(
           );
         }
       } else {
-        finalDraft = withoutKeywordOptimization({ ...safeDraft });
-        qualityIssues = readiness.missingForQuality;
+        if (copyReady && !plannerEligible) {
+          applyStructuredFallback("可渲染卖点不足，已使用安全规则生成。", "listing_output_invalid", "Renderer qualified options fewer than 3 roles");
+        } else {
+          finalDraft = withoutKeywordOptimization({ ...safeDraft });
+          qualityIssues = readiness.missingForQuality;
+        }
       }
 
       const keywordPlanSource: "manual" | "auto_suggested" | "none" = effectiveKeywordBrief
         ? (effectiveKeywordBrief.source === "auto_suggested" ? "auto_suggested" : "manual")
         : "none";
-      const sellingPointPlan = plan.bulletPlans.slice(0, 5).map((bp) => ({
+      const sellingPointPlan = planForGeneration.bulletPlans.slice(0, 5).map((bp) => ({
         role: bp.role ?? "core_outcome",
         shopperNeed: bp.shopperNeed ?? "",
         shopperAngle: bp.shopperAngle,
@@ -1490,16 +2206,62 @@ export async function generateListingDraftFromHandoff(
         ...finalDraft,
         sellingPointPlan,
       };
+      const generationInputReferenceCounts = {
+        voc: generationInput.creativeContext?.vocInsights.length ?? 0,
+        keyword: generationInput.creativeContext?.keywordCandidates.length ?? 0,
+        competitor: generationInput.creativeContext?.competitiveContext.length ?? 0,
+        sourcing: generationInput.creativeContext?.sourcingContext.length ?? 0,
+        aiReference: generationInput.creativeContext?.aiReferences.length ?? 0,
+      };
+      const generationInputResearchReferenceCount = Object.values(generationInputReferenceCounts).reduce((sum, count) => sum + count, 0);
       const draftSnapshot = {
         ...safeDraftWithPlan,
+        ...(generationInput.copyStrategy
+          ? { copyStrategy: generationInput.copyStrategy, copyStrategyApplied: providerSucceeded && !fallbackApplied }
+          : {}),
         draftKind,
         providerAttempted,
         providerSucceeded,
         fallbackApplied,
         fallbackReason,
+        generationInputFactCount: generationInput.productFacts.length + generationInput.stableSourceFacts.length,
+        generationInputResearchReferenceCount,
+        generationInputReferenceCounts,
+        dedupeRemovedBulletCount,
+        claimRejectedBulletCount,
+        qualityRejectedBulletCount,
+        salvagedBulletCount,
+        generationMode,
+        plannerAttempted,
+        plannerSucceeded,
+        plannerDecisionApplied,
+        plannerSelectedRoles,
+        plannerSelectedFactCount,
+        plannerSelectedKeywordCount,
+        plannerRawSelectionCount,
+        plannerValidSelectionCount,
+        plannerRejectedSelectionCount,
+        plannerFilledSelectionCount,
+        plannerFinalSelectionCount,
+        plannerSemanticStatus,
+        plannerFailureStage,
+        plannerSchemaFailureCode,
+        plannerUnknownKeys,
+        rendererQualifiedOptionCount,
+        rendererQualifiedRoleCount,
+        plannerSelectedOptionCount,
+        plannerDecisionUsedInFinalDraft,
+        rendererFailureStage,
+        rendererFailureRole,
+        rendererFailureCode,
+        rendererFailureValidator,
+        rendererFailureFieldPath,
+        rendererFailureReasonCode,
+        rendererRejectedBulletCount,
+        rendererUnrenderableRoleCount,
         keywordPlanSource,
         ...deriveKeywordAdoptionTrace(
-          plan,
+          planForGeneration,
           [
             String((finalDraft.titles as unknown as string[] ?? [])[0] ?? ""),
             ...((finalDraft.bullets as string[] | undefined) ?? []),

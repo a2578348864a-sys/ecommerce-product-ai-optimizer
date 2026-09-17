@@ -13,15 +13,15 @@ describe("侧栏导航（公网演示收口）", () => {
   it("公网导航不出现密码锁/旧工具入口", () => {
     const groups = buildV4NavGroups({ mode: "public_showcase", v4Graph: false });
     const labels = groups.flatMap((g) => g.items.map((i) => i.label)).join(",");
-    for (const banned of ["商品研究", "研究记录", "待研究商品", "发现商品", "Listing Studio", "Image Studio", "案例回放", "V4 概览"]) {
+    for (const banned of ["商品研究", "研究记录", "待研究商品", "发现商品", "Listing Studio", "Image Studio", "文案工作台", "图片工作台", "案例回放", "V4 概览"]) {
       expect(labels).not.toContain(banned);
     }
   });
-  it("local_owner 保持原有工作台导航（无回归）", () => {
+  it("local_owner 保持商品开发决策核心导航（收口验证）", () => {
     const groups = buildV4NavGroups({ mode: "local_owner", v4Graph: false });
     const labels = groups.flatMap((g) => g.items.map((i) => i.label));
-    expect(labels).toContain("商品研究");
-    expect(labels).toContain("研究记录");
+    expect(labels).toContain("决策评估");
+    expect(labels).toContain("决策复盘");
     expect(labels).not.toContain("完整商品案例");
   });
 });

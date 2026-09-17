@@ -42,9 +42,14 @@ import {
   assertReviewCollectRequest,
   createReviewCollectPreview,
   storeReviewCollectPreview,
-  takeReviewCollectPreview,
+  peekReviewCollectPreview,
+  consumeReviewCollectPreview,
+  findPendingReviewCollectPreview,
+  isReusableReviewCollectPreview,
   reviewCollectSubjectKey,
   buildSnippetPreviewDedupeKey,
+  getPendingReviewCollectPreviewDto,
+  type PendingReviewCollectPreviewDto,
 } from "@/lib/server/reviewCollector";
 import { readBrowserEvidenceTaskAsin } from "@/lib/server/browserEvidence";
 import type { AccessContext } from "@/lib/server/accessPassword";
@@ -69,7 +74,17 @@ export const runtime = "nodejs";
 
 type StorageVersion = { resultJsonHash: string; updatedAt: string };
 type ApiResponse =
-  | { ok: true; data: { evidence: ReviewEvidenceV1 | null; analysis: VocAnalysisV1 | null; storageVersion: StorageVersion; taskAsin: string | null; capability: AcquisitionCapability } }
+  | {
+      ok: true;
+      data: {
+        evidence: ReviewEvidenceV1 | null;
+        analysis: VocAnalysisV1 | null;
+        storageVersion: StorageVersion;
+        taskAsin: string | null;
+        capability: AcquisitionCapability;
+        pendingPreview?: PendingReviewCollectPreviewDto | null;
+      };
+    }
   | { ok: true; data: { outcome: { kind: string; importedCount: number; duplicateCount: number; rejectedCount: number }; evidence: ReviewEvidenceV1; storageVersion: StorageVersion } }
   | { ok: true; data: { analysis: VocAnalysisV1; unverified: number; gateResult: string; storageVersion: StorageVersion; demo?: boolean } }
   | { ok: true; data: { cleared: boolean; storageVersion: StorageVersion } }
@@ -91,6 +106,7 @@ type ApiResponse =
         };
         storageVersion: StorageVersion;
         demo?: boolean;
+        reused?: boolean;
       };
     }
   | { ok: true; data: { confirmed: boolean; storageVersion: StorageVersion } }
@@ -207,9 +223,22 @@ export async function GET(
       getVocAnalysis(resolved.context, id),
       readBrowserEvidenceTaskAsin(resolved.context, id),
     ]);
+    const pendingPreview = getPendingReviewCollectPreviewDto({
+      subjectKey: reviewCollectSubjectKey(resolved.context),
+      taskId: id,
+      asin: taskAsin ?? undefined,
+      currentDatasetReviews: evidence?.dataset.reviews,
+    });
     return jsonResponse({
       ok: true,
-      data: { evidence, analysis, storageVersion: toStorageVersion(snapshot), taskAsin, capability: resolveBrowserAcquisitionCapability() },
+      data: {
+        evidence,
+        analysis,
+        storageVersion: toStorageVersion(snapshot),
+        taskAsin,
+        capability: resolveBrowserAcquisitionCapability(),
+        pendingPreview,
+      },
     });
   } catch (error) {
     return errorResponse(error);
@@ -463,6 +492,44 @@ async function collectAction(
     throw error;
   }
   try {
+    // 统一编排与局部重试共享同一 Preview 生命周期：已有同任务/同主体/同 ASIN 的
+    // 「可操作」Preview（有待确认条目 / 页面被阻断 / 明确无评论）时只复用，不再次
+    // 启动浏览器采集。extraction_empty 等瞬时失败不算可操作：复用会把重试挡死在
+    // 同一个空 Preview 上（TTL 15 分钟），必须落到下方重新采集。
+    const existingPending = asins.length === 1
+      ? findPendingReviewCollectPreview({
+          subjectKey: reviewCollectSubjectKey(context),
+          taskId,
+          asin: asins[0].asin,
+        })
+      : null;
+    if (existingPending && isReusableReviewCollectPreview(existingPending)) {
+      const existing = await getReviewEvidence(context, taskId);
+      const existingKeys = new Set((existing?.dataset.reviews ?? []).map((review) => review.duplicateKey));
+      const items = existingPending.items.map((item) => {
+        const duplicateKey = buildReviewDuplicateKey({
+          reviewId: null,
+          asin: item.asin,
+          contentHash: buildReviewContentHash(item.title),
+          rating: item.rating,
+          reviewDate: item.date,
+        });
+        return { ...item, duplicate: existingKeys.has(duplicateKey) };
+      });
+      return jsonResponse({
+        ok: true,
+        data: {
+          preview: {
+            previewId: existingPending.previewId,
+            items,
+            pageResults: existingPending.pageResults,
+            capturedAt: existingPending.capturedAt,
+          },
+          storageVersion: await readReviewEvidenceSnapshot(context, taskId).then((snapshot) => toStorageVersion(snapshot)),
+          reused: true,
+        },
+      });
+    }
     const preview = await createReviewCollectPreview({ context, taskId, asins });
     // 重复标记：与现有 dataset 的 duplicateKey 比对（reviewId 缺失时 asin+hash+rating+date）
     const existing = await getReviewEvidence(context, taskId);
@@ -521,8 +588,8 @@ async function collectConfirmAction(
   if (selectedIndices.length === 0) {
     return jsonResponse({ ok: false, error: { code: "invalid_selection", message: "请选择要确认的评论。" } }, 400);
   }
-  // Preview 取回（跨主体/跨任务 fail-closed；取回即失效，防止重复确认）
-  const preview = takeReviewCollectPreview(previewId, {
+  // Preview 只读取（跨主体/跨任务 fail-closed）；正式导入成功后才消费，失败可重试。
+  const preview = peekReviewCollectPreview(previewId, {
     subjectKey: reviewCollectSubjectKey(context),
     taskId,
   });
@@ -555,6 +622,16 @@ async function collectConfirmAction(
       collectorVersion: REVIEW_COLLECTOR_VERSION,
     }));
     await importReviews({ context, taskId, expectedStorageVersion, reviews });
+    const consumed = consumeReviewCollectPreview(previewId, {
+      subjectKey: reviewCollectSubjectKey(context),
+      taskId,
+    });
+    if (!consumed) {
+      return jsonResponse({
+        ok: false,
+        error: { code: "preview_expired", message: "采集预览已失效，请重新采集。" },
+      }, 409);
+    }
     const snapshotAfter = await readReviewEvidenceSnapshot(context, taskId);
     return jsonResponse({
       ok: true,

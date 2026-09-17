@@ -6,8 +6,8 @@
 
 | 项目 | 值 |
 |------|-----|
-| **HEAD** | `3d69f1e` |
-| **生产代码 HEAD** | `7b83cdfc07dc14bb2e3f0b363f41bf575507cdc9` |
+| **HEAD** | `<redacted-hash>` |
+| **生产代码 HEAD** | `<redacted-hash>` |
 | **数据状态** | 80 条真实 AI 分析记录 |
 | **页面状态** | 9/9 页面 200，移动端正常 |
 | **数据库状态** | quick_check ok，备份齐全 |
@@ -20,27 +20,27 @@
 | 阶段 | 操作 | 记录数 | commit |
 |------|------|--------|--------|
 | 初始 | — | 89 | — |
-| 只读盘点 | 发现 A 类 7 条 + C 类 2 条 | — | `7f078f2` |
-| A 类清理 | 删除 7 条（3 乱码 + 3 test + 1 空壳） | 82 | `7cb818c` |
-| C 类清理 | 删除 2 条（viral mock） | **80** | `39d1d27` |
+| 只读盘点 | 发现 A 类 7 条 + C 类 2 条 | — | `<redacted-hash>` |
+| A 类清理 | 删除 7 条（3 乱码 + 3 test + 1 空壳） | 82 | `<redacted-hash>` |
+| C 类清理 | 删除 2 条（viral mock） | **80** | `<redacted-hash>` |
 
 ## 2. 已完成事项
 
 | # | 事项 | 文档 | commit |
 |---|------|------|--------|
-| 1 | 只读盘点 A/C 类脏数据 | `06_测试与验证/Phase1D/2026-06-21-Alpha演示数据清理盘点.md` | `7f078f2` |
-| 2 | A 类 7 条正式清理 | `06_测试与验证/Phase1D/2026-06-21-Alpha演示数据正式清理记录.md` | `7cb818c` |
-| 3 | Alpha 发出前最终复核 | `06_测试与验证/Phase1D/2026-06-21-Alpha发出前最终复核.md` | `f469beb` |
-| 4 | C 类 2 条 viral mock 清理 | `docs/phase-1d-delete-viral-mock-records.md` | `39d1d27` |
-| 5 | AI 拟人多角色 Alpha 预检 | `docs/phase-1d-ai-persona-alpha-review.md` | `3d69f1e` |
+| 1 | 只读盘点 A/C 类脏数据 | `06_测试与验证/Phase1D/2026-06-21-Alpha演示数据清理盘点.md` | `<redacted-hash>` |
+| 2 | A 类 7 条正式清理 | `06_测试与验证/Phase1D/2026-06-21-Alpha演示数据正式清理记录.md` | `<redacted-hash>` |
+| 3 | Alpha 发出前最终复核 | `06_测试与验证/Phase1D/2026-06-21-Alpha发出前最终复核.md` | `<redacted-hash>` |
+| 4 | C 类 2 条 viral mock 清理 | `docs/phase-1d-delete-viral-mock-records.md` | `<redacted-hash>` |
+| 5 | AI 拟人多角色 Alpha 预检 | `docs/phase-1d-ai-persona-alpha-review.md` | `<redacted-hash>` |
 | 6 | Phase 1D 最终收口 | `docs/phase-1d-final-closure.md` | 本文档 |
 
 ### 备份清单
 
 | 备份 | 路径 |
 |------|------|
-| A 类删除前 | `/www/server-backups/alibaba-ai-assistant/2026-06-21-before-alpha-demo-data-cleanup/prod.db.before-alpha-demo-cleanup.bak` |
-| C 类删除前 | `/www/server-backups/alibaba-ai-assistant/2026-06-21-before-alpha-delete-viral-mock/prod.db.before-delete-viral-mock.bak` |
+| A 类删除前 | `/path/to/server-backups/alibaba-ai-assistant/2026-06-21-before-alpha-demo-data-cleanup/prod.db.before-alpha-demo-cleanup.bak` |
+| C 类删除前 | `/path/to/server-backups/alibaba-ai-assistant/2026-06-21-before-alpha-delete-viral-mock/prod.db.before-delete-viral-mock.bak` |
 
 ## 3. 当前结论
 
@@ -162,11 +162,11 @@
 
 | # | 文档 | commit | 说明 |
 |---|------|--------|------|
-| 1 | `06_测试与验证/Phase1D/...盘点.md` | `7f078f2` | 只读盘点 |
-| 2 | `06_测试与验证/Phase1D/...清理记录.md` | `7cb818c` | A 类清理 |
-| 3 | `06_测试与验证/Phase1D/...最终复核.md` | `f469beb` | 发出前复核 |
-| 4 | `docs/phase-1d-delete-viral-mock-records.md` | `39d1d27` | C 类清理 |
-| 5 | `docs/phase-1d-ai-persona-alpha-review.md` | `3d69f1e` | AI 拟人评测 |
+| 1 | `06_测试与验证/Phase1D/...盘点.md` | `<redacted-hash>` | 只读盘点 |
+| 2 | `06_测试与验证/Phase1D/...清理记录.md` | `<redacted-hash>` | A 类清理 |
+| 3 | `06_测试与验证/Phase1D/...最终复核.md` | `<redacted-hash>` | 发出前复核 |
+| 4 | `docs/phase-1d-delete-viral-mock-records.md` | `<redacted-hash>` | C 类清理 |
+| 5 | `docs/phase-1d-ai-persona-alpha-review.md` | `<redacted-hash>` | AI 拟人评测 |
 | 6 | `docs/phase-1d-final-closure.md` | 本文档 | 收口 |
 
 ---

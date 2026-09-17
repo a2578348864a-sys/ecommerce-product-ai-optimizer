@@ -1,7 +1,7 @@
 import {
+  IMAGE_STUDIO_TEMPLATE_OPTIONS,
   normalizeStudioImageCreativeIntent,
   STUDIO_IMAGE_LIFESTYLE_SCENES,
-  STUDIO_IMAGE_PRIMARY_PURPOSES,
   type StudioImageCreativeIntent,
 } from "@/lib/studioImageCreativeIntent";
 import styles from "./ImageStudioPolish.module.css";
@@ -17,26 +17,41 @@ export function ImageScenePresetPicker({
 }) {
   const sceneDisabled = value.primaryImagePurpose === "white_studio";
   const update = (next: StudioImageCreativeIntent) => onChange(normalizeStudioImageCreativeIntent(next));
+  const isTemplateSelected = (template: (typeof IMAGE_STUDIO_TEMPLATE_OPTIONS)[number]) => {
+    if (template.templateId === "lifestyle_in_use") {
+      return value.primaryImagePurpose === "lifestyle_in_use" && value.lifestyleScene === "home_lifestyle";
+    }
+    if (template.templateId === "selling_points") {
+      return value.primaryImagePurpose === "selling_point_infographic" && value.lifestyleScene === "none";
+    }
+    return value.primaryImagePurpose === template.primaryImagePurpose;
+  };
 
   return (
     <div className="grid gap-4" data-testid="image-creative-intent-picker">
       <fieldset>
         <legend className={styles.fieldLabel}>图片主用途（必选）</legend>
         <div className={styles.strategyGrid}>
-          {STUDIO_IMAGE_PRIMARY_PURPOSES.map((purpose) => (
+          {IMAGE_STUDIO_TEMPLATE_OPTIONS.map((template) => (
             <label
-              key={purpose.id}
+              key={template.templateId}
               className={styles.strategyOption}
-              data-selected={value.primaryImagePurpose === purpose.id}
+              data-template-id={template.templateId}
+              data-selected={isTemplateSelected(template)}
             >
               <input
                 type="radio"
                 name={`${name}-primary`}
-                value={purpose.id}
-                checked={value.primaryImagePurpose === purpose.id}
-                onChange={() => update({ ...value, primaryImagePurpose: purpose.id })}
+                value={template.templateId}
+                checked={isTemplateSelected(template)}
+                onChange={() => update({
+                  ...value,
+                  primaryImagePurpose: template.primaryImagePurpose,
+                  lifestyleScene: template.lifestyleScene,
+                  customImagePurpose: "",
+                })}
               />
-              <strong>{purpose.label}</strong>
+              <strong>{template.label}</strong>
             </label>
           ))}
         </div>

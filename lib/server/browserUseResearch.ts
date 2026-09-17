@@ -1,5 +1,7 @@
 import "server-only";
 import { pickBestKeyword } from "@/lib/research/researchInputQuality";
+import type { AccessContext } from "@/lib/server/accessPassword";
+import { AMAZON_RETAIL_HOSTS } from "@/tools/collectors/amazon/page-diagnostics";
 
 /**
  * 轮 9：Browser Use 自动采集研究输入（竞品 / 关键词）——正式链路合同。
@@ -58,7 +60,7 @@ export type BrowserUseResearchPreview =
       capturedAt: string;
       results: BrowserUseCompetitorPreviewItem[];
       missing: string[];
-      failureReason: "collector_unavailable" | "login_required" | "captcha_required" | "permission_insufficient" | "panel_not_detected" | "collect_failed" | "identity_unavailable" | null;
+      failureReason: "collector_unavailable" | "login_required" | "captcha_required" | "permission_insufficient" | "panel_not_detected" | "collect_failed" | "identity_unavailable" | "seller_sprite_keyword_timeout" | null;
       collector: BrowserUseCollectorInfo;
     }
   | {
@@ -72,11 +74,17 @@ export type BrowserUseResearchPreview =
       capturedAt: string;
       results: BrowserUseKeywordPreviewItem[];
       missing: string[];
-      failureReason: "collector_unavailable" | "login_required" | "captcha_required" | "permission_insufficient" | "panel_not_detected" | "collect_failed" | "identity_unavailable" | null;
+      failureReason: "collector_unavailable" | "login_required" | "captcha_required" | "permission_insufficient" | "panel_not_detected" | "collect_failed" | "identity_unavailable" | "seller_sprite_keyword_timeout" | null;
       collector: BrowserUseCollectorInfo;
     };
 
 export type BrowserUseResearchPreviewV1 = BrowserUseResearchPreview;
+
+/** Preview 的服务端绑定；只允许同一主体、同一任务取回。 */
+export type BrowserUsePreviewBinding = {
+  subjectKey: string;
+  taskId: string;
+};
 
 export type BrowserUseResearchFailureCode = BrowserUseResearchPreview["failureReason"];
 
@@ -97,7 +105,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 const FAILURE_REASONS = new Set([
   "collector_unavailable", "login_required", "captcha_required", "permission_insufficient",
-  "panel_not_detected", "collect_failed", "identity_unavailable",
+  "panel_not_detected", "collect_failed", "identity_unavailable", "seller_sprite_keyword_timeout",
 ]);
 
 const ASIN_PATTERN = /^[A-Z0-9]{10}$/;
@@ -239,20 +247,40 @@ export function parseBrowserUseResearchPreview(value: unknown): BrowserUseResear
 export type BrowserUsePreviewCacheEntry = {
   preview: BrowserUseResearchPreview;
   expiresAt: number;
+  subjectKey: string;
+  taskId: string;
 };
 
 export type BrowserUsePreviewClaim = {
   preview: BrowserUseResearchPreview;
   expiresAt: number;
+  subjectKey: string;
+  taskId: string;
 };
 
 const PREVIEW_CACHE: Map<string, BrowserUsePreviewCacheEntry> = new Map();
 const PREVIEW_CACHE_TTL_MS = 10 * 60 * 1000;
 
-export function storeBrowserUsePreview(preview: BrowserUseResearchPreview): string {
+function isValidBinding(binding: BrowserUsePreviewBinding | undefined): binding is BrowserUsePreviewBinding {
+  return Boolean(
+    binding &&
+    typeof binding.subjectKey === "string" && binding.subjectKey.trim() &&
+    typeof binding.taskId === "string" && binding.taskId.trim(),
+  );
+}
+
+/** 主体键：Owner 或同一 Visitor 的 Preview 才能互取。 */
+export function browserUseSubjectKey(context: AccessContext): string {
+  return context.mode === "demo" ? `visitor:${context.demoAccessId}` : "owner:v1";
+}
+
+export function storeBrowserUsePreview(preview: BrowserUseResearchPreview, binding: BrowserUsePreviewBinding): string {
+  if (!isValidBinding(binding)) {
+    throw new BrowserUseResearchError("preview_binding_required", 400, "Preview 缺少任务与主体绑定。");
+  }
   const id = `bup_preview_${Math.random().toString(36).slice(2, 12).padEnd(10, "0")}`;
   const expiresAt = Date.now() + PREVIEW_CACHE_TTL_MS;
-  PREVIEW_CACHE.set(id, { preview, expiresAt });
+  PREVIEW_CACHE.set(id, { preview, expiresAt, subjectKey: binding.subjectKey.trim(), taskId: binding.taskId.trim() });
   setTimeout(() => {
     const entry = PREVIEW_CACHE.get(id);
     if (entry && Date.now() >= entry.expiresAt) {
@@ -263,8 +291,9 @@ export function storeBrowserUsePreview(preview: BrowserUseResearchPreview): stri
 }
 
 /** 原子提取 claim，防止并发双保存 */
-export function claimBrowserUsePreview(previewId: string): BrowserUsePreviewClaim | null {
+export function claimBrowserUsePreview(previewId: string, binding: BrowserUsePreviewBinding): BrowserUsePreviewClaim | null {
   if (typeof previewId !== "string" || !/^bup_preview_/.test(previewId)) return null;
+  if (!isValidBinding(binding)) return null;
   const entry = PREVIEW_CACHE.get(previewId);
   if (!entry) return null;
   const now = Date.now();
@@ -272,17 +301,21 @@ export function claimBrowserUsePreview(previewId: string): BrowserUsePreviewClai
     PREVIEW_CACHE.delete(previewId);
     return null;
   }
+  if (entry.subjectKey !== binding.subjectKey.trim() || entry.taskId !== binding.taskId.trim()) return null;
   PREVIEW_CACHE.delete(previewId);
   return {
     preview: entry.preview,
     expiresAt: entry.expiresAt,
+    subjectKey: entry.subjectKey,
+    taskId: entry.taskId,
   };
 }
 
 /** 仅在确证未落库（如 CAS/storageVersion 冲突）时恢复 claim，严格保留原 expiresAt，不延长 TTL */
-export function restoreBrowserUsePreviewClaim(previewId: string, claim: BrowserUsePreviewClaim): boolean {
+export function restoreBrowserUsePreviewClaim(previewId: string, claim: BrowserUsePreviewClaim, binding: BrowserUsePreviewBinding): boolean {
   if (typeof previewId !== "string" || !/^bup_preview_/.test(previewId)) return false;
-  if (!claim || typeof claim !== "object" || !claim.preview || typeof claim.expiresAt !== "number") return false;
+  if (!isValidBinding(binding) || !claim || typeof claim !== "object" || !claim.preview || typeof claim.expiresAt !== "number") return false;
+  if (claim.subjectKey !== binding.subjectKey.trim() || claim.taskId !== binding.taskId.trim()) return false;
   const now = Date.now();
   if (now >= claim.expiresAt) return false;
   if (PREVIEW_CACHE.has(previewId)) return false;
@@ -293,6 +326,8 @@ export function restoreBrowserUsePreviewClaim(previewId: string, claim: BrowserU
   PREVIEW_CACHE.set(previewId, {
     preview: claim.preview,
     expiresAt: claim.expiresAt,
+    subjectKey: claim.subjectKey,
+    taskId: claim.taskId,
   });
   setTimeout(() => {
     const current = PREVIEW_CACHE.get(previewId);
@@ -303,8 +338,8 @@ export function restoreBrowserUsePreviewClaim(previewId: string, claim: BrowserU
   return true;
 }
 
-export function takeBrowserUsePreview(previewId: string): BrowserUseResearchPreview | null {
-  const claim = claimBrowserUsePreview(previewId);
+export function takeBrowserUsePreview(previewId: string, binding: BrowserUsePreviewBinding): BrowserUseResearchPreview | null {
+  const claim = claimBrowserUsePreview(previewId, binding);
   return claim ? claim.preview : null;
 }
 
@@ -342,13 +377,7 @@ export function selectReliableSearchKeyword(
   return best ? best.keyword : null;
 }
 /** 系统支持的 Amazon 零售站点（与 marketplaceToAmazonTld 一致；不扩展新 marketplace）。 */
-const AMAZON_RETAIL_HOSTS = new Set([
-  "amazon.com",
-  "amazon.co.uk",
-  "amazon.de",
-  "amazon.co.jp",
-  "amazon.ca",
-]);
+const AMAZON_RETAIL_HOST_SET = new Set(AMAZON_RETAIL_HOSTS);
 
 export function isAllowedCollectorSourceUrl(url: string): boolean {
   if (typeof url !== "string" || !url.trim() || /\s/.test(url)) return false;
@@ -362,7 +391,7 @@ export function isAllowedCollectorSourceUrl(url: string): boolean {
   if (parsed.username || parsed.password) return false;
   const host = parsed.hostname.toLowerCase();
   const bare = host.startsWith("www.") ? host.slice(4) : host;
-  return AMAZON_RETAIL_HOSTS.has(bare);
+  return AMAZON_RETAIL_HOST_SET.has(bare as (typeof AMAZON_RETAIL_HOSTS)[number]);
 }
 /** marketplace 来源标识 → Amazon 站点 tld（US/Amazon US → com；其余按 us 处理 fail-closed 交给调用方）。 */
 export function marketplaceToAmazonTld(marketplace: string): string {
@@ -373,4 +402,169 @@ export function marketplaceToAmazonTld(marketplace: string): string {
   if (normalized === "jp" || normalized === "amazon jp") return "co.jp";
   if (normalized === "ca" || normalized === "amazon ca") return "ca";
   return "com";
+}
+
+/**
+ * 无副作用检测是否有待确认的关键词/竞品预览。
+ * 纯只读探测，不消耗（不 claim / 不 take），用于编排器幂等检查。
+ */
+export function findPendingBrowserUsePreview(
+  seedAsin: string,
+  kind?: BrowserUseResearchKind,
+  binding?: BrowserUsePreviewBinding,
+): { previewId: string; preview: BrowserUseResearchPreview; expiresAt: number } | null {
+  if (typeof seedAsin !== "string" || !seedAsin.trim()) return null;
+  if (!isValidBinding(binding)) return null;
+  const normalized = seedAsin.trim().toUpperCase();
+  const now = Date.now();
+  for (const [previewId, entry] of PREVIEW_CACHE.entries()) {
+    if (
+      entry.expiresAt > now &&
+      entry.subjectKey === binding.subjectKey.trim() &&
+      entry.taskId === binding.taskId.trim() &&
+      entry.preview.seedAsin.toUpperCase() === normalized
+    ) {
+      if (kind && entry.preview.kind !== kind) continue;
+      return {
+        previewId,
+        preview: entry.preview,
+        expiresAt: entry.expiresAt,
+      };
+    }
+  }
+  return null;
+}
+
+export type PendingKeywordPreviewItem = {
+  keyword: string;
+  keywordTranslation?: string;
+  searchVolume?: number;
+  abaWeeklyRank?: number;
+  purchaseVolume?: number;
+  relevance?: number;
+  competition?: string;
+};
+
+export type PendingKeywordPreviewDto = {
+  previewId: string;
+  seedAsin: string;
+  sourceUrl: string;
+  keywordCount: number;
+  capturedAt: string | null;
+  expiresAt: string;
+  items: PendingKeywordPreviewItem[];
+};
+
+/**
+ * 纯只读安全 DTO 投影：不消费、不删除 Preview，不泄漏内部凭证。
+ * 若有效，组装脱敏安全 DTO。
+ */
+export function getPendingKeywordPreviewDto(seedAsin: string, binding: BrowserUsePreviewBinding): PendingKeywordPreviewDto | null {
+  if (typeof seedAsin !== "string" || !seedAsin.trim()) return null;
+  const match = findPendingBrowserUsePreview(seedAsin, "keyword", binding) ?? findPendingBrowserUsePreview(seedAsin, undefined, binding);
+  if (!match || match.expiresAt <= Date.now()) return null;
+  const { previewId, preview, expiresAt } = match;
+  if (preview.kind && preview.kind !== "keyword") return null;
+  const rawResults = Array.isArray(preview.results) ? preview.results : [];
+  const items: PendingKeywordPreviewItem[] = rawResults.map((r) => {
+    const item: PendingKeywordPreviewItem = {
+      keyword: typeof r.keyword === "string" ? r.keyword.trim() : "",
+    };
+    if (typeof r.keywordTranslation === "string" && r.keywordTranslation.trim()) {
+      item.keywordTranslation = r.keywordTranslation.trim();
+    }
+    if (typeof r.searchVolume === "number" && !Number.isNaN(r.searchVolume)) {
+      item.searchVolume = r.searchVolume;
+    }
+    if (typeof r.abaWeeklyRank === "number" && !Number.isNaN(r.abaWeeklyRank)) {
+      item.abaWeeklyRank = r.abaWeeklyRank;
+    }
+    if (typeof r.purchaseVolume === "number" && !Number.isNaN(r.purchaseVolume)) {
+      item.purchaseVolume = r.purchaseVolume;
+    }
+    if (typeof r.relevance === "number" && !Number.isNaN(r.relevance)) {
+      item.relevance = r.relevance;
+    }
+    if (r.competition !== null && r.competition !== undefined) {
+      item.competition = String(r.competition).trim();
+    }
+    return item;
+  });
+  return {
+    previewId,
+    seedAsin: preview.seedAsin,
+    sourceUrl: preview.sourceUrl,
+    keywordCount: items.length,
+    capturedAt: preview.capturedAt ?? null,
+    expiresAt: new Date(expiresAt).toISOString(),
+    items,
+  };
+}
+
+export type PendingCompetitorPreviewItem = {
+  asin: string;
+  title: string;
+  imageUrl?: string;
+  price?: number;
+  rating?: number;
+  reviews?: number;
+  bsr?: string;
+  sourceUrl?: string;
+};
+
+export type PendingCompetitorPreviewDto = {
+  previewId: string;
+  seedAsin: string;
+  sourceUrl: string;
+  competitorCount: number;
+  capturedAt: string | null;
+  expiresAt: string;
+  items: PendingCompetitorPreviewItem[];
+};
+
+/**
+ * 纯只读竞品预览安全 DTO 投影：从 PREVIEW_CACHE 中查找 kind === "competitor" 的有效预览，
+ * 纯只读返回安全脱敏项，不消费、不删除缓存。
+ */
+export function getPendingCompetitorPreviewDto(seedAsin: string, binding: BrowserUsePreviewBinding): PendingCompetitorPreviewDto | null {
+  if (typeof seedAsin !== "string" || !seedAsin.trim()) return null;
+  const match = findPendingBrowserUsePreview(seedAsin, "competitor", binding);
+  if (!match || match.expiresAt <= Date.now()) return null;
+  const { previewId, preview, expiresAt } = match;
+  if (preview.kind !== "competitor") return null;
+  const rawResults = Array.isArray(preview.results) ? preview.results : [];
+  const items: PendingCompetitorPreviewItem[] = rawResults.map((r) => {
+    const item: PendingCompetitorPreviewItem = {
+      asin: typeof r.asin === "string" ? r.asin.trim() : "",
+      title: typeof r.title === "string" ? r.title.trim() : "",
+    };
+    if (typeof r.imageUrl === "string" && r.imageUrl.trim()) {
+      item.imageUrl = r.imageUrl.trim();
+    }
+    if (typeof r.price === "number" && !Number.isNaN(r.price)) {
+      item.price = r.price;
+    }
+    if (typeof r.rating === "number" && !Number.isNaN(r.rating)) {
+      item.rating = r.rating;
+    }
+    if (typeof r.reviews === "number" && !Number.isNaN(r.reviews)) {
+      item.reviews = r.reviews;
+    }
+    if (r.bsr !== null && r.bsr !== undefined) {
+      item.bsr = String(r.bsr).trim();
+    }
+    if (typeof r.sourceUrl === "string" && r.sourceUrl.trim()) {
+      item.sourceUrl = r.sourceUrl.trim();
+    }
+    return item;
+  });
+  return {
+    previewId,
+    seedAsin: preview.seedAsin,
+    sourceUrl: preview.sourceUrl,
+    competitorCount: items.length,
+    capturedAt: preview.capturedAt ?? null,
+    expiresAt: new Date(expiresAt).toISOString(),
+    items,
+  };
 }

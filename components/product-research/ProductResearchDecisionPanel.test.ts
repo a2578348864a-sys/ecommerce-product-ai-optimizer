@@ -63,8 +63,11 @@ describe("versioned product research decision panel", () => {
     // 完成确认文案：从商品研究移动到研究记录；现有研究资料不会删除
     expect(detailSource).toContain("从『商品研究』移动到『研究记录』");
     expect(detailSource).toContain("现有研究资料不会删除");
-    // 完成态：研究已完成并保存到研究记录 + 查看研究记录
+    // 完成态：研究已完成并保存到研究记录 + 明确进入创作资料确认
     expect(detailSource).toContain("研究已完成并保存到研究记录。");
+    expect(detailSource).toContain('creationFlowAction.label === "进入创作资料确认" ? "enter-creative-confirmation"');
+    expect(detailSource).toContain("进入创作资料确认");
+    expect(detailSource).toContain("`/listing-studio?taskId=${encodeURIComponent(taskId)}`");
     expect(detailSource).toContain('href="/tasks"');
     // 走 POST /complete（不复制 Task；同一 canonical Task lifecycle 收口）
     expect(detailSource).toContain('fetch(`/api/tasks/${encodeURIComponent(taskId)}/complete`');

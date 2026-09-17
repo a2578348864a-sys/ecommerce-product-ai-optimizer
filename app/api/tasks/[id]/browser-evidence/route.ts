@@ -24,8 +24,9 @@ import {
   browserEvidenceSubjectKey,
   buildConfirmedSnapshot,
   collectBrowserEvidencePreview,
+  consumeBrowserEvidencePreview,
+  peekBrowserEvidencePreview,
   storeBrowserEvidencePreview,
-  takeBrowserEvidencePreview,
   type BrowserEvidenceCollectPreview,
 } from "@/lib/server/browserEvidenceCollect";
 import type { AccessContext } from "@/lib/server/accessPassword";
@@ -267,10 +268,12 @@ async function saveAction(
       error: { code: "storage_version_required", message: "内容刚在其他位置更新，请刷新后重试。" },
     }, 400);
   }
-  const stored = takeBrowserEvidencePreview(evidenceId, {
+  // 先只读读取：ASIN/实体/CAS 任一校验或持久化失败时，Preview 必须保留以便重试。
+  const previewClaim = {
     subjectKey: browserEvidenceSubjectKey(context),
     taskId,
-  });
+  };
+  const stored = peekBrowserEvidencePreview(evidenceId, previewClaim);
   if (!stored) {
     return jsonResponse({
       ok: false,
@@ -300,6 +303,8 @@ async function saveAction(
       expectedStorageVersion,
       snapshot,
     });
+    // 正式证据写入成功后才一次性消费 Preview；duplicate 也属于成功写入结果。
+    consumeBrowserEvidencePreview(evidenceId, previewClaim);
     const snapshotAfter = await readBrowserEvidenceSnapshot(context, taskId);
     return jsonResponse({
       ok: true,

@@ -1,6 +1,71 @@
 # Changelog
 
-本项目按语义化版本管理，版本标记见 Git tags 与 GitHub Releases。
+本项目按语义化版本管理，版本标记见 Git tags 与 GitHub Releases。当前仓库发布线以 Git tag 和本文件为准；`package.json` 中保留的历史 npm 元数据不作为产品发布编号。
+
+## Unreleased
+
+### 文档与仓库卫生
+
+- 统一公开 README、文档中心与当前 Listing V5 收口说明。
+- 将历史版本说明、验收证据和原型资料归入明确的 releases、evidence 与 prototypes 归档区。
+- 公开部署示例使用泛化地址和路径，避免暴露具体服务器或本地环境信息。
+
+## [4.1.1] - 2026-09-08
+
+### Research Stability
+
+- Pending Preview 在持久化成功前不再提前消费。
+- Keyword / Competitor Preview 增加 task 与 subject 隔离。
+- Research Collection Orchestrator 避免重复 inspect 导致 revision feedback loop。
+- Pending Amazon evidence 可以进入 Fact Candidate review。
+
+### Research Lifecycle
+
+- 新增统一 Research Lifecycle Reader。
+- Task List、Task Detail 和 Evidence Workbench 使用同一生命周期快照。
+- `completed`、`stale` 等状态采用 fail-closed 读取规则。
+
+### Browser Use
+
+- 移除开发者本机 Browser Use CLI 绝对路径。
+- 支持 `BROWSER_USE_CLI_PATH` 与 PATH 查找。
+- 使用 `shell: false` 与 stdin 传递参数。
+- 缺少 CLI 时明确返回 `collector_unavailable`。
+
+### V4 Experimental Workflow
+
+- 修复 keyword / VOC 错误路由到 1688 adapter。
+- `keyword` → `runKeywordAdapter`。
+- `voc` → `runVocAdapter`。
+- `supplier_1688` → `run1688Adapter`。
+- SellerSprite recorded fixture 合同保持不变。
+
+### Listing Presentation
+
+- Listing 核心交付物优先展示。
+- 策略 sidecar 下移或折叠展示。
+- 不改变 Listing generation、Fact Authority 或 Quality Gate 的核心边界。
+
+### Known Boundaries
+
+- 1688 仍是参数化 sourcing 流程，需要关键词、URL 或图片等输入。
+- Preview 是短时进程内状态，不是 durable storage。
+- V4 LangGraph 是 feature-flagged secondary workflow，不是当前正式商品研究主链。
+- Marketing Intelligence、Copy Strategy 和 Planner Strategy Preview 是 sidecar / reference-only，不直接进入 Listing renderer。
+
+## [4.1.0] - 2026-09-07
+
+### 新增
+- **Evidence First 数据治理**：建立完整的多源客观数据摄取与清洗体系（SellerSprite 选品报表、Amazon CDP 美区 ZIP 90001 校准、买家真实 VOC 评论、1688 受控货源线索）；确立 `Evidence ≠ Fact` 隔离哲学，外部文本与主观评论绝不自动升格为商品事实；所有证据注入结构化指纹与去噪机制。
+- **Human Confirmed Facts（人工事实确认门禁）**：引入人机协同确认节点（Human Gate），由运营人员逐项比对事实候选并打勾确认，沉淀为加盖 CAS 乐观并发锁版本印章的权威核准事实（`Confirmed Facts`）；未勾选项物理切断，绝不污染后续生成上下文。
+- **Listing Studio（受控 Listing 创作工坊）**：提供面向 Amazon 运营的 Listing 创作与复核界面；采用双阶段流水线（阶段 A 事实语义等价渲染 + 阶段 B 运营自然润色），支持标题（Title）、五点（Bullets）、长描述（Description）与后台搜索词（Search Terms）受控生成与一键复制。
+- **Image Studio（受控视觉策划工坊）**：基于人工批准的视觉参考图与确认事实，生成符合 Amazon 图片规范的契约级生图提示词与多尺寸分镜方案（白底主图、结构拆解、场景代入），规范拍摄与 3D 渲染交付标准。
+- **Listing Quality Policy（代码级文案质量与事实门禁）**：
+  - **Positive-Allow 溯源检查**：文案中出现的任何材质、容量、尺寸等属性声明必须在确认事实库中逐字可查，严禁无依据虚构认证或等级；
+  - **Copy Quality 正则级语法引擎**：解决传统“词数达标即放行”带来的假通过问题，在代码层使用确定性模式匹配拦截 5 类机器容易出现的僵硬英文病句（动词机制套壳、搭配错位、场景口吃、主客体倒置、裸名词）；
+  - **历史快照动态重判 (Historical Draft Read Guard)**：读取历史草稿时实时重跑最新质量门禁，阻断旧版本不合规草稿放行。
+- **Marketing Intelligence（市场情报分析层）**：深度整合竞品差异化分析、买家高频吐槽点反转（Pain Point Reversal）与流量靶向词库，为 Listing 提供高转化维度的策略输入。
+- **Copy Strategy Layer（文案策略分层体系）**：将 Listing 创作解耦为事实层、策略层与润色表达层，支持差异化卖点排序、受众心理锚定与不同商品形态（收纳件、吸管杯、车载杯等）的红绿测试泛化验收。
 
 ## [4.0.0] - 2026-08-22
 
@@ -23,7 +88,7 @@
 - Amazon/1688 真机 live 模式与真实图片生成需授权后启用（本机默认 Mock；公网不提供实时采集）
 - 移动端 /v4/runs 导航未加（V3.1 常量冻结约束）；视觉检查无资产观测时保守 blocked
 - 依赖：1 high（brace-expansion dev-only）；项目书 research-report.schema.json 未接线（in-code 校验强制）
-- 发布记录：validatedCodeSha=`2feb848…`（全量 lint/test/tsc/build 与浏览器 E2E 基线），release SHA 见 Git tag `v4.0.0`
+- 发布记录：validatedCodeSha=`<redacted-hash>`（全量 lint/test/tsc/build 与浏览器 E2E 基线），release SHA 见 Git tag `v4.0.0`
 ## [2.2.16] - 2026-08-12
 
 ### 变更
@@ -90,4 +155,4 @@
 ### 新增
 - Creative Handoff（创作交接）：事实确认、视觉参考批准、幂等账本
 
-> 历史版本详细日志见 `docs/archive/release-history/`。
+> 历史版本与阶段性材料见 [`docs/archive/README.md`](docs/archive/README.md)。

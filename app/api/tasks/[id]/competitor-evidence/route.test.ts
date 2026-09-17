@@ -44,9 +44,16 @@ vi.mock("@/lib/server/competitorEvidence", async (importOriginal) => ({
   getCompetitorEvidence: mocks.getEvidence,
 }));
 
-import { POST } from "./route";
-import { takeBrowserUsePreview, storeBrowserUsePreview, type BrowserUseResearchPreviewV1 } from "@/lib/server/browserUseResearch";
+import { GET, POST } from "./route";
+import {
+  takeBrowserUsePreview,
+  storeBrowserUsePreview,
+  _clearBrowserUsePreviewCacheForTests,
+  type BrowserUseResearchPreviewV1,
+} from "@/lib/server/browserUseResearch";
 import { CompetitorEvidenceError } from "@/lib/server/competitorEvidence";
+
+const OWNER_PREVIEW_BINDING = { subjectKey: "owner:v1", taskId: "task-a" };
 
 function batchResultJson(asin = "B0SAMPLE12") {
   return JSON.stringify({
@@ -65,6 +72,14 @@ function ownerRequest(body: unknown) {
     url: "http://localhost:3000/api/tasks/task-a/competitor-evidence",
     headers: new Headers({ origin: "http://localhost:3000", host: "localhost:3000", "content-type": "application/json" }),
     json: async () => body,
+    clone: function () { return this; },
+  } as never;
+}
+
+function ownerGetRequest() {
+  return {
+    url: "http://localhost:3000/api/tasks/task-a/competitor-evidence",
+    headers: new Headers({ origin: "http://localhost:3000", host: "localhost:3000" }),
     clone: function () { return this; },
   } as never;
 }
@@ -104,6 +119,7 @@ function preview(overrides: Partial<BrowserUseResearchPreviewV1> = {}): BrowserU
 
 beforeEach(() => {
   vi.clearAllMocks();
+  _clearBrowserUsePreviewCacheForTests();
   mocks.requireOwnerOnly.mockReturnValue({ ok: true, context: { mode: "owner", token: "t" } });
   mocks.findUnique.mockResolvedValue({ id: "task-a", resultJson: batchResultJson(), updatedAt: new Date("2026-08-14T02:00:00.000Z") });
   mocks.runCollector.mockImplementation(async () => ({ ok: true, preview: keywordPreview(), observation: null }));
@@ -137,7 +153,7 @@ describe("轮 9 竞品自动采集路由（browser_use）", () => {
   });
 
   it("伪造外站来源 URL（服务端缓存注入外站）→ 400 forged_external_source_url", async () => {
-    const evilId = storeBrowserUsePreview(preview({ sourceUrl: "https://evil.example/dp/B0SAMPLE12" }));
+    const evilId = storeBrowserUsePreview(preview({ sourceUrl: "https://evil.example/dp/B0SAMPLE12" }), OWNER_PREVIEW_BINDING);
     const save = await POST(ownerRequest({ action: "save_browser_use", previewId: evilId, expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-14T02:00:00.000Z" } }), { params: Promise.resolve({ id: "task-a" }) });
     expect(save.status).toBe(400);
     expect((await save.json()).error.code).toBe("forged_external_source_url");
@@ -169,7 +185,7 @@ describe("轮 9 竞品自动采集路由（browser_use）", () => {
       { asin: "B0COMP0003", title: "Competitor B", sourceUrl: "https://www.amazon.com/dp/B0COMP0003", capturedAt: "2026-08-14T02:00:01.000Z" },
       { asin: "B0COMP0004", title: "Competitor C", sourceUrl: "https://www.amazon.com/dp/B0COMP0004", capturedAt: "2026-08-14T02:00:01.000Z" },
     ] as BrowserUseResearchPreviewV1["results"];
-    const previewId = storeBrowserUsePreview(multi);
+    const previewId = storeBrowserUsePreview(multi, OWNER_PREVIEW_BINDING);
     mocks.addAsin.mockImplementation(async (input: { asin: string }) => {
       if (input.asin === "B0COMP0003") {
         throw new CompetitorEvidenceError("task_result_conflict", 409, "任务已在其他页面更新，请刷新后重试。");
@@ -228,7 +244,7 @@ describe("轮 9 竞品自动采集路由（browser_use）", () => {
     expect(body.data.kind).toBe("competitor");
     expect(typeof body.data.keywordPreviewId).toBe("string");
     expect(typeof body.data.keywordCount).toBe("number");
-    const kwPreview = takeBrowserUsePreview(body.data.keywordPreviewId);
+    const kwPreview = takeBrowserUsePreview(body.data.keywordPreviewId, OWNER_PREVIEW_BINDING);
     expect(kwPreview?.kind).toBe("keyword");
     expect(kwPreview?.results?.length ?? 0).toBeGreaterThan(0);
     expect(kwPreview?.seedAsin).toBe("B0SAMPLE12");
@@ -243,7 +259,7 @@ describe("轮 9 竞品自动采集路由（browser_use）", () => {
 
   it("轮 9c 空结果红线：preview.results=[] 且 failureReason=null → 拒绝保存（4xx），写入器 0 次，不产生 saved", async () => {
     const emptyPreview = preview({ results: [], failureReason: null });
-    const previewId = storeBrowserUsePreview(emptyPreview);
+    const previewId = storeBrowserUsePreview(emptyPreview, OWNER_PREVIEW_BINDING);
     const save = await POST(ownerRequest({ action: "save_browser_use", previewId, expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-14T02:00:00.000Z" } }), { params: Promise.resolve({ id: "task-a" }) });
     expect(save.status).toBeGreaterThanOrEqual(400);
     expect(save.status).toBeLessThan(500);
@@ -258,7 +274,7 @@ describe("轮 9 竞品自动采集路由（browser_use）", () => {
       { asin: "B0MUTX001", title: "Mutex A", sourceUrl: "https://www.amazon.com/dp/B0MUTX001", capturedAt: "2026-08-14T02:00:01.000Z" },
       { asin: "B0MUTX002", title: "Mutex B", sourceUrl: "https://www.amazon.com/dp/B0MUTX002", capturedAt: "2026-08-14T02:00:01.000Z" },
     ] as BrowserUseResearchPreviewV1["results"];
-    const previewId = storeBrowserUsePreview(multi);
+    const previewId = storeBrowserUsePreview(multi, OWNER_PREVIEW_BINDING);
     // B0MUTX001 写成功；随后刷新版本抛错（模拟并发写导致的快照读取失败）。
     // 契约：该条已写入，不得再进 skipped；循环应继续处理后续条。
     let snapshotCalls = 0;
@@ -283,5 +299,113 @@ describe("轮 9 竞品自动采集路由（browser_use）", () => {
     expect(body.data.saved).toContain("B0MUTX001");
     expect((body.data.skipped as { asin: string }[]).some((s) => s.asin === "B0MUTX001")).toBe(false);
     expect((body.data.skipped as { asin: string }[]).some((s) => s.asin === "B0MUTX002")).toBe(true);
+  });
+});
+
+describe("GET /api/tasks/[id]/competitor-evidence 纯只读 Pending Preview Contract", () => {
+  it("无 pending 缓存时返回 pendingPreview: null 且 0 autoConfirm / 0 autoSave", async () => {
+    const res = await GET(ownerGetRequest(), { params: Promise.resolve({ id: "task-a" }) });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.data.pendingPreview).toBeNull();
+
+    // 契约保证：0 autoConfirm / 0 autoSave / 0 collector 启动
+    expect(mocks.runCollector).not.toHaveBeenCalled();
+    expect(mocks.runAmazon).not.toHaveBeenCalled();
+    expect(mocks.addAsin).not.toHaveBeenCalled();
+  });
+
+  it("有 pending 缓存时返回 pendingPreview 且纯只读不消费，安全返回 items", async () => {
+    const p = preview({
+      seedAsin: "B0SAMPLE12",
+      results: [
+        {
+          asin: "B0COMP0002",
+          title: "Competitor 40oz",
+          imageUrl: "https://m.media-amazon.com/images/I/sample.jpg",
+          price: 19.99,
+          rating: 4.4,
+          reviews: 88,
+          bsr: 5000,
+          sourceUrl: "https://www.amazon.com/dp/B0COMP0002",
+          capturedAt: "2026-08-14T02:00:01.000Z",
+        },
+      ],
+    });
+    const previewId = storeBrowserUsePreview(p, OWNER_PREVIEW_BINDING);
+
+    const res1 = await GET(ownerGetRequest(), { params: Promise.resolve({ id: "task-a" }) });
+    expect(res1.status).toBe(200);
+    const body1 = await res1.json();
+    expect(body1.ok).toBe(true);
+    expect(body1.data.pendingPreview).toEqual({
+      previewId,
+      seedAsin: "B0SAMPLE12",
+      sourceUrl: p.sourceUrl,
+      competitorCount: 1,
+      capturedAt: p.capturedAt,
+      expiresAt: expect.any(String),
+      items: [
+        {
+          asin: "B0COMP0002",
+          title: "Competitor 40oz",
+          imageUrl: "https://m.media-amazon.com/images/I/sample.jpg",
+          price: 19.99,
+          rating: 4.4,
+          reviews: 88,
+          bsr: "5000",
+          sourceUrl: "https://www.amazon.com/dp/B0COMP0002",
+        },
+      ],
+    });
+
+    // 纯只读验证：再次读取仍能获取到（不消费、不删除）
+    const res2 = await GET(ownerGetRequest(), { params: Promise.resolve({ id: "task-a" }) });
+    expect(res2.status).toBe(200);
+    const body2 = await res2.json();
+    expect(body2.data.pendingPreview).toEqual(body1.data.pendingPreview);
+
+    // 严禁泄露内部未脱敏 raw results
+    expect(body1.data.pendingPreview.results).toBeUndefined();
+
+    // 契约保证：0 autoConfirm / 0 autoSave / 0 collector 启动
+    expect(mocks.runCollector).not.toHaveBeenCalled();
+    expect(mocks.runAmazon).not.toHaveBeenCalled();
+    expect(mocks.addAsin).not.toHaveBeenCalled();
+  });
+
+  it("缓存过期时返回 pendingPreview: null", async () => {
+    const p = preview({ seedAsin: "B0SAMPLE12" });
+    storeBrowserUsePreview(p, OWNER_PREVIEW_BINDING);
+
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 15 * 60 * 1000);
+    try {
+      const res = await GET(ownerGetRequest(), { params: Promise.resolve({ id: "task-a" }) });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.ok).toBe(true);
+      expect(body.data.pendingPreview).toBeNull();
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it("任务缺少权威 ASIN 时返回 pendingPreview: null", async () => {
+    storeBrowserUsePreview(preview({ seedAsin: "B0SAMPLE12" }), OWNER_PREVIEW_BINDING);
+    const unverifiedRecord = {
+      id: "task-a",
+      resultJson: JSON.stringify({ candidateAnalysisContext: { integrity: "unverified" } }),
+      updatedAt: new Date("2026-08-14T02:00:00.000Z"),
+      candidateId: null,
+    };
+    mocks.findUnique.mockResolvedValue(unverifiedRecord);
+    mocks.readSnapshot.mockResolvedValue(unverifiedRecord);
+
+    const res = await GET(ownerGetRequest(), { params: Promise.resolve({ id: "task-a" }) });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.data.pendingPreview).toBeNull();
   });
 });

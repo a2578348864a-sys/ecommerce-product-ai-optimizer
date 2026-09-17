@@ -296,7 +296,9 @@ describe("GET /api/tasks/[id]/image-handoff", () => {
     expect(body.data.canGenerate).toBe(true);
     expect(body.data.creativeDescriptionContext).toEqual(expect.objectContaining({
       productName: "30oz 黑色不锈钢水杯",
-      confirmedFacts: [{ label: "容量", value: "30oz" }],
+      // V2.1：DTO 必须透出 canonical field（前端就绪度与服务端事实门禁同源的唯一判据）。
+      // 这条断言现在是**更强**的：它同时钉住 field 的取值，防止回退成只有 label。
+      confirmedFacts: [{ field: "capacity", label: "容量", value: "30oz" }],
       existingVisualRequirements: ["深色背景"],
       hasApprovedReference: false,
     }));
@@ -647,5 +649,85 @@ describe("V3 Final Freeze — 历史草稿最终选择 Gate", () => {
     const res = await callGET("task-1");
     const body = await res.json();
     expect(body.data.draftHistory).toEqual([]);
+  });
+});
+
+/**
+ * Image Style Library V1（方向修正）：主链视觉方向的白名单 / 校验 / 透传，
+ * 以及「风格不能成为绕过 Creative Handoff 门禁的方式」。
+ */
+describe("POST /api/tasks/[id]/image-handoff · 视觉方向（主链）", () => {
+  const validBody = (extra: Record<string, unknown> = {}) => ({
+    requestId: "550e8400-e29b-41d4-a716-446655440001",
+    expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-05T00:00:00.000Z" },
+    expectedHandoffRevision: 2,
+    mode: "composition_concept",
+    primaryImagePurpose: "detail_closeup",
+    lifestyleScene: "none",
+    customImagePurpose: "",
+    userCreativeDescription: "商品细节特写，只突出已确认的材质与结构。",
+    confirmed: true,
+    ...extra,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.requireOwnerOnly.mockReturnValue({ ok: true, context: { mode: "owner" } });
+    mocks.checkCreativeHandoffGate.mockResolvedValue(activeGate());
+    mocks.generateImageDraftFromHandoff.mockResolvedValue({
+      imageStatus: "concept_only", currentHandoffRevision: 2, sourceHandoffRevision: 2,
+      idempotentReplay: false, humanReviewRequired: true, draft: null,
+    });
+  });
+
+  it("接受共享注册表里的视觉方向并透传给生成服务", async () => {
+    const res = await callPOST("task-1", validBody({ stylePresetId: "campaign_visual" }));
+    expect(res.status).toBe(200);
+    expect(mocks.generateImageDraftFromHandoff).toHaveBeenCalledWith(
+      "task-1",
+      expect.objectContaining({ mode: "owner" }),
+      expect.objectContaining({ stylePresetId: "campaign_visual" }),
+      expect.anything(),
+    );
+  });
+
+  it("旧请求（不带视觉方向）保持原有请求形状：不注入默认值", async () => {
+    const res = await callPOST("task-1", validBody());
+    expect(res.status).toBe(200);
+    const passed = mocks.generateImageDraftFromHandoff.mock.calls[0][2] as Record<string, unknown>;
+    expect("stylePresetId" in passed).toBe(false);
+  });
+
+  it("非法视觉方向拒绝（invalid_style_preset）且不触发生成", async () => {
+    for (const stylePresetId of ["titanium_luxury", "", 42, { id: "campaign_visual" }]) {
+      mocks.generateImageDraftFromHandoff.mockClear();
+      const res = await callPOST("task-1", validBody({ stylePresetId }));
+      expect(res.status, JSON.stringify(stylePresetId)).toBe(400);
+      expect((await res.json()).error.code).toBe("invalid_style_preset");
+      expect(mocks.generateImageDraftFromHandoff).not.toHaveBeenCalled();
+    }
+  });
+
+  it("TEST 6. 视觉方向不能绕过门禁：缺批准参考仍被拦截（不触发生成）", async () => {
+    mocks.checkCreativeHandoffGate.mockResolvedValue(activeGate({ approvedReferenceImageDataUrl: null }));
+    const res = await callPOST("task-1", validBody({ primaryImagePurpose: "white_studio", stylePresetId: "campaign_visual" }));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error.code).toBe("blocked_needs_visual_reference");
+    expect(mocks.generateImageDraftFromHandoff).not.toHaveBeenCalled();
+  });
+
+  it("TEST 6b. 门禁不可用时 fail-closed：带视觉方向也返回 409，不生成", async () => {
+    mocks.checkCreativeHandoffGate.mockResolvedValue(null);
+    const res = await callPOST("task-1", validBody({ stylePresetId: "macro_detail" }));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error.code).toBe("creative_gate_unavailable");
+    expect(mocks.generateImageDraftFromHandoff).not.toHaveBeenCalled();
+  });
+
+  it("TEST 6c. 无 Handoff 版本时用途证据门禁仍然生效（带视觉方向也不例外）", async () => {
+    mocks.checkCreativeHandoffGate.mockResolvedValue(activeGate({ currentHandoff: null }));
+    const res = await callPOST("task-1", validBody({ primaryImagePurpose: "packaging_bundle", stylePresetId: "packaging_set" }));
+    expect(res.status).toBe(409);
+    expect(mocks.generateImageDraftFromHandoff).not.toHaveBeenCalled();
   });
 });

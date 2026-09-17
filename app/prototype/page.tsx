@@ -1,7 +1,6 @@
-/** 本地 Owner 视觉样板（原型）：工作台。真实数据来自 docs/v4.1/proto-data.json（由 dev.db 只读聚合）。 */
-import { promises as fsp } from "node:fs";
-import path from "node:path";
+/** 本地 Owner 视觉样板（原型）：工作台。真实数据来自原型样例 JSON（读取入口见 ./protoData）。 */
 import Link from "next/link";
+import { loadPrototypeData } from "./protoData";
 import "./prototype.css";
 
 const PRODUCT_THUMB = (
@@ -15,8 +14,7 @@ const PRODUCT_THUMB = (
 );
 
 async function loadData() {
-  const raw = await fsp.readFile(path.join(process.cwd(), "docs", "v4.1", "proto-data.json"), "utf8");
-  return JSON.parse(raw) as Array<Record<string, unknown>>;
+  return loadPrototypeData();
 }
 
 const GROUP_META: Record<string, { title: string; note: string; sticker: string; stickerClass: string }> = {

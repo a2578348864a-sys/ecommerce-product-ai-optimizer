@@ -26,13 +26,37 @@ type FactCandidateView = {
   field: string;
   label: string;
   value: string | number;
-  sourceKind: "seller_sprite_product_facts" | "amazon_browser_evidence" | "product_title" | "human_manual";
+  sourceKind: "seller_sprite_product_facts" | "amazon_browser_evidence" | "amazon_product_info" | "product_title" | "human_manual";
   sourceRef: string;
   /** V3R（契约③ PROVENANCE_MERGE）：同字段其他来源的并列值（多 Provenance 保留，供人工核对） */
   alternateSources?: Array<{ sourceKind: string; sourceRef: string; value: string | number }>;
 };
 
 type ConfirmedFactView = FactCandidateView & { confirmedAt: string; confirmedBy: string };
+
+type AmazonSourceReview = {
+  previewId: string;
+  matchingConfirmedFacts: Array<{
+    field: string;
+    label: string;
+    value: string | number;
+    sourceKind: string;
+    sourceRef: string;
+    confirmedValue: string | number;
+    confirmedSourceKind: string;
+    amazonSourceConfirmed: boolean;
+  }>;
+  newFacts: Array<{ field: string; label: string; value: string | number; sourceKind: string; sourceRef: string }>;
+  conflicts: Array<{
+    field: string;
+    label: string;
+    value: string | number;
+    sourceKind: string;
+    sourceRef: string;
+    confirmedValue: string | number;
+    confirmedSourceKind: string;
+  }>;
+};
 
 const SOURCE_LABELS: Record<string, string> = {
   seller_sprite_product_facts: "SellerSprite 商品数据",
@@ -136,10 +160,16 @@ export function FactCandidateReview({
   taskId,
   storageVersion,
   onChanged,
+  refreshToken = 0,
+  showRecoveryTrigger = true,
 }: {
   taskId: string;
   storageVersion: { resultJsonHash: string; updatedAt: string } | null;
   onChanged: () => void;
+  /** 研究资料编排完成后递增，重新读取服务端候选与确认事实。 */
+  refreshToken?: number;
+  /** 统一入口启用时隐藏历史的局部补齐按钮。 */
+  showRecoveryTrigger?: boolean;
 }) {
   const [candidates, setCandidates] = useState<FactCandidateView[] | null>(null);
   const [confirmed, setConfirmed] = useState<ConfirmedFactView[] | null>(null);
@@ -149,14 +179,14 @@ export function FactCandidateReview({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [amazonSourceReview, setAmazonSourceReview] = useState<AmazonSourceReview | null>(null);
+  const [factStorageVersion, setFactStorageVersion] = useState(storageVersion);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   // V3 UX Closure Manual Fact：手动补充商品事实（SYSTEM CANNOT EXTRACT → 用户手动补充）
   const [manualOpen, setManualOpen] = useState(false);
   const [manualField, setManualField] = useState(MANUAL_FACT_FIELDS[0]?.field ?? "");
   const [manualValue, setManualValue] = useState("");
   const [manualNote, setManualNote] = useState("");
-  // V3 Final PHASE 1：✨ 智能补齐商品资料（采集 Amazon 商品规格 → 生成候选 → 人工确认）
-  const [recovering, setRecovering] = useState(false);
-
   const openAmazonSourceEvidence = useCallback(() => {
     const target = document.getElementById("amazon-source-evidence");
     if (!(target instanceof HTMLDetailsElement)) return;
@@ -175,7 +205,7 @@ export function FactCandidateReview({
         cache: "no-store",
       });
       const json = await res.json() as
-        | { ok: true; data: { candidates: FactCandidateView[]; confirmed: ConfirmedFactView[] } }
+        | { ok: true; data: { candidates: FactCandidateView[]; confirmed: ConfirmedFactView[]; storageVersion: { resultJsonHash: string; updatedAt: string }; amazonSourceReview?: AmazonSourceReview | null } }
         | { ok: false; error?: { message?: string } };
       if (!res.ok || !json.ok) {
         setError((json as { error?: { message?: string } }).error?.message ?? "无法读取待确认商品事实。");
@@ -183,6 +213,17 @@ export function FactCandidateReview({
       }
       setCandidates(json.data.candidates);
       setConfirmed(json.data.confirmed);
+      setFactStorageVersion(json.data.storageVersion);
+      setAmazonSourceReview(json.data.amazonSourceReview ?? null);
+      const hasAmazonPending = Boolean(
+        json.data.amazonSourceReview && (
+          json.data.amazonSourceReview.matchingConfirmedFacts.some((f) => !f.amazonSourceConfirmed) ||
+          json.data.amazonSourceReview.newFacts.length > 0
+        )
+      );
+      if (typeof window !== "undefined" && window.location.hash === "#fact-candidate-review") {
+        setDetailsOpen(true);
+      }
       // V3 Final HWF：Selection Preservation——候选已不存在的勾选项清理（其余保留用户意图）
       const alive = new Set<string>();
       for (const c of json.data.candidates) alive.add(c.candidateId);
@@ -197,7 +238,23 @@ export function FactCandidateReview({
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, refreshToken]);
+
+  useEffect(() => {
+    function checkHash() {
+      if (typeof window === "undefined") return;
+      if (window.location.hash === "#fact-candidate-review") {
+        setDetailsOpen(true);
+        const el = document.getElementById("fact-candidate-review");
+        if (el && "open" in el) {
+          (el as HTMLDetailsElement).open = true;
+        }
+      }
+    }
+    checkHash();
+    window.addEventListener("hashchange", checkHash);
+    return () => window.removeEventListener("hashchange", checkHash);
+  }, []);
 
   function toggle(candidateId: string) {
     setSelected((prev) => {
@@ -246,7 +303,7 @@ export function FactCandidateReview({
   }
 
   async function confirmSelected() {
-    if (selected.size === 0 || !storageVersion) return;
+    if (selected.size === 0 || !factStorageVersion) return;
     setSaving(true);
     setError("");
     setNotice("");
@@ -265,7 +322,7 @@ export function FactCandidateReview({
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/fact-candidates`, {
         method: "POST",
         headers: buildFetchHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ selections, expectedStorageVersion: storageVersion }),
+        body: JSON.stringify({ selections, expectedStorageVersion: factStorageVersion }),
         signal: AbortSignal.timeout(60_000),
       });
       const json = await res.json() as ConfirmResponse;
@@ -296,8 +353,43 @@ export function FactCandidateReview({
     }
   }
 
+  type AmazonSourceConfirmResponse =
+    | { ok: true; data: { confirmedCount: number; alreadyConfirmedCount?: number } }
+    | { ok: false; error?: { code?: string; message?: string } };
+
+  async function confirmAmazonSource() {
+    if (!factStorageVersion || !amazonSourceReview) return;
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/fact-candidates`, {
+        method: "POST",
+        headers: buildFetchHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          amazonSourceConfirmation: { previewId: amazonSourceReview.previewId },
+          expectedStorageVersion: factStorageVersion,
+        }),
+        signal: AbortSignal.timeout(60_000),
+      });
+      const json = await res.json() as AmazonSourceConfirmResponse;
+      if (!res.ok || !json.ok) {
+        setError(json.ok ? "Amazon 页面证据确认失败，请刷新后重试。" : (json.error?.message ?? "Amazon 页面证据确认失败，请刷新后重试。"));
+        if (!json.ok && (json.error?.code === "task_result_conflict" || json.error?.code === "preview_not_found")) await load();
+        return;
+      }
+      setNotice("已确认 Amazon 页面证据；原事实值未改变，Amazon 来源已补充并完成闭环。");
+      await load();
+      onChanged();
+    } catch {
+      setError("Amazon 页面证据确认失败，请重试。");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function addManualFact() {
-    if (!storageVersion) return;
+    if (!factStorageVersion) return;
     const field = manualField.trim();
     const value = manualValue.trim();
     if (!field || !value) {
@@ -317,7 +409,7 @@ export function FactCandidateReview({
             confirmed: true,
             value,
           }],
-          expectedStorageVersion: storageVersion,
+          expectedStorageVersion: factStorageVersion,
         }),
         signal: AbortSignal.timeout(60_000),
       });
@@ -352,124 +444,167 @@ export function FactCandidateReview({
     }
   }
 
-  /** V3 Final PHASE 1：✨ 智能补齐商品资料——采集 Amazon 商品规格 → 生成候选 → 用户 Review/Confirm */
-  async function runRecovery() {
-    if (recovering || !storageVersion) return;
-    setRecovering(true);
-    setError("");
-    setNotice("");
-    try {
-      // 1) 采集（同一受控会话：6 字段 + Product Information 规格）
-      const collectRes = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/browser-evidence`, {
-        method: "POST",
-        headers: buildFetchHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ action: "collect" }),
-        signal: AbortSignal.timeout(120_000),
-      });
-      const collectJson = await collectRes.json() as
-        | { ok: true; data: { evidenceId: string; demo?: boolean } }
-        | { ok: false; error?: { code?: string; message?: string } };
-      if (!collectRes.ok || !collectJson.ok) {
-        const error = (collectJson as { error?: { code?: string; message?: string } }).error ?? {};
-        if (error.code === "task_asin_unbound") {
-          setError("该商品缺少 Amazon 商品来源（ASIN），无法自动补齐。可先补充来源，或使用下方「手动补充商品事实」。");
-          return;
-        }
-        if (error.code === "local_environment_required") {
-          setError("商品规格自动补齐仅在本机研究环境可用（公网为演示回放）。可先使用下方「手动补充商品事实」。");
-          return;
-        }
-        setError(error.message ?? "智能补齐失败，请稍后重试。");
-        return;
-      }
-      // 2) 保存快照（含 Product Information）→ 候选随之出现（服务端确定性提取）
-      const saveRes = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/browser-evidence`, {
-        method: "POST",
-        headers: buildFetchHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({
-          action: "save",
-          evidenceId: collectJson.data.evidenceId,
-          expectedStorageVersion: storageVersion,
-        }),
-        signal: AbortSignal.timeout(60_000),
-      });
-      const saveJson = await saveRes.json() as { ok: boolean; error?: { code?: string; message?: string } };
-      if (!saveRes.ok || !saveJson.ok) {
-        const error = saveJson.error ?? {};
-        if (error.code === "storage_version_required" || error.code === "task_result_conflict") {
-          setError("内容刚刚发生变化，请刷新后重试。");
-          onChanged();
-          return;
-        }
-        setError(error.message ?? "补齐结果保存失败，请稍后重试。");
-        return;
-      }
-      await load();
-      onChanged();
-      if (collectJson.data.demo) {
-        setNotice("已读取演示采集快照（非实时访问 Amazon）；请在下方核对后确认。");
-      } else {
-        setNotice("已补齐商品规格资料，请在下方核对后确认。");
-      }
-    } catch {
-      setError("智能补齐失败，请检查网络后重试。");
-    } finally {
-      setRecovering(false);
-    }
-  }
-
   if (loading && candidates === null && confirmed === null) {
     return (
-      <div id="fact-candidate-review" className="mt-4 scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500" data-testid="fact-candidates-loading">
-        <Loader2 className="mr-1 inline size-4 animate-spin" /> 正在从研究证据整理待确认商品事实…
-      </div>
+      <details id="fact-candidate-review" className="mt-4 scroll-mt-6 rounded-2xl border border-slate-200/90 bg-white shadow-xs overflow-hidden" data-testid="fact-candidate-review">
+        <summary className="cursor-pointer bg-slate-50/70 px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-100/70 transition-colors flex items-center justify-between select-none">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-slate-900">商品事实确认</span>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+              正在整理…
+            </span>
+          </div>
+          <span className="text-xs font-normal text-slate-400">点击展开</span>
+        </summary>
+        <div className="p-4 text-sm text-slate-500 border-t border-slate-100" data-testid="fact-candidates-loading">
+          <Loader2 className="mr-1 inline size-4 animate-spin" /> 正在从研究证据整理待确认商品事实…
+        </div>
+      </details>
     );
   }
 
+  const hasPendingAmazonEvidence = Boolean(
+    amazonSourceReview && (
+      amazonSourceReview.matchingConfirmedFacts.some((item) => !item.amazonSourceConfirmed) ||
+      amazonSourceReview.newFacts.length > 0
+    )
+  );
   const total = (candidates?.length ?? 0) + (confirmed?.length ?? 0);
-  if (total === 0 && !error) {
+  if (total === 0 && !amazonSourceReview && !error) {
     return (
-      <div id="fact-candidate-review" className="mt-4 scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500" data-testid="fact-candidates-empty">
-        暂无待确认商品事实（来源：SellerSprite 商品数据 / Amazon 原始页面证据 / 商品标题）。
-      </div>
+      <details
+        id="fact-candidate-review"
+        open={detailsOpen}
+        onToggle={(e) => setDetailsOpen(e.currentTarget.open)}
+        className="mt-4 scroll-mt-6 rounded-2xl border border-slate-200/90 bg-white shadow-xs overflow-hidden"
+        data-testid="fact-candidate-review"
+      >
+        <summary className="cursor-pointer bg-slate-50/70 px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-100/70 transition-colors flex items-center justify-between select-none">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-slate-900">商品事实确认</span>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+              待确认 0 项 · 已确认 0 项
+            </span>
+          </div>
+          <span className="text-xs font-normal text-slate-400">点击展开</span>
+        </summary>
+        <div className="p-4 text-sm text-slate-500 border-t border-slate-100" data-testid="fact-candidates-empty">
+          暂无待确认商品事实（来源：SellerSprite 商品数据 / Amazon 原始页面证据 / 商品标题）。
+        </div>
+      </details>
     );
   }
+
+  const pendingCount = (candidates?.length ?? 0) + (hasPendingAmazonEvidence ? 1 : 0);
+  const confirmedCount = confirmed?.length ?? 0;
 
   return (
-    <section id="fact-candidate-review" className="mt-4 scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-4" data-testid="fact-candidate-review">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-bold text-slate-900">
-          商品事实确认 <span className="ml-1 rounded-md bg-indigo-50 px-1.5 py-0.5 text-[11px] font-semibold text-indigo-700">来自研究证据 · 人工确认</span>
-        </h3>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            disabled={recovering || saving}
-            onClick={() => void runRecovery()}
-            className="inline-flex items-center gap-1 rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-semibold text-sky-700 hover:bg-sky-100 disabled:opacity-50"
-            data-testid="smart-recovery-trigger"
-          >
-            {recovering ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-            {recovering ? "正在补齐商品资料…" : "✨ 智能补齐商品资料"}
-          </button>
-          <button
-            type="button"
-            disabled={saving || selected.size === 0}
-            onClick={() => void confirmSelected()}
-            className="inline-flex items-center gap-1 rounded-lg border border-teal-300 bg-teal-50 px-3 py-1.5 text-sm font-semibold text-teal-700 hover:bg-teal-100 disabled:opacity-50"
-          >
-            {saving ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-            确认所选事实（{selected.size}）
-          </button>
+    <details
+      id="fact-candidate-review"
+      open={detailsOpen}
+      onToggle={(e) => setDetailsOpen(e.currentTarget.open)}
+      className="mt-4 scroll-mt-6 rounded-2xl border border-slate-200/90 bg-white shadow-xs overflow-hidden"
+      data-testid="fact-candidate-review"
+    >
+      <summary className="cursor-pointer bg-slate-50/70 px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-100/70 transition-colors flex items-center justify-between select-none">
+        <div className="flex items-center gap-2">
+          <span className="font-bold text-slate-900">商品事实确认</span>
+          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+            待确认 {pendingCount} 项 · 已确认 {confirmedCount} 项
+          </span>
         </div>
-      </div>
+        <span className="text-xs font-normal text-slate-400">
+          点击展开核对或补充商品事实
+        </span>
+      </summary>
+      <div className="p-4 sm:p-5 border-t border-slate-100 space-y-3.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-slate-500">
+            系统从已有研究证据提取以下候选；勾选并确认后即成为本任务已确认事实。
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            {showRecoveryTrigger ? (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => setNotice("请使用上方「补齐研究资料」统一采集 Amazon 商品资料。")}
+                className="inline-flex items-center gap-1 rounded-lg border border-sky-300 bg-sky-50 px-2.5 py-1 text-xs sm:text-sm font-semibold text-sky-700 hover:bg-sky-100 disabled:opacity-50 transition-colors"
+                data-testid="smart-recovery-trigger"
+              >
+                <Sparkles className="size-3.5" />
+                ✨ 智能补齐商品资料
+              </button>
+            ) : null}
+            <button
+              type="button"
+              disabled={saving || selected.size === 0}
+              onClick={() => void confirmSelected()}
+              className="inline-flex items-center gap-1 rounded-lg border border-teal-300 bg-teal-50 px-2.5 py-1 text-xs sm:text-sm font-semibold text-teal-700 hover:bg-teal-100 disabled:opacity-50 transition-colors"
+            >
+              {saving ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
+              确认所选事实（{selected.size}）
+            </button>
+          </div>
+        </div>
       <p className="mt-1 text-xs text-slate-500">
         系统从已有研究证据提取以下候选；勾选并「确认」后即成为本任务已确认事实（可修改值，来源保持不变）。
-        「✨ 智能补齐商品资料」会读取该商品在 Amazon 的规格资料（材质/尺寸/重量/清洁等），生成候选后仍由你确认。
+        Amazon 商品资料由上方「补齐研究资料」统一采集；候选只在服务端读取确定性来源后生成，仍需人工确认。
         AI 摘要、评论与供应商声称不会自动成为候选。
       </p>
       {error && <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">{error}</p>}
       {notice && <p className="mt-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-700">{notice}</p>}
+
+      {amazonSourceReview && (
+        <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50/60 px-3 py-3" data-testid="amazon-source-confirmation">
+          <p className="text-sm font-bold text-indigo-900">Amazon 页面证据待确认</p>
+          {amazonSourceReview.matchingConfirmedFacts.length > 0 && (
+            <>
+              <p className="mt-1 text-xs leading-5 text-indigo-800">
+                Amazon 本次验证到 {amazonSourceReview.matchingConfirmedFacts.length} 个与你已确认事实一致的字段。确认后不会覆盖现有事实，只会补充 Amazon 来源。
+              </p>
+              <ul className="mt-2 space-y-1 text-xs text-slate-700">
+                {amazonSourceReview.matchingConfirmedFacts.map((item) => (
+                  <li key={`${item.field}:${item.sourceRef}`} className="flex items-start justify-between gap-2 rounded-lg bg-white/70 px-2.5 py-1.5">
+                    <span className="font-semibold">{item.label}</span>
+                    <span>
+                      {String(item.value)}
+                      {item.confirmedValue !== undefined && String(item.value).trim() !== String(item.confirmedValue).trim() && (
+                        <span className="ml-1 font-normal text-[11px] text-slate-500">（当前：{String(item.confirmedValue)}）</span>
+                      )}
+                    </span>
+                    <span className="shrink-0 text-[11px] text-slate-500">Amazon 页面证据</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {amazonSourceReview.newFacts.length > 0 && (
+            <p className="mt-2 text-xs text-amber-800">另有 {amazonSourceReview.newFacts.length} 个新字段，请在下方事实候选中逐项确认。</p>
+          )}
+          {amazonSourceReview.conflicts.length > 0 && (
+            <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-2 text-xs text-rose-800">
+              <p className="font-semibold">Amazon 数据与已确认事实存在冲突，请走下方事实复核，不能直接确认页面证据。</p>
+              <ul className="mt-1 space-y-0.5">
+                {amazonSourceReview.conflicts.map((item) => <li key={`${item.field}:${item.sourceRef}`}>{item.label}：已确认“{String(item.confirmedValue)}”，Amazon 为“{String(item.value)}”</li>)}
+              </ul>
+            </div>
+          )}
+          {amazonSourceReview.matchingConfirmedFacts.length > 0 && amazonSourceReview.newFacts.length === 0 && amazonSourceReview.conflicts.length === 0 && (
+            amazonSourceReview.matchingConfirmedFacts.every((item) => item.amazonSourceConfirmed)
+              ? <p className="mt-2 text-xs font-semibold text-teal-700">Amazon 来源已保留，正在完成预览闭环。</p>
+              : <button
+                type="button"
+                disabled={saving}
+                onClick={() => void confirmAmazonSource()}
+                className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-indigo-300 bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                data-testid="confirm-amazon-source"
+              >
+                {saving ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
+                确认此 Amazon 页面证据
+              </button>
+          )}
+        </div>
+      )}
 
       {confirmed && confirmed.length > 0 && (
         <div className="mt-3">
@@ -713,6 +848,7 @@ export function FactCandidateReview({
           </div>
         )}
       </div>
-    </section>
+      </div>
+    </details>
   );
 }

@@ -18,6 +18,7 @@ function fakeBridge(script: {
   commands?: Array<{ type: string; respond: () => Record<string, unknown> }>;
   /** 记录 registerJob 调用次数（V3 Final R13：upload 重试必须重新注册 job） */
   onRegisterJob?: (call: number) => void;
+  onEnqueue?: (command: { type: string }) => void;
 }) {
   let jobCounter = 0;
   const bridge = {
@@ -30,7 +31,8 @@ function fakeBridge(script: {
       script.onRegisterJob?.(jobCounter);
       return `fake-job-${jobCounter}`;
     },
-    async enqueue(_jobId: string, _command: { type: string }) {
+    async enqueue(_jobId: string, command: { type: string }) {
+      script.onEnqueue?.(command);
       return { duplicate: false };
     },
     async waitResult(): Promise<Record<string, unknown>> {
@@ -49,6 +51,13 @@ function tinyPngFile(): string {
   return path;
 }
 
+function temporaryImagePath(prefix = "v35-driver-test-"): { dir: string; path: string } {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  const path = join(dir, "candidate.png");
+  writeFileSync(path, Buffer.from([137, 80, 78, 71]));
+  return { dir, path };
+}
+
 /** 本地 tiny PNG 的 base64 长度（预览 Identity Proof 需要匹配） */
 function tinyPngBase64Length(): number {
   const bytes = [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0, 31, 21, 196, 137, 0, 0, 0, 13, 73, 68, 65, 84, 120, 156, 99, 248, 207, 192, 80, 15, 0, 4, 132, 1, 129, 138, 153, 49, 8, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130];
@@ -62,7 +71,107 @@ function capture(promise: Promise<unknown>): Promise<string> {
   );
 }
 
+/** 同 capture，但保留结构化错误详情（用于断言 code/message/diagnosticCode 三件事一致） */
+function captureDetailed(
+  promise: Promise<unknown>,
+): Promise<{ code: string; message: string; diagnosticCode?: string }> {
+  return promise.then(
+    () => ({ code: "NO_ERROR", message: "" }),
+    (error) => {
+      const normalized = normalizeImageAcquisitionError(error);
+      return normalized;
+    },
+  );
+}
+
 describe("Native1688ExtensionDriver 编排错误映射", () => {
+  it("本地图片必须位于受批准的服务端临时目录", async () => {
+    const { dir, path } = temporaryImagePath("unapproved-image-");
+    const bridgeFactory = vi.fn(() => fakeBridge({}));
+    try {
+      const code = await capture(acquireByImage({
+        localImagePath: path,
+        taskId: "t1",
+        candidateId: "c1",
+        bridgeFactory,
+      }));
+      expect(code).toBe("invalid_image_url");
+      expect(bridgeFactory).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("本地图片路径中的 .. 逃逸一律拒绝", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "v35-driver-test-"));
+    const bridgeFactory = vi.fn(() => fakeBridge({}));
+    try {
+      const code = await capture(acquireByImage({
+        localImagePath: join(dir, "..", "escape.png"),
+        taskId: "t1",
+        candidateId: "c1",
+        bridgeFactory,
+      }));
+      expect(code).toBe("invalid_image_url");
+      expect(bridgeFactory).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("不存在的本地图片文件拒绝且不启动 bridge", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "v35-driver-test-"));
+    const bridgeFactory = vi.fn(() => fakeBridge({}));
+    try {
+      const code = await capture(acquireByImage({
+        localImagePath: join(dir, "missing.png"),
+        taskId: "t1",
+        candidateId: "c1",
+        bridgeFactory,
+      }));
+      expect(code).toBe("invalid_image_url");
+      expect(bridgeFactory).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("本地图片目录本身拒绝", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "v35-driver-test-"));
+    const bridgeFactory = vi.fn(() => fakeBridge({}));
+    try {
+      const code = await capture(acquireByImage({
+        localImagePath: dir,
+        taskId: "t1",
+        candidateId: "c1",
+        bridgeFactory,
+      }));
+      expect(code).toBe("invalid_image_url");
+      expect(bridgeFactory).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("本地图片超过 30MB 仍拒绝", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "v35-driver-test-"));
+    const path = join(dir, "large.png");
+    const bridgeFactory = vi.fn(() => fakeBridge({}));
+    try {
+      writeFileSync(path, Buffer.alloc(30 * 1024 * 1024 + 1));
+      const code = await capture(acquireByImage({
+        localImagePath: path,
+        taskId: "t1",
+        candidateId: "c1",
+        bridgeFactory,
+      }));
+      expect(code).toBe("invalid_image_url");
+      expect(bridgeFactory).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("扩展未见（extensionSeen=false）→ EXTENSION_NOT_INSTALLED", { timeout: 60_000 }, async () => {
     const path = tinyPngFile();
     try {
@@ -119,7 +228,7 @@ describe("Native1688ExtensionDriver 编排错误映射", () => {
     }
   });
 
-  it("页面非上传页（两次自动导航+轮询后仍非上传页）→ PAGE_IDENTITY_UNKNOWN", { timeout: 90_000 }, async () => {
+  it("页面非上传页（两次自动导航+轮询后仍非上传页）→ PAGE_IDENTITY_UNKNOWN", { timeout: 150_000 }, async () => {
     const path = tinyPngFile();
     try {
       const unknownState = () => ({ ok: true, pageKind: "unknown", uploadTarget: { found: false } });
@@ -147,6 +256,46 @@ describe("Native1688ExtensionDriver 编排错误映射", () => {
       rmSync(join(path, ".."), { recursive: true, force: true });
     }
   });
+
+  it("确定性不支持 DOM（已在上传页但 documentReadyState=complete 且找不到 uploadTarget）→ 自动刷新一次页面自救 → 仍失败则 page_identity_unknown（零 30s 导航重试）", async () => {
+    const path = tinyPngFile();
+    try {
+      const state = () => ({
+        ok: true,
+        pageKind: "upload_page",
+        documentReadyState: "complete",
+        uploadTarget: { found: false },
+      });
+      const enqueuedCommands: string[] = [];
+      const fb = fakeBridge({
+        onEnqueue: (c) => enqueuedCommands.push(c.type),
+        commands: [
+          // 第 1 轮：初始 getState + 1 次短时复核 getState
+          // 第 2 轮（刷新页面后重新探测）：getState + 1 次短时复核 getState
+          { type: "getState", respond: state },
+          { type: "getState", respond: state },
+          { type: "getState", respond: state },
+          { type: "getState", respond: state },
+          // 刷新命令本身由助手执行，结果不影响 driver 判定
+          { type: "reloadTab", respond: () => ({ ok: true }) },
+        ],
+      });
+      const code = await capture(acquireByImage({
+        localImagePath: path,
+        taskId: "t1",
+        candidateId: "c1",
+        bridgeFactory: () => fb,
+      }));
+      expect(code).toBe("page_identity_unknown");
+      // 刷新自救只允许一次（禁止无限刷新循环）
+      expect(enqueuedCommands.filter((c) => c === "reloadTab")).toHaveLength(1);
+      // 确认未进行任何无意义的 navigateUploadPage 命令下发
+      expect(enqueuedCommands).not.toContain("navigateUploadPage");
+      expect(enqueuedCommands).toEqual(["getState", "getState", "reloadTab", "getState", "getState"]);
+    } finally {
+      rmSync(join(path, ".."), { recursive: true, force: true });
+    }
+  }, 30_000);
 
   it("结果页 → 第 1 次导航轮询超时 → 第 2 次导航成功 → 全链正常", { timeout: 90_000 }, async () => {
     const path = tinyPngFile();
@@ -261,7 +410,7 @@ describe("Native1688ExtensionDriver 编排错误映射", () => {
     }
   });
 
-  it("扩展 idle（SW 在但无 1688 页面 tab）→ EXTENSION_DISCONNECTED（no_1688_tab）", async () => {
+  it("扩展在线但没有 1688 页面 tab → no_1688_tab（不再误报为助手连接中断）", async () => {
     const path = tinyPngFile();
     try {
       const fb = fakeBridge({
@@ -269,19 +418,23 @@ describe("Native1688ExtensionDriver 编排错误映射", () => {
           { type: "getState", respond: () => ({ ok: false, code: "no_1688_tab" }) },
         ],
       });
-      const code = await capture(acquireByImage({
+      const result = await captureDetailed(acquireByImage({
         localImagePath: path,
         taskId: "t1",
         candidateId: "c1",
         bridgeFactory: () => fb,
       }));
-      expect(code).toBe("extension_disconnected");
+      // 助手是好的，缺的只是一个 1688 页面：必须与"未安装助手/助手断开"区分开，
+      // 否则用户会被指引去重装助手，而真实下一步只是打开 1688。
+      expect(result.code).toBe("no_1688_tab");
+      expect(result.message).toContain("1688");
+      expect(result.diagnosticCode).toBe("extension_ready_no_tab");
     } finally {
       rmSync(join(path, ".."), { recursive: true, force: true });
     }
   });
 
-  it("扩展已加载但 content script 不可达 → EXTENSION_DISCONNECTED", async () => {
+  it("扩展已加载但 content script 不可达 → page_identity_unknown（指向刷新页面，而非重装助手）", async () => {
     const path = tinyPngFile();
     try {
       const fb = fakeBridge({
@@ -289,13 +442,15 @@ describe("Native1688ExtensionDriver 编排错误映射", () => {
           { type: "getState", respond: () => ({ ok: false, code: "content_script_unreachable" }) },
         ],
       });
-      const code = await capture(acquireByImage({
+      const result = await captureDetailed(acquireByImage({
         localImagePath: path,
         taskId: "t1",
         candidateId: "c1",
         bridgeFactory: () => fb,
       }));
-      expect(code).toBe("extension_disconnected");
+      expect(result.code).toBe("page_identity_unknown");
+      expect(result.diagnosticCode).toBe("content_script_unreachable");
+      expect(result.message).toContain("刷新");
     } finally {
       rmSync(join(path, ".."), { recursive: true, force: true });
     }
@@ -394,8 +549,12 @@ describe("Native1688ExtensionDriver 编排错误映射", () => {
   it("错误归一化：SourcingAcquisitionError 透传 code/status", () => {
     const normalized = normalizeImageAcquisitionError(new SourcingAcquisitionError("auth_required", 401, "msg"));
     expect(normalized).toEqual({ code: "auth_required", status: 401, message: "msg" });
+    const phaseError = new SourcingAcquisitionError("search_trigger_not_confirmed", 422, "msg") as SourcingAcquisitionError & { diagnosticCode?: string };
+    phaseError.diagnosticCode = "result_page_proof_failed";
+    expect(normalizeImageAcquisitionError(phaseError).diagnosticCode).toBe("result_page_proof_failed");
     const generic = normalizeImageAcquisitionError(new Error("boom"));
     expect(generic.code).toBe("extension_bridge_not_available");
+    expect(generic.diagnosticCode).toBeUndefined();
   });
 
   // V3 Final R13：upload 重试必须重新注册 job（Bridge 图片一次性消费；防止 job_image_consumed）
@@ -451,6 +610,18 @@ describe("fetchImageWithRedirectGuard", () => {
   function imageResponse(body: string, init?: ResponseInit): Response {
     return new Response(body, { status: 200, headers: { "content-type": "image/png" }, ...init });
   }
+
+  it("初始 URL 未通过 SSRF 校验时不发起 fetch", async () => {
+    const fetchMock = vi.fn(async () => imageResponse("should-not-fetch"));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await expect(fetchImageWithRedirectGuard(new URL("https://192.168.1.5/private.png"), AbortSignal.timeout(5_000)))
+        .rejects.toMatchObject({ code: "invalid_image_url" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 
   it("正常 200 → 返回最终响应", async () => {
     const fetchMock = vi.fn(async () => imageResponse("png-bytes"));

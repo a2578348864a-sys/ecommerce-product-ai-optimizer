@@ -817,6 +817,32 @@ export function parseProductResearchRecord(value: unknown): ProductResearchRecor
   return record;
 }
 
+/**
+ * Markers that identify a modern (contract-era) research task.
+ *
+ * Any one of them is written by the candidate → task → research flow, long before
+ * the research contract itself exists. Therefore a task carrying one of these
+ * markers but no `researchRecord` means "research not completed yet" — it is NOT a
+ * legacy record. Records written before the research contract carry none of them.
+ *
+ * Single source of truth: the research lifecycle reader and the creative/Listing
+ * gate must not each maintain their own version of this judgement.
+ */
+export const MODERN_RESEARCH_TASK_MARKERS = [
+  "candidateToTask",
+  "candidateAnalysisContext",
+  "researchRecord",
+  "researchVerification",
+  "researchCompletion",
+  "factCandidates",
+] as const;
+
+export function isModernResearchTaskShape(value: unknown): boolean {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return MODERN_RESEARCH_TASK_MARKERS.some((key) => Object.prototype.hasOwnProperty.call(record, key));
+}
+
 export function getProductResearchRecord(value: unknown): ProductResearchRecordV1 | null {
   if (!isRecord(value)) return null;
   return parseProductResearchRecord(value.researchRecord);

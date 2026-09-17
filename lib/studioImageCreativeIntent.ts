@@ -1,6 +1,14 @@
+import {
+  DEFAULT_IMAGE_STYLE_PRESET_ID,
+  getImageStylePreset,
+  isImageStylePresetId,
+  type ImageStylePresetId,
+} from "@/lib/imageStyleLibrary";
+
 export const STUDIO_IMAGE_PRIMARY_PURPOSES = [
   { id: "white_studio", label: "白底主图/棚拍" },
   { id: "selling_point_infographic", label: "卖点信息图" },
+  { id: "lifestyle_in_use", label: "使用场景图" },
   { id: "dimension_specification", label: "尺寸规格图" },
   { id: "detail_closeup", label: "产品细节特写" },
   { id: "packaging_bundle", label: "包装/套装展示" },
@@ -20,10 +28,39 @@ export const STUDIO_IMAGE_LIFESTYLE_SCENES = [
 export type StudioImagePrimaryPurpose = (typeof STUDIO_IMAGE_PRIMARY_PURPOSES)[number]["id"];
 export type StudioImageLifestyleScene = (typeof STUDIO_IMAGE_LIFESTYLE_SCENES)[number]["id"];
 
+/**
+ * Image Studio 对用户展示的七套电商模板入口。
+ *
+ * comparison/custom 仍保留在旧 creative-intent 合同中用于历史数据读取，
+ * 但不再作为标准模板入口展示。使用场景模板复用既有
+ * lifestyle_in_use 使用独立主用途值；lifestyleScene 仍用于选择具体环境。
+ */
+export const IMAGE_STUDIO_TEMPLATE_OPTIONS = [
+  { templateId: "main_white_studio", label: "白底主图", primaryImagePurpose: "white_studio", lifestyleScene: "none" },
+  { templateId: "selling_points", label: "卖点展示", primaryImagePurpose: "selling_point_infographic", lifestyleScene: "none" },
+  { templateId: "dimension_specs", label: "尺寸规格", primaryImagePurpose: "dimension_specification", lifestyleScene: "none" },
+  { templateId: "detail_closeup", label: "细节特写", primaryImagePurpose: "detail_closeup", lifestyleScene: "none" },
+  { templateId: "lifestyle_in_use", label: "使用场景", primaryImagePurpose: "lifestyle_in_use", lifestyleScene: "home_lifestyle" },
+  { templateId: "packaging_bundle", label: "包装清单", primaryImagePurpose: "packaging_bundle", lifestyleScene: "none" },
+  { templateId: "usage_steps", label: "使用步骤", primaryImagePurpose: "usage_steps", lifestyleScene: "none" },
+] as const;
+
+export type ImageStudioTemplateOption = (typeof IMAGE_STUDIO_TEMPLATE_OPTIONS)[number];
+
 export type StudioImageCreativeIntent = {
   primaryImagePurpose: StudioImagePrimaryPurpose;
   lifestyleScene: StudioImageLifestyleScene;
   customImagePurpose: string;
+  /**
+   * Image Style Library V1：视觉方向（纯视觉表达维度，与图片用途正交）。
+   * 只影响构图/灯光/环境/色彩/镜头语言/道具与文字策略，永不改变商品事实。
+   *
+   * 该字段**只属于 Image Studio 独立创作入口**：任务链路（Creative Handoff 偏好、
+   * TaskStudioPreparation）不携带它，其请求体受严格字段白名单校验，多带一个键会 400。
+   * 因此共享的默认值与归一化函数都不注入该字段，默认值只在 Studio 请求构建
+   * （`lib/client/studioImageRequest.ts`）与 Studio 服务端解析（`resolveStudioImageCreativeIntent`）补齐。
+   */
+  stylePresetId?: ImageStylePresetId;
 };
 
 export const DEFAULT_STUDIO_IMAGE_CREATIVE_INTENT: StudioImageCreativeIntent = {
@@ -42,14 +79,28 @@ export function isStudioImageLifestyleScene(value: unknown): value is StudioImag
     && STUDIO_IMAGE_LIFESTYLE_SCENES.some((candidate) => candidate.id === value);
 }
 
+/** 已解析视觉方向的意图：只由 `resolveStudioImageCreativeIntent` 产出。 */
+export type NormalizedStudioImageCreativeIntent = StudioImageCreativeIntent & {
+  stylePresetId: ImageStylePresetId;
+};
+
+/**
+ * 归一化用途/场景组合，并**原样保留**调用方已显式给出的视觉方向。
+ * 这里不注入默认风格：本函数是 Studio 与任务链路共用的，注入会让任务链路
+ * 的严格字段白名单请求多出一个未知键（见 `StudioImageCreativeIntent.stylePresetId` 注释）。
+ */
 export function normalizeStudioImageCreativeIntent(
   intent: StudioImageCreativeIntent,
 ): StudioImageCreativeIntent {
+  // 视觉方向与图片用途正交：切换用途不会重置用户显式选择的风格。
+  const stylePresetId = isImageStylePresetId(intent.stylePresetId) ? intent.stylePresetId : undefined;
+  const style = stylePresetId ? { stylePresetId } : {};
   if (intent.primaryImagePurpose === "white_studio") {
     return {
       primaryImagePurpose: "white_studio",
       lifestyleScene: "none",
       customImagePurpose: "",
+      ...style,
     };
   }
   return {
@@ -58,6 +109,7 @@ export function normalizeStudioImageCreativeIntent(
     customImagePurpose: intent.primaryImagePurpose === "custom"
       ? intent.customImagePurpose.trim()
       : "",
+    ...style,
   };
 }
 
@@ -70,7 +122,14 @@ export function lifestyleSceneLabel(scene: StudioImageLifestyleScene) {
 }
 
 export function resolveStudioImageCreativeIntent(intent: StudioImageCreativeIntent) {
-  const normalized = normalizeStudioImageCreativeIntent(intent);
+  // 视觉方向的默认值在这里补齐：解析阶段是 Studio 服务端/生成器的唯一入口，
+  // 因此默认风格只作用于 Studio 链路，不会写回共享的意图对象。
+  const normalized: NormalizedStudioImageCreativeIntent = {
+    ...normalizeStudioImageCreativeIntent(intent),
+    stylePresetId: isImageStylePresetId(intent.stylePresetId)
+      ? intent.stylePresetId
+      : DEFAULT_IMAGE_STYLE_PRESET_ID,
+  };
   const purposeDirections = {
     white_studio: {
       imageType: "product_main" as const,
@@ -85,6 +144,13 @@ export function resolveStudioImageCreativeIntent(intent: StudioImageCreativeInte
       background: "Clean ecommerce information background.",
       composition: "Product-led layout with restrained callout zones; do not invent factual labels.",
       direction: "使用清晰的信息图构图并预留可复核的卖点文字区域，不添加未经确认的标签",
+    },
+    lifestyle_in_use: {
+      imageType: "lifestyle_scene" as const,
+      visualStyle: "home" as const,
+      background: "Believable lifestyle environment with the product as the clear subject.",
+      composition: "Natural in-use composition with clear product scale and restrained supporting context.",
+      direction: "使用可信的生活场景突出商品主体，保持商品尺度清楚并预留适量留白",
     },
     dimension_specification: {
       imageType: "selling_point_display" as const,
@@ -163,6 +229,10 @@ export function resolveStudioImageCreativeIntent(intent: StudioImageCreativeInte
     label: normalized.primaryImagePurpose === "custom"
       ? normalized.customImagePurpose
       : primaryPurposeLabel(normalized.primaryImagePurpose),
+    stylePresetLabel: getImageStylePreset(normalized.stylePresetId).label,
+    // imageType 只由主用途决定，生活场景只做视觉修饰（visualStyle/background/composition）。
+    // 使用场景的主用途已在 purposeDirections 内自带 lifestyle_scene，无需按场景二次改写；
+    // 否则 detail_closeup + outdoor_travel 等既有用途会被错误降级为 lifestyle_scene。
     imageType: purposeDirections.imageType,
     visualStyle: sceneDirections?.visualStyle ?? purposeDirections.visualStyle,
     background: sceneDirections?.background ?? purposeDirections.background,

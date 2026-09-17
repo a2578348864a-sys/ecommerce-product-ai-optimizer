@@ -6,9 +6,9 @@
 
 - **评测时间**：2026-06-21
 - **评测方式**：AI 拟人模拟（非真人测试）
-- **生产服务器**：112.124.54.81
-- **生产代码 HEAD**：`7b83cdfc07dc14bb2e3f0b363f41bf575507cdc9`
-- **origin/main HEAD**：`39d1d27`（评测时 latest）
+- **生产服务器**：your-server-ip
+- **生产代码 HEAD**：`<redacted-hash>`
+- **origin/main HEAD**：`<redacted-hash>`（评测时 latest）
 - **数据库状态**：ViralAnalysisRecord 80 条，0 mock/test/乱码，quick_check ok
 - **页面状态**：9/9 页面 200，/api/health 200，PM2 online
 

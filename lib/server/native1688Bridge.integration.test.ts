@@ -9,7 +9,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
 import { resolve } from "node:path";
 import { randomBytes } from "node:crypto";
-import { Native1688BridgeClient } from "@/lib/server/native1688BridgeClient";
+import {
+  Native1688BridgeClient,
+  stopSharedBridge,
+  freePortIfOccupied,
+} from "@/lib/server/native1688BridgeClient";
 
 const BRIDGE_SCRIPT = resolve(process.cwd(), "extensions", "qingxuan-1688-helper", "bridge", "server.mjs");
 const TOKEN = randomBytes(32).toString("hex");
@@ -23,9 +27,11 @@ async function rawFetch(path: string, options: RequestInit = {}) {
 }
 
 beforeAll(async () => {
-  // 用环境变量覆盖端口（server.mjs 固定 53318；测试用独立进程 + 端口重定向通过 args 不支持——
-  // 这里直接 spawn 后 health 探测 53318；为避免与正式冲突，测试串行运行）
-  bridgeProcess = spawn(process.execPath, [BRIDGE_SCRIPT, "--token", TOKEN], {
+  // 确保测试前关闭 sharedBridge，避免端口/Token 冲突
+  await stopSharedBridge();
+  await freePortIfOccupied(53318);
+
+  bridgeProcess = spawn(process.execPath, [BRIDGE_SCRIPT, "--token", TOKEN, "--port", "53318"], {
     shell: false,
     windowsHide: true,
     stdio: "ignore",

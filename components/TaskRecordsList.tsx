@@ -38,13 +38,16 @@ import {
 } from "@/lib/taskResearchHistoryPresentation";
 import { hasFormalHumanDecision } from "@/lib/taskWorkflowSummary";
 import { collectPagedTasks, deriveProductProjectGroup, type ProductProjectGroup, type ProductProjectGroupView } from "@/lib/researchLifecycle";
+import type { ResearchLifecycleSnapshot } from "@/lib/server/researchLifecycleReader";
 
-/** 轮 6：/research 与工作台共用的纯视图工具（需要我处理 / AI 研究中 / 全部）。 */
+/** 轮 6：/research 与工作台共用的纯视图工具（需要我处理 / 研究中 / 全部）。 */
 export type ResearchViewItem = {
   id: string;
   decisionStatus: DecisionStatus;
   result: unknown;
   oneLineSummary: string;
+  /** Bridge V1：服务端 Reader 快照；存在时分组与标签以它为准（与详情页同一语义）。 */
+  researchLifecycle?: ResearchLifecycleSnapshot | null;
 };
 
 export type ResearchGroupTabValue = "needs" | "researching" | "";
@@ -52,7 +55,7 @@ export type ResearchGroupTabValue = "needs" | "researching" | "";
 export function deriveResearchViewTabs(): Array<{ value: ResearchGroupTabValue; label: string }> {
   return [
     { value: "needs", label: "需要我处理" },
-    { value: "researching", label: "AI 研究中" },
+    { value: "researching", label: "研究中" },
     { value: "", label: "全部" },
   ];
 }
@@ -68,6 +71,8 @@ export function deriveResearchViewGroups<T extends ResearchViewItem>(
       decisionStatus: item.decisionStatus,
       result: item.result,
       oneLineSummary: item.oneLineSummary,
+      // 第十二轮：与工作台/详情页同一口径——有服务端 Reader 快照时按快照分组与显示标签。
+      lifecycle: item.researchLifecycle ?? null,
     }),
   }));
 }
@@ -95,6 +100,11 @@ type TaskCenterItem = {
   oneLineSummary: string;
   result: unknown;
   productImage: ResearchProductImageDisplay | null;
+  /**
+   * Bridge V1：服务端统一研究生命周期投影（与详情页同一 Reader）。
+   * 存在时列表研究主生命周期展示必须以它为准；缺失时回退旧展示（兼容旧测试夹具）。
+   */
+  researchLifecycle?: ResearchLifecycleSnapshot | null;
 };
 
 type TaskPageInfo = {
@@ -134,8 +144,15 @@ function getTitle(item: TaskCenterItem) {
   return item.title?.trim() || item.materialText.trim().slice(0, 20) || "未命名记录";
 }
 
+const SOURCE_LABELS: Record<string, string> = {
+  ai: "AI",
+  candidate_research: "候选商品研究",
+  manual: "手动创建",
+};
+
 function sourceLabel(source: string) {
-  return source === "ai" ? "AI" : source ? source : "其他来源";
+  if (!source) return "其他来源";
+  return SOURCE_LABELS[source] ?? source;
 }
 
 const typeLabelMap: Record<string, string> = {
@@ -269,6 +286,41 @@ function getVersionedDecisionSummary(result: unknown) {
   };
 }
 
+/**
+ * Bridge V1：研究主生命周期标签。
+ * 映射与详情页 lifecycleStatusLabel 同语义（同一 Snapshot → 同一中文含义）：
+ * stale 在列表同时保留 phase 主标签与重新确认提示；legacy 追加旧版标记且永不伪装完成。
+ */
+export function getResearchLifecycleLabel(snapshot: ResearchLifecycleSnapshot): string {
+  if (snapshot.phase === "completed") {
+    const base = "研究已完成";
+    const staleSuffix = snapshot.stale ? " · 需重新确认" : "";
+    const legacySuffix = snapshot.contractMode === "legacy" ? "（旧版）" : "";
+    return `${base}${staleSuffix}${legacySuffix}`;
+  }
+  if (snapshot.phase === "abandoned") {
+    return snapshot.contractMode === "legacy" ? "已放弃（旧版）" : "已放弃";
+  }
+  if (snapshot.phase === "awaiting_confirmation") return "等待确认";
+  if (snapshot.phase === "collecting") return "资料采集中";
+  if (snapshot.phase === "ready_to_complete") return "待完成研究";
+  if (snapshot.phase === "awaiting_decision") {
+    return snapshot.contractMode === "legacy" ? "待人工决定（旧版）" : "待人工决定";
+  }
+  if (snapshot.phase === "created") {
+    return snapshot.contractMode === "legacy" ? "尚未开始研究（旧版）" : "尚未开始研究";
+  }
+  return snapshot.contractMode === "invalid" ? "状态异常" : "研究受阻";
+}
+
+export function getResearchLifecycleTitle(snapshot: ResearchLifecycleSnapshot): string {
+  const parts = [`phase=${snapshot.phase}`, `contract=${snapshot.contractMode}`];
+  if (snapshot.stale) parts.push("stale");
+  if (snapshot.blockers.length > 0) parts.push(`blockers=${snapshot.blockers.join(",")}`);
+  if (snapshot.nextAction) parts.push(snapshot.nextAction);
+  return parts.join("；");
+}
+
 export function TaskDecisionControl({
   taskId,
   result,
@@ -378,7 +430,7 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
   const [type, setType] = useState(defaultType);
   const [decisionStatus, setDecisionStatus] = useState(defaultDecisionStatus);
   const [agentStatus, setAgentStatus] = useState<"" | AgentStatusKey>(defaultAgentStatus);
-  // 轮 6：/research 使用与工作台一致的三组分法（需要我处理 default / AI 研究中 / 全部）
+  // 轮 6：/research 使用与工作台一致的三组分法（需要我处理 default / 研究中 / 全部）
   const [researchTab, setResearchTab] = useState<ResearchGroupTabValue>("needs");
   const [runStatusById, setRunStatusById] = useState<Record<string, string>>({});
   const [runStatusUnavailable, setRunStatusUnavailable] = useState(false);
@@ -417,7 +469,9 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
     return () => {
       cancelled = true;
     };
-  }, [view, isAccessPasswordReady, accessPassword]);
+    // noAuthOwner 必须在依赖里：本地 owner 模式下该标记由 /api/runtime-mode 异步返回，
+    // 若只在首帧读一次，首次打开会误显示「请先输入访问密码」且不会自动重试。
+  }, [view, isAccessPasswordReady, accessPassword, noAuthOwner]);
 
   function onScopeChange(nextScope: "" | "research" | "historical" | "active" | "need_info" | "completed" | "abandoned") {
     setScope(nextScope);
@@ -540,7 +594,8 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [accessPassword, isAccessPasswordReady]);
+    // noAuthOwner 同上：解锁标记迟到时必须重新加载，否则首次打开会停在「0 条记录 + 访问密码」。
+  }, [accessPassword, isAccessPasswordReady, noAuthOwner]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -838,7 +893,7 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
   const isDefaultEmpty = !loading && !error && visibleItems.length === 0 && !hasActiveFilters;
 
   if (!unlocked) {
-    return <WorkspaceLockedPrompt pageName="研究记录" returnUrl="/tasks" />;
+    return <WorkspaceLockedPrompt pageName="决策复盘" returnUrl="/tasks" />;
   }
 
   return (
@@ -850,12 +905,12 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
           <header className="workspace-header">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="eyebrow">{view === "research" ? "Active Research" : "Research History"}</p>
-                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{view === "research" ? "商品研究" : "研究记录"}</h1>
+                <p className="eyebrow">{view === "research" ? "正在研究" : "核心流程 03 · 决策复盘"}</p>
+                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{view === "research" ? "商品研究" : "决策复盘"}</h1>
                 <p className="mt-1 text-sm text-slate-500">
                   {view === "research"
                   ? "继续正在进行或等待补充资料的商品研究，进入商品研究工作台。"
-                  : "查看已经形成历史结果的研究：已完成、已放弃的研究记录。"}
+                  : "查看商品开发决策报告与研判归档；跟踪推进、暂缓与放弃项目。"}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -877,60 +932,52 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
           </header>
 
           <section className="surface-card p-5 sm:p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-bold text-teal-700">{view === "research" ? "商品研究" : "研究记录"}</p>
-                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">{view === "research" ? "商品研究" : "研究记录"}</h2>
-                <p className="muted-text mt-1 text-sm">{view === "research"
-                  ? "继续正在进行或等待补充资料的商品研究。"
-                  : "已经形成历史结果的研究：已完成、已放弃的研究记录。"}</p>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+              {/* OA1（Option B）：进度分组 Tab（进行中/待补信息/已完成/已放弃） */}
+              <div className="flex flex-wrap gap-2" role="tablist" aria-label="研究进度分组">
+                {view === "research"
+                  ? deriveResearchViewTabs().map((tab) => (
+                    <button
+                      key={tab.value || "all"}
+                      type="button"
+                      role="tab"
+                      aria-selected={researchTab === tab.value}
+                      onClick={() => setResearchTab(tab.value)}
+                      data-testid={"research-tab-" + (tab.value || "all")}
+                      className={`rounded-full border px-4 py-1.5 text-xs sm:text-sm font-semibold transition ${
+                        researchTab === tab.value
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-emerald-200"
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))
+                  : ([
+                    { value: "completed", label: "已完成" },
+                    { value: "abandoned", label: "已放弃" },
+                    { value: "historical", label: "历史" },
+                    { value: "", label: "全部" },
+                  ] as Array<{ value: "" | "completed" | "abandoned" | "historical"; label: string }>).map((tab) => (
+                    <button
+                      key={tab.value || "all"}
+                      type="button"
+                      role="tab"
+                      aria-selected={scope === tab.value}
+                      onClick={() => onScopeChange(tab.value)}
+                      className={`rounded-full border px-4 py-1.5 text-xs sm:text-sm font-semibold transition ${
+                        scope === tab.value
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-emerald-200"
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
               </div>
-              <span className="status-pill px-3 py-1 text-sm">
-                {page ? `${page.total} 条` : `${items.length} 条`}
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                共 {page ? page.total : items.length} 条记录
               </span>
-            </div>
-
-            {/* OA1（Option B）：进度分组 Tab（进行中/待补信息/已完成/已放弃） */}
-            <div className="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="研究进度分组">
-              {view === "research"
-                ? deriveResearchViewTabs().map((tab) => (
-                  <button
-                    key={tab.value || "all"}
-                    type="button"
-                    role="tab"
-                    aria-selected={researchTab === tab.value}
-                    onClick={() => setResearchTab(tab.value)}
-                    data-testid={"research-tab-" + (tab.value || "all")}
-                    className={`rounded-full border px-4 py-1.5 text-sm font-semibold transition ${
-                      researchTab === tab.value
-                        ? "border-teal-300 bg-teal-50 text-teal-800"
-                        : "border-slate-200 bg-white text-slate-600 hover:border-teal-200"
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))
-                : ([
-                  { value: "completed", label: "已完成" },
-                  { value: "abandoned", label: "已放弃" },
-                  { value: "historical", label: "历史" },
-                  { value: "", label: "全部" },
-                ] as Array<{ value: "" | "completed" | "abandoned" | "historical"; label: string }>).map((tab) => (
-                  <button
-                    key={tab.value || "all"}
-                    type="button"
-                    role="tab"
-                    aria-selected={scope === tab.value}
-                    onClick={() => onScopeChange(tab.value)}
-                    className={`rounded-full border px-4 py-1.5 text-sm font-semibold transition ${
-                      scope === tab.value
-                        ? "border-teal-300 bg-teal-50 text-teal-800"
-                        : "border-slate-200 bg-white text-slate-600 hover:border-teal-200"
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
             </div>
 
             {view === "research" && runStatusUnavailable ? (
@@ -1200,11 +1247,19 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
                     const highlighted = item.id === highlightedTaskId;
                     const summary = getWorkflowSummary(item);
                     const presentation = getPresentation(item, summary.productName);
-                    const researchStatus = deriveResearchHistoryStatus({
-                      result: item.result,
-                      decisionStatus: item.decisionStatus,
-                      oneLineSummary: item.oneLineSummary,
-                    });
+                    // Bridge V1：研究主生命周期只读 task.researchLifecycle（服务端同一 Reader 投影，
+                    // 与详情页 /research-lifecycle 同源）；缺失时回退旧展示（仅兼容旧测试夹具）。
+                    const researchLifecycle = item.researchLifecycle ?? null;
+                    const researchStatus = researchLifecycle
+                      ? {
+                        key: (researchLifecycle.phase === "completed" ? "completed" : "incomplete") as "completed" | "incomplete",
+                        label: getResearchLifecycleLabel(researchLifecycle),
+                      }
+                      : deriveResearchHistoryStatus({
+                        result: item.result,
+                        decisionStatus: item.decisionStatus,
+                        oneLineSummary: item.oneLineSummary,
+                      });
                     const artifacts = deriveHistoricalArtifactSummary(item.result);
                     const versionedDecision = getVersionedDecisionSummary(item.result);
                     // V3 Human Decision Authority Consistency Fix：
@@ -1225,7 +1280,7 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
                     return (
                       <article
                         key={item.id}
-                        className={`linear-panel p-5 ${highlighted ? "border-emerald-300 bg-emerald-50/60 ring-2 ring-emerald-200" : ""}`}
+                        className={`rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs transition-all hover:border-slate-300 hover:shadow-sm ${highlighted ? "border-emerald-400 bg-emerald-50/40 ring-2 ring-emerald-300" : ""}`}
                       >
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                           <div className="min-w-0 flex-1">
@@ -1236,15 +1291,19 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
                               />
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500">
-                                  <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">
+                                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
                                     {sourceLabel(item.source)}
                                   </span>
-                                  <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold text-slate-600">
+                                  <span
+                                    data-testid="research-lifecycle-status"
+                                    title={researchLifecycle ? getResearchLifecycleTitle(researchLifecycle) : undefined}
+                                    className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-600"
+                                  >
                                     {researchStatus.label}
                                   </span>
                                   {groupView ? (
                                     <span data-testid="research-group-label" className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
-                                      {groupView.group === "needs_action" ? "需要我处理" : groupView.group === "researching" ? "AI 研究中" : "已完成"}
+                                      {groupView.group === "needs_action" ? "需要我处理" : groupView.group === "researching" ? "研究中" : "已完成"}
                                     </span>
                                   ) : null}
                                   {highlighted ? <span className="text-emerald-700">刚保存</span> : null}
@@ -1258,21 +1317,21 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
                                 </p>
                               </div>
                             </div>
-                            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
                               {[
                                 ["来源", sourceLabel(item.source)],
                                 ["研究状态", researchStatus.label],
                                 ["当前决定", decisionLabel],
                                 ["风险", summary.riskLabel],
                               ].map(([label, value]) => (
-                                <div key={label} className="rounded-2xl border border-slate-200 bg-white/80 p-3">
-                                  <p className="text-xs font-bold text-slate-400">{label}</p>
-                                  <p className="mt-1 line-clamp-2 text-sm font-semibold leading-5 text-slate-800">{value}</p>
+                                <div key={label} className="rounded-xl border border-slate-100 bg-slate-50/80 p-2.5">
+                                  <p className="text-[11px] font-semibold text-slate-400">{label}</p>
+                                  <p className="mt-0.5 line-clamp-1 text-xs font-bold text-slate-800">{value}</p>
                                 </div>
                               ))}
                             </div>
                             <div className="mt-3 flex flex-wrap items-center gap-2">
-                              <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">
+                              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
                                 历史成果：{artifactLabel}
                               </span>
                               <span className="text-xs text-slate-500">研究时间：{formatDate(item.createdAt)}</span>
@@ -1289,20 +1348,20 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
                                 className="size-4 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                               />
                             ) : null}
-                            <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700">
+                            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
                               {researchStatus.label}
                             </span>
                             {/* Primary actions（OA3：新任务不误导为"结果"） */}
                             <Link
                               href={view === "research" ? `/tasks/${item.id}?from=research` : `/tasks/${item.id}`}
-                              className="linear-button-primary inline-flex h-8 items-center px-3 text-xs font-semibold"
+                              className="inline-flex h-8 items-center justify-center rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white shadow-xs hover:bg-emerald-700 active:scale-[0.98] transition-all"
                             >
                               {view === "research" ? "继续研究" : (researchStatus.key === "completed" ? "查看研究记录" : "打开研究")}
                             </Link>
                             <button
                               type="button"
                               onClick={() => setOpenId(open ? "" : item.id)}
-                              className="linear-button inline-flex h-8 items-center px-3 text-xs font-semibold"
+                              className="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-all"
                             >
                               {open ? "收起更多" : "查看更多"}
                             </button>

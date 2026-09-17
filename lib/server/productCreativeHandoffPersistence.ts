@@ -42,6 +42,7 @@ import {
   confirmManualProductFacts,
   type ManualFactInput,
 } from "@/lib/server/manualFactConfirmation";
+import { confirmSelectedAmazonProductFacts } from "@/lib/server/amazonFactEnrichment/confirmation";
 
 export class CreativeHandoffPersistenceError extends Error {
   constructor(
@@ -61,6 +62,8 @@ export type CreateHandoffInput = {
   expectedStorageVersion: TaskResultJsonStorageVersionHash;
   /** 浏览器提交的 confirmable selectionIds（服务端锁内重新投影后匹配） */
   selectedFactCandidateIds: string[];
+  /** 服务端已解析的 Amazon enrichment 候选确认结果；浏览器不得直接提交事实对象。 */
+  amazonConfirmedCandidates?: import("@/lib/server/amazonFactEnrichment/contract").AmazonFactCandidateV1[];
   /** 零候选兜底：用户手工确认的商品事实（受控字段白名单，服务端构造 confirmedFact） */
   manualConfirmedFacts?: ManualFactInput[];
   /** V2 Final Integration: 浏览器提交的视觉参考候选 selectionIds（用户勾选「批准作为产品视觉参考」） */
@@ -314,9 +317,11 @@ export async function createOrAppendCreativeHandoff(
       if (gate.ledgerInvalid) {
         throw new CreativeHandoffPersistenceError("idempotency_ledger_invalid", 500, "幂等账本合同结构异常，已阻止写入。");
       }
-      // 无人工确认事实（no_confirmed_facts）→ 由输入候选的 confirmedFacts 决定；
-      // 研究数据本身合法时允许走写入，Route 层已按选择过滤（无选择 → no_facts_selected）。
-      if (!gate.allowed && gate.reason !== "no_confirmed_facts") {
+      // 无创作交接确认（no_confirmed_facts / creative_confirmation_required）→
+      // 由输入候选或研究侧已确认事实决定；其它门禁状态仍 fail-closed。
+      if (!gate.allowed
+        && gate.reason !== "no_confirmed_facts"
+        && gate.reason !== "creative_confirmation_required") {
         throw new CreativeHandoffPersistenceError("research_gate_failed", 422, "当前研究状态不允许创建创作交接。");
       }
       if (!gate.candidate) {
@@ -335,10 +340,17 @@ export async function createOrAppendCreativeHandoff(
       if (resolvedKeys.length !== input.selectedFactCandidateIds.length) {
         throw new CreativeHandoffPersistenceError("invalid_selection", 400, "选择项与最新研究状态不匹配，请刷新后重试。");
       }
-      // 零候选兜底：无候选 selectionId 时允许仅手工事实；两者都不提供且无视觉参考批准才拒绝
+      // 零候选兜底：无候选 selectionId 时允许仅手工事实、纯视觉批准，或研究已确认事实（Research Human Confirmed Facts）；均不提供才拒绝
       const manualFacts = input.manualConfirmedFacts ?? [];
       const visualApprovalOnly = (input.selectedVisualReferenceCandidateIds ?? []).length > 0;
-      if (resolvedKeys.length < 1 && manualFacts.length < 1 && !visualApprovalOnly) {
+      const researchConfirmed = getFactCandidates(current)?.confirmed ?? [];
+      const hasResearchConfirmed = researchConfirmed.length > 0;
+      if (
+        resolvedKeys.length < 1 &&
+        manualFacts.length < 1 &&
+        !visualApprovalOnly &&
+        !hasResearchConfirmed
+      ) {
         throw new CreativeHandoffPersistenceError("no_facts_selected", 400, "请至少选择一项或填写一项可用的商品事实。");
       }
       const conversion = confirmSelectedProductFacts({
@@ -352,6 +364,20 @@ export async function createOrAppendCreativeHandoff(
       });
       if (conversion.confirmedFacts.length !== resolvedKeys.length) {
         throw new CreativeHandoffPersistenceError("invalid_selection", 400, "部分选择项不可确认。");
+      }
+      let amazonConfirmed: ProductCreativeHandoffConfirmedFact[] = [];
+      if (input.amazonConfirmedCandidates && input.amazonConfirmedCandidates.length > 0) {
+        try {
+          amazonConfirmed = confirmSelectedAmazonProductFacts({
+            candidates: input.amazonConfirmedCandidates,
+            actor,
+            confirmedAt: now,
+            confirmationReference: buildConfirmationReference(requestKeyHash, now),
+          });
+        } catch (error) {
+          const code = error instanceof Error ? error.message : "amazon_enrichment_selection_invalid";
+          throw new CreativeHandoffPersistenceError(code, code === "amazon_enrichment_duplicate_field_selection" ? 409 : 400, "Amazon 商品事实候选选择无效。");
+        }
       }
       // 手工事实确认（受控字段白名单；与候选确认同一 revision/CAS 原子写入）
       let manualConfirmed: Array<ReturnType<typeof confirmManualProductFacts>["confirmedFacts"][number]> = [];
@@ -382,7 +408,6 @@ export async function createOrAppendCreativeHandoff(
         : [];
       // V3 Final PHASE 1：研究侧已确认事实（factCandidates 权威）经唯一 Canonical Adapter 桥接
       // ——已有 Confirmed Fact 自动进入 Listing 链，不再要求用户重复输入（SHARED_CONTRACT_FREEZE §8/§9）
-      const researchConfirmed = getFactCandidates(current)?.confirmed ?? [];
       const researchBridge = researchConfirmed.length > 0
         ? mapResearchConfirmedToHandoff({
             confirmed: researchConfirmed,
@@ -397,7 +422,7 @@ export async function createOrAppendCreativeHandoff(
       // manual 撞 research field → manual_fact_research_authority（回研究修改）。不再抛 confirmed_fact_conflict。
       const effectiveConfirmed = resolveAuthoritativeFactSnapshot({
         previousSnapshot: existingConfirmedFacts,
-        selected: conversion.confirmedFacts,
+        selected: [...conversion.confirmedFacts, ...amazonConfirmed],
         manual: manualConfirmed,
         research: researchBridge.facts,
       }).facts;

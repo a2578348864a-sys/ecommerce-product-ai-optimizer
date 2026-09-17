@@ -659,7 +659,7 @@ describe("Service Composition 门禁与锁内双重验证", () => {
 
 describe("UI 状态（第20章 66-75）", () => {
   it("各状态文案", () => {
-    for (const text of ["请先补充并确认商品资料", "生成 AI 优化草稿", "基于最新资料重新生成", "创作资料已撤回", "当前草稿只读", "不得直接发布", "重新生成将替换当前草稿"]) {
+    for (const text of ["请先补充并确认商品资料", "重新生成", "基于最新资料重新生成", "创作资料已撤回", "该草稿基于旧创作资料（只读）", "不得直接发布", "重新生成将替换当前草稿"]) {
       expect(uiSource).toContain(text);
     }
   });
@@ -675,7 +675,7 @@ describe("UI 状态（第20章 66-75）", () => {
       "当前研究记录缺少可用于 Listing 的商品事实",
       "补充并确认商品资料",
       "人工核实确认",
-      "返回研究记录查看来源",
+      "返回研究记录",
       "转为独立创作",
       'href="/listing-studio"',
     ]) {
@@ -703,16 +703,34 @@ describe("UI 状态（第20章 66-75）", () => {
   });
 
   it("草稿正文为 Listing 文本本体（标题/五点描述/商品描述/关键词），图片创作建议独立展示", () => {
-    for (const label of ["商品标题", "五点描述", "商品描述", "搜索关键词"]) {
-      expect(uiSource).toContain(label);
-    }
-    // 图片卖点方向不再是 Listing 本体第 5 项；独立「图片创作建议」区域
-    expect(uiSource).toContain("图片创作建议");
+    // 保护核心 Listing 4 大交付成果：Title / Bullet Points / Product Description / Keywords
+    expect(uiSource).toContain("Title");
+    expect(uiSource).toContain("Bullet Points");
+    expect(uiSource).toContain("Product Description");
+    expect(uiSource).toContain("Keywords");
+    // 保护当前卡片标题标识与结构
+    expect(uiSource).toContain("Listing标题 Title");
+    expect(uiSource).toContain("五点描述 Bullet Points");
+    expect(uiSource).toContain("商品描述 Product Description");
+    expect(uiSource).toContain("搜索关键词 Keywords");
+    // 确保 4 大核心成果顺序严格符合 Slimdown 契约（Title → Bullets → Description → Keywords → Quality Policy）
+    const titleIdx = uiSource.indexOf("Listing标题 Title");
+    const bulletsIdx = uiSource.indexOf("五点描述 Bullet Points");
+    const descIdx = uiSource.indexOf("商品描述 Product Description");
+    const kwIdx = uiSource.indexOf("搜索关键词 Keywords");
+    const qualityIdx = uiSource.indexOf("data-testid=\"listing-quality-report\"");
+    expect(titleIdx).toBeGreaterThan(0);
+    expect(bulletsIdx).toBeGreaterThan(titleIdx);
+    expect(descIdx).toBeGreaterThan(bulletsIdx);
+    expect(kwIdx).toBeGreaterThan(descIdx);
+    expect(qualityIdx).toBeGreaterThan(kwIdx);
+    // 图片卖点方向与图片创作建议不再在 Listing Studio UI 中展示（已彻底收口移除）
+    expect(uiSource).not.toContain("图片创作建议");
     expect(uiSource).not.toContain("图片卖点方向");
   });
 
-  it("图片创作建议独立复制；完整 Listing 不混入图片建议", () => {
-    expect(uiSource).toContain("复制图片创作建议");
+  it("图片创作建议已彻底从 UI 移除；完整 Listing 不混入图片建议", () => {
+    expect(uiSource).not.toContain("复制图片创作建议");
     // 完整 Listing 只含 Title/Bullet Points/Product Description/Keywords
     expect(uiSource).toContain("复制完整 Listing");
     expect(uiSource).not.toContain("Image Selling Points");
@@ -722,16 +740,16 @@ describe("UI 状态（第20章 66-75）", () => {
     const fullTextBody = uiSource.slice(fullTextStart, fullTextEnd);
     expect(fullTextBody).not.toContain("imageMaterialNeeds");
     // 无数据占位
-    expect(uiSource).toContain("暂未生成图片创作建议");
+    expect(uiSource).not.toContain("暂未生成图片创作建议");
   });
 
-  it("复制能力（单项 + 完整 Listing + 图片创作建议）", () => {
+  it("复制能力（单项 + 完整 Listing，已移除图片建议复制）", () => {
     expect(uiSource).toContain("复制完整 Listing");
     expect(uiSource).toContain("复制标题");
     expect(uiSource).toContain("复制五点描述");
     expect(uiSource).toContain("复制商品描述");
     expect(uiSource).toContain("复制关键词");
-    expect(uiSource).toContain("复制图片创作建议");
+    expect(uiSource).not.toContain("复制图片创作建议");
     expect(uiSource).toContain("复制失败");
   });
 

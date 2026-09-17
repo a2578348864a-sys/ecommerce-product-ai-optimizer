@@ -6,14 +6,14 @@ const listingSource = readFileSync(
   "utf8",
 );
 const imageSource = readFileSync(
-  new URL("../image-studio/ImageStudioClient.tsx", import.meta.url),
+  new URL("../image-handoff/ImageHandoffSection.tsx", import.meta.url),
   "utf8",
 );
 
 describe("independent Studio API response reliability", () => {
   it.each([
     ["Listing Studio", listingSource],
-    ["Image Studio", imageSource],
+    ["Image Studio task handoff", imageSource],
   ])("%s validates the response before parsing JSON", (_name, source) => {
     expect(source).toContain("readJsonApiResponse(response)");
     expect(source).toContain("studioErrorMessage");
