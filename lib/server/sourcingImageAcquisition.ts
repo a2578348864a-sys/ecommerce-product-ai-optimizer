@@ -30,6 +30,7 @@ import {
   getSharedBridge,
   type BridgeCommandType,
 } from "@/lib/server/native1688BridgeClient";
+import { logInfo, logError } from "@/lib/server/agentEventLogger";
 
 export const IMAGE_ACQUISITION_DRIVER_VERSION = NATIVE_1688_EXTENSION_DRIVER_VERSION;
 const MAX_IMAGE_BYTES = 30 * 1024 * 1024;
@@ -271,6 +272,11 @@ export async function acquireByImage(input: {
   const capturedAt = input.capturedAt ?? new Date().toISOString();
   const startedAt = Date.now();
   const signal = input.signal;
+
+  logInfo("1688", "acquisition_started", `开始 1688 图片找货 (任务: ${input.taskId})`, {
+    taskId: input.taskId,
+    metadata: { candidateId: input.candidateId, imageUrl: input.imageUrl ? "remote_url" : "local_file" },
+  }).catch(() => undefined);
 
   // 1) 图片来源（§13/§77：仅授权候选图或用户明确选择）
   let imageBytes: Buffer;
@@ -621,6 +627,7 @@ export async function acquireByImage(input: {
       fail("image_results_insufficient", 422, `图搜结果去重后不足（${candidates.length} < 3）。`);
     }
 
+    const durationMs = Date.now() - startedAt;
     const trace: ImageAcquisitionRunTrace = {
       source: "1688",
       method: "image",
@@ -631,10 +638,21 @@ export async function acquireByImage(input: {
       success: true,
       failClosedReason: null,
       pageState: "results_ready",
-      durationMs: Date.now() - startedAt,
+      durationMs,
       candidateImageBound: true,
     };
+    logInfo("1688", "acquisition_succeeded", `1688 图搜成功，获取到 ${candidates.length} 条候选`, {
+      taskId: input.taskId,
+      metadata: { count: candidates.length, durationMs },
+    }).catch(() => undefined);
     return { candidates, trace };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logError("1688", "acquisition_failed", `1688 图搜失败: ${message}`, {
+      taskId: input.taskId,
+      metadata: { error: message },
+    }).catch(() => undefined);
+    throw error;
   } finally {
     if (tempDir) {
       await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
