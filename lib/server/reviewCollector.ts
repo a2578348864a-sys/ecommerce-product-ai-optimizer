@@ -35,6 +35,7 @@ import {
   type ReviewEvidenceV1,
 } from "@/lib/server/reviewEvidence";
 import type { AccessContext } from "@/lib/server/accessPassword";
+import { logInfo, logError, logWarn } from "@/lib/server/agentEventLogger";
 
 export const REVIEW_COLLECTOR_VERSION = "amazon-review-snippet-collector.v1";
 export const REVIEW_COLLECTOR_ALLOWED_ORIGINS = AMAZON_RETAIL_ORIGINS;
@@ -446,9 +447,21 @@ export function reviewBlockForPageStatus(
 export async function collectReviewSnippets(input: {
   asins: ReviewCollectRequestAsin[];
   headless?: boolean;
+  taskId?: string;
 }): Promise<{ items: ReviewSnippetPreviewItem[]; pageResults: ReviewCollectPageResult[] }> {
+  const startedAt = Date.now();
+  logInfo("voc", "collect_started", `开始采集 VOC 评论片段 (ASINs: ${input.asins.map((a) => a.asin).join(", ")})`, {
+    taskId: input.taskId,
+    metadata: { asins: input.asins },
+  }).catch(() => undefined);
+
   const browser = resolveSystemBrowser();
   if (!browser) {
+    const durationMs = Date.now() - startedAt;
+    logError("voc", "collect_failed", "本机未检测到可用浏览器，无法自动采集评论", {
+      taskId: input.taskId,
+      metadata: { code: "browser_not_available", durationMs },
+    }).catch(() => undefined);
     throw new ReviewCollectorError("browser_not_available", 503, "本机未检测到可用浏览器，无法自动采集评论。请在安装 Chrome/Edge 后重试。");
   }
   const items: ReviewSnippetPreviewItem[] = [];
@@ -479,6 +492,10 @@ export async function collectReviewSnippets(input: {
       try {
         nav = await session.navigate(reviewCollectDetailUrl(asin));
         if (!nav.allowedFinalOrigin) {
+          logWarn("voc", "collect_page_blocked", `ASIN ${asin} 重定向到白名单外`, {
+            taskId: input.taskId,
+            metadata: { asin, code: "blocked_redirect" },
+          }).catch(() => undefined);
           pageResults.push({ asin, status: "blocked_redirect", note: "页面重定向到白名单外，导航被安全白名单阻断；未判定为登录墙。", extractedCount: 0, ...emptyDiagnostics("blocked_redirect") });
           continue;
         }
@@ -487,6 +504,10 @@ export async function collectReviewSnippets(input: {
         // 市场，直接当成本次（amazon.com）证据会造成市场串味 → fail-closed 并记下实际市场。
         if (!REVIEW_COLLECT_REQUESTED_HOSTS.has(finalUrlHost(nav.finalUrl))) {
           const host = finalUrlHost(nav.finalUrl) || "未知站点";
+          logWarn("voc", "collect_page_blocked", `ASIN ${asin} 重定向到非目标市场 ${host}`, {
+            taskId: input.taskId,
+            metadata: { asin, code: "blocked_redirect", host },
+          }).catch(() => undefined);
           pageResults.push({
             asin,
             status: "blocked_redirect",
@@ -511,6 +532,15 @@ export async function collectReviewSnippets(input: {
         );
         const pageBlock = reviewBlockForPageStatus(pageExtraction?.pageStatus);
         if (pageBlock) {
+          logWarn("voc", `collect_page_${pageBlock.diagnosticPageStatus || pageBlock.status}`, `ASIN ${asin} 触发阻断: ${pageBlock.status}`, {
+            taskId: input.taskId,
+            metadata: {
+              asin,
+              status: pageBlock.status,
+              diagnosticPageStatus: pageBlock.diagnosticPageStatus,
+              note: pageBlock.note,
+            },
+          }).catch(() => undefined);
           pageResults.push({
             asin,
             status: pageBlock.status,
@@ -531,6 +561,10 @@ export async function collectReviewSnippets(input: {
         );
         const reviews = Array.isArray(extracted) ? extracted.map(parseSnippet).filter((snippet): snippet is ReviewSnippet => snippet !== null) : [];
         if (reviews.length === 0) {
+          logWarn("voc", "collect_page_empty", `ASIN ${asin} 未提取到评论片段`, {
+            taskId: input.taskId,
+            metadata: { asin, reason: readiness.explicitNoReviews ? "confirmed_no_reviews" : "extraction_empty" },
+          }).catch(() => undefined);
           pageResults.push({
             asin,
             status: readiness.explicitNoReviews ? "confirmed_no_reviews" : "extraction_empty",
@@ -559,6 +593,10 @@ export async function collectReviewSnippets(input: {
             bindingNote: "详情页公开 Top Reviews 片段（评论全文页需登录，未绕过；正文不可见为已知限制）",
           });
         }
+        logInfo("voc", "collect_page_succeeded", `成功提取 ASIN ${asin} 评论 ${reviews.length} 条`, {
+          taskId: input.taskId,
+          metadata: { asin, count: reviews.length },
+        }).catch(() => undefined);
         pageResults.push({
           asin,
           status: "ok",
@@ -573,6 +611,10 @@ export async function collectReviewSnippets(input: {
           pageStatus: pageExtraction?.pageStatus ?? null,
         });
       } catch (error) {
+        logError("voc", "collect_page_error", `ASIN ${asin} 采集异常: ${error instanceof Error ? error.message : String(error)}`, {
+          taskId: input.taskId,
+          metadata: { asin, error: String(error) },
+        }).catch(() => undefined);
         pageResults.push({
           asin,
           status: "error",
@@ -585,6 +627,11 @@ export async function collectReviewSnippets(input: {
   } finally {
     await session.close();
   }
+  const durationMs = Date.now() - startedAt;
+  logInfo("voc", "collect_completed", `VOC 评论采集完成，共获取 ${items.length} 条评论片段`, {
+    taskId: input.taskId,
+    metadata: { totalItems: items.length, pageCount: pageResults.length, durationMs },
+  }).catch(() => undefined);
   return { items, pageResults };
 }
 
@@ -595,7 +642,7 @@ export async function createReviewCollectPreview(input: {
   asins: ReviewCollectRequestAsin[];
   headless?: boolean;
 }): Promise<Omit<ReviewCollectPreview, "subjectKey" | "taskId">> {
-  const { items, pageResults } = await collectReviewSnippets({ asins: input.asins, headless: input.headless });
+  const { items, pageResults } = await collectReviewSnippets({ asins: input.asins, headless: input.headless, taskId: input.taskId });
   const capturedAt = new Date().toISOString();
   const preview: ReviewCollectPreview = {
     previewId: randomUUID(),
