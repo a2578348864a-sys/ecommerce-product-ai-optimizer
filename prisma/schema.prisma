@@ -216,3 +216,21 @@ model V4FactRecord {
   @@index([runId, offerIdentity, variantKey, field])
   @@index([runId, revision])
 }
+
+model AgentEvent {
+  id           String   @id @default(cuid())
+  createdAt    DateTime @default(now())
+  taskId       String?
+  runId        String?
+  module       String
+  event        String
+  level        String
+  message      String
+  metadataJson String   @default("{}")
+
+  @@index([taskId, createdAt])
+  @@index([module, createdAt])
+  @@index([level, createdAt])
+  @@index([createdAt])
+  @@map("agent_events")
+}
