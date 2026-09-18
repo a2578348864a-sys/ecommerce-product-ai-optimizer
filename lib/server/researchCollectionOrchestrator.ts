@@ -1493,15 +1493,14 @@ export async function orchestrateResearchCollection(options: {
       durations,
     });
 
-    // 无论只读探测还是执行采集，记录统一状态日志（fail-open）
-    void logUnifiedStatusEvents({
-      taskId,
-      statuses: unifiedStatuses,
-      contextAction: action,
-    });
-
-    // 账本只记录真实发生过的采集（orchestrate），只读 inspect 绝不写入。
+    // 账本与事件仅记录真实发生过的采集（orchestrate），只读 inspect 绝不写入。
     if (action === "orchestrate") {
+      void logUnifiedStatusEvents({
+        taskId,
+        statuses: unifiedStatuses,
+        contextAction: action,
+      });
+
       const nextSources: ResearchOrchestratorSources = cachedSources
         ? {
             amazon: attemptedSources.includes("amazon") ? sources.amazon : (cachedSources.amazon ?? sources.amazon),
