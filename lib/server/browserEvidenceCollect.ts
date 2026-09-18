@@ -27,6 +27,7 @@ import type { AccessContext } from "@/lib/server/accessPassword";
 import { buildAmazonSellerContentExtractionExpression } from "@/tools/collectors/amazon/seller-content-expression-source";
 import { normalizeSellerBlocks } from "@/lib/server/amazonFactEnrichment/mapping";
 import type { AmazonSellerContentBlockV1 } from "@/lib/server/amazonFactEnrichment/contract";
+import { logInfo, logError } from "@/lib/server/agentEventLogger";
 
 export const BROWSER_EVIDENCE_ALLOWED_ORIGINS = AMAZON_RETAIL_ORIGINS;
 export const BROWSER_EVIDENCE_COLLECTOR_VERSION = "amazon-detail-page-extractor.v1";
@@ -215,9 +216,21 @@ function failClosedMessage(code: string): string {
 export async function collectBrowserEvidencePreview(input: {
   asin: string;
   capturedAt: string;
+  taskId?: string;
 }): Promise<BrowserEvidenceCollectPreview> {
+  const startedAt = Date.now();
+  logInfo("amazon", "collect_started", `开始采集 Amazon 商品页面 (ASIN: ${input.asin})`, {
+    taskId: input.taskId,
+    metadata: { asin: input.asin, capturedAt: input.capturedAt },
+  }).catch(() => undefined);
+
   const browser = resolveSystemBrowser();
   if (!browser) {
+    const durationMs = Date.now() - startedAt;
+    logError("amazon", "collect_failed", "本机未检测到可用的 Chrome/Edge 浏览器", {
+      taskId: input.taskId,
+      metadata: { asin: input.asin, code: "browser_unavailable", durationMs },
+    }).catch(() => undefined);
     throw new BrowserEvidenceCollectError(
       "browser_unavailable",
       503,
@@ -289,8 +302,27 @@ export async function collectBrowserEvidencePreview(input: {
       }
     }
     // 币种校准结果随 preview 返回（UI 展示"已校准配送地/币种"或"仍非 Amazon US 价格环境"）
+    const durationMs = Date.now() - startedAt;
+    logInfo("amazon", "collect_succeeded", `成功提取 Amazon 页面数据 (ASIN: ${input.asin})`, {
+      taskId: input.taskId,
+      metadata: {
+        asin: input.asin,
+        title: extraction.fields?.title?.value ? String(extraction.fields.title.value).slice(0, 100) : null,
+        pageStatus: extraction.pageStatus,
+        entityBound: extraction.entityBound,
+        durationMs,
+      },
+    }).catch(() => undefined);
     return { extraction, navigation, calibration: session.calibration, productInfo, sellerContent };
   } catch (error) {
+    const durationMs = Date.now() - startedAt;
+    const errCode = error instanceof BrowserEvidenceCollectError ? error.code : "unknown_error";
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logError("amazon", "collect_failed", `Amazon 页面采集失败 (ASIN: ${input.asin}): ${errCode}`, {
+      taskId: input.taskId,
+      metadata: { asin: input.asin, code: errCode, message: errMsg, durationMs },
+    }).catch(() => undefined);
+
     if (error instanceof BrowserEvidenceCollectError) throw error;
     const message = error instanceof Error ? error.message : "unknown_error";
     // P1-A：技术串只进日志，用户文案固定（不泄漏 CDP_*/ReferenceError 等）
