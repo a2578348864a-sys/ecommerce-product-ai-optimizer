@@ -350,7 +350,7 @@ export function normalizeState(
     if (s === "needs_user") {
       if (key === "amazon") return "needs_supplement";
       if (key === "voc") return "needs_action";
-      if (key === "sourcing_1688") return "needs_supplement";
+      if (key === "sourcing_1688") return "needs_user";
       return "needs_user";
     }
   }
@@ -359,6 +359,149 @@ export function normalizeState(
     return SOURCE_META[key].defaultState;
   }
   return SOURCE_META[key].defaultState;
+}
+
+/**
+ * 统一状态模型映射函数
+ * 将 UnifiedCollectionStatus 及其元数据映射为 OrchestratorSourceState 与详情
+ * 覆盖 Amazon / VOC / 1688 / AI Listing 四大模块，确保 Cockpit 与下方列表状态单一权威一致
+ */
+export function mapUnifiedStatusToSourceState(
+  module: "amazon" | "voc" | "1688" | "ai",
+  status: UnifiedCollectionStatus,
+  metadata?: {
+    summary?: string;
+    hasCaptcha?: boolean;
+    needsHumanConfirmation?: boolean;
+    extensionConnected?: boolean;
+    errorCode?: string;
+    passedGate?: boolean;
+    generated?: boolean;
+  },
+): {
+  state: OrchestratorSourceState;
+  detail?: string;
+  errorCode?: string;
+  canRetry?: boolean;
+} {
+  const summary = metadata?.summary;
+  const errorCode = metadata?.errorCode;
+
+  switch (status) {
+    case "succeeded":
+      return {
+        state: "ready",
+        detail: summary,
+      };
+
+    case "running":
+      return {
+        state: "running",
+        detail: summary,
+      };
+
+    case "failed":
+      return {
+        state: "failed",
+        detail: summary,
+        errorCode,
+        canRetry: true,
+      };
+
+    case "partial":
+      if (module === "voc") {
+        const state: OrchestratorSourceState =
+          errorCode === "confirmed_no_reviews"
+            ? "confirmed_no_reviews"
+            : "extraction_empty";
+        return {
+          state,
+          detail: summary,
+          errorCode,
+        };
+      }
+      return {
+        state: "needs_action",
+        detail: summary,
+        errorCode,
+      };
+
+    case "awaiting_action": {
+      if (module === "amazon") {
+        const isConfirm =
+          Boolean(metadata?.needsHumanConfirmation) ||
+          Boolean(summary?.includes("核对并确认事实")) ||
+          Boolean(summary?.includes("待确认"));
+        return {
+          state: isConfirm ? "pending_review" : "needs_supplement",
+          detail: summary,
+          errorCode,
+        };
+      }
+      if (module === "voc") {
+        const isConfirm =
+          Boolean(metadata?.needsHumanConfirmation) &&
+          !metadata?.hasCaptcha &&
+          Boolean(summary?.includes("待确认预览") || summary?.includes("等待人工确认"));
+        return {
+          state: isConfirm ? "pending_review" : "needs_action",
+          detail: summary,
+          errorCode,
+        };
+      }
+      if (module === "1688") {
+        const isConfirm =
+          Boolean(metadata?.needsHumanConfirmation) ||
+          Boolean(summary?.includes("候选预览")) ||
+          Boolean(summary?.includes("等待人工确认"));
+        if (isConfirm) {
+          return {
+            state: "pending_review",
+            detail: summary,
+            errorCode,
+          };
+        }
+        const isAuthOrLogin =
+          errorCode === "auth_required" ||
+          errorCode === "needs_login" ||
+          Boolean(summary?.includes("登录"));
+        return {
+          state: isAuthOrLogin ? "needs_login" : "needs_user",
+          detail: summary,
+          errorCode,
+        };
+      }
+      if (module === "ai") {
+        return {
+          state: "needs_user",
+          detail: summary,
+          errorCode,
+        };
+      }
+      return {
+        state: "needs_user",
+        detail: summary,
+        errorCode,
+      };
+    }
+
+    case "idle":
+    default: {
+      const defaultState: OrchestratorSourceState =
+        module === "amazon"
+          ? "needs_supplement"
+          : module === "voc"
+            ? "needs_action"
+            : module === "1688"
+              ? "pending_review"
+              : "pending";
+      return {
+        state: defaultState,
+        detail: summary,
+        errorCode,
+      };
+    }
+  }
 }
 
 export function formatBadgeLabel(
@@ -580,8 +723,8 @@ function getSourceDescription(
     item.state === "needs_login"
   ) {
     return (
-      needsUserItem?.reasonText ||
       item.detail ||
+      needsUserItem?.reasonText ||
       (item.key === "sourcing_1688" ? "需要登录" : "需要人工处理")
     );
   }
@@ -688,25 +831,81 @@ export function ResearchCollectionOrchestratorCard({
     };
   });
 
-  // 派生完整的 4 项列表
+  // 派生完整的 4 项列表（优先消费统一状态模型 unifiedStatuses，保证 Cockpit 与下方列表单一权威一致）
   const sourceItems = useMemo<OrchestratorSourceItem[]>(() => {
     return ORDERED_KEYS.map((k) => {
       const meta = SOURCE_META[k];
       const raw = rawItemStates[k];
+
+      let effectiveState = raw?.state ?? meta.defaultState;
+      let effectiveDetail = raw?.detail;
+      let effectiveErrorCode = raw?.errorCode;
+      let effectiveCanRetry =
+        effectiveState === "failed" ||
+        (k === "keywords_competitors" && effectiveState === "needs_user");
+
+      if (unifiedStatuses) {
+        if (k === "amazon" && unifiedStatuses.amazon) {
+          const u = unifiedStatuses.amazon;
+          if (u.status !== "idle" || !raw?.state || raw.state === meta.defaultState) {
+            const mapped = mapUnifiedStatusToSourceState("amazon", u.status, {
+              summary: u.summary,
+              errorCode: u.errorCode,
+              needsHumanConfirmation:
+                u.summary?.includes("核对并确认事实") || raw?.state === "pending_review",
+            });
+            effectiveState = mapped.state;
+            effectiveDetail = mapped.detail ?? raw?.detail;
+            effectiveErrorCode = mapped.errorCode ?? raw?.errorCode;
+            if (mapped.canRetry !== undefined) effectiveCanRetry = mapped.canRetry;
+          }
+        } else if (k === "voc" && unifiedStatuses.voc) {
+          const u = unifiedStatuses.voc;
+          if (u.status !== "idle" || !raw?.state || raw.state === meta.defaultState) {
+            const mapped = mapUnifiedStatusToSourceState("voc", u.status, {
+              summary: u.summary,
+              errorCode: u.errorCode,
+              hasCaptcha: u.hasCaptcha,
+              needsHumanConfirmation:
+                u.needsHumanConfirmation ||
+                u.summary?.includes("待确认预览") ||
+                raw?.state === "pending_review",
+            });
+            effectiveState = mapped.state;
+            effectiveDetail = mapped.detail ?? raw?.detail;
+            effectiveErrorCode = mapped.errorCode ?? raw?.errorCode;
+            if (mapped.canRetry !== undefined) effectiveCanRetry = mapped.canRetry;
+          }
+        } else if (k === "sourcing_1688" && unifiedStatuses["1688"]) {
+          const u = unifiedStatuses["1688"];
+          if (u.status !== "idle" || !raw?.state || raw.state === meta.defaultState) {
+            const mapped = mapUnifiedStatusToSourceState("1688", u.status, {
+              summary: u.summary,
+              errorCode: u.errorCode,
+              extensionConnected: u.extensionConnected,
+              needsHumanConfirmation:
+                u.summary?.includes("候选预览") || raw?.state === "pending_review",
+            });
+            effectiveState = mapped.state;
+            effectiveDetail = mapped.detail ?? raw?.detail;
+            effectiveErrorCode = mapped.errorCode ?? raw?.errorCode;
+            if (mapped.canRetry !== undefined) effectiveCanRetry = mapped.canRetry;
+          }
+        }
+      }
+
       return {
         key: k,
         title: meta.title,
-        state: raw?.state ?? meta.defaultState,
-        detail: raw?.detail,
-        errorCode: raw?.errorCode,
+        state: effectiveState,
+        detail: effectiveDetail,
+        errorCode: effectiveErrorCode,
         anchorId: meta.anchorId,
         tabKey: meta.tabKey,
-        canRetry:
-          raw?.state === "failed" ||
-          (k === "keywords_competitors" && raw?.state === "needs_user"),
+        canRetry: effectiveCanRetry,
       };
     });
-  }, [rawItemStates]);
+  }, [rawItemStates, unifiedStatuses]);
 
   const summary = useMemo(() => {
     return computeSummary(sourceItems, customSummaryText);
