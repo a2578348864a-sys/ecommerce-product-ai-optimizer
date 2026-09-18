@@ -107,6 +107,17 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolvePublicSourceImageUrl } from "@/lib/client/sourceImageUrl";
+import { logInfo, logError } from "@/lib/server/agentEventLogger";
+import {
+  deriveAllUnifiedStatuses,
+  logUnifiedStatusEvents,
+  type UnifiedStatusesMap,
+} from "@/lib/server/unifiedCollectionStatus";
+
+export type {
+  UnifiedStatusesMap,
+  UnifiedCollectionStatus,
+} from "@/lib/server/unifiedCollectionStatus";
 
 export type SourceStatus =
   | "ready"
@@ -166,6 +177,8 @@ export type ResearchOrchestratorResult = {
   action: OrchestratorAction;
   overallStatus: SourceStatus | "mixed";
   sources: ResearchOrchestratorSources;
+  /** 四大上游模块（Amazon、VOC、1688、AI Listing）的统一标准化状态矩阵 */
+  unifiedStatuses?: UnifiedStatusesMap;
   /** 本轮真正被采集的来源；未列出即表示本轮只做了只读探测。 */
   attemptedSources: OrchestratorSourceKey[];
   updatedAt: string;
@@ -1416,23 +1429,43 @@ export async function orchestrateResearchCollection(options: {
           voc: { status: "running", message: "采集正在执行中" },
           sourcing1688: { status: "running", message: "采集正在执行中" },
         },
+        unifiedStatuses: {
+          amazon: { module: "amazon", status: "running", succeeded: false, summary: "采集正在执行中" },
+          voc: { module: "voc", status: "running", summary: "采集正在执行中" },
+          "1688": { module: "1688", status: "running", summary: "采集正在执行中" },
+          ai: { module: "ai", status: "idle", generated: false, passedGate: false, savedStatus: "not_saved", summary: "待上游采集完成" },
+        },
         attemptedSources: [],
         updatedAt: new Date().toISOString(),
       };
     }
     RUNNING_ORCHESTRATIONS.set(taskId, Date.now());
+    logInfo("agent", "orchestration_started", `开始执行研究采集编排 (任务: ${taskId})`, {
+      taskId,
+      metadata: { attemptedSources, action },
+    }).catch(() => undefined);
   }
 
   try {
     // 2. 读取任务快照，校验任务存在性
     const task = await getTaskSnapshot(options.context, taskId);
 
+    const durations: Partial<Record<"amazon" | "voc" | "1688" | "ai", number>> = {};
+    const runTimed = async <T>(key: "amazon" | "voc" | "1688", fn: () => Promise<T>): Promise<T> => {
+      const start = Date.now();
+      try {
+        return await fn();
+      } finally {
+        durations[key] = Date.now() - start;
+      }
+    };
+
     // 3. 并行执行 4 大来源的状态检测（+ 被本轮授权的采集）；各源内部自包含 failure isolation
     const [rawAmazon, rawKeywordCompetitor, rawVoc, rawSourcing1688] = await Promise.all([
-      handleAmazonSource(options.context, taskId, modeFor("amazon")),
+      runTimed("amazon", () => handleAmazonSource(options.context, taskId, modeFor("amazon"))),
       handleKeywordCompetitorSource(options.context, taskId, task.resultJson, modeFor("keywordCompetitor")),
-      handleVocSource(options.context, taskId, modeFor("voc")),
-      handleSourcingSource(options.context, taskId, task.resultJson, modeFor("sourcing1688")),
+      runTimed("voc", () => handleVocSource(options.context, taskId, modeFor("voc"))),
+      runTimed("1688", () => handleSourcingSource(options.context, taskId, task.resultJson, modeFor("sourcing1688"))),
     ]);
 
     const probeSources: ResearchOrchestratorSources = {
@@ -1453,6 +1486,20 @@ export async function orchestrateResearchCollection(options: {
       sourcing1688: preserveStickyConclusion(probeSources.sourcing1688, cachedSources?.sourcing1688) ?? probeSources.sourcing1688,
     };
 
+    const taskResult = parseJsonSafe(task.resultJson);
+    const unifiedStatuses = deriveAllUnifiedStatuses({
+      sources,
+      taskResult,
+      durations,
+    });
+
+    // 无论只读探测还是执行采集，记录统一状态日志（fail-open）
+    void logUnifiedStatusEvents({
+      taskId,
+      statuses: unifiedStatuses,
+      contextAction: action,
+    });
+
     // 账本只记录真实发生过的采集（orchestrate），只读 inspect 绝不写入。
     if (action === "orchestrate") {
       const nextSources: ResearchOrchestratorSources = cachedSources
@@ -1464,6 +1511,21 @@ export async function orchestrateResearchCollection(options: {
           }
         : sources;
       RECENT_ORCHESTRATION_CACHE.set(taskId, { sources: nextSources, timestamp: Date.now() });
+
+      const overall = computeOverallStatus(sources);
+      logInfo("agent", "orchestration_completed", `研究采集编排完成，状态: ${overall}`, {
+        taskId,
+        metadata: {
+          overallStatus: overall,
+          sources: {
+            amazon: sources.amazon.status,
+            keywordCompetitor: sources.keywordCompetitor.status,
+            voc: sources.voc.status,
+            sourcing1688: sources.sourcing1688.status,
+          },
+          unifiedStatuses,
+        },
+      }).catch(() => undefined);
     }
 
     return {
@@ -1471,9 +1533,18 @@ export async function orchestrateResearchCollection(options: {
       action,
       overallStatus: computeOverallStatus(sources),
       sources,
+      unifiedStatuses,
       attemptedSources,
       updatedAt: new Date().toISOString(),
     };
+  } catch (error) {
+    if (action === "orchestrate") {
+      logError("agent", "orchestration_failed", `研究采集编排失败: ${error instanceof Error ? error.message : String(error)}`, {
+        taskId,
+        metadata: { error: String(error) },
+      }).catch(() => undefined);
+    }
+    throw error;
   } finally {
     // 4. 确保释放并发锁
     if (action === "orchestrate") {
