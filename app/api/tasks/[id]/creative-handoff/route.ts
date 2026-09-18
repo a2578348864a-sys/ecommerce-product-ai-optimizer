@@ -245,13 +245,15 @@ export async function GET(
       if (!gate.allowed && gate.taskAccessible === false) {
         return errorResponse(404, "task_not_found", "任务不存在。");
       }
-      return NextResponse.json({ preview, gateReason: gate.reason });
+      // allowed/reasonCode 均为 checkCreativeHandoffGate 既有输出的只读投影（gateReason 保留兼容）。
+      // UI 必须消费这两个字段，不得自行复刻门禁判据。
+      return NextResponse.json({ preview, allowed: gate.allowed, reasonCode: gate.reason, gateReason: gate.reason });
     }
     const { detail, gate } = await getCreativeHandoffDetail(id, ctx);
     if (!gate.allowed && gate.taskAccessible === false) {
       return errorResponse(404, "task_not_found", "任务不存在。");
     }
-    return NextResponse.json({ detail, gateReason: gate.reason });
+    return NextResponse.json({ detail, allowed: gate.allowed, reasonCode: gate.reason, gateReason: gate.reason });
   } catch (err) {
     if (err instanceof CreativeHandoffPersistenceError) {
       // Micro-Gate: 统一不存在错误码 — 不泄露资源存在性

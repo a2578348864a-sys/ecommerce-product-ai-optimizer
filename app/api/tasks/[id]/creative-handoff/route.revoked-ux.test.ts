@@ -153,37 +153,50 @@ async function createActiveHandoff(taskId: string) {
 }
 
 describe("v2.2.13 已撤回创作资料 UX", () => {
-  it("1. active handoff：正常创建新 revision", async () => {
+  it("1. active handoff：人工确认后 gate 转为 eligible；已确认事实不再可重复确认", async () => {
     seedDemoAccess();
     const taskId = "sandbox_task_v2213_active";
     seedResearchTask(taskId);
+    const before = await generateCreativeHandoffPreview(taskId, visitorContext());
+    // 确认前：无人工确认事实 → 不可创建，但 Studio 可进入（待人工确认）
+    expect(before.gate.allowed).toBe(false);
+    expect(before.gate.reason).toBe("no_confirmed_facts");
+
     const { sv } = await createActiveHandoff(taskId);
+    void sv;
+
+    // 闭环核心：人工确认落库后重算 gate → allowed=true / eligible
     const p2 = await generateCreativeHandoffPreview(taskId, visitorContext());
+    expect(p2.gate.allowed).toBe(true);
+    expect(p2.gate.reason).toBe("eligible");
+    expect((p2.gate.candidate?.confirmedFacts ?? []).length).toBeGreaterThanOrEqual(1);
+
+    // P1-3 跨层排他后果：已确认 field 从 stable 层移除 → 无新增事实可选
     const preview2 = p2.preview!;
-    const sv2 = preview2.storageVersion!;
     const confirmables = buildConfirmableCandidates(p2.gate.candidate!.stableSourceFacts);
     const listingEligible = confirmables.filter((c) => c.allowedUsageScopes.includes("listing"));
     const fields = [...new Set(listingEligible.map((c) => c.field))];
     const ids = fields.map((f) => preview2.confirmableFactCandidates!.find((pc) => pc.canonicalField === f)!.selectionId);
+    // 首个 revision 已确认全部 listing-eligible 事实 → 无剩余可确认项
+    expect(ids.length).toBe(0);
     const res = await POST(makePostRequest(taskId, {
       action: "create",
       requestId: "550e8400-e29b-41d4-a716-446655449901",
       expectedResearchRevision: preview2.expectedResearchRevision!,
       expectedCurrentHandoffRevision: 1,
-      expectedStorageVersion: sv2,
+      expectedStorageVersion: preview2.storageVersion!,
       selectedFactCandidateIds: ids,
       confirmed: true,
     }), { params: Promise.resolve({ id: taskId }) });
     const j = await res.json();
-    // active handoff append：成功追加 revision 2（route 对 append 返回 200，isNewRevision 仅首次创建为 true）
-    expect(res.status).toBe(200);
-    expect(j.currentRevision).toBe(2);
-    // 历史数据保留且 handoff 仍 active
+    // 追加 revision 必须有新增输入（新事实 / 手工事实 / 视觉参考批准），空提交被拒
+    expect(res.status).toBe(400);
+    expect(j.error.code).toBe("no_facts_selected");
+    // 历史数据保留且 handoff 仍 active（未被空提交破坏）
     const task = getSandboxTask(DEMO, taskId)!;
     const handoff = JSON.parse((task as unknown as { resultJson: string }).resultJson).creativeHandoff;
-    expect(handoff.versions.length).toBe(2);
+    expect(handoff.versions.length).toBe(1);
     expect(handoff.controlState).toBe("active");
-    void sv;
   });
 
   it("2. revoked handoff：API 返回业务错误 + 中文提示 + 不新增 revision", async () => {

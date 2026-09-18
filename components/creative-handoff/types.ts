@@ -7,18 +7,59 @@
  * 完整 handoffFingerprint、sourceReference 内部对象、完整 Task、完整 resultJson。
  */
 
+/**
+ * 服务端 checkCreativeHandoffGate 的 reason 全集（唯一事实源）。
+ * 与 lib/server/productCreativeHandoffPreview.ts 的 CreativeHandoffEligibility 一一对应；
+ * UI 只允许与本枚举比较，禁止再比较自由字符串。
+ */
 export type HandoffEligibility =
   | "eligible"
   | "no_confirmed_facts"
   | "creative_confirmation_required"
   | "legacy_not_supported"
   | "decision_not_creative_ready"
+  | "research_not_completed"
+  | "research_stale_requires_reconfirmation"
   | "workflow_incomplete"
   | "research_hash_invalid"
   | "verification_invalid"
   | "candidate_identity_mismatch"
   | "blocking_issue_present"
   | "research_mode_invalid";
+
+/**
+ * 结构化门禁状态（服务端下发的唯一权威判据）。
+ * - allowed：是否允许进入创作（= checkCreativeHandoffGate 的 allowed）
+ * - reasonCode：不允许的原因码（allowed=true 时恒为 "eligible"）
+ * UI 不得从其它字段（有无 researchRecord / researchStale / decisionStatus 等）自行推导。
+ */
+export type HandoffGate = {
+  allowed: boolean;
+  reasonCode: HandoffEligibility;
+};
+
+/** 与 HandoffEligibility 同源的运行时白名单（网络边界校验用）。 */
+export const HANDOFF_ELIGIBILITY_CODES: readonly HandoffEligibility[] = [
+  "eligible",
+  "no_confirmed_facts",
+  "legacy_not_supported",
+  "decision_not_creative_ready",
+  "research_not_completed",
+  "research_stale_requires_reconfirmation",
+  "workflow_incomplete",
+  "research_hash_invalid",
+  "verification_invalid",
+  "candidate_identity_mismatch",
+  "blocking_issue_present",
+  "research_mode_invalid",
+];
+
+const HANDOFF_ELIGIBILITY_CODE_SET: ReadonlySet<string> = new Set(HANDOFF_ELIGIBILITY_CODES);
+
+/** 网络边界类型守卫：未知取值一律视为不可用（fail-closed），不静默当作 eligible。 */
+export function isHandoffEligibility(value: unknown): value is HandoffEligibility {
+  return typeof value === "string" && HANDOFF_ELIGIBILITY_CODE_SET.has(value);
+}
 
 export type ConfirmableFactCandidate = {
   selectionId: string;
@@ -182,11 +223,19 @@ export type CreativeHandoffDetail = {
 
 export type PreviewResponse = {
   preview: CreativeHandoffPreview | null;
+  /** 结构化门禁状态（权威）。 */
+  allowed: boolean;
+  reasonCode: HandoffEligibility;
+  /** @deprecated 兼容字段，等价 reasonCode；新代码请消费 allowed/reasonCode。 */
   gateReason: string;
 };
 
 export type DetailResponse = {
   detail: CreativeHandoffDetail | null;
+  /** 结构化门禁状态（权威）。 */
+  allowed: boolean;
+  reasonCode: HandoffEligibility;
+  /** @deprecated 兼容字段，等价 reasonCode；新代码请消费 allowed/reasonCode。 */
   gateReason: string;
 };
 
@@ -225,8 +274,15 @@ export const STALE_REASON_LABELS: Record<string, string> = {
   default: "交接已过期，请查看最新预览后重新确认。",
 };
 
-export const ELIGIBILITY_BLOCK_LABELS: Record<string, string> = {
+/**
+ * reasonCode → 用户可见文案。
+ * 类型为 Exclude<HandoffEligibility,"eligible"> | "default"：服务端新增 reasonCode 时此处编译失败，
+ * 强制补齐文案（旧实现为 Record<string,string>，新码会静默落进 default）。
+ */
+export const ELIGIBILITY_BLOCK_LABELS: Record<Exclude<HandoffEligibility, "eligible"> | "default", string> = {
   decision_not_creative_ready: "当前研究决定尚未进入创作准备，暂不能创建创作交接。",
+  research_not_completed: "研究尚未正式完成，暂不能创建创作交接。",
+  research_stale_requires_reconfirmation: "研究资料在完成后发生变化，需重新确认研究后才能创建创作交接。",
   workflow_incomplete: "研究工作流尚未完成。",
   research_hash_invalid: "研究数据校验未通过。",
   verification_invalid: "研究验证信息无效。",

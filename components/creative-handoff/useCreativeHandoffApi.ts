@@ -8,17 +8,28 @@ import type {
   CreativeHandoffDetail,
   CreativeHandoffPreview,
   DetailResponse,
+  HandoffGate,
   PreviewResponse,
   RevokeReasonCode,
   RevokeResponse,
 } from "@/components/creative-handoff/types";
+import { isHandoffEligibility } from "@/components/creative-handoff/types";
 
 const BASE = "/api/tasks";
 
 export type HandoffApiState = "loading" | "preview" | "detail" | "error";
 
 export type HandoffLoadResult =
-  | { kind: "ok"; preview: CreativeHandoffPreview | null; detail: CreativeHandoffDetail | null; gateReason: string }
+  | {
+      kind: "ok";
+      preview: CreativeHandoffPreview | null;
+      detail: CreativeHandoffDetail | null;
+      /**
+       * 结构化门禁状态 —— 唯一权威判据，直接来自服务端 checkCreativeHandoffGate。
+       * UI 不得再用 gateReason 字符串比较，也不得从 result 字段自行推导准入。
+       */
+      gate: HandoffGate;
+    }
   | { kind: "error"; error: ApiError };
 
 /**
@@ -74,7 +85,18 @@ export function useCreativeHandoffApi(taskId: string) {
       }
       const previewJson = (await previewRes.json()) as PreviewResponse;
       const detailJson = (await detailRes.json()) as DetailResponse;
-      const out: HandoffLoadResult = { kind: "ok", preview: previewJson.preview, detail: detailJson.detail, gateReason: previewJson.gateReason };
+      // 结构化门禁：以服务端 allowed 为唯一判据；未知 reasonCode 一律 fail-closed。
+      const out: HandoffLoadResult = {
+        kind: "ok",
+        preview: previewJson.preview,
+        detail: detailJson.detail,
+        gate: {
+          allowed: previewJson.allowed === true,
+          reasonCode: isHandoffEligibility(previewJson.reasonCode)
+            ? previewJson.reasonCode
+            : "legacy_not_supported",
+        },
+      };
       commitResult(out);
       setState("detail");
       return out;

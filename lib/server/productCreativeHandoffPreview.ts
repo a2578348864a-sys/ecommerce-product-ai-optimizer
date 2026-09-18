@@ -572,6 +572,36 @@ export async function checkCreativeHandoffGate(
     return { asin, present: true, alreadyImported };
   })();
   const agentOutput = extractAgentOutputSnapshotFromTask(resultJson);
+
+  // ── 人工确认事实（human_confirmed 层）—— 闭环接线 ──────────────────────────
+  // 生产点（唯一）：用户在 Studio 完成人工确认后，由 createOrAppendCreativeHandoff 写入
+  //   resultJson.creativeHandoff.versions[N].confirmedFacts
+  //   每条均为 evidenceTier="human_confirmed" + sourceRef.sourceKind="user_confirmation"，
+  //   带真实 confirmedBy（actorOf(context)）与 confirmedAt（持久化时间戳）。
+  //
+  // 本模块只做「读取已落库事实 + 透传」，严格遵守产品约束：
+  //   · 不伪造 / 不自动生成 confirmedFacts（source 仅为真实人工确认产物）
+  //   · 不降低 confirmedFacts ≥ 1 要求（parseCandidate 校验原样保留）
+  //   · 不改 gate 判定顺序（本段只影响投影输入，不触碰任何一道 fail-closed 检查）
+  //   · 不新建第二套状态（复用既有 creativeHandoff 命名空间与 confirmedFacts 结构）
+  //
+  // 权威说明：研究侧已确认事实（factCandidates.confirmed）在 Studio 确认落库时
+  // 已经 resolveAuthoritativeFactSnapshot 合并进同一版 confirmedFacts，
+  // 故此处无需二次桥接，避免与写入路径产生双源分歧。
+  const humanConfirmedFacts = (() => {
+    const handoffRaw = resultJson.creativeHandoff;
+    if (handoffRaw === undefined) return [];
+    const handoff = parseProductCreativeHandoff(handoffRaw);
+    if (!handoff || handoff.versions.length === 0) return [];
+    // 撤回是终态：已撤回的创作资料不允许继续追加新版本（与 Persistence 的 handoff_revoked 一致），
+    // 其历史 confirmedFacts 不授予创建资格 —— 否则 route 会在「无新事实可选」校验处提前返回 400，
+    // 掩盖本应返回给用户的 409 handoff_revoked 业务提示。
+    if (handoff.controlState === "revoked") return [];
+    return handoff.versions[handoff.versions.length - 1].confirmedFacts.filter(
+      (fact) => fact.evidenceTier === "human_confirmed",
+    );
+  })();
+
   if (researchContext) {
     const projectionInput = buildProductCreativeHandoffProjectionEvidence({
       researchRecord: record,
@@ -581,6 +611,23 @@ export async function checkCreativeHandoffGate(
       researchHash: record.researchHash,
     });
     projectionChecks = projectionInput.deterministicChecks;
+    // 已人工确认事实并入投影证据的 human_confirmed 层（唯一来源：已落库的 Handoff 最新版本）。
+    // 未确认时该层为空 → 投影候选 confirmedFacts=[] → parseCandidate 仍会拒绝（allowed=false），
+    // 这正是「待人工确认」状态；确认后重算 gate 即满足 confirmedFacts ≥ 1 → allowed=true。
+    //
+    // P1-3 跨层排他（与 persistence 写入路径同一规则）：confirmed 与 stable 不得共享 field，
+    // 否则 parseCandidate 直接返回 null → 投影失败。故并入 confirmed 后须剔除同 field 的 stable。
+    const confirmedFieldSet = new Set(humanConfirmedFacts.map((fact) => fact.field));
+    const projectionEvidence: ProductCreativeHandoffProjectionEvidence[] = humanConfirmedFacts.length > 0
+      ? [
+          ...projectionInput.evidence.filter((item) =>
+            !(item.evidenceTier === "source_snapshot" && confirmedFieldSet.has(item.fact.field))),
+          ...humanConfirmedFacts.map((fact): ProductCreativeHandoffProjectionEvidence => ({
+            evidenceTier: "human_confirmed",
+            fact,
+          })),
+        ]
+      : projectionInput.evidence;
     try {
       const projectionResult = projectProductCreativeHandoffCandidate({
         sourceResearch: {
@@ -596,7 +643,7 @@ export async function checkCreativeHandoffGate(
           displayName: (taskRec.productName as string) || (taskRec.title as string) || "",
           identityConfirmedAt: (taskRec.createdAt instanceof Date ? taskRec.createdAt.toISOString() : (taskRec.createdAt as string)) || new Date().toISOString(),
         },
-        evidence: projectionInput.evidence,
+        evidence: projectionEvidence,
         prohibitedClaims: [{
           claimId: "00000000-0000-4000-8000-000000000001",
           category: "absolute_claim" as const,
@@ -619,6 +666,7 @@ export async function checkCreativeHandoffGate(
           const merged = candidate.stableSourceFacts.slice();
           for (const fact of browserStableFacts) {
             if (existingFields.has(fact.field)) continue; // 同 field 不重复（以 candidateAnalysisContext 为准）
+            if (confirmedFieldSet.has(fact.field)) continue; // P1-3：已被 human_confirmed 占用的 field 不得再作 stable
             merged.push(fact);
           }
           candidate = { ...candidate, stableSourceFacts: merged };

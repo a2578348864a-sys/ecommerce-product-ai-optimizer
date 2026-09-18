@@ -98,6 +98,16 @@ type TaskCenterItem = {
   oneLineSummary: string;
   result: unknown;
   productImage: ResearchProductImageDisplay | null;
+  /**
+   * Studio（Listing / Image）入口门禁 —— 服务端 checkCreativeHandoffGate 的只读投影。
+   * null / 缺失 = 门禁不可用 → UI 视为未就绪（fail-closed）。
+   * UI 不得再从 result / researchStale / decisionStatus 自行推导创作入口准入。
+   *
+   * allowed         = 能否「创建」创作交接（创建资格，Studio 页内部消费）
+   * studioReachable = Studio 页是否有内容可看（入口可见性，本组件消费）
+   * 两者不等价：no_confirmed_facts 下 allowed=false，但 Studio 页渲染「确认创作资料」界面。
+   */
+  studioGate?: { allowed: boolean; reasonCode: string; studioReachable: boolean } | null;
 };
 
 type DetailResponse =
@@ -133,6 +143,16 @@ type DeleteResponse =
 type PatchResponse =
   | { ok: true; data: { id: string; decisionStatus: DecisionStatus } }
   | { ok: false; error: { code: string; message: string } };
+
+/**
+ * Studio 入口「不可用」提示文案 —— 纯展示，不参与准入判断。
+ * 准入判据只有服务端 gate.allowed；此处仅按服务端下发的 reasonCode 选文案。
+ */
+function studioEntryNotice(reasonCode: string | undefined, fallback: string): string {
+  return reasonCode === "research_stale_requires_reconfirmation"
+    ? "研究资料已变化，请先重新确认研究。"
+    : fallback;
+}
 
 function formatDate(value: string) {
   const date = new Date(value);
@@ -2136,7 +2156,7 @@ function FormalV2RecordContent({
   record,
   researchStale,
   lifecycleSnapshot,
-  studioLegacyUnsupported,
+  studioGate,
   deleting,
   deleteError,
   onDelete,
@@ -2146,7 +2166,8 @@ function FormalV2RecordContent({
   record: TaskCenterItem;
   researchStale: boolean;
   lifecycleSnapshot: ResearchLifecycleSnapshot | null;
-  studioLegacyUnsupported: boolean;
+  /** Studio 入口门禁（服务端唯一权威判据的投影；null = 不可用） */
+  studioGate: TaskCenterItem["studioGate"];
   deleting: boolean;
   deleteError: string;
   onDelete: () => void;
@@ -2358,72 +2379,40 @@ function FormalV2RecordContent({
         </div>
       </details>
 
-      {/* ── 04: 已批准资产（Listing 与商品图片）（门禁：仅在决策「推进开发」后可用） ── */}
-      <section id="listing-and-images" className="mt-5 rounded-2xl border border-slate-200/80 bg-slate-50/50 p-4 sm:p-5" aria-label="已批准资产" data-testid="formal-v2-listing-images">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-          <div className="flex items-center gap-2">
-            <span className="flex size-6 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-500">04</span>
-            <h2 className="text-base font-bold text-slate-950">已批准资产（Listing 与商品图片）</h2>
-            <span className="rounded border border-slate-200 bg-white px-2 py-0.5 text-xs font-medium text-slate-500">辅助工具</span>
-          </div>
-          <span className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${
-            record.decisionStatus === "continue"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-              : "border-slate-200 bg-white text-slate-500"
-          }`}>
-            {record.decisionStatus === "continue" ? "决策已推进 · 允许生成" : "门禁锁定"}
-          </span>
+      <section id="listing-and-images" className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5" aria-label="Listing 与商品图片" data-testid="formal-v2-listing-images">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-base font-semibold text-slate-950">Listing 与商品图片</h2>
+          <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">发布前需人工确认</span>
         </div>
-        <p className="text-xs text-slate-500 mb-4">商品开发决策是核心；确定推进开发后，才可在此前往辅助工具生成文案草稿与视觉参考。</p>
-
-        {record.decisionStatus !== "continue" ? (
-          <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-sm text-amber-800" data-testid="studio-gate-locked-notice">
-            <p className="font-semibold">当前决策为「暂缓/放弃」，后续资产生成已锁定。需调整为「推进开发」后方可使用。</p>
-            <p className="mt-1.5 text-xs text-amber-700">
-              请在上方「01 商品开发决策研判卡」或「人工拍板确认」区中将决策状态变更为「可继续 / 推进开发」并保存后，方可解锁 Listing 与图片资产生成入口。
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <div className="rounded-xl border border-rose-100 bg-rose-50/50 p-4">
+            <p className="text-sm font-semibold text-rose-700">Listing</p>
+            <p className="mt-2 text-sm font-semibold leading-6 text-rose-700">
+              {view.hasListingDraft ? "AI Listing 草稿已生成（未人工核实，暂不可发布）。" : "Listing 草稿尚未取得。"}
             </p>
+            <p className="mt-2 text-xs leading-5 text-slate-600">人工核实入口：点击下方「前往 Listing Studio 人工核对」，在「确认创作资料」区勾选「人工确认」并保存后，才可发布。</p>
+            {studioGate?.studioReachable === true ? (
+              <Link href={`/listing-studio?taskId=${encodeURIComponent(record.id)}`} className="linear-button mt-4 inline-flex h-9 items-center justify-center px-3 text-sm font-semibold">前往 Listing Studio 人工核对</Link>
+            ) : <p className="mt-3 text-xs font-semibold text-amber-700">{studioEntryNotice(studioGate?.reasonCode, "当前记录的创作资料尚未取得。")}</p>}
           </div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-slate-900">Listing 文本草稿</p>
-                <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${view.hasListingDraft ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>
-                  {view.hasListingDraft ? "已生成" : "待生成"}
-                </span>
-              </div>
-              <p className="mt-2 text-sm leading-6 text-slate-700 font-medium">
-                {view.hasListingDraft ? "AI Listing 草稿已生成（未人工核实，暂不可发布）。" : "Listing 草稿尚未取得。"}
-              </p>
-              <p className="mt-2 text-xs leading-5 text-slate-500">人工核实入口：点击下方「前往文案工作台确认资料」，在「确认创作资料」区勾选「人工确认」并保存后，才可发布。</p>
-              {!studioLegacyUnsupported && !effectiveResearchStale ? (
-                <Link href={`/listing-studio?taskId=${encodeURIComponent(record.id)}`} className="linear-button mt-4 inline-flex h-9 items-center justify-center px-3 text-sm font-semibold">前往文案工作台确认资料</Link>
-              ) : <p className="mt-3 text-xs font-semibold text-amber-700">{effectiveResearchStale ? "研究资料已变化，请先重新确认研究。" : "当前记录的创作资料尚未取得。"}</p>}
-            </div>
-            <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-slate-900">商品图片素材</p>
-                <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${view.hasImageDraft ? "border-amber-200 bg-amber-50 text-amber-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>
-                  {view.hasImageDraft ? "AI 图片待核验" : "无参考图"}
-                </span>
-              </div>
-              <p className="mt-2 text-sm leading-6 text-slate-800 font-medium">{imageCopy.headline}</p>
-              <p className="mt-2 text-xs leading-5 text-slate-500">{imageCopy.guidance}</p>
-              {imageCopy.verificationReasons.length ? (
-                <ul className="mt-2 space-y-1 text-xs leading-5 text-slate-600">
-                  {imageCopy.verificationReasons.map((reason) => <li key={reason}>· {reason}</li>)}
-                </ul>
-              ) : null}
-              {!studioLegacyUnsupported && !effectiveResearchStale ? (
-                <Link href={`/image-studio?taskId=${encodeURIComponent(record.id)}`} className="linear-button mt-4 inline-flex h-9 items-center justify-center px-3 text-sm font-semibold">
-                  {view.hasImageDraft ? "补充清晰参考图后重新检查" : "提供清晰参考图"}
-                </Link>
-              ) : (
-                <p className="mt-3 text-xs font-semibold text-amber-700">{effectiveResearchStale ? "研究资料已变化，请先重新确认研究。" : "当前记录暂无可用的补图入口（历史记录未生成创作上下文）。"}</p>
-              )}
-            </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+            <p className="text-sm font-semibold text-slate-900">商品图片</p>
+            <p className="mt-2 text-sm font-semibold leading-6 text-slate-800">{imageCopy.headline}</p>
+            <p className="mt-2 text-xs leading-5 text-slate-600">{imageCopy.guidance}</p>
+            {imageCopy.verificationReasons.length ? (
+              <ul className="mt-2 space-y-1 text-xs leading-5 text-slate-600">
+                {imageCopy.verificationReasons.map((reason) => <li key={reason}>· {reason}</li>)}
+              </ul>
+            ) : null}
+            {studioGate?.studioReachable === true ? (
+              <Link href={`/image-studio?taskId=${encodeURIComponent(record.id)}`} className="linear-button mt-4 inline-flex h-9 items-center justify-center px-3 text-sm font-semibold">
+                {view.hasImageDraft ? "补充清晰参考图后重新检查" : "提供清晰参考图"}
+              </Link>
+            ) : (
+              <p className="mt-3 text-xs font-semibold text-amber-700">{studioEntryNotice(studioGate?.reasonCode, "当前记录暂无可用的补图入口（历史记录未生成创作上下文）。")}</p>
+            )}
           </div>
-        )}
+        </div>
       </section>
 
       <RecordFooter isActiveResearchView={isActiveResearchView} deleting={deleting} deleteError={deleteError} onDelete={onDelete} />
@@ -2456,10 +2445,9 @@ export function TaskRecordDetail({ id }: { id: string }) {
       || Object.prototype.hasOwnProperty.call(record.result, "researchVerification")
       || hasVersionedProductResearchRecord(record.result);
   }, [record]);
-  // V3 Legacy Removal：早期候选任务（无新版创作上下文）→ 不显示创作工具区
-  const studioLegacyUnsupported = record !== null && (lifecycleSnapshot
-    ? lifecycleSnapshot.contractMode !== "modern"
-    : !hasVersionedProductResearchRecord(record.result));
+  // V3 Legacy Removal / 门禁统一：创作工具区是否可用不再由前端判断。
+  // 入口准入 = 服务端 checkCreativeHandoffGate 的只读投影 record.studioGate（null = 不可用）。
+  // 前端不得再从 result / researchStale / decisionStatus 推导 studio 准入。
   // V3 Research Staleness UX Closure：研究资料在完成研究后发生变化 → 创作 CTA 禁用（需重新确认研究）
   const researchStale = lifecycleSnapshot?.stale
     ?? ((record as { researchStale?: boolean } | null)?.researchStale === true);
@@ -2756,7 +2744,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
                   record={record}
                   researchStale={researchStale}
                   lifecycleSnapshot={lifecycleSnapshot}
-                  studioLegacyUnsupported={studioLegacyUnsupported}
+                  studioGate={record.studioGate}
                   deleting={deleting}
                   deleteError={deleteError}
                   onDelete={() => void deleteRecord()}

@@ -10,6 +10,7 @@ import {
 } from "@/components/creative-handoff/useCreativeHandoffApi";import type {
   ApiError,
   CreativeHandoffPreview,
+  HandoffEligibility,
 } from "@/components/creative-handoff/types";
 import { ListingFactSupplementPanel } from "@/components/studio/ListingFactSupplementPanel";
 import { MarketingIntelligencePanel } from "@/components/listing-handoff/MarketingIntelligencePanel";
@@ -53,6 +54,96 @@ export function canConfirmPreparation(params: {
     )
   );
 }
+
+/**
+ * Studio 门禁文案表 —— 判据只有一个：服务端下发的结构化 gate（allowed + reasonCode）。
+ *
+ * 类型为 Exclude<HandoffEligibility, "eligible">（allowed=false 时 reasonCode 必不为 eligible），
+ * 因此服务端一旦新增 reasonCode，此处会因 Record 不完整而**编译失败**，强制同步文案，
+ * 而不是像以前那样靠自由字符串比较静默落进兜底分支。
+ */
+const STUDIO_GATE_COPY: Record<Exclude<HandoffEligibility, "eligible">, {
+  title: string;
+  body: string;
+  cta: string;
+  /** true = 需要用户先回研究记录做动作（强调样式） */
+  emphasize: boolean;
+}> = {
+  research_stale_requires_reconfirmation: {
+    title: "研究资料需要重新确认",
+    body: "研究完成后又新增或变更了研究证据，当前研究结论基于旧版本资料。新的 Listing / Image 生成已暂停（历史结果保留）；请返回研究记录执行「重新确认研究」，确认后创作工具恢复可用。",
+    cta: "返回研究记录重新确认",
+    emphasize: true,
+  },
+  decision_not_creative_ready: {
+    title: "创作资料尚未准备完成",
+    body: "研究决定尚未进入可创作状态，请先返回商品研究完成人工决定。",
+    cta: "返回商品研究",
+    emphasize: false,
+  },
+  research_not_completed: {
+    title: "创作资料尚未准备完成",
+    body: "研究已准备好，但尚未完成研究。请先返回研究记录执行「完成研究」，之后即可进入创作。",
+    cta: "返回商品研究",
+    emphasize: false,
+  },
+  blocking_issue_present: {
+    title: "创作资料尚未准备完成",
+    body: "当前研究资料状态暂不支持创作，请先返回商品研究核对资料。",
+    cta: "返回商品研究",
+    emphasize: false,
+  },
+  research_hash_invalid: {
+    title: "创作资料尚未准备完成",
+    body: "当前研究资料状态暂不支持创作，请先返回商品研究核对资料。",
+    cta: "返回商品研究",
+    emphasize: false,
+  },
+  verification_invalid: {
+    title: "创作资料尚未准备完成",
+    body: "当前研究资料状态暂不支持创作，请先返回商品研究核对资料。",
+    cta: "返回商品研究",
+    emphasize: false,
+  },
+  research_mode_invalid: {
+    title: "创作资料尚未准备完成",
+    body: "当前研究资料状态暂不支持创作，请先返回商品研究核对资料。",
+    cta: "返回商品研究",
+    emphasize: false,
+  },
+  workflow_incomplete: {
+    title: "创作资料尚未准备完成",
+    body: "研究工作流尚未完成，请先返回商品研究查看进度。",
+    cta: "返回商品研究",
+    emphasize: false,
+  },
+  candidate_identity_mismatch: {
+    title: "创作资料尚未准备完成",
+    body: "候选身份与研究记录不一致，请先返回商品研究核对资料。",
+    cta: "返回商品研究",
+    emphasize: false,
+  },
+  legacy_not_supported: {
+    title: "创作资料尚未准备完成",
+    body: "该记录没有可信商品研究合同，暂不支持创作。请从商品研究池重新创建正式研究。",
+    cta: "返回商品研究",
+    emphasize: false,
+  },
+  no_confirmed_facts: {
+    title: "创作资料尚未准备完成",
+    body: "当前没有可人工确认的商品事实，请先返回商品研究补充并确认资料。",
+    cta: "返回商品研究",
+    emphasize: false,
+  },
+};
+
+/** 门禁不可用（未取到 gate）时的兜底文案；不表示任何具体 reasonCode。 */
+const STUDIO_GATE_COPY_UNAVAILABLE = {
+  title: "创作资料尚未准备完成",
+  body: "创作资料尚未准备完成，请先返回商品研究确认资料。",
+  cta: "返回商品研究",
+  emphasize: false,
+};
 
 const FACT_LABELS: Record<string, string> = {
   brand: "品牌",
@@ -347,41 +438,27 @@ export function TaskStudioPreparation({
     );
   }
 
-  // R4/R6：同一 actor 可访问但创作业务未就绪 → 显示准确状态（不伪装"不存在/无权限"）
-  if (api.result?.kind === "ok" && !api.result.detail && !api.result.preview && api.result.gateReason) {
-    const gateReason = api.result.gateReason;
-    // V3 Legacy Removal：Studio 只处理正式 Current Research Context；
-    // legacy_not_supported 不再作为独立用户状态（详情页已不再展示创作工具区），统一为通用未就绪提示。
-    const isDecisionNotReady = gateReason === "decision_not_creative_ready";
-    const isResearchNotCompleted = gateReason === "research_not_completed";
-    const isResearchStale = gateReason === "research_stale_requires_reconfirmation";
-    const isBlocked = gateReason === "blocking_issue_present" || gateReason === "research_hash_invalid" || gateReason === "verification_invalid" || gateReason === "research_mode_invalid";
+  // R4/R6：同一 actor 可访问但创作业务未就绪 → 显示准确状态（不伪装"不存在/无权限"）。
+  // 判据 100% 来自服务端结构化 gate（allowed + reasonCode）：不做字符串比较，
+  // 也不读任何本地字段（researchStale / decisionStatus / 有无 researchRecord）。
+  // 保留 `!detail && !preview` 结构条件：no_confirmed_facts 会返回降级 preview，仍走降级 UI。
+  if (api.result?.kind === "ok" && !api.result.gate.allowed && !api.result.detail && !api.result.preview) {
+    const { reasonCode } = api.result.gate;
+    const copy = reasonCode === "eligible" ? STUDIO_GATE_COPY_UNAVAILABLE : STUDIO_GATE_COPY[reasonCode];
     return (
-      <section className="surface-card border-amber-200 p-5" role="alert" data-testid={`task-studio-gate-${gateReason}`}>
-        <h2 className="text-lg font-bold text-slate-950">
-          {isResearchStale ? "研究资料需要重新确认" : "创作资料尚未准备完成"}
-        </h2>
-        <p className="mt-2 text-sm leading-6 text-slate-700">
-          {isResearchStale
-            ? "研究完成后又新增或变更了研究证据，当前研究结论基于旧版本资料。新的 Listing / Image 生成已暂停（历史结果保留）；请返回研究记录执行「重新确认研究」，确认后创作工具恢复可用。"
-            : isDecisionNotReady
-              ? "研究决定尚未进入可创作状态，请先返回商品研究完成人工决定。"
-              : isResearchNotCompleted
-                ? "研究已准备好，但尚未完成研究。请先返回研究记录执行「完成研究」，之后即可进入创作。"
-                : isBlocked
-                  ? "当前研究资料状态暂不支持创作，请先返回商品研究核对资料。"
-                  : "创作资料尚未准备完成，请先返回商品研究确认资料。"}
-        </p>
+      <section className="surface-card border-amber-200 p-5" role="alert" data-testid={`task-studio-gate-${reasonCode}`}>
+        <h2 className="text-lg font-bold text-slate-950">{copy.title}</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-700">{copy.body}</p>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <Link
             href={`/tasks/${encodeURIComponent(taskId)}`}
             className={`inline-flex h-10 items-center rounded-xl px-4 text-sm font-semibold ${
-              isResearchStale
+              copy.emphasize
                 ? "border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
                 : "border border-slate-300 bg-white text-slate-700"
             }`}
           >
-            {isResearchStale ? "返回研究记录重新确认" : "返回商品研究"}
+            {copy.cta}
           </Link>
         </div>
       </section>

@@ -18,6 +18,7 @@ import {
   type ResearchProductImageDisplay,
 } from "@/lib/productResearchImage";
 import { getResearchStaleState, describeEvidenceChangesSinceCompletion, hasProductResearchRecordNamespace } from "@/lib/productResearchRecord";
+import { generateCreativeHandoffPreview, type CreativeHandoffEligibility } from "@/lib/server/productCreativeHandoffPreview";
 import { projectTaskResultForBrowser } from "@/lib/productResearchPublicDto";
 import {
   TaskResultJsonMutationError,
@@ -48,6 +49,11 @@ type ViralTaskItem = {
   oneLineSummary: string;
   result: unknown;
   productImage: ResearchProductImageDisplay | null;
+  /**
+   * Studio（Listing / Image）入口门禁状态 —— 服务端唯一权威判据的只读投影。
+   * null = 门禁不可用（UI 视为未就绪）。UI 不得从 result / researchStale 自行推导准入。
+   */
+  studioGate?: StudioGateProjection | null;
 };
 
 type ApiResponse =
@@ -203,6 +209,55 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * Studio 入口门禁投影（只读，不是第二套判据）：
+ * 直接调用 lib/server/productCreativeHandoffPreview.ts 的 generateCreativeHandoffPreview
+ * （唯一事实源；其内部即 checkCreativeHandoffGate），只做「取 context + 兜异常」的搬运，
+ * 不复制任何准入规则。
+ * 返回 null 表示门禁不可用（未取到访问上下文 / 门禁抛错）→ UI 必须视为未就绪（fail-closed）。
+ */
+export type StudioGateProjection = {
+  /** 是否允许「创建/追加」创作交接（服务端 checkCreativeHandoffGate 的 allowed） */
+  allowed: boolean;
+  reasonCode: CreativeHandoffEligibility;
+  /**
+   * Studio 页是否可渲染（非拦截页）。
+   *
+   * 语义区分（重要）：
+   *   - allowed         = 能否「创建」创作交接（创建资格）
+   *   - studioReachable = Studio 页是否有内容可看（入口可见性）
+   * 两者不等价：`no_confirmed_facts` 下 allowed=false，但 Studio 页会渲染
+   * 「确认创作资料」降级界面（用户正是要在这里完成事实确认才能创建），故入口必须可见。
+   *
+   * 取值来源与 Studio 页一致：components/creative-handoff/useCreativeHandoffApi.ts 同时取
+   * `?mode=preview`（→ preview）与普通模式（→ detail），仅当三者皆空时渲染拦截页。
+   * 由 productCreativeHandoffPreview.ts 源码可证两者等价：
+   *   preview !== null ⇔ gate.allowed || gate.reason === "no_confirmed_facts"
+   *   detail  !== null ⇔ gate.allowed || gate.reason === "no_confirmed_facts"  （getCreativeHandoffDetail）
+   * 故此处用单次 preview 调用判定，避免在任务详情热路径上重复跑一遍 gate。
+   */
+  studioReachable: boolean;
+};
+
+async function projectStudioGate(
+  taskId: string,
+  request: NextRequest,
+): Promise<StudioGateProjection | null> {
+  const ctx = getAccessContext(request);
+  if (!ctx) return null;
+  try {
+    const { preview, gate } = await generateCreativeHandoffPreview(taskId, ctx);
+    return {
+      allowed: gate.allowed,
+      reasonCode: gate.reason,
+      studioReachable: preview !== null,
+    };
+  } catch {
+    // 门禁异常不得影响任务详情读取；入口状态按未就绪处理（fail-closed）
+    return null;
+  }
+}
+
 async function getId(context: RouteContext) {
   const { id: rawId } = await context.params;
   return typeof rawId === "string" ? rawId.trim() : "";
@@ -249,6 +304,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       resultJson: publicResult,
       result: publicResult,
       researchStale,
+      studioGate: await projectStudioGate(id, request),
       evidenceChangesSinceCompletion,
       productImage: resolveResearchTaskProductImage({
         taskResult: result,
@@ -263,6 +319,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
   const accessCtx = getAccessContext(request);
   if (accessCtx?.mode === "demo") return notFoundResponse();
 
+  // Studio 入口门禁：与任务详情并行获取（均为只读），不改变任何既有响应字段语义。
+  const studioGateProjection = await projectStudioGate(id, request);
+
   try {
     const record = await prisma.viralAnalysisRecord.findFirst({
       where: { id },
@@ -275,6 +334,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       data: await addOwnerProductImage(toTaskItem(record), safeParseJson(record.resultJson)).then((item) => ({
         ...item,
         researchStale: getResearchStaleState(safeParseJson(record.resultJson)).stale,
+        studioGate: studioGateProjection,
         evidenceChangesSinceCompletion: describeEvidenceChangesSinceCompletion(safeParseJson(record.resultJson)),
       })),
     });

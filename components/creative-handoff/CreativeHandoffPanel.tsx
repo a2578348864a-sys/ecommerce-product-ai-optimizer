@@ -12,6 +12,8 @@ import {
   type ApiError,
   type CreativeHandoffDetail,
   type CreativeHandoffPreview,
+  type HandoffEligibility,
+  type HandoffGate,
   type RevokeReasonCode,
 } from "@/components/creative-handoff/types";
 
@@ -227,7 +229,7 @@ function StaleReasonBadge({ reasonCode }: { reasonCode?: string }) {
 type PanelState =
   | { kind: "loading" }
   | { kind: "legacy" }
-  | { kind: "gate_blocked"; reason: string; label: string }
+  | { kind: "gate_blocked"; reason: Exclude<HandoffEligibility, "eligible"> | "default"; label: string }
   | { kind: "not_found" }
   | { kind: "recoverable_error"; message: string }
   | { kind: "preview"; preview: CreativeHandoffPreview; detail: CreativeHandoffDetail | null }
@@ -281,12 +283,14 @@ export function CreativeHandoffPanel({ taskId, onCommitted }: {
   }, []);
 
   const deriveState = useCallback(
-    (preview: CreativeHandoffPreview | null, detail: CreativeHandoffDetail | null, gateReason: string): PanelState => {
+    (preview: CreativeHandoffPreview | null, detail: CreativeHandoffDetail | null, gate: HandoffGate): PanelState => {
       if (!preview) {
-        if (gateReason === "legacy_not_supported") return { kind: "legacy" };
-        if (gateReason === "no_confirmed_facts") return { kind: "gate_blocked", reason: gateReason, label: ELIGIBILITY_BLOCK_LABELS.no_confirmed_facts };
-        if (ELIGIBILITY_BLOCK_LABELS[gateReason]) return { kind: "gate_blocked", reason: gateReason, label: ELIGIBILITY_BLOCK_LABELS[gateReason] };
-        return { kind: "gate_blocked", reason: gateReason, label: ELIGIBILITY_BLOCK_LABELS.default };
+        // 判据只有服务端结构化 gate.reasonCode（HandoffEligibility 枚举），不再做自由字符串比较。
+        // allowed=true 却没有 preview 属异常（服务端保证 allowed 必带 preview）→ 按不可用处理（fail-closed）。
+        const reasonCode: Exclude<HandoffEligibility, "eligible"> | "default" =
+          gate.allowed || gate.reasonCode === "eligible" ? "default" : gate.reasonCode;
+        if (reasonCode === "legacy_not_supported") return { kind: "legacy" };
+        return { kind: "gate_blocked", reason: reasonCode, label: ELIGIBILITY_BLOCK_LABELS[reasonCode] };
       }
       if (detail?.controlState === "revoked") return { kind: "revoked", preview, detail };
       if (detail?.controlState === "active" && detail.effectiveStatus === "stale") return { kind: "stale", preview, detail };
@@ -327,7 +331,7 @@ export function CreativeHandoffPanel({ taskId, onCommitted }: {
         const rev = `${res.preview.expectedResearchRevision ?? 1}:${res.preview.expectedCurrentHandoffRevision ?? 0}`;
         if (rev !== draftRevision) setDraftRevision(rev);
       }
-      setState(deriveState(res.preview, res.detail, res.gateReason));
+      setState(deriveState(res.preview, res.detail, res.gate));
     } finally {
       loadAllRef.current = false;
     }
