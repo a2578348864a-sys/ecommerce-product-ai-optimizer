@@ -2104,4 +2104,94 @@ describe("ResearchCollectionOrchestratorCard (Phase 3 UI / Interaction)", () => 
       expect(manualBtn?.textContent).toContain("人工补充");
     });
   });
+
+  describe("7. 上游数据采集状态统一化 M.1 (Agent 驾驶舱状态条)", () => {
+    it("正确渲染 4 大模块统一状态矩阵与处理指引", async () => {
+      root = createRoot(container as unknown as Element);
+      await act(async () => {
+        root?.render(
+          createElement(ResearchCollectionOrchestratorCard, {
+            taskId: "task-unified-test",
+            skipAutoInspect: true,
+            initialData: {
+              unifiedStatuses: {
+                amazon: {
+                  module: "amazon",
+                  status: "succeeded",
+                  succeeded: true,
+                  factsCount: 8,
+                  summary: "获取 8 项商品事实",
+                  durationMs: 140,
+                },
+                voc: {
+                  module: "voc",
+                  status: "awaiting_action",
+                  reviewsCount: 0,
+                  hasCaptcha: true,
+                  errorCode: "captcha_required",
+                  summary: "触发验证码或安全验证阻断",
+                  actionRequired: "请在 Amazon 详情页完成验证码后重试",
+                  durationMs: 320,
+                },
+                "1688": {
+                  module: "1688",
+                  status: "failed",
+                  extensionConnected: false,
+                  candidatesCount: 0,
+                  errorCode: "extension_not_installed",
+                  summary: "未检测到 1688 扩展助手连接或未登录",
+                  failureReason: "Chrome 扩展插件未安装或已被用户禁用",
+                  actionRequired: "请在 Chrome 中安装并启用轻选 1688 助手后重试",
+                  durationMs: 50,
+                },
+                ai: {
+                  module: "ai",
+                  status: "succeeded",
+                  generated: true,
+                  passedGate: true,
+                  savedStatus: "saved",
+                  summary: "文案已生成并通过 100% 事实门禁",
+                  durationMs: 890,
+                },
+              },
+            },
+          }),
+        );
+      });
+      await flush();
+
+      // 验证驾驶舱容器存在
+      const cockpit = container.querySelector('[data-testid="unified-collection-status-cockpit"]');
+      expect(cockpit).not.toBeNull();
+      expect(cockpit?.textContent).toContain("Agent 驾驶舱 · 上游数据采集与生成状态");
+      expect(cockpit?.textContent).toContain("统一状态模型 M.1");
+
+      // 验证 4 大模块均已渲染
+      const amazonCard = container.querySelector('[data-testid="unified-module-amazon"]');
+      expect(amazonCard).not.toBeNull();
+      expect(amazonCard?.textContent).toContain("Amazon 商品事实");
+      expect(amazonCard?.textContent).toContain("成功");
+      expect(amazonCard?.textContent).toContain("获取 8 项商品事实");
+      expect(amazonCard?.textContent).toContain("8 项事实");
+      expect(amazonCard?.textContent).toContain("140ms");
+
+      const vocCard = container.querySelector('[data-testid="unified-module-voc"]');
+      expect(vocCard).not.toBeNull();
+      expect(vocCard?.textContent).toContain("VOC 买家原声");
+      expect(vocCard?.textContent).toContain("等待人工");
+      expect(vocCard?.textContent).toContain("请在 Amazon 详情页完成验证码后重试");
+
+      const sourcingCard = container.querySelector('[data-testid="unified-module-1688"]');
+      expect(sourcingCard).not.toBeNull();
+      expect(sourcingCard?.textContent).toContain("1688 货源找货");
+      expect(sourcingCard?.textContent).toContain("失败");
+      expect(sourcingCard?.textContent).toContain("请在 Chrome 中安装并启用轻选 1688 助手后重试");
+
+      const aiCard = container.querySelector('[data-testid="unified-module-ai"]');
+      expect(aiCard).not.toBeNull();
+      expect(aiCard?.textContent).toContain("AI Listing 文案");
+      expect(aiCard?.textContent).toContain("成功");
+      expect(aiCard?.textContent).toContain("门禁通过");
+    });
+  });
 });

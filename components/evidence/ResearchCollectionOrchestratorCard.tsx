@@ -18,6 +18,7 @@ import {
   RotateCw,
   Loader2,
   ArrowRight,
+  Activity,
 } from "lucide-react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
 import {
@@ -26,7 +27,11 @@ import {
   type PendingQueueItem,
   type NeedsUserQueueItem,
 } from "@/lib/evidence/pendingReviewQueue";
-import type { ResearchOrchestratorSources } from "@/lib/server/researchCollectionOrchestrator";
+import type {
+  ResearchOrchestratorSources,
+  UnifiedStatusesMap,
+  UnifiedCollectionStatus,
+} from "@/lib/server/researchCollectionOrchestrator";
 
 /* ── 类型定义 ─────────────────────────────────────────── */
 
@@ -88,6 +93,7 @@ export type ResearchCollectionOrchestratorCardProps = {
     items?: Partial<Record<OrchestratorSourceKey, { state: OrchestratorSourceState; detail?: string; errorCode?: string }>>;
     hasNewPreview?: boolean;
     rawSources?: ResearchOrchestratorSources;
+    unifiedStatuses?: UnifiedStatusesMap;
   };
   /** 测试时跳过自动 inspect */
   skipAutoInspect?: boolean;
@@ -619,6 +625,9 @@ export function ResearchCollectionOrchestratorCard({
   const [customSummaryText, setCustomSummaryText] = useState<string | undefined>(
     initialData?.summary,
   );
+  const [unifiedStatuses, setUnifiedStatuses] = useState<UnifiedStatusesMap | undefined>(
+    () => initialData?.unifiedStatuses,
+  );
 
   // 保存最新的 rawSources（用于派生待确认队列与需要处理队列统计）
   const [rawSources, setRawSources] = useState<ResearchOrchestratorSources | undefined>(() => {
@@ -874,6 +883,10 @@ export function ResearchCollectionOrchestratorCard({
 
       if (summaryStr) {
         setCustomSummaryText(summaryStr);
+      }
+
+      if (d.unifiedStatuses && typeof d.unifiedStatuses === "object" && !Array.isArray(d.unifiedStatuses)) {
+        setUnifiedStatuses(d.unifiedStatuses as UnifiedStatusesMap);
       }
 
       const sourceContainer =
@@ -1168,6 +1181,93 @@ export function ResearchCollectionOrchestratorCard({
         </div>
       )}
 
+      {/* ── Agent 驾驶舱 · 上游数据采集与生成状态 ── */}
+      {unifiedStatuses && (
+        <div
+          data-testid="unified-collection-status-cockpit"
+          className="mt-3 rounded-xl border border-slate-200/90 bg-white p-3 shadow-xs"
+        >
+          <div className="mb-2.5 flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <Activity className="h-3.5 w-3.5 text-slate-600 shrink-0" />
+              <span className="text-xs font-semibold text-slate-900">
+                Agent 驾驶舱 · 上游数据采集与生成状态
+              </span>
+            </div>
+            <span className="text-[11px] font-medium text-slate-400">统一状态模型 M.1</span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <UnifiedModuleCard
+              key="amazon"
+              moduleKey="amazon"
+              title="Amazon 商品事实"
+              status={unifiedStatuses.amazon.status}
+              summary={unifiedStatuses.amazon.summary}
+              durationMs={unifiedStatuses.amazon.durationMs}
+              failureReason={unifiedStatuses.amazon.failureReason}
+              actionRequired={unifiedStatuses.amazon.actionRequired}
+              metrics={[
+                typeof unifiedStatuses.amazon.factsCount === "number"
+                  ? `${unifiedStatuses.amazon.factsCount} 项事实`
+                  : null,
+              ]}
+            />
+
+            <UnifiedModuleCard
+              key="voc"
+              moduleKey="voc"
+              title="VOC 买家原声"
+              status={unifiedStatuses.voc.status}
+              summary={unifiedStatuses.voc.summary}
+              durationMs={unifiedStatuses.voc.durationMs}
+              failureReason={unifiedStatuses.voc.failureReason}
+              actionRequired={unifiedStatuses.voc.actionRequired}
+              metrics={[
+                typeof unifiedStatuses.voc.reviewsCount === "number"
+                  ? `${unifiedStatuses.voc.reviewsCount} 条评论`
+                  : null,
+                unifiedStatuses.voc.hasCaptcha ? "验证码阻断" : null,
+              ]}
+            />
+
+            <UnifiedModuleCard
+              key="1688"
+              moduleKey="1688"
+              title="1688 货源找货"
+              status={unifiedStatuses["1688"].status}
+              summary={unifiedStatuses["1688"].summary}
+              durationMs={unifiedStatuses["1688"].durationMs}
+              failureReason={unifiedStatuses["1688"].failureReason}
+              actionRequired={unifiedStatuses["1688"].actionRequired}
+              metrics={[
+                typeof unifiedStatuses["1688"].candidatesCount === "number"
+                  ? `${unifiedStatuses["1688"].candidatesCount} 个货源`
+                  : null,
+                unifiedStatuses["1688"].extensionConnected !== undefined
+                  ? (unifiedStatuses["1688"].extensionConnected ? "助手在线" : "助手离线")
+                  : null,
+              ]}
+            />
+
+            <UnifiedModuleCard
+              key="ai"
+              moduleKey="ai"
+              title="AI Listing 文案"
+              status={unifiedStatuses.ai.status}
+              summary={unifiedStatuses.ai.summary}
+              durationMs={unifiedStatuses.ai.durationMs}
+              failureReason={unifiedStatuses.ai.failureReason}
+              actionRequired={unifiedStatuses.ai.actionRequired}
+              metrics={[
+                unifiedStatuses.ai.generated ? "文案已生成" : "待生成",
+                unifiedStatuses.ai.passedGate ? "门禁通过" : "未过门禁",
+              ]}
+            />
+          </div>
+        </div>
+      )}
+
       {/* ── 4 项来源状态紧凑列表展示 ── */}
       <div
         data-testid="orchestrator-sources-list"
@@ -1352,5 +1452,95 @@ export function ResearchCollectionOrchestratorCard({
         })}
       </div>
     </section>
+  );
+}
+
+function UnifiedModuleCard({
+  moduleKey,
+  title,
+  status,
+  summary,
+  durationMs,
+  failureReason,
+  actionRequired,
+  metrics,
+}: {
+  moduleKey: "amazon" | "voc" | "1688" | "ai";
+  title: string;
+  status: UnifiedCollectionStatus;
+  summary: string;
+  durationMs?: number;
+  failureReason?: string;
+  actionRequired?: string;
+  metrics: (string | null)[];
+}) {
+  const badgeConfig: Record<
+    UnifiedCollectionStatus,
+    { label: string; bg: string; text: string; border: string }
+  > = {
+    succeeded: { label: "成功", bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
+    awaiting_action: { label: "等待人工", bg: "bg-amber-50", text: "text-amber-800", border: "border-amber-300" },
+    failed: { label: "失败", bg: "bg-rose-50", text: "text-rose-700", border: "border-rose-200" },
+    partial: { label: "部分就绪", bg: "bg-indigo-50", text: "text-indigo-700", border: "border-indigo-200" },
+    running: { label: "运行中", bg: "bg-sky-50", text: "text-sky-700", border: "border-sky-200" },
+    idle: { label: "未开始", bg: "bg-slate-50", text: "text-slate-600", border: "border-slate-200" },
+  };
+
+  const badge = badgeConfig[status] ?? badgeConfig.idle;
+  const filteredMetrics = metrics.filter((m): m is string => Boolean(m));
+
+  return (
+    <div
+      data-testid={`unified-module-${moduleKey}`}
+      className="flex flex-col justify-between rounded-lg border border-slate-200/80 bg-slate-50/50 p-2.5 text-xs transition-shadow hover:shadow-xs"
+    >
+      <div>
+        <div className="flex items-center justify-between gap-1">
+          <span className="font-semibold text-slate-800 truncate">{title}</span>
+          <span
+            data-testid={`unified-badge-${moduleKey}`}
+            className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold border ${badge.bg} ${badge.text} ${badge.border}`}
+          >
+            {badge.label}
+          </span>
+        </div>
+        <p className="mt-1 text-[11px] text-slate-600 leading-snug break-words">{summary}</p>
+
+        {failureReason && (
+          <div
+            data-testid={`unified-reason-${moduleKey}`}
+            className={`mt-1.5 rounded p-1.5 text-[10px] leading-tight ${
+              status === "awaiting_action"
+                ? "border border-amber-200 bg-amber-50/80 text-amber-900"
+                : "bg-rose-100/70 text-rose-900"
+            }`}
+          >
+            <span className="font-semibold">{status === "awaiting_action" ? "阻断原因：" : "失败原因："}</span>
+            {failureReason}
+          </div>
+        )}
+
+        {actionRequired && (
+          <div
+            data-testid={`unified-action-${moduleKey}`}
+            className="mt-1.5 rounded bg-amber-100/70 p-1.5 text-[10px] text-amber-900 leading-tight"
+          >
+            <span className="font-semibold">处理指引：</span>
+            {actionRequired}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-1.5 pt-1.5 border-t border-slate-200/60 text-[10px] text-slate-400">
+        {filteredMetrics.map((m, idx) => (
+          <span key={idx} className="rounded bg-white border border-slate-200/60 px-1 py-0.2 text-slate-600">
+            {m}
+          </span>
+        ))}
+        {typeof durationMs === "number" && (
+          <span className="ml-auto text-slate-400 font-mono">{durationMs}ms</span>
+        )}
+      </div>
+    </div>
   );
 }
