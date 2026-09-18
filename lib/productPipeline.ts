@@ -150,6 +150,7 @@ export function derivePipelineStatus(input: PipelineInput): PipelineStatus {
   const rawLevel = text(input.level).toLowerCase();
 
   // 1. Explicitly abandoned
+  // Modern contract: "abandoned" | Legacy: "rejected" / "dismissed"
   if (ds === "abandoned" || ds === "dismissed" || ds === "rejected") {
     return "abandoned";
   }
@@ -157,7 +158,8 @@ export function derivePipelineStatus(input: PipelineInput): PipelineStatus {
   // 2. High risk
   if (rawLevel === "red" || rawLevel === "high" || rawLevel.includes("高") || rawLevel.includes("红")) {
     // Check if human has already reviewed and decided to continue
-    if (ds === "continue" || ds === "approved" || ds === "selected" || ds === "ready") {
+    // Modern contract: "creative_ready" | Legacy: "continue" / "approved" / "ready"
+    if (ds === "creative_ready" || ds === "continue" || ds === "approved" || ds === "selected" || ds === "ready") {
       return "ready_to_advance"; // human override
     }
     return "high_risk";
@@ -189,9 +191,15 @@ export function derivePipelineStatus(input: PipelineInput): PipelineStatus {
   }
 
   // 7. All reviewed, info sufficient
-  if (ds === "continue" || ds === "approved" || ds === "ready") {
+  // Modern contract: "creative_ready" | Legacy: "continue" / "approved" / "ready"
+  if (ds === "creative_ready" || ds === "continue" || ds === "approved" || ds === "ready") {
     if (hasListingPrep) return "listing_ready";
     return "ready_for_listing";
+  }
+
+  // modern "needs_information" → not yet decided → needs_review stage
+  if (ds === "needs_information") {
+    return "ready_to_advance";
   }
 
   // 8. Reviewed, info OK, but no explicit decision

@@ -42,6 +42,7 @@ export type HandoffGate = {
 export const HANDOFF_ELIGIBILITY_CODES: readonly HandoffEligibility[] = [
   "eligible",
   "no_confirmed_facts",
+  "creative_confirmation_required",
   "legacy_not_supported",
   "decision_not_creative_ready",
   "research_not_completed",

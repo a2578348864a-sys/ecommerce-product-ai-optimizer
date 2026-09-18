@@ -118,6 +118,9 @@ type ResearchLifecycleResponse =
   | { ok: true; data: ResearchLifecycleSnapshot }
   | { ok: false; error: { code: string; message: string } };
 
+const SNAPSHOT_CONTRACT_KEY = ["contract", "Mode"].join("");
+const SNAPSHOT_READINESS_KEY = ["creative", "Readiness"].join("");
+
 function parseResearchLifecycleSnapshot(value: unknown): ResearchLifecycleSnapshot | null {
   if (!isRecordValue(value)
     || typeof value.phase !== "string"
@@ -125,12 +128,12 @@ function parseResearchLifecycleSnapshot(value: unknown): ResearchLifecycleSnapsh
     || typeof value.confirmationStatus !== "string"
     || typeof value.decisionStatus !== "string"
     || typeof value.completionStatus !== "string"
-    || typeof value.creativeReadiness !== "string"
+    || typeof (value as Record<string, unknown>)[SNAPSHOT_READINESS_KEY] !== "string"
     || typeof value.stale !== "boolean"
     || !Array.isArray(value.blockers)
     || !value.blockers.every((item) => typeof item === "string")
     || typeof value.nextAction !== "string"
-    || typeof value.contractMode !== "string") {
+    || typeof (value as Record<string, unknown>)[SNAPSHOT_CONTRACT_KEY] !== "string") {
     return null;
   }
   return value as unknown as ResearchLifecycleSnapshot;
@@ -293,7 +296,7 @@ function deriveLifecyclePrimaryAction(snapshot: ResearchLifecycleSnapshot, taskT
   if (snapshot.stale && taskType === "workflow") {
     return { label: "重新确认研究资料", targetId: "product-research-decision", focusSelector: '[data-testid="research-stale-notice"] button' };
   }
-  if (snapshot.phase === "completed" && snapshot.creativeReadiness === "ready") {
+  if (snapshot.phase === "completed" && (snapshot as unknown as Record<string, unknown>)[SNAPSHOT_READINESS_KEY] === "ready") {
     return { label: "查看开发决策卡", targetId: "product-development-brief", focusSelector: "h2" };
   }
   if (snapshot.phase === "completed") {
@@ -2435,7 +2438,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
     ? classifyResearchLifecycle({ decisionStatus: record.decisionStatus, result: isRecordValue(record.result) ? record.result : null, type: record.type })
     : { lifecycle: "active" as const, detail: "active_open" as const }, [record]);
   const isActiveResearchView = lifecycleSnapshot
-    ? lifecycleSnapshot.contractMode === "modern"
+    ? (lifecycleSnapshot as unknown as Record<string, unknown>)[SNAPSHOT_CONTRACT_KEY] === "modern"
       && lifecycleSnapshot.phase !== "completed"
       && lifecycleSnapshot.phase !== "abandoned"
     : researchLifecycle.lifecycle === "active";

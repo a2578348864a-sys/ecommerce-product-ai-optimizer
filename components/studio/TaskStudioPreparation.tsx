@@ -135,6 +135,12 @@ const STUDIO_GATE_COPY: Record<Exclude<HandoffEligibility, "eligible">, {
     cta: "返回商品研究",
     emphasize: false,
   },
+  creative_confirmation_required: {
+    title: "创作资料尚未准备完成",
+    body: "研究中已有可用于创作的商品事实，请先确认创作资料。",
+    cta: "返回商品研究",
+    emphasize: false,
+  },
 };
 
 /** 门禁不可用（未取到 gate）时的兜底文案；不表示任何具体 reasonCode。 */

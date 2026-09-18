@@ -6,7 +6,8 @@ import { isSandboxTaskId } from "@/lib/server/demoSandbox";
 const routeSource = readFileSync(resolve(process.cwd(), "app/api/tasks/[id]/creative-handoff/route.ts"), "utf8");
 const gateSource = readFileSync(resolve(process.cwd(), "lib/server/productCreativeHandoffPreview.ts"), "utf8");
 const panelSource = readFileSync(resolve(process.cwd(), "components/creative-handoff/CreativeHandoffPanel.tsx"), "utf8");
-const demoSandboxSource = readFileSync(resolve(process.cwd(), "lib/server/demoSandbox.ts"), "utf8");
+const canonicalSandboxPath = resolve(process.cwd(), "lib/auth/sandbox/demoSandbox.ts");
+const demoSandboxSource = readFileSync(canonicalSandboxPath, "utf8");
 
 describe("Sandbox Task 识别（P1-1）", () => {
   it("1. generateSandboxTaskId 生成的 ID 被识别为 Visitor Task", () => {
